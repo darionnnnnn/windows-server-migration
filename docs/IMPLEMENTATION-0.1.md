@@ -23,7 +23,7 @@ R02 設定檔分類、精確 ConfigFiles／ConfigOverrides 核准、來源草稿
 activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-WsmCutover 的真實入口 fixture 通過；第一個服務啟用後、完成 journal 前失敗，明確 resume 採認 exact-final 且不重啟，後續只啟用一次。無明確 resume、IP／DNS／manifest 漂移均拒絕。原生服務／網路為 mock，實機驗收仍保留。
 
 - [ ] 依實際 provider／產品補齊原生錯誤分類與 Server 正反例；generic typed error、bounded native timeout／取消／partial capture 已實作及主模型測試，不能推成所有產品資格。
-- [ ] 大量小檔端到端真實資料測試；payload index 串流、固定 5k key 緩衝／磁碟排序與進度已實作。ZIP 匯出中斷續跑已經 fault fixture 驗證；實際 >4GiB 已通過，長路徑目前明確阻擋。
+- [ ] 取得代表性來源的實際檔案數量／大小／scope 後，針對一次封裝及還原量測耗時、容量及尖峰記憶體，與維護窗比較。取消以 10k 小檔重跑整套故障／切換劇本的門檻；檔案一致性與分段邊界仍保留測試。實際 >4GiB 已通過，長路徑目前明確阻擋。
 - [ ] 更多 adapter 原生正反例與精準欄位稽核；IIS recursive schema／nested drift、Win32 own-process SCM supplement、安裝副作用隔離／quarantine、專用 UNC／DFS 角色 scope 契約已有實作與 fixture。完整 Server API／provider identity 資格、更多服務帳號模式與第三方安裝副作用仍未驗收。
 - [ ] 跨台循環應用的實際 freeze／activation／rollback 協調與資格驗收；GroupPlan／Receipt／Barrier／RollbackResult／Qualification 契約及消費端已實作，真實群組／產品證據待取得。
 - [ ] 依真實盤點為實際入選的第三方 runtime／DB／角色補專用自動模組或已驗收專用流程，未知項不能默默排除。
@@ -46,7 +46,7 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 - `wsm-integrated-final-a0c4645aca3e42f3b49cd2bc7ad110b1`：對修改影響的 12 個測試於兩個 engine 執行，含新增 API／選單／CLI、設定差異與真實核准包→還原→報告、取消及 delta。WinPS 5.1 的新 consumer 測試因未指定 UTF-8 讀取 zh-TW JSON 失敗，已修正；PS7 native fixture 一次因測試負載觸發真實 timeout，單獨同程式重跑通過，沒有放寬正式 timeout 或宣稱該次全通過。
 - `wsm-final-lab-locked-952eecc875b34ce097a0f31f29bef197`：最後 LabReport 鎖定／安裝類型／語系修改的 6 項（LabValidation、LabReportConsumer、ConfigArtifactWorkflow、ConfigArtifactReview、EntryPoint、OperationRequests）在兩個 engine 通過；包含實際 CLI 環境報告、來源設定變更清單、真實檔案還原／drift、operation lock 排他、state／journal 不變。原生 OS identity／Server collectors 的還原劇本為 fixture，不能當成 Server 資格。
 - 新 consumer UTF-8 修正另於 `wsm-lab-consumer-check-398086955a7e4c8ca3bb48b522636296` 通過 5.1／7；JSON 為 UTF-8、TXT 含 BOM，讀取 JSON 必須明確 UTF-8。
-- 10,000 小檔完整端到端測試仍在執行；前次被使用者暫停的 10k run 不計為通過。微基準每 5,000 列 JSON 從約 7.44 秒降至 1.28 秒，不能推成完整 Server 性能或 RTO 證據。
+- 10,000 小檔全劇本已於本次測試必要性稽核後停止，證據保留，不計 PASS；此做法反覆將同批檔案帶過所有故障／切換／回退，與既有小型整合重複且無效能通過門檻，已取消為必要驗收。改採下方分層策略；真實工作量的效能與 RTO 仍待來源資料，沒有宣告已通過。
 - 瀏覽器政策拒絕代理開啟 `file://`，沒有以其他途徑繞過；最新離線報告的實際瀏覽器 QA 留待使用者於測試機確認。Node DOM 不代替此項。
 - `546b3cc` 首輪 CI 揭露 SourceTaskReconciliation 測試在模組內重入時引用外層 `$module` 的作用域錯誤；改為直接呼叫既有模組函式，5.1／7 重驗通過。CI 多腳本步驟改逐一獨立 child process 並檢查 exit code，避免 fixture 狀態互相污染；正式 src／入口未改。
 - CI `7036af7`／`524c924` 揭露 delta fixture 的暫存來源 ACL 未持久化 AI 控制位元，target Set-Acl 後增加 AI，Exact 比對正確阻擋。fixture 封裝前對自有暫存來源 ACL 寫回並擷取持久化基準，新增完整 baseline readback 斷言；正式 ACL 政策及全部 src／入口不放寬。增量流程移至獨立 CI job，84ce490 的 5.1／7 GitHub job 通過。ConfigArtifactWorkflow 在 runner 呈現相同 AI 基準差異，亦於核准前持久化暫存來源 ACL；最後設定／還原／LabReport 工作流程已於 5.1／7 本機重驗通過，`10c896a` 完整 CI 通過。
@@ -154,9 +154,29 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 - RemoteStorage：load/approval/read-plan/report consumer 已接入；主代理 Test-RemoteStorageApproval 通過跨 source/target/DFS alias overlap 阻擋、excluded 不阻擋、泛用 FileScope UNC 拒絕與報告資料遮蔽。專用產品流程仍由 owner 提供；沒有泛用 NAS/DFS 自動 copier。
 - Qualification：主代理完整 record producer → registry → lookup → matrix → revoke 契約通過；不自動建立實機證據，ProductionExecutionEnabled 始終 false。
 - WindowsFeature：主代理 adapter 與 failure-details fixture 通過成功／重開機／未知原生 enum 判定、保留 HRESULT_FROM_WIN32 與 token privilege／RPC／busy 分類。New-Service 已改正式 DependsOn 參數，恢復整合使用嚴格 native mock 與非空相依。
-- RecoveryContracts 最新主代理 WinPS 5.1 通過；wsm-recovery-7efea3a16dca4eb3b960a668f7057118。新的全量回歸及 10,000 真實小檔 pipeline 仍在執行，未提前列成通過。
+- RecoveryContracts 最新主代理 WinPS 5.1 通過；wsm-recovery-7efea3a16dca4eb3b960a668f7057118。後續全量 CI 已通過；10,000 真實小檔 pipeline 已在測試必要性稽核後停止，不計通過。
 - 最新 SMB 5.1 主代理重驗：ShareQuiescence／ShareSourceWorkflow 通過 exact-scope handle、原始 ACL、close-after-effect 中斷與再凍結／回復；ShareContracts 加測 named-scope／同名多 scope 目標拒絕通過。
 - 原生只讀查詢：本機 sc.exe query 不存在的生成測試服務，NativeCode=1060 正確傳遞至 ObjectMissing 分類；没有建立、停止或修改任何真實服務。
 - 新增 ObservationHours 的 reviewed duration／ActivatedUtc durable journal 與門檻；實際 Server 觀察證據仍待取得。主模型 Test-ObservationWorkflow 已通過啟用中斷／resume／journal replay、提前記通過拒絕及虛擬時間門檻；不把虛擬時間列為實際觀察。
 - 主模型 immutable snapshot 驗證：TaskSecurityWorkflow、SourceTaskReconciliation、FleetExecutionBindings、ShareContracts、FailureDetails、Adapters、AdvancedReview／MenuContracts 通過 WinPS 5.1；CancellationWorkflow 通過真實 bytes／journal／ACL、ZIP volume／extract 取消重試、未套用的 durable RestoreAttempt 與 Cancelled receipt、CLI 0／1／3／4。
 - 主模型 DeltaWorkflow 通過增量 ZIP、可信目標未變更 bytes 完整 package 重建、既有 validation／cutover consumer、staging 與兩次 rename 中斷修復、漂移／錯 token 阻擋；DeltaMenu strict-mode 消費契約通過。NativeExecution 主模型 5.1／7 通過，child process／partial output 清理界限見 OPERATIONS。
+
+## 2026-10-08 測試必要性與資源調整（使用者定案）
+
+使用者要求排除無效測試，採更有效率的可行性驗證。正式 src／入口未改，本輪只修改測試預設、CI 與文件；既有工具 ZIP 與核准工具指紋可沿用。
+
+| 原做法 | 決定與有效驗證 |
+|---|---|
+| 10k 真實小檔帶入整套故障／切換／回退 | 停止長跑並保留 evidence，不計通過。完整 pipeline 預設 16 小檔、最多 64；驗 bytes／ACL／排除／ZIP 分卷中斷／重試／final／刪除／回退，所有必要斷言保留。取消測試預設 8 檔、最多 32，仍走真實取消與恢復。 |
+| 100k HTML 資料重跑所有互動檢查 | 預設 2,501 筆，超過 2,000 列印上限並跨 11 個 250-row chunks；驗 lazy parsing、LRU≤4、跨 chunk 搜尋、快速連續篩選、末筆與列印阻擋。100k 可用 ReportRows=100000 明確指定，僅做相關大量資料驗證，不作每次修改的門檻。 |
+| 每次預設 10k 規格、十台各 10k 盤點 | 預設 200 規格／十台各 200，驗多頁、CSV 不漏決定與配對完整；大型數量改為明確指定，依實際需求與資料結構改動決定。 |
+| 所有測試數量一律縮小 | 不採用。ArtifactKeySpool 的 10,001 keys 與 DeltaContracts 的 5,004 records 必須跨過固定 5,000 分段邊界，保留跨段重複／排序／增量分類斷言；不是一萬次 OS 檔案還原。 |
+| 每次跑實際 >4 GiB | 保留為 64-bit 真實邊界驗證（曾發現 int32 溢位），移至專項 workflow；main 的 runtime／入口變更、PR opened／reopened／ready_for_review 及人工 dispatch 時執行。同步 PR 的每次一般更新不重跑；payload 相關修改交付前需單獨執行或已有同版本有效結果。 |
+| 同一提交 push／PR 各跑一次全部 CI | feature 分支走 PR，main 走 push；純 docs／README／AGENTS 變更不啟動 CI。一般／delta／大檔 job 加 30／10／20 分鐘上限，超時視為失敗，不當作效能通過。 |
+| 同程式、同測試、同環境反覆全量重驗 | 沿用有效證據；本輪只重驗改過的 Pipeline／CancellationWorkflow／Report／FleetScale／SpecScale，兩個引擎的結果另列。正式 src／入口／特殊邊界測試未改，不重跑既有 >4 GiB 或所有 OS mocks。 |
+
+實機可行性先用一組代表性的來源／目標，涵蓋實際要搬的 IIS／服務／排程／分享／憑證／帳號與一個完整回退。角色、帳號、Core、32-bit runtime、語系、政策與跨台組合只測實際入選或有差異的情境；不列所有可能排列。功能／安全失敗仍保留反例；合成契約不能代替原生 API、真實資料一致性與業務接受。
+
+效能測試需先有代表性工作量、測量環境、時間／記憶體／容量目標，再用一次直接封裝→還原測量；達到代表性數量或發現問題才增加規模。只記耗時沒有門檻的長跑不作「可上線」證據，也不作工具完成阻擋項。
+
+本輪固定快照 wsm-efficient-validation-7bd71e1a4e7f4d749897e4dcff0f4611 驗證完成：Pipeline、CancellationWorkflow、Report、FleetScale、SpecScale 在 Windows PowerShell 5.1 與 PowerShell 7 均為 5/5 PASS。Pipeline 分別 85.12／63.60 秒，Report 分別 4.81／9.89 秒；報告 DOM 實際驗證 2,501 筆與 11 個 chunks。這是本機功能證據，不是 Server 效能承諾。結束後核對快照與工作樹全部 50 個正式 src／入口雜湊相同；本輪未修改正式執行程式。既有 10c896a 的完整 54 腳本 CI 與 >4 GiB 證據沿用，沒有重跑無關測試。

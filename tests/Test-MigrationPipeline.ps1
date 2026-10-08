@@ -1,5 +1,5 @@
 ﻿#requires -Version 5.1
-param([ValidateRange(0,10000)][int]$SmallFiles=0)
+param([ValidateRange(0,64)][int]$SmallFiles=16)
 $ErrorActionPreference='Stop'
 $pipelineWatch=[Diagnostics.Stopwatch]::StartNew()
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
@@ -25,13 +25,12 @@ $planPath=Join-Path $root 'plan.json';$approval=Approve-WsmMigrationPlan $worksp
 $package=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState $packages -ChunkBytes 65536
 if(-not $package.Sealed -or $package.Files -ne (2+$SmallFiles) -or $package.Generation -ne 1){throw 'Initial package counters incorrect.'}
 $verified=Test-WsmMigrationPackage $package.ManifestPath $package.SHA256
-$volumeBytes=1MB;if($SmallFiles){$volumeBytes=64MB}else{
+$volumeBytes=1MB
     & $module {$script:originalZipVerifier=(Get-Command Test-WsmZipVolume).ScriptBlock;$script:zipFault=$true;function script:Test-WsmZipVolume {param($Path,$Expected,$ExpectedHash='')if($script:zipFault -and $Path -like '*-0002.zip.partial'){$script:zipFault=$false;throw 'Injected ZIP interruption after first sealed volume'};& $script:originalZipVerifier $Path $Expected $ExpectedHash}}
     $zipFailed=$false;try{Export-WsmPackageZip $package.ManifestPath $package.SHA256 (Join-Path $root 'zip') -VolumeBytes $volumeBytes | Out-Null}catch{$zipFailed=$true};if(-not $zipFailed -or (Test-Path (Join-Path $root 'zip\transport.json'))){throw 'ZIP interruption fixture failed or incomplete transport was sealed.'}
-}
 $transport=Export-WsmPackageZip $package.ManifestPath $package.SHA256 (Join-Path $root 'zip') -VolumeBytes $volumeBytes
 $zipAgain=Export-WsmPackageZip $package.ManifestPath $package.SHA256 (Join-Path $root 'zip') -VolumeBytes $volumeBytes;if($zipAgain.SHA256 -ine $transport.SHA256){throw 'Completed ZIP retry changed trusted transport.'}
-if(-not $SmallFiles -and $transport.Volumes -lt 3){throw 'ZIP volume split not enforced.'}
+if($transport.Volumes -lt 3){throw 'ZIP volume split not enforced.'}
 $unpacked=Import-WsmPackageZip $transport.Path $transport.SHA256 (Join-Path $root 'unpacked')
 if($unpacked.SHA256 -ine $package.SHA256 -or -not $unpacked.Valid){throw 'Verified multipart ZIP import failed.'}
 if(@(Get-ChildItem (Join-Path $package.Directory 'payload') -Filter *.blob).Count -lt 3){throw 'Large file was not split into bounded payload chunks.'}

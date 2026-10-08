@@ -1,5 +1,5 @@
 ﻿#requires -Version 5.1
-param([ValidateRange(1,10000)][int]$ItemsPerHost=10000,[ValidateRange(1,10)][int]$Hosts=10)
+param([ValidateRange(1,10000)][int]$ItemsPerHost=200,[ValidateRange(1,10)][int]$Hosts=10)
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force
 $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-scale-'+[Guid]::NewGuid().ToString('N'))

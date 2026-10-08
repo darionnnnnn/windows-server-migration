@@ -1,8 +1,15 @@
 name: Windows PowerShell contracts
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', 'README.md', 'AGENTS.md']
+  pull_request:
+    paths-ignore: ['docs/**', 'README.md', 'AGENTS.md']
+  workflow_dispatch:
 jobs:
   fixtures:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Windows PowerShell 5.1 contracts
@@ -116,9 +123,6 @@ jobs:
       - name: Inventory ZIP trust and extraction boundaries
         shell: powershell
         run: ./tests/Test-Archive.ps1
-      - name: Actual file above 4 GiB
-        shell: powershell
-        run: ./tests/Test-LargePayload.ps1
       - name: Noninteractive exit code contract
         shell: powershell
         run: ./tests/Test-EntryPoint.ps1

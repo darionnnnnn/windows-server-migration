@@ -73,11 +73,12 @@ async function main() {
   console.log('PASS: 205-row paging, chunk caching, literal search, category filter, summary and bounded print.');
 
   const large = getParts(process.argv[3]);
-  assert.equal(large.metadata.Count, 100000);
-  assert.equal(large.chunks.size, 400);
+  const total = large.metadata.Count;
+  assert.ok(total >= 2501, 'fixture must cross the 2,000-row print guard and four-chunk cache bound');
+  assert.equal(large.chunks.size, Math.ceil(total / 250));
   const big = createHarness(large);
   assert.equal(big.elements.body.children.length, 100);
-  assert.equal(big.parseCount, 1, '100k report startup must parse only the first 250-row chunk');
+  assert.equal(big.parseCount, 1, 'report startup must parse only the first 250-row chunk');
   for (let page = 1; page < 5; page++) big.elements.next.onclick();
   assert.equal(big.elements.body.children.length, 100);
   assert.ok(big.parseCount > 1, 'page navigation should load later chunks on demand');
@@ -85,15 +86,15 @@ async function main() {
 
   big.elements.search.value = 'hit-'; big.elements.search.oninput();
   big.elements.search.value = 'rare-final'; big.elements.search.oninput();
-  await waitFor(() => big.elements.count.textContent.includes('符合 1 / 全部 100000'), 'latest rapid filter did not win');
+  await waitFor(() => big.elements.count.textContent.includes('符合 1 / 全部 ' + total), 'latest rapid filter did not win');
   assert.equal(big.elements.body.children.length, 1);
   assert.equal(big.elements.body.children[0].children[1].textContent, 'rare-final');
   big.elements.search.value = ''; big.elements.search.oninput();
   big.elements.all.onclick();
-  assert.equal(big.printed.value, false, 'unfiltered 100k print must be guarded');
+  assert.equal(big.printed.value, false, 'unfiltered oversized print must be guarded');
   assert.ok(big.alerts.length, 'large print guard should explain the limit');
   assert.ok(big.maxCacheSize <= 4, 'cache bound must hold after full scans');
-  console.log('PASS: 100k startup lazy parsing, 250-row chunks, bounded LRU, interruptible race-safe filtering and print guard.');
+  console.log('PASS: ' + total + '-row startup lazy parsing, 250-row chunks, bounded LRU, interruptible race-safe filtering and print guard.');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

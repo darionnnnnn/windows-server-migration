@@ -1,5 +1,5 @@
 ﻿#requires -Version 5.1
-param([ValidateRange(0,10000)][int]$SmallFiles=0)
+param([ValidateRange(0,32)][int]$SmallFiles=8)
 $ErrorActionPreference='Stop'
 $pipelineWatch=[Diagnostics.Stopwatch]::StartNew()
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru

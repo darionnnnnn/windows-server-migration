@@ -1,4 +1,4 @@
-# Windows Server Migration
+﻿# Windows Server Migration
 
 PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目標 Server 2016 → 2025、約十台主機。各台本機執行，管理端彙整文件與結果，不要求 WinRM。
 
@@ -41,3 +41,22 @@ powershell.exe -NoProfile -File .\tests\Test-RecoveryContracts.ps1
 ```
 
 測試的主機、排程、服务與網路 API 使用 fixture；檔案內容／ACL／ZIP／hash／journal 操作使用測試目錄。沒有實際改名、IP 切換或生產服務操作。模擬成功不能代替真實 Server、IIS、網域與業務驗收。CLI 0 表示該操作完成，不表示整台遷移完成；2 表示阻擋／人工證據或重開機仍待處理，1 失敗，3 安全取消，4 已分類的參數／格式錯誤。
+
+## 有效且節省資源的測試
+
+日常先跑受影響的腳本，已有相同程式、依賴、環境的有效結果就沿用。完整 Pipeline 預設 16 小檔、取消流程 8 檔、報告 2,501 筆、Fleet 十台各 200 筆、批次規格 200 筆；保留錯機／改包／排除／ACL／設定漂移／final／刪除／中斷／回退等必要檢查。不使用一萬小檔帶過所有故障劇本。
+
+索引測試保留跨 5,000 筆分段的最小資料，避免漏驗分段排序與重複。實際 >4 GiB 是曾發現溢位的特殊邊界，獨立跑一次；本輪正式遷移程式未改，可沿用既有結果。PR 與 main CI 不雙跑同一 feature commit，纯文件修改不觸發。
+
+只有改動大量資料路徑或取得代表性工作量時，才明確指定更大規模；輸出時間與記憶體只是量測，不代表 Server 性能合格：
+
+```powershell
+# 特殊 64-bit 邊界：相關程式改動或交付前需要，既有相同版本有效結果可沿用。
+powershell.exe -NoProfile -File .\tests\Test-LargePayload.ps1
+# 以下是選擇性的定向數量驗證，不是每次全量回歸的預設。
+powershell.exe -NoProfile -File .\tests\Test-Report.ps1 -ReportRows 100000
+powershell.exe -NoProfile -File .\tests\Test-SpecScale.ps1 -Items 10000
+powershell.exe -NoProfile -File .\tests\Test-FleetScale.ps1 -Hosts 10 -ItemsPerHost 10000
+```
+
+真實可行性先用一組代表性 Server 來源／目標，走實際入選項目的隔離還原、readback、業務檢查及一次回退；原生 API 與產品測試不能用合成數量取代。細節與已取消測試的理由在 docs/IMPLEMENTATION-0.1.md。

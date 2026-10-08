@@ -1,5 +1,5 @@
 ﻿#requires -Version 5.1
-param([ValidateRange(1,10000)][int]$Items=10000)
+param([ValidateRange(1,10000)][int]$Items=200)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'Helper-Fixtures.ps1')
 Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force

@@ -1,0 +1,18 @@
+name: Payload 64-bit boundary
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'Start-ServerMigration.ps1', 'tests/Test-LargePayload.ps1', '.github/workflows/payload-boundary.yml']
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+    paths: ['src/**', 'Start-ServerMigration.ps1', 'tests/Test-LargePayload.ps1', '.github/workflows/payload-boundary.yml']
+  workflow_dispatch:
+jobs:
+  large-payload:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Actual file above 4 GiB
+        shell: powershell
+        run: ./tests/Test-LargePayload.ps1
