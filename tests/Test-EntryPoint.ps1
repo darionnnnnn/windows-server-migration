@@ -24,3 +24,6 @@ if ($LASTEXITCODE -ne 4) { throw 'Invalid trusted hash must return 4.' }
 $ErrorActionPreference='Stop'
 if ((Get-WsmCatalog $workspace $c.PairId).DecisionRevision -ne 0) { throw 'Rejected CLI input changed review.' }
 Write-Host ('PASS: CLI success 0, blocked 2, invalid action/hash 4, rejected input retains state. Evidence: '+$root)
+# CI wrappers inherit native LASTEXITCODE; the expected rejection above is not a test failure.
+$global:LASTEXITCODE=0
+exit 0
