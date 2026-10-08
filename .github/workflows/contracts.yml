@@ -26,52 +26,95 @@ jobs:
       - name: Recovery request and IIS contracts
         shell: powershell
         run: |
-          ./tests/Test-RecoveryContracts.ps1
-          ./tests/Test-OperationRequests.ps1
-          ./tests/Test-IisContracts.ps1
-          ./tests/Test-BulkMigrationSpecs.ps1
-          ./tests/Test-SourceRecovery.ps1
-          ./tests/Test-MenuContracts.ps1
-          ./tests/Test-RollbackRecovery.ps1
-          ./tests/Test-PhysicalPaths.ps1
-          ./tests/Test-FileEdges.ps1
-          ./tests/Test-ArtifactKeySpool.ps1
-          ./tests/Test-ArtifactRecords.ps1
-          ./tests/Test-FailureDetails.ps1
-          ./tests/Test-ShareContracts.ps1
-          ./tests/Test-SpecScale.ps1 -Items 200
+          & powershell.exe -NoProfile -File ./tests/Test-RecoveryContracts.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-OperationRequests.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-IisContracts.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-BulkMigrationSpecs.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-SourceRecovery.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-MenuContracts.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-RollbackRecovery.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-PhysicalPaths.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-FileEdges.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-ArtifactKeySpool.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-ArtifactRecords.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-FailureDetails.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-ShareContracts.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-SpecScale.ps1 -Items 200
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
       - name: Durable activation account and installer contracts
         shell: powershell
         run: |
-          ./tests/Test-ActivationRecovery.ps1
-          ./tests/Test-CutoverActivationWorkflow.ps1
-          ./tests/Test-ObservationWorkflow.ps1
-          ./tests/Test-ServiceIdentity.ps1
-          ./tests/Test-ServiceSupplement.ps1
-          ./tests/Test-InstallerSafety.ps1
-          ./tests/Test-ShareQuiescence.ps1
-          ./tests/Test-ShareSourceWorkflow.ps1
-          ./tests/Test-SourceTaskReconciliation.ps1
-          ./tests/Test-CrossHostCoordination.ps1
-          ./tests/Test-RemoteStorageContracts.ps1
-          ./tests/Test-RemoteStorageApproval.ps1
-          ./tests/Test-Qualification.ps1
-          ./tests/Test-FleetExecutionBindings.ps1
-          ./tests/Test-Cancellation.ps1
-          ./tests/Test-CancellationWorkflow.ps1
-          ./tests/Test-NativeExecution.ps1
-          ./tests/Test-TaskSecurity.ps1
-          ./tests/Test-TaskSecurityWorkflow.ps1
-          ./tests/Test-DeltaContracts.ps1
-          ./tests/Test-DeltaWorkflow.ps1
-          ./tests/Test-DeltaMenu.ps1
-          ./tests/Test-ConfigArtifactContracts.ps1
-          ./tests/Test-ConfigArtifactWorkflow.ps1
-          ./tests/Test-ConfigArtifactReview.ps1
-          ./tests/Test-LabValidation.ps1
-          ./tests/Test-LabReportConsumer.ps1
-          ./tests/Test-PreflightCancellation.ps1
-          ./tests/Test-TaskFolderJournal.ps1
+          & powershell.exe -NoProfile -File ./tests/Test-ActivationRecovery.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-CutoverActivationWorkflow.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-ObservationWorkflow.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-ServiceIdentity.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-ServiceSupplement.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-InstallerSafety.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-ShareQuiescence.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-ShareSourceWorkflow.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-SourceTaskReconciliation.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-CrossHostCoordination.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-RemoteStorageContracts.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-RemoteStorageApproval.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-Qualification.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-FleetExecutionBindings.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-Cancellation.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-CancellationWorkflow.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-NativeExecution.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-TaskSecurity.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-TaskSecurityWorkflow.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-DeltaContracts.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-DeltaWorkflow.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-DeltaMenu.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-ConfigArtifactContracts.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-ConfigArtifactWorkflow.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-ConfigArtifactReview.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-LabValidation.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-LabReportConsumer.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-PreflightCancellation.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
+          & powershell.exe -NoProfile -File ./tests/Test-TaskFolderJournal.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
       - name: Inventory ZIP trust and extraction boundaries
         shell: powershell
         run: ./tests/Test-Archive.ps1

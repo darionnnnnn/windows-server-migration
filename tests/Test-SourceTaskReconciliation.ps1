@@ -109,7 +109,7 @@ try {
         $notRunningCase=New-TaskFixtureCase 'not-running-original' $false
         $notRunningFreeze=Export-WsmFreezeRecord $notRunningCase.PlanPath $notRunningCase.PlanHash $notRunningCase.AttemptPath 'Fixture task owner' 'fixture task quiescence review' OWNER-CONFIRMED-QUIESCENCE -SourceStateDirectory $notRunningCase.SourceState
         $emptyTemplatePath=Join-Path $notRunningCase.Root 'empty-task-reconciliation-draft.json'
-        $emptyTemplate=& $module {param($PlanPath,$PlanHash,$AttemptPath,$AttemptHash,$OutputPath)Export-WsmSourceTaskReconciliationTemplate $PlanPath $PlanHash $AttemptPath $AttemptHash $OutputPath} $notRunningCase.PlanPath $notRunningCase.PlanHash $notRunningFreeze.SourceAttemptPath $notRunningFreeze.SourceAttemptHash $emptyTemplatePath
+        $emptyTemplate=Export-WsmSourceTaskReconciliationTemplate $notRunningCase.PlanPath $notRunningCase.PlanHash $notRunningFreeze.SourceAttemptPath $notRunningFreeze.SourceAttemptHash $emptyTemplatePath
         $emptyDraft=Read-WsmTrustedJson $emptyTemplatePath $emptyTemplate.SHA256
         if($emptyTemplate.TaskProofRequired -or $emptyTemplate.OriginallyRunningTaskCount -ne 0 -or @($emptyDraft.Items).Count -ne 0 -or $emptyTemplate.ResumeReady){throw 'Task reconciliation template incorrectly required task proof when no included task was originally running.'}
         $script:fixtureTask.Running=$true # Unexpected process state appears after freeze; resume must stop before enabling.

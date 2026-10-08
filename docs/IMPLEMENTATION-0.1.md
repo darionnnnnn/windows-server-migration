@@ -1,6 +1,6 @@
-# 0.3 逐項實作與驗證紀錄
+﻿# 0.3 逐項實作與驗證紀錄
 
-2026-10-08，分支 codex/implementation，本轮起點 7287399；新增改動仍在工作區。狀態為「持續補齊，未完成全規劃」，尚未進入不同模型獨立體檢。已完成項從當期待辦移除，原始 PLAN 的需求及驗收條件保留。
+2026-10-08，分支 codex/implementation，本轮起點 7287399；本輪程式已提交並推送 checkpoint `546b3cc`。狀態為「持續補齊，未完成全規劃」，尚未進入不同模型獨立體檢。已完成項從當期待辦移除，原始 PLAN 的需求及驗收條件保留。
 
 ## 實作對照
 
@@ -27,7 +27,7 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 - [ ] 更多 adapter 原生正反例與精準欄位稽核；IIS recursive schema／nested drift、Win32 own-process SCM supplement、安裝副作用隔離／quarantine、專用 UNC／DFS 角色 scope 契約已有實作與 fixture。完整 Server API／provider identity 資格、更多服務帳號模式與第三方安裝副作用仍未驗收。
 - [ ] 跨台循環應用的實際 freeze／activation／rollback 協調與資格驗收；GroupPlan／Receipt／Barrier／RollbackResult／Qualification 契約及消費端已實作，真實群組／產品證據待取得。
 - [ ] 依真實盤點為實際入選的第三方 runtime／DB／角色補專用自動模組或已驗收專用流程，未知項不能默默排除。
-- [ ] 最後 checkpoint CI／公共 PR 同步，以及真實瀏覽器／主控台和整輪實機再核對；最新本機測試覆蓋與尚未完成的大量基準見下方，不以舊快照代替最後修改。
+- [ ] 最後 checkpoint CI 結果，以及真實瀏覽器／主控台和整輪實機再核對；`546b3cc` 已推送、公共 draft PR 已同步；CI 執行中。最新本機測試覆蓋與尚未完成的大量基準見下方，不以舊快照代替最後修改。
 
 ## 需要實際環境的驗收（不能用合成代替）
 
@@ -46,6 +46,7 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 - 新 consumer UTF-8 修正另於 `wsm-lab-consumer-check-398086955a7e4c8ca3bb48b522636296` 通過 5.1／7；JSON 為 UTF-8、TXT 含 BOM，讀取 JSON 必須明確 UTF-8。
 - 10,000 小檔完整端到端測試仍在執行；前次被使用者暫停的 10k run 不計為通過。微基準每 5,000 列 JSON 從約 7.44 秒降至 1.28 秒，不能推成完整 Server 性能或 RTO 證據。
 - 瀏覽器政策拒絕代理開啟 `file://`，沒有以其他途徑繞過；最新離線報告的實際瀏覽器 QA 留待使用者於測試機確認。Node DOM 不代替此項。
+- `546b3cc` 首輪 CI 揭露 SourceTaskReconciliation 測試在模組內重入時引用外層 `$module` 的作用域錯誤；改為直接呼叫既有模組函式，5.1／7 重驗通過。CI 多腳本步驟改逐一獨立 child process 並檢查 exit code，避免 fixture 狀態互相污染；正式 src／入口未改。
 - 原生進度／取消已接入長時間 hash／copy／native wait 與 delta preflight；helper 每秒至多約一次有界進度更新，不輸出 paths／raw stdout，完成後清除。安裝器子程序／服務副作用仍需本機確認。
 - 使用者新增離線實機回傳需求：`Export-WsmLabValidationReport`、角色 6、`-Action LabReport`、OperationRequest 均已接線。JSON 保留完整 checks，TXT 優先 FAIL／Blocked 且標示省略數；人工／業務證據維持 NotTested，ProductionVerified=false。未知產品專用模組及真實資格待實際盤點及報告後補齊。
 
