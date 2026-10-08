@@ -16,6 +16,11 @@ $workflowPath=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\src\DeltaWorkf
     function Get-DeltaWorkflowHash([string]$Path){(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()}
     function Write-DeltaWorkflowPackage([string]$Root,$Plan,[string]$PlanHash,[long]$Generation,[string]$BaseHash,[bool]$Final,[string]$FreezeHash,$Item){
         [void][IO.Directory]::CreateDirectory($Root);$payload=Join-Path $Root 'payload';[void][IO.Directory]::CreateDirectory($payload)
+        # Canonicalize only test-owned source ACLs before capturing the trusted
+        # baseline. Some runner temp trees lack the OS auto-inherited control
+        # bit until Set-Acl; source and target must both use that persisted form.
+        # Exact production ACL comparison remains unchanged.
+        foreach($fixtureEntry in (Get-WsmScopeEntries $Item.MigrationSpec $Root)){$fixtureAcl=Get-Acl -LiteralPath $fixtureEntry.SourcePath;Set-Acl -LiteralPath $fixtureEntry.SourcePath -AclObject $fixtureAcl}
         $index=Join-Path $Root 'artifacts.jsonl';$writer=New-Object IO.StreamWriter($index,$false,(New-Object Text.UTF8Encoding($false)));$files=[long]0;$bytes=[long]0;$records=[long]0
         try{
             foreach($entry in (Get-WsmScopeEntries $Item.MigrationSpec $Root)){

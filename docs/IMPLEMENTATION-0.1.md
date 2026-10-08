@@ -47,6 +47,7 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 - 10,000 小檔完整端到端測試仍在執行；前次被使用者暫停的 10k run 不計為通過。微基準每 5,000 列 JSON 從約 7.44 秒降至 1.28 秒，不能推成完整 Server 性能或 RTO 證據。
 - 瀏覽器政策拒絕代理開啟 `file://`，沒有以其他途徑繞過；最新離線報告的實際瀏覽器 QA 留待使用者於測試機確認。Node DOM 不代替此項。
 - `546b3cc` 首輪 CI 揭露 SourceTaskReconciliation 測試在模組內重入時引用外層 `$module` 的作用域錯誤；改為直接呼叫既有模組函式，5.1／7 重驗通過。CI 多腳本步驟改逐一獨立 child process 並檢查 exit code，避免 fixture 狀態互相污染；正式 src／入口未改。
+- CI `7036af7`／`524c924` 揭露 delta fixture 的暫存來源 ACL 未持久化 AI 控制位元，target Set-Acl 後增加 AI，Exact 比對正確阻擋。fixture 封裝前對自有暫存來源 ACL 寫回並擷取持久化基準，新增完整 baseline readback 斷言；正式 ACL 政策及全部 src／入口不放寬。增量流程移至獨立 CI job，5.1／7 結果另行核對。
 - 原生進度／取消已接入長時間 hash／copy／native wait 與 delta preflight；helper 每秒至多約一次有界進度更新，不輸出 paths／raw stdout，完成後清除。安裝器子程序／服務副作用仍需本機確認。
 - 使用者新增離線實機回傳需求：`Export-WsmLabValidationReport`、角色 6、`-Action LabReport`、OperationRequest 均已接線。JSON 保留完整 checks，TXT 優先 FAIL／Blocked 且標示省略數；人工／業務證據維持 NotTested，ProductionVerified=false。未知產品專用模組及真實資格待實際盤點及報告後補齊。
 
