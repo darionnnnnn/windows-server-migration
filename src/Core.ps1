@@ -1,4 +1,9 @@
 ﻿function Get-WsmUtc { [DateTime]::UtcNow.ToString('o') }
+function New-WsmContractError([string]$Message) { New-Object IO.InvalidDataException($Message) }
+function ConvertFrom-WsmJson([string]$Text) {
+    if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) { $Text | ConvertFrom-Json -DateKind String }
+    else { $Text | ConvertFrom-Json }
+}
 function Get-WsmHashText([string]$Text) {
     $sha = [Security.Cryptography.SHA256]::Create()
     try { [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Text))).Replace('-','').ToLowerInvariant() }
@@ -7,7 +12,7 @@ function Get-WsmHashText([string]$Text) {
 function Read-WsmJson([string]$Path) {
     $file = Get-Item -LiteralPath $Path
     if ($file.Length -gt 128MB) { throw 'Input exceeds the 128 MiB JSON limit.' }
-    [IO.File]::ReadAllText($file.FullName, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    ConvertFrom-WsmJson ([IO.File]::ReadAllText($file.FullName, [Text.Encoding]::UTF8))
 }
 function Write-WsmJson([string]$Path, $Data) {
     $directory = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Path))
@@ -15,7 +20,7 @@ function Write-WsmJson([string]$Path, $Data) {
     $temporary = Join-Path $directory ([Guid]::NewGuid().ToString('N') + '.tmp')
     try {
         $json=$Data | ConvertTo-Json -Depth 40
-        if ([Text.Encoding]::UTF8.GetByteCount($json) -gt 128MB) { throw 'Output exceeds 128 MiB; split the host review scope before continuing.' }
+        if ([Text.Encoding]::UTF8.GetByteCount($json) -gt 128MB) { throw 'Output exceeds 128 MiB; no scope splitting is implemented. Preserve the existing workspace and request large-inventory support.' }
         [IO.File]::WriteAllText($temporary, $json, (New-Object Text.UTF8Encoding($false)))
         if ([IO.File]::Exists($Path)) {
             $backup=Join-Path $directory ([Guid]::NewGuid().ToString('N')+'.bak')
@@ -27,13 +32,14 @@ function Write-WsmJson([string]$Path, $Data) {
 }
 function Assert-WsmId([string]$Id) {
     $parsed = [Guid]::Empty
-    if (-not [Guid]::TryParseExact($Id, 'D', [ref]$parsed)) { throw 'Invalid identity: expected a GUID.' }
+    if (-not [Guid]::TryParseExact($Id, 'D', [ref]$parsed)) { throw (New-WsmContractError 'Invalid identity: expected a GUID.') }
 }
 function Assert-WsmEnvelope($Data, [string]$Kind) {
     foreach ($field in @('SchemaVersion','ToolVersion','Kind')) {
-        if (-not $Data.PSObject.Properties[$field]) { throw ('Missing envelope field: ' + $field) }
+        if (-not $Data.PSObject.Properties[$field]) { throw (New-WsmContractError ('Missing envelope field: ' + $field)) }
     }
-    if (($Data.SchemaVersion -isnot [int] -and $Data.SchemaVersion -isnot [long]) -or $Data.SchemaVersion -ne 1 -or $Data.Kind -cne $Kind) { throw 'Unsupported schema or envelope kind.' }
+    if (($Data.SchemaVersion -isnot [int] -and $Data.SchemaVersion -isnot [long]) -or $Data.SchemaVersion -ne 1 -or $Data.Kind -cne $Kind) { throw (New-WsmContractError 'Unsupported schema or envelope kind.') }
+    if (@('0.1.0','0.2.0') -cnotcontains $Data.ToolVersion) { throw (New-WsmContractError 'Unsupported tool version; do not reinterpret future data.') }
 }
 function Assert-WsmInventory($Inventory) {
     Assert-WsmEnvelope $Inventory 'Inventory'
@@ -60,6 +66,22 @@ function Assert-WsmInventory($Inventory) {
 function Assert-WsmTrustedFile([string]$Path, [string]$ExpectedHash) {
     if ($ExpectedHash -notmatch '^[a-fA-F0-9]{64}$') { throw 'An independently obtained SHA256 is required.' }
     if ((Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash -ine $ExpectedHash) { throw 'Trusted SHA256 mismatch; input not imported.' }
+}
+function Read-WsmFileSnapshot([string]$Path,[string]$ExpectedHash) {
+    $stream=[IO.File]::Open([IO.Path]::GetFullPath($Path),'Open','Read','Read')
+    try {
+        if ($stream.Length -gt 128MB) { throw 'Input exceeds 128 MiB.' }
+        $sha=[Security.Cryptography.SHA256]::Create()
+        try { $hash=[BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
+        if ($ExpectedHash -and ($ExpectedHash -notmatch '^[a-fA-F0-9]{64}$' -or $hash -ine $ExpectedHash)) { throw (New-WsmContractError 'Trusted SHA256 mismatch; input not imported.') }
+        $stream.Position=0; $reader=New-Object IO.StreamReader($stream,[Text.Encoding]::UTF8,$true)
+        try { $text=$reader.ReadToEnd() } finally { $reader.Dispose() }
+        [pscustomobject]@{ Text=$text; Hash=$hash }
+    } finally { $stream.Dispose() }
+}
+function Read-WsmTrustedJson([string]$Path,[string]$ExpectedHash) {
+    if ($ExpectedHash -notmatch '^[a-fA-F0-9]{64}$') { throw 'An independently obtained SHA256 is required.' }
+    ConvertFrom-WsmJson (Read-WsmFileSnapshot $Path $ExpectedHash).Text
 }
 function Protect-WsmDirectory([string]$Path) {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -108,6 +130,7 @@ function Get-WsmCatalog {
     $catalog = Read-WsmJson (Get-WsmCatalogPath $Workspace $PairId)
     Assert-WsmEnvelope $catalog 'Catalog'
     if ($catalog.PairId -cne $PairId -or $catalog.BatchId -cne (Get-WsmFleet $Workspace).BatchId) { throw 'Catalog identity mismatch.' }
+    if ($catalog.ToolVersion -eq '0.1.0') { foreach ($item in $catalog.Items) { [void](Get-WsmReviewDefaults $item) }; $catalog.ToolVersion=$script:ToolVersion; $catalog.Approval=$null }
     $catalog
 }
 function New-WsmItem {
@@ -121,14 +144,15 @@ function New-WsmItem {
 function New-WsmInventory {
     param([Parameter(Mandatory)]$Source, [Parameter(Mandatory)][int]$Revision, [object[]]$Items=@())
     $result = [pscustomobject][ordered]@{ SchemaVersion=1; ToolVersion=$script:ToolVersion; Kind='Inventory'; Source=$Source; Revision=$Revision; CreatedUtc=(Get-WsmUtc); Items=@($Items) }
+    $summary=@(foreach ($category in $script:Categories) { $rows=@($Items | Where-Object Category -CEQ $category); [pscustomobject]@{ Category=$category; Total=$rows.Count; Success=@($rows | Where-Object Status -EQ Success).Count; Incomplete=@($rows | Where-Object Status -NE Success).Count } })
+    $result | Add-Member NoteProperty CategorySummary $summary
     Assert-WsmInventory $result
     $result
 }
 function Import-WsmInventory {
     [CmdletBinding()] param([Parameter(Mandatory)][string]$Workspace, [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][string]$ExpectedHash, [string]$TargetName)
-    Assert-WsmTrustedFile $Path $ExpectedHash
-    $inventory = Read-WsmJson $Path
+    $inventory = Read-WsmTrustedJson $Path $ExpectedHash
     Assert-WsmInventory $inventory
     Invoke-WsmLocked $Workspace {
         $fleet = Get-WsmFleet $Workspace
@@ -153,21 +177,27 @@ function Import-WsmInventory {
         $items = New-Object System.Collections.Generic.List[object]
         foreach ($entry in $inventory.Items) {
             $item = [pscustomobject][ordered]@{ ItemId=$entry.ItemId; Category=$entry.Category; Kind=$entry.Kind; Name=$entry.Name; NaturalKey=$entry.NaturalKey; Settings=$entry.Settings; SettingsHash=$entry.SettingsHash; Dependencies=@($entry.Dependencies); Status=$entry.Status; Adapter=$entry.Adapter; Decision='Pending'; Reason=''; ReviewedBy=''; ReviewedUtc=''; RuleId=''; Mapping=''; Evidence=''; Owner=''; Present=$true }
+            [void](Get-WsmReviewDefaults $item)
+            if ($entry.PSObject.Properties['BuiltIn']) { $item.BuiltIn=$entry.BuiltIn }
             if ($previous.ContainsKey($entry.ItemId)) {
                 $prior=$previous[$entry.ItemId]
                 if ($prior.SettingsHash -ceq $entry.SettingsHash -and $prior.Present -and $prior.Status -ceq $entry.Status -and $prior.Adapter -ceq $entry.Adapter -and (($prior.Dependencies | ConvertTo-Json -Compress -Depth 10) -ceq ($entry.Dependencies | ConvertTo-Json -Compress -Depth 10))) {
-                    foreach ($field in @('Decision','Reason','ReviewedBy','ReviewedUtc','RuleId','Mapping','Evidence','Owner')) { if ($prior.PSObject.Properties[$field]) { $item.$field = $prior.$field } }
+                    [void](Get-WsmReviewDefaults $item)
+                    foreach ($field in @('Decision','Reason','ReviewedBy','ReviewedUtc','RuleId','Mapping','Evidence','Owner','AccountMapping','EndpointMapping','ApplicationGroup','BuiltIn','ConsistencyGroup','ConsistencyOwner','ConsistencyEvidence')) { if ($prior.PSObject.Properties[$field]) { $item.$field = $prior.$field } }
                 } else { $item.Reason='Changed since previous inventory; review required.' }
                 $previous.Remove($entry.ItemId)
             }
             $items.Add($item)
         }
-        foreach ($prior in $previous.Values) { $prior.Present=$false; $prior.Decision='Pending'; $prior.Reason='No longer observed; investigate before approval.'; $items.Add($prior) }
+        foreach ($prior in $previous.Values) { if (-not $prior.ManualEntry) { $prior.Present=$false; $prior.Decision='Pending'; $prior.Reason='No longer observed; investigate before approval.' }; $items.Add($prior) }
         $decisionRevision=0
         if ($old) { $decisionRevision=$old.DecisionRevision+1 }
         $history=@(); if ($old) { $history=@($old.History)+@([pscustomobject]@{ Revision=$decisionRevision; Action='Inventory'; Utc=(Get-WsmUtc) }) }
         $pair.SourceName=$inventory.Source.Name
         $catalog = [pscustomobject][ordered]@{ SchemaVersion=1; ToolVersion=$script:ToolVersion; Kind='Catalog'; BatchId=$fleet.BatchId; PairId=$pair.PairId; Source=$inventory.Source; TargetName=$pair.TargetName; InventoryRevision=$inventory.Revision; DecisionRevision=$decisionRevision; InventoryHash=$ExpectedHash.ToLowerInvariant(); ImportedUtc=(Get-WsmUtc); Approval=$null; Items=@($items.ToArray()); History=$history }
+        if ($old -and $old.PSObject.Properties['ReviewView']) { $catalog | Add-Member NoteProperty ReviewView $old.ReviewView }
+        foreach ($field in @('PairPlan','CrossHostDependencies','StageResults')) { if ($old -and $old.PSObject.Properties[$field]) { $catalog | Add-Member NoteProperty $field $old.$field } }
+        $catalog | Add-Member NoteProperty EvidenceUtc $inventory.CreatedUtc
         Write-WsmJson (Get-WsmCatalogPath $Workspace $pair.PairId) $catalog
         Write-WsmJson (Join-Path $Workspace 'fleet.json') $fleet
         $catalog

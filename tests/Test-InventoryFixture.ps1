@@ -4,6 +4,7 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
 $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-probes-'+[Guid]::NewGuid().ToString('N'))
 # All operating-system probes are replaced within the test module scope.
 & $module {
+    function script:Get-WsmExtendedDiscovery { param($HostId) @() }
     function script:Get-WsmPreflight { [pscustomobject]@{ IsServer=$true; Administrator=$true; Is64Bit=$true; OS='Fixture Server'; Version='10.0.fixture' } }
     function script:Get-CimInstance { param($ClassName,$Filter)
         switch ($ClassName) {
@@ -36,6 +37,7 @@ $result=Export-WsmInventory $root
 $state2=Get-Content (Join-Path $root 'source-state.json') -Raw | ConvertFrom-Json
 if ($state1.HostId -cne $state2.HostId -or $state2.Revision -ne 2) { throw 'Retry changed source identity or reused evidence.' }
 $inv=Get-Content $result.Path -Raw | ConvertFrom-Json
+if (@($inv.Items | Where-Object Kind -EQ PathCandidate).Count -ne 1 -or $inv.CategorySummary.Count -ne 12) { throw 'Path candidates or parent classification summary missing.' }
 if (@($inv.Items | Where-Object Kind -EQ ScheduledTask).Count -ne 1 -or @($inv.Items | Where-Object { $_.Category -eq 'Tasks' -and $_.Status -eq 'Failed' }).Count -ne 1) { throw 'Partial collector lost successful child or hid failure.' }
 if (@($inv.Items | Where-Object Kind -EQ DiscoveryGap).Count -ne 12) { throw 'Discovery scope gaps omitted.' }
 $zip=[IO.Compression.ZipFile]::OpenRead($result.Archive)

@@ -6,6 +6,7 @@
 function Export-WsmInventory {
     [CmdletBinding()] param([Parameter(Mandatory)][string]$OutputDirectory)
     $pre=Get-WsmPreflight
+    if ([string]$ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { throw 'Inventory requires FullLanguage; this tool does not change enterprise language policy.' }
     if (-not $pre.IsServer -or -not $pre.Administrator -or -not $pre.Is64Bit) { throw 'Run as administrator in 64-bit PowerShell on Windows Server.' }
     $root=[IO.Path]::GetFullPath($OutputDirectory)
     if (-not (Test-Path -LiteralPath $root)) { [void][IO.Directory]::CreateDirectory($root); Protect-WsmDirectory $root }
@@ -20,7 +21,7 @@ function Export-WsmInventory {
         $hostId=$state.HostId
         function Add-Probe([string]$Category,[scriptblock]$Probe) {
             try { & $Probe | ForEach-Object { $items.Add($_) } }
-            catch { $items.Add((New-WsmItem $hostId $Category 'CollectorFailure' ($Category+' collector incomplete') ('probe:'+ $Category) @{ ErrorType=$_.Exception.GetType().FullName } @() 'Failed')) }
+            catch { $status='Failed'; if ($_.Exception -is [UnauthorizedAccessException] -or $_.FullyQualifiedErrorId -match 'Unauthorized|PermissionDenied') { $status='PermissionDenied' }; $items.Add((New-WsmItem $hostId $Category 'CollectorFailure' ($Category+' collector incomplete') ('probe:'+ $Category) @{ ErrorType=$_.Exception.GetType().FullName } @() $status)) }
         }
         Add-Probe System { New-WsmItem $hostId System Platform $env:COMPUTERNAME 'platform' @{ OS=$pre.OS; Version=$pre.Version; Architecture='x64'; ComputerSystem=(Get-CimInstance Win32_ComputerSystem | Select-Object Domain,PartOfDomain) } }
         Add-Probe Services { foreach ($s in Get-CimInstance Win32_Service) { New-WsmItem $hostId Services Service $s.DisplayName $s.Name ($s | Select-Object Name,DisplayName,PathName,StartMode,StartName,ServiceType) } }
@@ -35,12 +36,14 @@ function Export-WsmInventory {
             $config=Join-Path $env:windir 'System32\inetsrv\config\applicationHost.config'
             if (-not (Test-Path -LiteralPath $config)) { New-WsmItem $hostId Web IIS 'IIS not installed' 'iis' @{} @() NotInstalled }
             else {
-                [xml]$xml=[IO.File]::ReadAllText($config)
-                foreach ($s in $xml.configuration.'system.applicationHost'.sites.site) { New-WsmItem $hostId Web IISSite ([string]$s.name) ([string]$s.name) @{ Xml=$s.OuterXml } }
-                foreach ($p in $xml.configuration.'system.applicationHost'.applicationPools.add) { New-WsmItem $hostId Web IISPool ([string]$p.name) ([string]$p.name) @{ Xml=$p.OuterXml } }
+                $xml=Read-WsmXml ([IO.File]::ReadAllText($config))
+                foreach ($s in $xml.SelectNodes('/configuration/system.applicationHost/sites/site')) { New-WsmItem $hostId Web IISSite ([string]$s.name) ([string]$s.name) @{ Xml=$s.OuterXml } }
+                foreach ($p in $xml.SelectNodes('/configuration/system.applicationHost/applicationPools/add')) { New-WsmItem $hostId Web IISPool ([string]$p.name) ([string]$p.name) @{ Xml=$p.OuterXml } }
                 New-WsmItem $hostId Web IISGlobalConfig 'IIS global configuration' 'applicationHost.config' @{ Xml=$xml.OuterXml }
             }
         }
+        Add-Probe External { Get-WsmExtendedDiscovery $hostId }
+        $candidates=@(Get-WsmPathCandidates $hostId $items.ToArray()); foreach ($candidate in $candidates) { $items.Add($candidate) }
         foreach ($category in $script:Categories) { $items.Add((New-WsmItem $hostId $category DiscoveryGap ($category+' discovery scope requires owner confirmation') ('scope:'+ $category) @{ Note='This first-stage collector is not exhaustive. Confirm dependencies, files/ACLs, service recovery and triggers, task credentials, IIS modules/encryption, DNS/HTTP bindings, environment/ODBC/COM+, databases, AD/DHCP, clusters, queues, agents, licensing and external integrations.' } @() Unsupported)) }
         $source=[pscustomobject]@{ HostId=$hostId; Fingerprint=$fingerprint; Name=$env:COMPUTERNAME; OS=$pre.OS; Version=$pre.Version }
         $nextRevision=$state.Revision+1

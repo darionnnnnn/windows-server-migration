@@ -1,7 +1,8 @@
 ﻿#requires -Version 5.1
 [CmdletBinding()] param(
-    [ValidateSet('Menu','Inventory','Initialize','Import','Report','FleetReport','ExportCsv','ImportCsv','Issues')][string]$Action='Menu',
-    [string]$Workspace,[string]$Path,[string]$ExpectedHash,[string]$TargetName,[string]$PairId)
+    [string]$Action='Menu',
+    [string]$Workspace,[string]$Path,[string]$ExpectedHash,[string]$TargetName,[string]$PairId,
+    [string]$Category,[string]$Search,[string]$Decision='Pending',[string]$Reason,[int]$ExpectedRevision=-1,[string]$ItemId,[string]$Name,[string]$NaturalKey,[string]$Owner,[string]$Evidence,[string]$Mapping,[ValidateSet('Path','Account','Endpoint')][string]$MappingType='Path')
 $ErrorActionPreference='Stop'
 if (-not $Workspace) { $Workspace=Join-Path $PSScriptRoot 'migration-workspace' }
 Import-Module (Join-Path $PSScriptRoot 'src\WindowsServerMigration.psd1') -Force
@@ -13,50 +14,77 @@ function Select-Pair {
     $pairs[$choice-1].PairId
 }
 function Review-Pair([string]$SelectedPair) {
-    $category=Read-Host '類別（留空為全部）'; $search=Read-Host '名稱包含文字（留空為全部）'; $page=1
+    Get-WsmCategorySummary $Workspace $SelectedPair | Format-Table
+    $c=Get-WsmCatalog $Workspace $SelectedPair; $page=1; $pageSize=50; $category=''; $search=''; $decisionFilter='All'; $builtIn='All'; $group=''; $sort='Name'
+    if ($c.PSObject.Properties['ReviewView']) { $page=$c.ReviewView.Page; $pageSize=$c.ReviewView.PageSize; $category=$c.ReviewView.Category; $search=$c.ReviewView.Search }
+    if ($c.PSObject.Properties['ReviewView'] -and $c.ReviewView.PSObject.Properties['Decision']) { $decisionFilter=$c.ReviewView.Decision; $builtIn=$c.ReviewView.BuiltIn; $group=$c.ReviewView.Group; $sort=$c.ReviewView.Sort }
+    Write-Host ('已恢復篩選：類別={0} 搜尋={1}，頁大小={2}。f 可修改。' -f $category,$search,$pageSize)
     while ($true) {
-        $view=Get-WsmItems $Workspace $SelectedPair -Category $category -Search $search -Page $page
+        $view=Get-WsmItems $Workspace $SelectedPair -Category $category -Search $search -Page $page -PageSize $pageSize -Decision $decisionFilter -BuiltIn $builtIn -Group $group -Sort $sort
+        Set-WsmReviewView $Workspace $SelectedPair $category $search $page $pageSize -Decision $decisionFilter -BuiltIn $builtIn -Group $group -Sort $sort
         Write-Host ('共 {0} 筆，第 {1} 頁，審核版本 {2}' -f $view.Total,$page,$view.DecisionRevision)
         for ($i=0;$i -lt $view.Items.Count;$i++) { $r=$view.Items[$i]; Write-Host ('{0}. [{1}] [{2}] [{3}] {4}' -f ($i+1),$r.Category,$r.Status,$r.Decision,$r.Name) }
-        $command=Read-Host 'n 下一頁 / p 上一頁 / i 納入 / e 排除 / u 撤銷最後決定 / q 返回'
+        $command=Read-Host 'n 下一頁 / p 上一頁 / f 篩選及頁大小 / i 納入 / e 排除 / a 全部符合篩選的規則操作 / u 撤銷 / q 返回'
         switch ($command) {
             'q' { return }
-            'n' { if ($page*50 -lt $view.Total) { $page++ } }
+            'n' { if ($page*$pageSize -lt $view.Total) { $page++ } }
             'p' { $page=[math]::Max(1,$page-1) }
+            'f' { $category=Read-Host '類別（留空為全部）'; $search=Read-Host '搜尋名稱／路徑／帳號／端點／應用組合（留空為全部）'; $size=Read-Host '每頁 20／50／100'; if ($size -notin @('20','50','100')) { throw '頁大小必須為20、50或100。' }; $pageSize=[int]$size; $decisionFilter=Read-Host '決定篩選 All／Include／Exclude／Pending'; $builtIn=Read-Host '內建篩選 All／Unknown／SuggestedInternal／ConfirmedInternal／ConfirmedThirdParty'; $group=Read-Host '應用組合（留空為全部）'; $sort=Read-Host '排序 Name／Category／Kind／Decision／NaturalKey'; $page=1 }
+            'a' { $decision=Read-Host '全部符合項目的 Include／Exclude／Pending'; $reason=Read-Host '理由'; $preview=Get-WsmRulePreview $Workspace $SelectedPair -Category $category -Search $search -CurrentDecision $decisionFilter -BuiltIn $builtIn -Group $group -Decision $decision -Reason $reason; $preview | Select-Object Selected,Changed,DecisionRevision | Format-List; $preview.Sample | Format-Table; $preview.Conflicts | Format-Table; if ((Read-Host '確認操作的是跨頁全部符合項目，輸入 APPLY') -ceq 'APPLY') { Invoke-WsmReviewRule $Workspace $SelectedPair -Category $category -Search $search -CurrentDecision $decisionFilter -BuiltIn $builtIn -Group $group -Decision $decision -Reason $reason -ExpectedRevision $preview.DecisionRevision | Format-List } }
             'u' { Undo-WsmDecision $Workspace $SelectedPair $view.DecisionRevision | Out-Null }
             { $_ -in @('i','e') } {
                 $inputRows=Read-Host '輸入本頁編號，以逗號分隔；all 選取本頁全部（跨頁大量處理請使用 CSV）'
                 $ids=@()
                 if ($inputRows -eq 'all') { $ids=@($view.Items | ForEach-Object ItemId) }
-                else { foreach ($v in $inputRows.Split(',')) { $number=0; if (-not [int]::TryParse($v.Trim(),[ref]$number) -or $number -lt 1 -or $number -gt $view.Items.Count) { throw '編號無效，尚未套用。' }; $ids+=$view.Items[$number-1].ItemId } }
+                else { foreach ($v in $inputRows.Split(',')) { $numbers=@(); if ($v.Trim() -match '^(\d+)-(\d+)$') { $first=[int]$matches[1]; $last=[int]$matches[2]; if ($first -lt 1 -or $last -lt $first -or $last -gt $view.Items.Count) { throw '範圍無效。' }; $numbers=@($first..$last) } else { $number=0; if (-not [int]::TryParse($v.Trim(),[ref]$number)) { throw '編號無效。' }; $numbers=@($number) }; foreach ($number in $numbers) { if ($number -lt 1 -or $number -gt $view.Items.Count) { throw '編號無效。' }; $ids+=$view.Items[$number-1].ItemId } } }
                 if (-not $ids.Count) { throw '沒有選取項目。' }
                 $decision='Include'; if ($command -eq 'e') { $decision='Exclude' }
                 $reason=Read-Host '理由（排除時必填）'
-                Write-Host ('將 {0} 個項目設為 {1}' -f $ids.Count,$decision)
+                $preview=Get-WsmDecisionPreview $Workspace $SelectedPair $ids $decision $reason; $preview | Select-Object Selected,Changed | Format-List; $preview.Sample | Format-Table; $preview.Conflicts | Format-Table
                 if ((Read-Host '輸入 APPLY 套用') -ceq 'APPLY') { Set-WsmDecision $Workspace $SelectedPair $ids $decision $reason $view.DecisionRevision | Out-Null }
             }
         }
     }
 }
 try {
+    if ($Action -cnotin @('Menu','Inventory','Initialize','Import','ImportZip','Report','FleetReport','ExportCsv','ImportCsv','Issues','RulePreview','ApplyRule','ManualItem','Mapping','Evidence','Approve','FleetGraph','ImportResult','Capabilities','ConsistencyGroup','TemplatePreview','ApplyTemplate','ExportTemplate')) { throw (New-Object IO.InvalidDataException('Unknown action.')) }
     if ($Action -ne 'Menu') {
+        if ($Action -in @('Inventory','Import','ImportZip','Report','FleetReport','ExportCsv','ImportCsv','Approve','FleetGraph','ImportResult') -and [string]::IsNullOrWhiteSpace($Path)) { throw (New-Object IO.InvalidDataException('This action requires -Path.')) }
+        if ($Action -in @('Import','ImportZip','ImportResult') -and $ExpectedHash -notmatch '^[a-fA-F0-9]{64}$') { throw (New-Object IO.InvalidDataException('This action requires an independently obtained -ExpectedHash.')) }
+        if ($Action -in @('ApplyRule','ManualItem','Mapping','Evidence','Approve','ConsistencyGroup','ApplyTemplate') -and $ExpectedRevision -lt 0) { throw (New-Object IO.InvalidDataException('This action requires -ExpectedRevision from the current catalog/preview.')) }
         switch ($Action) {
-            Inventory { Export-WsmInventory -OutputDirectory $Path }
+            Inventory { $result=Export-WsmInventory -OutputDirectory $Path; $result; if ($result.Incomplete -gt 0) { exit 2 } }
             Initialize { Initialize-WsmWorkspace $Workspace }
             Import { Import-WsmInventory $Workspace $Path $ExpectedHash $TargetName }
+            ImportZip { Import-WsmInventoryArchive $Workspace $Path $ExpectedHash $TargetName }
             Report { Export-WsmReport $Workspace $PairId $Path }
             FleetReport { Export-WsmFleetReport $Workspace $Path }
             ExportCsv { Export-WsmDecisions $Workspace $PairId $Path }
             ImportCsv { Import-WsmDecisions $Workspace $PairId $Path }
-            Issues { Get-WsmReviewIssues $Workspace $PairId }
+            Issues { $issues=@(Get-WsmReviewIssues $Workspace $PairId); $issues; if ($issues.Count) { exit 2 } }
+            RulePreview { Get-WsmRulePreview $Workspace $PairId -Category $Category -Search $Search -Decision $Decision -Reason $Reason }
+            ApplyRule { Invoke-WsmReviewRule $Workspace $PairId -Category $Category -Search $Search -Decision $Decision -Reason $Reason -ExpectedRevision $ExpectedRevision }
+            ManualItem { Add-WsmManualItem $Workspace $PairId $Category $Name $NaturalKey $Owner $Evidence $ExpectedRevision }
+            Mapping { Set-WsmMapping $Workspace $PairId $ItemId $Mapping $ExpectedRevision -Type $MappingType }
+            Evidence { Set-WsmEvidence $Workspace $PairId $ItemId $Owner $Evidence $ExpectedRevision }
+            Approve { Approve-WsmPlan $Workspace $PairId $Path $ExpectedRevision }
+            FleetGraph { Export-WsmFleetGraph $Workspace $Path }
+            ImportResult { Import-WsmStageResult $Workspace $Path $ExpectedHash }
+            Capabilities { Get-WsmCapabilities }
+            ConsistencyGroup { Set-WsmConsistencyGroup $Workspace $PairId ($ItemId.Split(',')) $Name $Owner $Evidence $ExpectedRevision }
+            TemplatePreview { Get-WsmTemplatePreview $Workspace $PairId $Path $ExpectedHash }
+            ApplyTemplate { Invoke-WsmReviewTemplate $Workspace $PairId $Path $ExpectedHash $ExpectedRevision }
+            ExportTemplate { Export-WsmReviewTemplate $Workspace $PairId $ItemId $Path }
         }
         exit 0
     }
     if ([Console]::IsInputRedirected -or [Environment]::GetCommandLineArgs() -contains '-NonInteractive') { throw '非互動環境請指定 -Action；Menu 需要互動主控台。' }
     while ($true) {
-        Write-Host "`nWindows Server Migration 0.1 — 盤點／離線審核；還原尚未實作"
+        Write-Host "`nWindows Server Migration 0.2 — 盤點／離線審核；還原尚未實作"
         Write-Host '1 本機來源盤點  2 建立管理工作區  3 匯入盤點  4 審核／排除  5 分類 HTML'
-        Write-Host '6 匯出 CSV  7 匯入 CSV  8 全批次報告  9 查詢阻擋項目  10 核准審核文件  11 補查證據／負責人  0 離開'
+        Write-Host '6 匯出 CSV  7 匯入 CSV  8 全批次報告  9 查詢阻擋項目  10 核准審核文件  11 補查證據／負責人'
+        Write-Host '12 人工補列  13 路徑／帳號／端點映射  14 應用組合／內建分類  15 配對／波次規劃  16 跨主機相依  17 結果包匯入'
+        Write-Host '18 循環相依的一致性群組  19 安全匯入盤點ZIP  20 匯出規則模板  21 預覽／套用模板  0 離開'
         $menuChoice=Read-Host '選項'
         if ($null -eq $menuChoice) { throw 'Console input ended.' }
         try {
@@ -68,13 +96,28 @@ try {
                 '4' { Review-Pair (Select-Pair) }
                 '5' { Export-WsmReport $Workspace (Select-Pair) (Read-Host 'HTML 輸出路徑') }
                 '6' { Export-WsmDecisions $Workspace (Select-Pair) (Read-Host 'CSV 輸出路徑') }
-                '7' { $selected=Select-Pair; $file=Read-Host '已修改的 CSV 路徑'; Import-WsmDecisions $Workspace $selected $file -WhatIf; if ((Read-Host '整份 CSV 檢核後套用，輸入 APPLY') -ceq 'APPLY') { Import-WsmDecisions $Workspace $selected $file | Out-Null } }
+                '7' { $selected=Select-Pair; $file=Read-Host '已修改的 CSV 路徑'; $preview=Import-WsmDecisions $Workspace $selected $file -Preview; $preview | Select-Object Rows,Changed,DecisionRevision | Format-List; $preview.Changes | Select-Object -First 20 | Format-Table; if ((Read-Host '整份 CSV 檢核後套用，輸入 APPLY') -ceq 'APPLY') { Import-WsmDecisions $Workspace $selected $file -ExpectedHash $preview.SourceHash | Out-Null } }
                 '8' { Export-WsmFleetReport $Workspace (Read-Host '全批次 HTML 輸出路徑') }
                 '9' { Get-WsmReviewIssues $Workspace (Select-Pair) | Format-Table -Wrap }
                 '10' { $selected=Select-Pair; $c=Get-WsmCatalog $Workspace $selected; Approve-WsmPlan $Workspace $selected (Read-Host '核准 JSON 輸出路徑') $c.DecisionRevision | Format-List }
                 '11' { $selected=Select-Pair; $c=Get-WsmCatalog $Workspace $selected; Set-WsmEvidence $Workspace $selected (Read-Host '項目完整 ItemId（報告中可複製）') (Read-Host '確認負責人') (Read-Host '補查證據編號／文件位置與結論（勿填密碼）') $c.DecisionRevision }
+                '12' { $selected=Select-Pair; $c=Get-WsmCatalog $Workspace $selected; Add-WsmManualItem $Workspace $selected (Read-Host '類別') (Read-Host '項目名稱') (Read-Host '唯一自然鍵') (Read-Host '負責人') (Read-Host '證據參考') $c.DecisionRevision | Format-List }
+                '13' { $selected=Select-Pair; $c=Get-WsmCatalog $Workspace $selected; $id=Read-Host '完整 ItemId'; $type=Read-Host 'Path／Account／Endpoint'; Set-WsmMapping $Workspace $selected $id (Read-Host '映射目的地') $c.DecisionRevision -Type $type }
+                '14' { $selected=Select-Pair; $c=Get-WsmCatalog $Workspace $selected; Set-WsmReviewMetadata $Workspace $selected (Read-Host '完整 ItemId') (Read-Host '應用組合名稱') (Read-Host 'Unknown／SuggestedInternal／ConfirmedInternal／ConfirmedThirdParty') $c.DecisionRevision }
+                '15' { $selected=Select-Pair; $c=Get-WsmCatalog $Workspace $selected; Set-WsmPairPlan $Workspace $selected (Read-Host '負責人') (Read-Host '波次') (Read-Host '最終名稱') (Read-Host '暫用IP') (Read-Host '最終IP') (Read-Host '網域') $c.DecisionRevision }
+                '16' { $selected=Select-Pair; $c=Get-WsmCatalog $Workspace $selected; Write-Host '選擇相依主機'; $dep=Select-Pair; Set-WsmCrossHostDependency $Workspace $selected $dep -Evidence (Read-Host '相依證據') -ExpectedRevision $c.DecisionRevision; Export-WsmFleetGraph $Workspace (Read-Host '相依圖 JSON 輸出路徑') }
+                '17' { Import-WsmStageResult $Workspace (Read-Host '結果 JSON 路徑') (Read-Host '可信 SHA256') }
+                '18' { $selected=Select-Pair; $c=Get-WsmCatalog $Workspace $selected; Set-WsmConsistencyGroup $Workspace $selected ((Read-Host '全部群組成員 ItemId，逗號分隔').Split(',')) (Read-Host '一致性群組名称') (Read-Host '負責人') (Read-Host '停寫／啟用／回復程序證據') $c.DecisionRevision }
+                '19' { Import-WsmInventoryArchive $Workspace (Read-Host '盤點 ZIP 路徑') (Read-Host '獨立可信 ZIP SHA256') (Read-Host '新主機暫用名稱') | Select-Object PairId,InventoryRevision,DecisionRevision | Format-List }
+                '20' { Export-WsmReviewTemplate $Workspace (Select-Pair) (Read-Host '已套用規則的 RuleId') (Read-Host '模板 JSON 輸出路徑') | Format-List }
+                '21' { $selected=Select-Pair; $file=Read-Host '模板 JSON 路徑'; $hash=Read-Host '可信 SHA256'; $preview=Get-WsmTemplatePreview $Workspace $selected $file $hash; $preview | Select-Object Selected,Changed,DecisionRevision | Format-List; $preview.Sample | Format-Table; $preview.Conflicts | Format-Table; if ((Read-Host '確認此台實際命中與衝突，輸入 APPLY') -ceq 'APPLY') { Invoke-WsmReviewTemplate $Workspace $selected $file $hash $preview.DecisionRevision | Format-List } }
                 default { Write-Host '無效選項。' }
             }
         } catch { Write-Host ('操作失敗：'+$_.Exception.Message) -ForegroundColor Red }
     }
-} catch { Write-Error $_; exit 1 }
+} catch {
+    [Console]::Error.WriteLine($_.Exception.Message)
+    if ($_.Exception -is [IO.InvalidDataException] -or $_.Exception -is [Management.Automation.ParameterBindingException]) { exit 4 }
+    if ($_.Exception -is [Management.Automation.PipelineStoppedException]) { exit 3 }
+    exit 1
+}

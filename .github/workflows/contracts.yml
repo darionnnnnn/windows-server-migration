@@ -11,6 +11,15 @@ jobs:
       - name: Windows PowerShell 5.1 collector fixtures
         shell: powershell
         run: ./tests/Test-InventoryFixture.ps1
+      - name: Advanced review and fleet contracts
+        shell: powershell
+        run: ./tests/Test-AdvancedReview.ps1
+      - name: Inventory ZIP trust and extraction boundaries
+        shell: powershell
+        run: ./tests/Test-Archive.ps1
+      - name: Noninteractive exit code contract
+        shell: powershell
+        run: ./tests/Test-EntryPoint.ps1
       - name: PowerShell 7 contracts
         shell: pwsh
         run: ./tests/Test-Contracts.ps1
