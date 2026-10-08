@@ -20,6 +20,13 @@ search.oninput=category.onchange=()=>{page=0;full=false;render()};document.getEl
     $html=[regex]::Replace($template,'__TITLE__|__DATA__',{ param($match) if ($match.Value -eq '__TITLE__') { $safeTitle } else { $json } })
     [IO.File]::WriteAllText([IO.Path]::GetFullPath($Path),$html,(New-Object Text.UTF8Encoding($false)))
 }
+function Get-WsmSafeSpecSummary($Item) {
+    if(-not $Item.PSObject.Properties['MigrationSpec'] -or -not $Item.MigrationSpec){return 'Migration specification required'}
+    $s=$Item.MigrationSpec;$safe=[ordered]@{Adapter=$s.Adapter;SpecSHA256=(Get-WsmHashText ($s | ConvertTo-Json -Depth 40 -Compress))}
+    foreach($key in @('SourcePath','TargetPath','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy','AclControlPolicy','CatchUpPolicy','DesiredFinalState','BusinessChecks')){if($s.PSObject.Properties[$key]){$safe[$key]=$s.$key}}
+    if($s.PSObject.Properties['Desired']){$safe.DesiredSHA256=Get-WsmHashText ($s.Desired | ConvertTo-Json -Depth 40 -Compress)}
+    ConvertTo-Json -InputObject $safe -Depth 12 -Compress
+}
 function Export-WsmTextReport {
     param([string]$Workspace,[string]$PairId,[string]$Path)
     $c=Get-WsmCatalog $Workspace $PairId
@@ -30,14 +37,14 @@ function Export-WsmTextReport {
         foreach ($category in $script:Categories) {
             $rows=@($c.Items | Where-Object Category -CEQ $category | Sort-Object Name,ItemId)
             $writer.WriteLine(('=== {0}: {1} ===' -f $category,$rows.Count))
-            foreach ($i in $rows) { $writer.WriteLine(('{0} | {1} | {2} | {3} | {4}' -f $i.ItemId,$i.Kind,$i.Status,$i.Decision,$i.Name)); $writer.WriteLine(('Reason: {0} / Rule: {1} / Owner: {2} / Evidence: {3}' -f $i.Reason,$i.RuleId,$i.Owner,$i.Evidence)); $writer.WriteLine(('Path: {0} / Account: {1} / Endpoint: {2} / Group: {3}' -f $i.Mapping,$i.AccountMapping,$i.EndpointMapping,$i.ApplicationGroup)); foreach ($d in $i.Dependencies) { $writer.WriteLine(('Dependency: {0} / {1}' -f $d.ItemId,$d.Type)) } }
+            foreach ($i in $rows) { $writer.WriteLine(('{0} | {1} | {2} | {3} | {4}' -f $i.ItemId,$i.Kind,$i.Status,$i.Decision,$i.Name)); $writer.WriteLine(('Reason: {0} / Rule: {1} / Owner: {2} / Evidence: {3}' -f $i.Reason,$i.RuleId,$i.Owner,$i.Evidence)); $writer.WriteLine(('Path: {0} / Account: {1} / Endpoint: {2} / Group: {3}' -f $i.Mapping,$i.AccountMapping,$i.EndpointMapping,$i.ApplicationGroup));$writer.WriteLine(('Reviewed migration spec: '+(Get-WsmSafeSpecSummary $i))); foreach ($d in $i.Dependencies) { $writer.WriteLine(('Dependency: {0} / {1}' -f $d.ItemId,$d.Type)) } }
         }
     } finally { $writer.Dispose() }
 }
 function Export-WsmReport {
     param([string]$Workspace,[string]$PairId,[string]$Path)
     $c=Get-WsmCatalog $Workspace $PairId
-    $rows=@($c.Items | Sort-Object Category,Name,ItemId | Select-Object Category,Kind,Name,ItemId,Status,Present,Decision,Reason,Mapping,AccountMapping,EndpointMapping,ApplicationGroup,BuiltIn,RuleId,Owner,Evidence,ConsistencyGroup,@{n='Dependencies';e={ @($_.Dependencies | ForEach-Object { $_.Type+':'+$_.ItemId }) -join '; ' }},@{n='Restoration';e={if($_.PSObject.Properties['MigrationSpec'] -and $_.MigrationSpec){$_.MigrationSpec.Adapter+' / IsolatedPilot; production unverified'}else{'Migration specification required'}}})
+    $rows=@($c.Items | Sort-Object Category,Name,ItemId | Select-Object Category,Kind,Name,ItemId,Status,Present,Decision,Reason,Mapping,AccountMapping,EndpointMapping,ApplicationGroup,BuiltIn,RuleId,Owner,Evidence,ConsistencyGroup,@{n='ReviewedSpec';e={Get-WsmSafeSpecSummary $_}},@{n='Dependencies';e={ @($_.Dependencies | ForEach-Object { $_.Type+':'+$_.ItemId }) -join '; ' }},@{n='Restoration';e={if($_.PSObject.Properties['MigrationSpec'] -and $_.MigrationSpec){$_.MigrationSpec.Adapter+' / IsolatedPilot; production unverified'}else{'Migration specification required'}}})
     $approval='NotApproved'; if ($c.Approval) { $approval=$c.Approval.ApprovalId }
     Write-WsmHtml $Path ($c.Source.Name+' -> '+$c.TargetName+' / batch '+$c.BatchId+' / pair '+$PairId+' / inventory '+$c.InventoryRevision+' / review '+$c.DecisionRevision+' / approval '+$approval+' / generation NotStarted / received '+$c.ImportedUtc+' / generated '+(Get-WsmUtc)) $rows
     Export-WsmTextReport $Workspace $PairId ($Path+'.txt')

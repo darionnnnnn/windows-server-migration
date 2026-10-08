@@ -26,6 +26,13 @@ function Assert-WsmFields($Object,[string[]]$Allowed,[string[]]$Required=@()) {
     foreach ($p in $Object.PSObject.Properties.Name) { if ($Allowed -cnotcontains $p) { throw (New-WsmContractError ('Unknown contract field: '+$p)) } }
     foreach ($p in $Required) { if (-not $Object.PSObject.Properties[$p]) { throw (New-WsmContractError ('Missing contract field: '+$p)) } }
 }
+function Assert-WsmWorkspaceSeparation($Plan,[string]$Workspace,[ValidateSet('SourcePath','TargetPath')][string]$ScopeField) {
+    $workspacePath=[IO.Path]::GetFullPath($Workspace).TrimEnd('\');Assert-WsmNoReparse $workspacePath
+    foreach($i in $Plan.Items){if($i.Decision -eq 'Include' -and $i.MigrationSpec.Adapter -eq 'FileScope'){$root=[IO.Path]::GetFullPath($i.MigrationSpec.$ScopeField).TrimEnd('\');if($workspacePath -ieq $root -or $workspacePath.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($workspacePath+'\',[StringComparison]::OrdinalIgnoreCase)){throw ($ScopeField+' overlaps operation evidence/state workspace; move the tool workspace outside business data before any operation.')}}}
+}
+function Assert-WsmSourceWorkspaceSeparation($Plan,[string]$Workspace) {
+    Assert-WsmWorkspaceSeparation $Plan $Workspace SourcePath
+}
 function Assert-WsmRelativePath([string]$Path,[switch]$AllowRoot) {
     if ($AllowRoot -and $Path -eq '') { return }
     if ([string]::IsNullOrWhiteSpace($Path) -or [IO.Path]::IsPathRooted($Path) -or $Path -match '[/:\x00-\x1f<>"|?*]' -or $Path.EndsWith('\') -or $Path -match '\\\\' -or $Path -match '(?:^|\\)(?:\.|\.\.)(?:\\|$)' -or $Path -match '(?i)(?:^|\\)(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|\\|$)' -or $Path -match '[. ](?:\\|$)') { throw (New-WsmContractError 'Unsafe relative artifact path.') }
@@ -43,8 +50,10 @@ function Get-WsmAdapterMatrix {
     }
 }
 function Assert-WsmMigrationSpec($Spec) {
-    $allowed=@('Adapter','Desired','SourcePath','TargetPath','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy','SecretRef','Owner','Evidence','DesiredFinalState','BusinessChecks','Product','Procedure','Artifacts','RequiredCommands')
+    $allowed=@('Adapter','Desired','SourcePath','TargetPath','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy','SecretRef','Owner','Evidence','DesiredFinalState','BusinessChecks','Product','Procedure','Artifacts','RequiredCommands','AclControlPolicy','CatchUpPolicy')
     Assert-WsmFields $Spec $allowed @('Adapter','Owner','Evidence')
+    if($Spec.PSObject.Properties['AclControlPolicy'] -and ($Spec.Adapter -ne 'FileScope' -or $Spec.AclControlPolicy -cnotin @('Exact','AllowAutoInheritedUpgrade'))){throw 'ACL control policy must be explicitly reviewed for FileScope.'}
+    if($Spec.PSObject.Properties['CatchUpPolicy'] -and $Spec.Adapter -ne 'ScheduledTask'){throw 'CatchUpPolicy is only valid for ScheduledTask.'}
     if (@((Get-WsmAdapterMatrix).Adapter) -cnotcontains $Spec.Adapter -or [string]::IsNullOrWhiteSpace($Spec.Owner) -or [string]::IsNullOrWhiteSpace($Spec.Evidence)) { throw (New-WsmContractError 'Unknown adapter or missing owner/evidence.') }
     if ($Spec.Adapter -eq 'FileScope') {
         foreach ($f in @('SourcePath','TargetPath','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy')) { if (-not $Spec.PSObject.Properties[$f]) { throw ('FileScope requires '+$f) } }

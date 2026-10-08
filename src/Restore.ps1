@@ -20,7 +20,7 @@ function Get-WsmFileScopeDigest([string]$Root,[string]$MetadataMode) {
 function Get-WsmRestorePreview {
     param([string]$ManifestPath,[string]$ExpectedHash,[string]$StateDirectory,[hashtable]$Secrets=@{})
     $package=Test-WsmMigrationPackage $ManifestPath $ExpectedHash;Assert-WsmMigrationHost (Get-WsmMachineIdentity) $package.Manifest.Target.Fingerprint
-    $paths=Get-WsmOperationPaths $StateDirectory $package.Manifest.PairId;$state=Get-WsmOperationState $paths $package
+    Assert-WsmWorkspaceSeparation $package.Plan $StateDirectory TargetPath;$paths=Get-WsmOperationPaths $StateDirectory $package.Manifest.PairId;$state=Get-WsmOperationState $paths $package
     if($package.Manifest.Generation -lt $state.Generation){throw 'Old payload generation refused.'}
     if($package.Manifest.Generation -gt 1 -and $state.ManifestHash -ine $ExpectedHash -and $state.ManifestHash -ine $package.Manifest.BaseManifestHash){throw 'Delta base does not match applied target generation.'}
     $problems=New-Object 'System.Collections.Generic.List[object]';$rows=New-Object 'System.Collections.Generic.List[object]';$backupBytes=[long]0
@@ -65,12 +65,12 @@ function Invoke-WsmFileScopeRestore($Item,$Package,$Paths,$State,[hashtable]$Sid
     [pscustomobject]@{ActualHash=(Get-WsmFileScopeDigest $target $spec.Metadata);Backup=$backup;Target=$target;CreatedByTool=$true}
 }
 function Test-WsmFileScope($Item,$Package,[string]$Target,[hashtable]$SidMap=@{}) {
-    $SidMap=Resolve-WsmIdentityMap $Package.Plan $SidMap
+    $SidMap=Resolve-WsmIdentityMap $Package.Plan $SidMap;$aclPolicy='Exact';if($Item.MigrationSpec.PSObject.Properties['AclControlPolicy']){$aclPolicy=$Item.MigrationSpec.AclControlPolicy}
     $problems=New-Object 'System.Collections.Generic.List[string]';$expectedCount=[long]0;$problemCount=[long]0
     Read-WsmArtifactLines (Join-Path $Package.Root 'artifacts.jsonl') $Package.Manifest.ArtifactsHash | ForEach-Object {
         $row=$_;if($row.ItemId -ceq $Item.ItemId){$expectedCount++;$path=$Target;if($row.RelativePath){$path=Join-Path $Target $row.RelativePath};$reason=''
             if($row.Directory -ne [IO.Directory]::Exists($path) -or (-not $row.Directory -and -not [IO.File]::Exists($path))){$reason='Absent/type mismatch'}
-            else{try{Assert-WsmNoReparse $path;if(-not $row.Directory -and ((New-Object IO.FileInfo($path)).Length -ne $row.Data.Bytes -or (Get-FileHash -LiteralPath $path).Hash -ine $row.Data.Hash)){$reason='Content mismatch'};$meta=Get-WsmFileMetadata $path $row.Metadata.MetadataMode;if($meta.Sddl -cne (Convert-WsmMappedSddl $row.Metadata.Sddl $SidMap)){$reason='ACL mismatch expected '+(Convert-WsmMappedSddl $row.Metadata.Sddl $SidMap)+' / actual '+$meta.Sddl};if($meta.Attributes -ne $row.Metadata.Attributes){$reason='Attributes mismatch expected '+$row.Metadata.Attributes+' / actual '+$meta.Attributes}}catch{$reason='Unreadable/special artifact'}}
+            else{try{Assert-WsmNoReparse $path;if(-not $row.Directory -and ((New-Object IO.FileInfo($path)).Length -ne $row.Data.Bytes -or (Get-FileHash -LiteralPath $path).Hash -ine $row.Data.Hash)){$reason='Content mismatch'};$meta=Get-WsmFileMetadata $path $row.Metadata.MetadataMode;if(-not (Test-WsmSddlMatch (Convert-WsmMappedSddl $row.Metadata.Sddl $SidMap) $meta.Sddl $aclPolicy)){$reason='ACL mismatch expected '+(Convert-WsmMappedSddl $row.Metadata.Sddl $SidMap)+' / actual '+$meta.Sddl};if($meta.Attributes -ne $row.Metadata.Attributes){$reason='Attributes mismatch expected '+$row.Metadata.Attributes+' / actual '+$meta.Attributes}}catch{$reason='Unreadable/special artifact'}}
             if($reason){$problemCount++;if($problems.Count -lt 100){$problems.Add($reason+': '+$row.RelativePath)}}
         }
     }
@@ -79,7 +79,7 @@ function Test-WsmFileScope($Item,$Package,[string]$Target,[hashtable]$SidMap=@{}
 }
 function Invoke-WsmRestore {
     [CmdletBinding(SupportsShouldProcess)]param([string]$ManifestPath,[string]$ExpectedHash,[string]$StateDirectory,[hashtable]$Secrets=@{},[hashtable]$SidMap=@{})
-    $package=Test-WsmMigrationPackage $ManifestPath $ExpectedHash;Assert-WsmMigrationHost (Get-WsmMachineIdentity) $package.Manifest.Target.Fingerprint;$paths=Get-WsmOperationPaths $StateDirectory $package.Manifest.PairId
+    $package=Test-WsmMigrationPackage $ManifestPath $ExpectedHash;Assert-WsmMigrationHost (Get-WsmMachineIdentity) $package.Manifest.Target.Fingerprint;Assert-WsmWorkspaceSeparation $package.Plan $StateDirectory TargetPath;$paths=Get-WsmOperationPaths $StateDirectory $package.Manifest.PairId
     Invoke-WsmLocked $paths.Root {
         $state=Get-WsmOperationState $paths $package;$preview=Get-WsmRestorePreview $ManifestPath $ExpectedHash $StateDirectory $Secrets;if($preview.Blocked){throw ('Restore blocked: '+(@($preview.Problems.Reason) -join '; '))};if(-not $PSCmdlet.ShouldProcess($package.Manifest.PairId,('Restore isolated pilot generation '+$package.Manifest.Generation))){return $preview}
         if($state.Cutover){throw 'Restore after cutover requires reviewed data reconciliation; no automatic reverse synchronization.'}

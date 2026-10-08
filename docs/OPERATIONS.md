@@ -25,6 +25,8 @@
 
 大量 Include 使用管理精靈的「批次規格草稿／預覽／提交」：匯出帶 Batch／Pair／兩種 revision／SettingsHash 的 bundle，填完各列 MigrationSpec，先預覽件數、樣本與問題再 APPLY-SPECS。無效一列整批不寫入；删列只是不修改該項，不是排除。一次提交只增加一次 DecisionRevision，核准失效。FileScope 路徑目前採已驗證的 239 字元限制，更長路徑明確阻擋並需專用流程。
 
+ACL 預設 `AclControlPolicy=Exact`，連 SDDL 控制旗標都須相同。不同 Windows 寫入 ACL 時可能新增 AI 自動繼承旗標；CI 已重現 ACE 完全相同而 AI 增加的情況。若企業批准此繼承模型轉換，可在 FileScope 明確設定 `AllowAutoInheritedUpgrade` 並重新審核；此政策只允許 AI 增加，owner／group／每個 ACE／P 與 AR 仍須精準相同，且不允許降級。這是核准的差異，不能宣稱 ACL 位元組完全還原。[Microsoft 控制旗標定義](https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptor-control)
+
 IdentityMap 是 `{ "Mappings": [...] }`；每列需要 SourceSid、TargetAccount、ExpectedTargetSid、CreatedByItemId、Owner、Evidence。ExpectedTargetSid 可留空，由目標實際解析；CreatedByItemId 若指定，必須是納入的 LocalUser／LocalGroup。來源 SID 不會因主機同名而恢復。任意 runtime SID override 不接受。
 
 SecretRef 只是代號。精靈按代號提示 PSCredential，密碼僅在記憶體；非互動有機密的操作可從 PowerShell module API 提供 `-Secrets @{代號=$credential}`。OperationRequest 不接受密碼或 Secrets 欄位。PFX 從外部受控材料取得，需 artifact hash；鏈憑證必須分開核准，禁止順帶匯入未列項。
@@ -62,3 +64,21 @@ FileScope 使用核准根目錄旁的生成 staging／backup；prepared checkpoi
 回退先輸出具體 preview hash，再確認 `ROLLBACK PairId`。只移除工具建立的物件，或更換先前歸屬的根目錄；保留回退時的新資料根目錄。目標可能已有新交易時，強制 RollbackReconcile 證據，絕不自動啟舊來源。角色移除、網域／名稱／IP 回復依核准專用程序，避免兩台同時接手寫入。
 
 工具鎖與 journal 不抵抗本機 administrator 改寫，可信來源、企業權限与材料交換仍是管理責任。
+
+來源停寫先保存原始設定及啟用狀態到受控 SourceFreezeAttempt。部分失敗不產生成功 handoff；錯誤給出 attempt 路徑與摘要，使用 PreviousAttemptPath／PreviousAttemptHash 重試。重試會核對原核准基準，只容許已發生的停寫差異，不會把其他設定漂移當作新基準。過期 freeze 可透過 PreviousFreezePath／PreviousFreezeHash 更新，但仍須重新提供 owner 證據。
+
+來源回復是獨立的明確操作：管理精靈來源角色「明確回復來源」或 SourceResume API，先核對原始狀態，再確認 `SOURCE-OWNERSHIP-RESTORED PairId`，提供目標已停写／資料已協調／來源擁有唯一寫入權的證據。工具才回復原本的 startup／enabled／running 狀態。這是人工確認的離線所有權交接，不能抵抗另一台主機被另外啟用；不會因目標回退自動啟動來源。同一来源配對的 freeze／resume 共用本機操作鎖。
+
+## 漏跑政策與操作取消
+
+ScheduledTask 規格必須填 CatchUpPolicy，草稿 ReviewRequired 不可核准。PreserveSourceSettings 保留 XML 的 StartWhenAvailable；SkipMissedRuns 與 DedicatedManualCatchUp 會將它設為 false。專用補跑須由 owner 依 BusinessChecks 提供不重複交易的程序及驗收；工具不執行任意補跑腳本，這個選项不表示已補跑成功。
+
+各步驟輸入 0 取消，需字面文字 0 時輸入 literal:0。審核子選單錯誤保留原頁，篩選全部輸入且驗證成功才更新。輸入結束會退出，不無限重試。網域改名認證由目標精靈詢問並使用 DomainRename 記憶體 credential；認證不寫入請求與包。
+
+分類報告列出 scope、排除、一致性、metadata、ACL／漏跑政策、最終啟用狀態及規格雜湊；Desired 原始配置保留於受控 catalog，報告只附其 hash。正式 owner 審核仍需閱讀受控 Desired，不能只看 hash 判定正確。
+
+來源與目標工作目錄不可和資料 scope 相等、包含或被包含。來源 freeze／resume 及目標預覽／還原在建立操作目錄之前先檢查，避免工具證據混入業務資料。
+
+## 檔案回退中斷
+
+檔案回退先寫 durable RollbackIntent，保存目前內容與前代備份雜湊、固定的 displaced 保留路徑。若中斷，先執行 RepairOperation；它驗證 target／retained／backup 是否符合原意圖，再完成原來的重新命名。任何內容漂移都阻擋，不刪除現場。已回退項目不會再次選入新回退预覽；新交易可能存在時仍必須先有有效 RollbackReconcile owner 證據。設定回退不會自動啟動來源或代表交易資料已安全回復。

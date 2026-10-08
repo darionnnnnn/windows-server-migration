@@ -2,7 +2,7 @@
 $ErrorActionPreference='Stop'
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
 $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-pipeline-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($root)
-$sourceRoot=Join-Path $root 'source';$targetRoot=Join-Path $root 'target';$packages=Join-Path $root 'packages';$workspace=Join-Path $root 'manager';$targetState=Join-Path $root 'target-state'
+$sourceRoot=Join-Path $root 'source';$sourceState=Join-Path $root 'source-state';[void][IO.Directory]::CreateDirectory($sourceState);$targetRoot=Join-Path $root 'target';$packages=Join-Path $root 'packages';$workspace=Join-Path $root 'manager';$targetState=Join-Path $root 'target-state'
 [void][IO.Directory]::CreateDirectory($sourceRoot);[void][IO.Directory]::CreateDirectory((Join-Path $sourceRoot 'nested'));[void][IO.Directory]::CreateDirectory((Join-Path $sourceRoot 'excluded'))
 [IO.File]::WriteAllText((Join-Path $sourceRoot 'nested\unicode-中文.txt'),'initial fixture');[IO.File]::WriteAllText((Join-Path $sourceRoot 'excluded\not-selected.txt'),'never packaged')
 $large=New-Object byte[] 2500000;for($n=0;$n -lt $large.Length;$n++){$large[$n]=[byte]($n%251)};[IO.File]::WriteAllBytes((Join-Path $sourceRoot 'chunked.bin'),$large)
@@ -13,13 +13,13 @@ Initialize-WsmWorkspace $workspace | Out-Null;$catalog=Import-WsmInventory $work
 # Only machine identity/collector are substituted; file bytes, ACLs, package hash and restore are real.
 & $module {param($InventoryPath) $script:fixtureInventory=$InventoryPath;$script:fixtureFingerprint=('b'*64);function script:Get-WsmMachineIdentity {[pscustomobject]@{Fingerprint=$script:fixtureFingerprint;Name='fixture';OS='Fixture Server';Version='10.0.fixture';IsServer=$true;Administrator=$true;Is64Bit=$true}};function script:Export-WsmInventory {param($OutputDirectory)[pscustomobject]@{Path=$script:fixtureInventory;SHA256=(Get-FileHash -LiteralPath $script:fixtureInventory).Hash}}} $inventoryPath
 $targetIdentity=Join-Path $root 'target-identity.json';$identity=Register-WsmTarget $targetState $targetIdentity
-$spec=[pscustomobject]@{Adapter='FileScope';SourcePath=$sourceRoot;TargetPath=$targetRoot;ExcludedRelativePaths=@('excluded');Consistency='Immutable';Metadata='DaclOwner';ConflictPolicy='ReplaceOwned';Owner='Fixture owner';Evidence='fixture-scope-review';BusinessChecks=@('Read expected fixture file')}
+$spec=[pscustomobject]@{Adapter='FileScope';SourcePath=$sourceRoot;TargetPath=$targetRoot;ExcludedRelativePaths=@('excluded');Consistency='Immutable';Metadata='DaclOwner';AclControlPolicy='AllowAutoInheritedUpgrade';ConflictPolicy='ReplaceOwned';Owner='Fixture owner';Evidence='fixture-scope-review';BusinessChecks=@('Read expected fixture file')}
 $specPath=Join-Path $root 'scope.json';[IO.File]::WriteAllText($specPath,($spec | ConvertTo-Json -Depth 10),(New-Object Text.UTF8Encoding($false)))
 Set-WsmMigrationSpec $workspace $pair $item.ItemId $specPath (Get-FileHash $specPath).Hash 0
 Set-WsmDecision $workspace $pair @($item.ItemId) Include 'fixture approved' 1 | Out-Null
 $planPath=Join-Path $root 'plan.json';$approval=Approve-WsmMigrationPlan $workspace $pair $targetIdentity $identity.SHA256 $planPath 2 ISOLATED-PILOT
 & $module {$script:fixtureFingerprint=('a'*64)}
-$package=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceRoot $packages -ChunkBytes 65536
+$package=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState $packages -ChunkBytes 65536
 if(-not $package.Sealed -or $package.Files -ne 2 -or $package.Generation -ne 1){throw 'Initial package counters incorrect.'}
 $verified=Test-WsmMigrationPackage $package.ManifestPath $package.SHA256
 & $module {$script:originalZipVerifier=(Get-Command Test-WsmZipVolume).ScriptBlock;$script:zipFault=$true;function script:Test-WsmZipVolume {param($Path,$Expected,$ExpectedHash='')if($script:zipFault -and $Path -like '*-0002.zip.partial'){$script:zipFault=$false;throw 'Injected ZIP interruption after first sealed volume'};& $script:originalZipVerifier $Path $Expected $ExpectedHash}}
@@ -56,11 +56,11 @@ if(-not (Invoke-WsmValidation $package.ManifestPath $package.SHA256 $targetState
 [IO.File]::WriteAllText((Join-Path $targetRoot 'unexpected.txt'),'new target data');$drift=Get-WsmRestorePreview $package.ManifestPath $package.SHA256 $targetState;if(-not $drift.Blocked){throw 'Unowned target change did not block retry.'};[IO.File]::Delete((Join-Path $targetRoot 'unexpected.txt'))
 # Final full snapshot replaces only the previously owned root, preserving its rollback root.
 & $module {$script:fixtureFingerprint=('a'*64)}
-$freezePath=Join-Path $root 'freeze.json';$freeze=Export-WsmFreezeRecord $planPath $approval.SHA256 $freezePath 'Fixture owner' 'fixture writers quiesced' OWNER-CONFIRMED-QUIESCENCE -SourceIdentityReleased -ReleaseEvidence 'fixture old name and IP withdrawn' -SourceStateDirectory $sourceRoot
+$freezePath=Join-Path $root 'freeze.json';$freeze=Export-WsmFreezeRecord $planPath $approval.SHA256 $freezePath 'Fixture owner' 'fixture writers quiesced' OWNER-CONFIRMED-QUIESCENCE -SourceIdentityReleased -ReleaseEvidence 'fixture old name and IP withdrawn' -SourceStateDirectory $sourceState
 $expiredFreeze=Get-Content -LiteralPath $freezePath -Raw | ConvertFrom-Json;$expiredFreeze.ProducedUtc=[DateTime]::UtcNow.AddHours(-2).ToString('o');$expiredFreeze.ExpiresUtc=[DateTime]::UtcNow.AddHours(-1).ToString('o');$expiredPath=Join-Path $root 'expired-freeze.json';[IO.File]::WriteAllText($expiredPath,($expiredFreeze | ConvertTo-Json -Depth 30),(New-Object Text.UTF8Encoding($false)))
-$renewedPath=Join-Path $root 'renewed-freeze.json';$freeze=Export-WsmFreezeRecord $planPath $approval.SHA256 $renewedPath 'Fixture owner' 'renewed owner freeze evidence' OWNER-CONFIRMED-QUIESCENCE -SourceIdentityReleased -ReleaseEvidence 'fixture source remains isolated' -SourceStateDirectory $sourceRoot -PreviousFreezePath $expiredPath -PreviousFreezeHash (Get-FileHash $expiredPath).Hash;$freezePath=$renewedPath
+$renewedPath=Join-Path $root 'renewed-freeze.json';$freeze=Export-WsmFreezeRecord $planPath $approval.SHA256 $renewedPath 'Fixture owner' 'renewed owner freeze evidence' OWNER-CONFIRMED-QUIESCENCE -SourceIdentityReleased -ReleaseEvidence 'fixture source remains isolated' -SourceStateDirectory $sourceState -PreviousFreezePath $expiredPath -PreviousFreezeHash (Get-FileHash $expiredPath).Hash;$freezePath=$renewedPath
 [IO.File]::WriteAllText((Join-Path $sourceRoot 'nested\unicode-中文.txt'),'final fixture');[IO.File]::Delete((Join-Path $sourceRoot 'chunked.bin'))
-$final=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceRoot $packages -ChunkBytes 65536 -BaseManifestPath $package.ManifestPath -BaseManifestHash $package.SHA256 -FreezePath $freezePath -FreezeHash $freeze.SHA256
+$final=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState $packages -ChunkBytes 65536 -BaseManifestPath $package.ManifestPath -BaseManifestHash $package.SHA256 -FreezePath $freezePath -FreezeHash $freeze.SHA256
 & $module {$script:fixtureFingerprint=('b'*64)}
 $restored=Invoke-WsmRestore $final.ManifestPath $final.SHA256 $targetState
 if($restored.Generation -ne 2 -or (Test-Path (Join-Path $targetRoot 'chunked.bin')) -or [IO.File]::ReadAllText((Join-Path $targetRoot 'nested\unicode-中文.txt')) -cne 'final fixture'){throw 'Final generation updates/deletion incorrect.'}

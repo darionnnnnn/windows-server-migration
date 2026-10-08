@@ -18,6 +18,7 @@ function Restore-WsmJournalCheckpoint($Paths,$State) {
             'AdapterBuildAbandoned' {$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id);$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)}
             'FileScopeIntent' {$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)+@($d)}
             'FileScopePrepared' {$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)+@($d)}
+            'RollbackIntent' {$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)+@($d);$copy.Stage='RollbackRunning'}
             {$_ -in @('ItemCompleted','ScopeRecovered')} {$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id)+@($d);$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)}
             'ItemFailed' {$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id)+@($d);$copy.Stage='Failed'}
             'RestoreStarted' {$copy.Stage='Running'}
@@ -29,7 +30,7 @@ function Restore-WsmJournalCheckpoint($Paths,$State) {
             'ActivationBoundary' {$copy.Cutover.NewTransactionsPossible=$true}
             'CutoverCompleted' {$copy.Stage=$d.Status;$copy.Cutover.Stage='Activated'}
             'StageResultExported' {$copy.ResultSequence=$d.Sequence}
-            'RollbackCompleted' {foreach($item in $copy.Items){if($item.ItemId -ceq $id){$item.Status='RolledBack'}}}
+            'RollbackCompleted' {foreach($item in $copy.Items){if($item.ItemId -ceq $id){$item.Status='RolledBack'}};$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)}
             'RollbackFinished' {$copy.Stage='RolledBack'}
             'BuildAbandoned' {$op=@($copy.PendingOperations | Where-Object ItemId -CEQ $id);$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id);if($op.Count -and $op[0].PSObject.Properties['PreviousRecord'] -and $op[0].PreviousRecord){$copy.Items+=@($op[0].PreviousRecord)};$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)}
             {$_ -in @('ItemStarted','ItemActivated','ValidationCompleted','RollbackStarted')} { }

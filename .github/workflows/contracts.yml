@@ -30,6 +30,9 @@ jobs:
           ./tests/Test-OperationRequests.ps1
           ./tests/Test-IisContracts.ps1
           ./tests/Test-BulkMigrationSpecs.ps1
+          ./tests/Test-SourceRecovery.ps1
+          ./tests/Test-MenuContracts.ps1
+          ./tests/Test-RollbackRecovery.ps1
       - name: Inventory ZIP trust and extraction boundaries
         shell: powershell
         run: ./tests/Test-Archive.ps1
@@ -50,5 +53,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: synthetic-fixture-diagnostics
-          path: ${{ runner.temp }}/wsm-pipeline-*/target-state/**/*.file-validation.json
+          path: C:/Users/runneradmin/AppData/Local/Temp/wsm-pipeline-*/target-state/**/*.file-validation.json
           if-no-files-found: ignore

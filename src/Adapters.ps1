@@ -1,4 +1,5 @@
 ﻿function Assert-WsmAdapterDesired($Spec) {
+    if($Spec.Adapter -eq 'ScheduledTask' -and (-not $Spec.PSObject.Properties['CatchUpPolicy'] -or $Spec.CatchUpPolicy -cnotin @('PreserveSourceSettings','SkipMissedRuns','DedicatedManualCatchUp'))){throw 'Task requires an explicit reviewed CatchUpPolicy: PreserveSourceSettings, SkipMissedRuns or DedicatedManualCatchUp.'}
     $contracts=@{
         ScheduledTask=@('TaskName','TaskPath','Xml','User'); Service=@('Name','DisplayName','BinaryPathName','Account','Dependencies','Description'); SmbShare=@('Name','Path','Description','EncryptData','Access'); MachineEnvironment=@('Name','Value'); WindowsFeature=@('Name','Source'); IISPool=@('Name','Xml'); IISSite=@('Name','Xml','Bindings'); Certificate=@('Thumbprint','Store','ArtifactPath','ArtifactHash','HasPrivateKey'); LocalUser=@('Name','FullName','Description'); LocalGroup=@('Name','Description','Members'); FirewallRule=@('Name','DisplayName','Direction','Action','Profile','Protocol','LocalPort','RemotePort','LocalAddress','RemoteAddress','Program')
     }
@@ -7,7 +8,7 @@
     Assert-WsmFields $Spec.Desired ($contracts[$Spec.Adapter]+$optional)
     $required=$contracts[$Spec.Adapter]; if ($Spec.Adapter -eq 'WindowsFeature') { $required=@('Name') }; if ($Spec.Adapter -eq 'ScheduledTask') { $required=@('TaskName','TaskPath','Xml') }
     foreach ($f in $required) { if (-not $Spec.Desired.PSObject.Properties[$f]) { throw ('Desired requires '+$f) }; if($f -in @('Name','TaskName','TaskPath','Xml','Path','BinaryPathName','Thumbprint','Store','ArtifactPath','ArtifactHash') -and [string]::IsNullOrWhiteSpace([string]$Spec.Desired.$f)){throw ('Desired requires a nonempty '+$f)} }
-    foreach ($f in @('Name','TaskName')) { if ($Spec.Desired.PSObject.Properties[$f] -and [string]$Spec.Desired.$f -match '[\x00-\x1f/\\]') { throw 'Invalid adapter object name.' } }
+    foreach ($f in @('Name','TaskName')) { if ($Spec.Desired.PSObject.Properties[$f] -and [string]$Spec.Desired.$f -match '[\x00-\x1f/\\*?\[\]]') { throw 'Invalid adapter object name.' } }
     if ($Spec.Adapter -eq 'ScheduledTask') { if ($Spec.Desired.TaskPath -notmatch '^\\(?:[^<>:"|?*\x00-\x1f]+\\)*$' -or $Spec.Desired.TaskPath -match '(?:^|\\)\.\.(?:\\|$)') { throw 'Invalid task folder.' }; $xml=Read-WsmXml $Spec.Desired.Xml; if ($xml.DocumentElement.LocalName -ne 'Task') { throw 'Expected task XML.' } }
     if($Spec.Desired.PSObject.Properties['SecuritySddl']){[void](New-Object Security.AccessControl.RawSecurityDescriptor($Spec.Desired.SecuritySddl))}
     if ($Spec.Adapter -in @('IISPool','IISSite')) { $xml=Read-WsmXml $Spec.Desired.Xml; $elementName='add'; if($Spec.Adapter -eq 'IISSite'){$elementName='site'}; if ($xml.DocumentElement.LocalName -ne $elementName -or $xml.DocumentElement.GetAttribute('name') -cne $Spec.Desired.Name) { throw 'IIS XML/name mismatch.' }; if ($xml.SelectNodes('//*[@password]').Count) { throw 'IIS passwords must be supplied as a SecretRef, not embedded in desired XML.' } }
@@ -61,6 +62,7 @@ function ConvertTo-WsmDisabledTaskXml($Spec) {
     $doc=Read-WsmXml $Spec.Desired.Xml; $root=$doc.DocumentElement; $ns=$root.NamespaceURI
     $settings=$root.SelectSingleNode("*[local-name()='Settings']"); if (-not $settings) { $settings=$doc.CreateElement('Settings',$ns); [void]$root.AppendChild($settings) }
     $enabled=$settings.SelectSingleNode("*[local-name()='Enabled']"); if (-not $enabled) { $enabled=$doc.CreateElement('Enabled',$ns); [void]$settings.AppendChild($enabled) }; $enabled.InnerText='false'
+    if($Spec.PSObject.Properties['CatchUpPolicy'] -and $Spec.CatchUpPolicy -in @('SkipMissedRuns','DedicatedManualCatchUp')){$catchUp=$settings.SelectSingleNode("*[local-name()='StartWhenAvailable']");if(-not $catchUp){$catchUp=$doc.CreateElement('StartWhenAvailable',$ns);[void]$settings.AppendChild($catchUp)};$catchUp.InnerText='false'}
     if ($Spec.Desired.PSObject.Properties['User'] -and $Spec.Desired.User) { $user=$root.SelectSingleNode("*[local-name()='Principals']/*[local-name()='Principal']/*[local-name()='UserId']"); if ($user) { $user.InnerText=$Spec.Desired.User } else { throw 'Task account mapping requires an existing UserId principal.' } }
     $doc.OuterXml
 }

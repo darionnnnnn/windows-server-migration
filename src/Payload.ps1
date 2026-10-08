@@ -55,6 +55,7 @@ function Read-WsmArtifactLines([string]$Path,[string]$ExpectedHash) {
 function Export-WsmMigrationPackage {
     [CmdletBinding()] param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash)
     $plan=Read-WsmMigrationPlan $PlanPath $ExpectedHash; Assert-WsmMigrationHost (Get-WsmMachineIdentity) $plan.Source.Fingerprint
+    Assert-WsmSourceWorkspaceSeparation $plan $SourceStateDirectory
     # Refresh the real local collector before any payload work; revision alone is not a configuration check.
     $freshResult=Export-WsmInventory $SourceStateDirectory -DeepDiscovery:($plan.Source.PSObject.Properties['DiscoveryDepth'] -and $plan.Source.DiscoveryDepth -eq 'Deep'); $fresh=Read-WsmTrustedJson $freshResult.Path $freshResult.SHA256; $current=@{};foreach($i in $fresh.Items){$current[$i.ItemId]=$i}
     if($fresh.Source.HostId -cne $plan.Source.HostId){throw 'Fresh inventory source identity mismatch.'}

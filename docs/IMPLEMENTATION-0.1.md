@@ -19,8 +19,8 @@
 ## 當期待辦（尚未實作／待補齊，不能宣告完成）
 
 - [ ] rollback／activation 半完成的可恢復 checkpoint。adapter durable absent-before intent 與 staging／absent／drift reconciliation 已通過 fixture。
-- [ ] source freeze 部分失敗、重試／過期 renewal、可核對的來源復原程序。
-- [ ] 部分原生錯誤退出碼、超時、已分類修復建議、各舊子選單取消旅程与 domain credential 的精靈接線。
+
+- [ ] 部分原生錯誤退出碼、超時、已分類修復建議及其他 adapter 原生錯誤分類。
 - [ ] 大 payload index 的 metadata 去重／記憶體上限與進度、大量小檔真實測試。ZIP 匯出中斷續跑已經 fault fixture 驗證；實際 >4GiB 已通過，長路徑目前明確阻擋。
 - [ ] 完整 IIS schema／nested 設定與額外配置 drift、服務依賴／帳號／補充設定的逐字段驗證及更多 adapter 正反例。
 - [ ] 跨台應用循環群組的 freeze／activation／rollback 協調與承接生產資格資料契約；現在必要 provider 缺結果會阻擋。
@@ -37,6 +37,11 @@
 已提出隔離 Server 環境與代表性來源盤點輸入需求，尚未收到。這些缺失不會被改寫成「不在本輪範圍」。不自行操作未指派的生產主機。
 
 ## 已有證據（均不代表生產資格）
+
+- SourceRecovery：兩個服務部分停寫失敗保留原始設定與執行狀態；重試、來源明確唯一寫入權回復 fixture 通過。來源及目標工作目錄與 FileScope 重疊在建立操作目录前阻擋。
+- MenuContracts：0 取消、literal:0、EOF、錯誤保留原頁與篩選原子編輯通過；網域改名 credential 已接入精靈記憶體 SecretRef。
+- ScheduledTask：CatchUpPolicy 必須明確審核；未審核阻擋、跳過與專用補跑停用 StartWhenAvailable、保留來源政策 fixtures 通過。
+- 確認報告補來源／目標 scope、排除、資料一致性、metadata／ACL／漏跑政策、最終狀態、spec 與 Desired 雜湊；原始 Desired 保留於受控 catalog。
 
 - 批次規格草稿／整批預覽／一次 revision 原子套用：Test-BulkMigrationSpecs 通過；無效一列整批不寫入、缺列不排除、舊版拒絕。
 - 最新 pipeline：wsm-pipeline-150cc633649340148357b480e32741bf，包含 ZIP 中斷續跑、相同 transport 重試、freeze renewal。

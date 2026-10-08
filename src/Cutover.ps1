@@ -1,4 +1,4 @@
-﻿function Export-WsmFreezeRecord {
+﻿function Invoke-WsmFreezeCore {
     [CmdletBinding(SupportsShouldProcess)]param([string]$PlanPath,[string]$ExpectedHash,[string]$Path,[string]$Owner,[string]$Evidence,[Parameter(Mandatory)][string]$Acknowledgement,[switch]$SourceIdentityReleased,[string]$ReleaseEvidence,[ValidateRange(1,48)][int]$ValidHours=4,[Parameter(Mandatory)][string]$SourceStateDirectory,[string]$PreviousFreezePath,[string]$PreviousFreezeHash)
     $p=Read-WsmMigrationPlan $PlanPath $ExpectedHash;Assert-WsmMigrationHost (Get-WsmMachineIdentity) $p.Source.Fingerprint
     if($Acknowledgement -cne 'OWNER-CONFIRMED-QUIESCENCE' -or -not $Owner -or -not $Evidence){throw 'Source freeze requires owner-confirmed quiescence and independent evidence.'}

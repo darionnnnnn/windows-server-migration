@@ -27,6 +27,11 @@ if((Get-WsmCatalog $root $c.PairId).InventoryRevision -ne 2 -or (Test-Path (Join
     function script:Resolve-WsmAccountSid {param($Account) 'S-1-5-21-1-2-3-1001'}
     $plan=[pscustomobject]@{IdentityMap=[pscustomobject]@{Mappings=@([pscustomobject]@{SourceSid='S-1-5-21-4-5-6-1001';TargetAccount='TARGET\fixture';ExpectedTargetSid='S-1-5-21-1-2-3-1001';CreatedByItemId='';Owner='fixture';Evidence='approved'})}}
     $map=Resolve-WsmIdentityMap $plan;if($map.Count -ne 1){throw 'Approved identity map lost'}
+    $acl='O:SYG:SYD:(A;OICIID;FA;;;SY)';$upgraded='O:SYG:SYD:AI(A;OICIID;FA;;;SY)'
+    if(Test-WsmSddlMatch $acl $upgraded){throw 'Exact ACL mode ignored control flags'}
+    if(-not (Test-WsmSddlMatch $acl $upgraded AllowAutoInheritedUpgrade)){throw 'Reviewed one-way auto-inheritance conversion failed'}
+    foreach($different in @('O:BAG:SYD:AI(A;OICIID;FA;;;SY)','O:SYG:SYD:PAI(A;OICIID;FA;;;SY)','O:SYG:SYD:AI(A;OICIID;FR;;;SY)','O:SYG:SYD:AI(A;OICI;FA;;;SY)')){if(Test-WsmSddlMatch $acl $different AllowAutoInheritedUpgrade){throw 'ACL normalization weakened owner/protection/rights/inherited-ACE verification'}}
+    if(Test-WsmSddlMatch $upgraded $acl AllowAutoInheritedUpgrade){throw 'ACL auto-inheritance downgrade allowed'}
     $blocked=$false;try{Resolve-WsmIdentityMap $plan @{'S-1-5-21-4-5-6-1001'='S-1-5-32-544'} | Out-Null}catch{$blocked=$true};if(-not $blocked){throw 'Unapproved runtime ACL privilege mapping allowed'}
     $provider=[Guid]::NewGuid().ToString();$dependencyPlan=[pscustomobject]@{CrossHostDependencies=@([pscustomobject]@{PairId=$provider;Type='Mandatory'})}
     $blocked=$false;try{Assert-WsmDependencyReceipts $dependencyPlan @()}catch{$blocked=$true};if(-not $blocked){throw 'Cross-host prerequisite ignored'}
@@ -47,4 +52,9 @@ if((Get-WsmCatalog $root $c.PairId).InventoryRevision -ne 2 -or (Test-Path (Join
     $blocked=$false;try{Repair-WsmOperation 'fixture-only' ('d'*64) $Root | Out-Null}catch{$blocked=$true};if(-not $blocked){throw 'Drifting interrupted adapter was adopted'}
     $state=Read-WsmJson $paths.State;if($state.Items.Count -ne 1 -or $state.Items[0].ItemId -cne ('1'*64) -or $state.PendingOperations.Count -ne 1 -or $state.PendingOperations[0].ItemId -cne ('3'*64)){throw 'Adapter repair lost precise adopted/absent/drift ownership state'}
 } (Join-Path $root 'adapter-fixture')
-Write-Host ('PASS: interrupted workspace and adapter intent recovery; drift guard, SID mapping, provider evidence and bounded index reader. Evidence: '+$root)
+& $module {
+    param($Root)
+    $scope=Join-Path $Root 'business';$plan=[pscustomobject]@{Items=@([pscustomobject]@{Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='FileScope';SourcePath=$scope;TargetPath=$scope}})}
+    foreach($field in @('SourcePath','TargetPath')){foreach($workspace in @($scope,(Join-Path $scope 'state'),$Root)){$blocked=$false;try{Assert-WsmWorkspaceSeparation $plan $workspace $field}catch{$blocked=$true};if(-not $blocked){throw 'Scope/workspace equality or ancestor collision allowed'}};Assert-WsmWorkspaceSeparation $plan (Join-Path $Root 'business-state') $field}
+} (Join-Path $root 'workspace-boundaries')
+Write-Host ('PASS: interrupted workspace and adapter intent recovery; scope/workspace boundaries, drift guard, SID mapping, provider evidence and bounded index reader. Evidence: '+$root)
