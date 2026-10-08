@@ -1,13 +1,53 @@
 ﻿function Merge-WsmSortedHashFiles([string[]]$Paths,[string]$OutputPath) {
-    $readers=New-Object 'System.Collections.Generic.List[object]';$heads=New-Object 'System.Collections.Generic.List[string]';$writer=New-Object IO.StreamWriter($OutputPath,$false,[Text.Encoding]::ASCII)
-    try{foreach($path in $Paths){$reader=New-Object IO.StreamReader($path,[Text.Encoding]::ASCII);$readers.Add($reader);$heads.Add($reader.ReadLine())};while($true){$best=-1;for($n=0;$n -lt $heads.Count;$n++){if($null -ne $heads[$n] -and ($best -lt 0 -or [StringComparer]::Ordinal.Compare($heads[$n],$heads[$best]) -lt 0)){$best=$n}};if($best -lt 0){break};$writer.WriteLine($heads[$best]);$heads[$best]=$readers[$best].ReadLine()}}finally{$writer.Dispose();foreach($reader in $readers){$reader.Dispose()}}
+    Initialize-WsmExternalMerge;[WsmExternalMerge]::Merge($Paths,$OutputPath)
+}
+function Initialize-WsmExternalMerge {
+    if('WsmExternalMerge' -as [type]){return}
+    Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Text;
+public static class WsmExternalMerge {
+    public static void Merge(string[] paths, string output) {
+        if(paths.Length==0 || paths.Length>64) throw new InvalidDataException("Merge fan-in must be 1..64.");
+        var readers=new StreamReader[paths.Length];var heads=new string[paths.Length];
+        try {
+            for(int n=0;n<paths.Length;n++){readers[n]=new StreamReader(paths[n],Encoding.ASCII);heads[n]=readers[n].ReadLine();}
+            using(var writer=new StreamWriter(output,false,Encoding.ASCII)) {
+                while(true){int best=-1;for(int n=0;n<heads.Length;n++){if(heads[n]!=null && (best<0 || StringComparer.Ordinal.Compare(heads[n],heads[best])<0))best=n;}
+                    if(best<0)break;if(heads[best].Length!=64)throw new InvalidDataException("Invalid generated hash row.");
+                    writer.WriteLine(heads[best]);heads[best]=readers[best].ReadLine();
+                }
+            }
+        } finally {foreach(var reader in readers){if(reader!=null)reader.Dispose();}}
+    }
+}
+'@
+}
+function New-WsmArtifactKeySpool {
+    $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-index-keys-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($root);Protect-WsmDirectory $root
+    [pscustomobject]@{Root=$root;Serial=0;Buffer=(New-Object 'System.Collections.Generic.List[string]');Parts=(New-Object 'System.Collections.Generic.List[string]');Known=(New-Object 'System.Collections.Generic.List[string]')}
+}
+function Save-WsmKeySpoolPart($Spool) {
+    if(-not $Spool.Buffer.Count){return};$path=Join-Path $Spool.Root ('part-'+$Spool.Serial+'.txt');$Spool.Serial++;$Spool.Buffer.Sort([StringComparer]::Ordinal);[IO.File]::WriteAllLines($path,$Spool.Buffer,[Text.Encoding]::ASCII);$Spool.Known.Add($path);$Spool.Parts.Add($path);$Spool.Buffer.Clear()
+}
+function Add-WsmArtifactKey($Spool,[string]$Key) {
+    $Spool.Buffer.Add((Get-WsmHashText $Key));if($Spool.Buffer.Count -ge 5000){Save-WsmKeySpoolPart $Spool}
+}
+function Assert-WsmArtifactKeysUnique($Spool) {
+    Save-WsmKeySpoolPart $Spool
+    while($Spool.Parts.Count -gt 1){$next=New-Object 'System.Collections.Generic.List[string]';for($n=0;$n -lt $Spool.Parts.Count;$n+=64){$last=[Math]::Min($n+63,$Spool.Parts.Count-1);$group=@(for($i=$n;$i -le $last;$i++){$Spool.Parts[$i]});$merged=Join-Path $Spool.Root ('merge-'+$Spool.Serial+'.txt');$Spool.Serial++;Merge-WsmSortedHashFiles $group $merged;$Spool.Known.Add($merged);$next.Add($merged);foreach($path in $group){[IO.File]::Delete($path)}};$Spool.Parts=$next}
+    if($Spool.Parts.Count){$reader=New-Object IO.StreamReader($Spool.Parts[0],[Text.Encoding]::ASCII);try{$previous=$null;while($null -ne ($key=$reader.ReadLine())){if($key -ceq $previous){throw 'Duplicate/case-colliding artifact destination.'};$previous=$key}}finally{$reader.Dispose()}}
+}
+function Remove-WsmKeySpool($Spool) {
+    foreach($path in $Spool.Known){if([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($path)) -cne $Spool.Root){throw 'Artifact key cleanup escaped generated workspace.'};if([IO.File]::Exists($path)){[IO.File]::Delete($path)}};[IO.Directory]::Delete($Spool.Root,$false)
 }
 function Get-WsmStreamingScopeDigest([string]$Root,[string]$MetadataMode) {
     if(-not [IO.File]::Exists($Root) -and -not [IO.Directory]::Exists($Root)){return ''}
     $scratch=Join-Path ([IO.Path]::GetTempPath()) ('wsm-digest-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($scratch);Protect-WsmDirectory $scratch
     $parts=New-Object 'System.Collections.Generic.List[string]';$known=New-Object 'System.Collections.Generic.List[string]';$buffer=New-Object 'System.Collections.Generic.List[string]';$count=[long]0;$serial=0
     try{
-        Get-WsmScopeEntries ([pscustomobject]@{SourcePath=$Root;ExcludedRelativePaths=@()}) $scratch | ForEach-Object {$e=$_;$fileHash='';if(-not $e.Directory){$fileHash=(Get-FileHash -LiteralPath $e.SourcePath).Hash.ToLowerInvariant()};$meta=Get-WsmFileMetadata $e.SourcePath $MetadataMode;$row=[pscustomobject][ordered]@{RelativePath=$e.RelativePath.ToLowerInvariant();Directory=$e.Directory;Hash=$fileHash;Sddl=$meta.Sddl;Attributes=$meta.Attributes};$buffer.Add((Get-WsmHashText ($row | ConvertTo-Json -Depth 8 -Compress)));$count++
+        Get-WsmScopeEntries ([pscustomobject]@{SourcePath=$Root;ExcludedRelativePaths=@()}) $scratch | ForEach-Object {$e=$_;$fileHash='';if(-not $e.Directory){$fileHash=(Get-FileHash -LiteralPath $e.SourcePath).Hash.ToLowerInvariant()};$meta=Get-WsmFileMetadata $e.SourcePath $MetadataMode;$row=[pscustomobject][ordered]@{RelativePath=$e.RelativePath.ToUpperInvariant();Directory=$e.Directory;Hash=$fileHash;Sddl=$meta.Sddl;Attributes=$meta.Attributes;CreationUtc=$meta.CreationUtc;LastWriteUtc=$meta.LastWriteUtc};$buffer.Add((Get-WsmHashText ($row | ConvertTo-Json -Depth 8 -Compress)));$count++
             if($buffer.Count -ge 5000){$part=Join-Path $scratch ('part-'+$serial+'.txt');$serial++;[IO.File]::WriteAllLines($part,[string[]]@($buffer | Sort-Object),[Text.Encoding]::ASCII);$parts.Add($part);$known.Add($part);$buffer.Clear();Write-Progress -Activity 'Verifying owned scope (bounded memory)' -Status ($count.ToString()+' entries inspected')}
         }
         if($buffer.Count){$part=Join-Path $scratch ('part-'+$serial+'.txt');$serial++;[IO.File]::WriteAllLines($part,[string[]]@($buffer | Sort-Object),[Text.Encoding]::ASCII);$parts.Add($part);$known.Add($part);$buffer.Clear()}

@@ -57,4 +57,15 @@ if((Get-WsmCatalog $root $c.PairId).InventoryRevision -ne 2 -or (Test-Path (Join
     $scope=Join-Path $Root 'business';$plan=[pscustomobject]@{Items=@([pscustomobject]@{Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='FileScope';SourcePath=$scope;TargetPath=$scope}})}
     foreach($field in @('SourcePath','TargetPath')){foreach($workspace in @($scope,(Join-Path $scope 'state'),$Root)){$blocked=$false;try{Assert-WsmWorkspaceSeparation $plan $workspace $field}catch{$blocked=$true};if(-not $blocked){throw 'Scope/workspace equality or ancestor collision allowed'}};Assert-WsmWorkspaceSeparation $plan (Join-Path $Root 'business-state') $field}
 } (Join-Path $root 'workspace-boundaries')
+& $module {
+    param($Root)
+    $id='a'*64;$pair=[Guid]::NewGuid().ToString();$script:adapterRecoveryPackage=[pscustomobject]@{Manifest=[pscustomobject]@{PairId=$pair;BatchId=[Guid]::NewGuid().ToString();Target=[pscustomobject]@{Fingerprint=('b'*64)};PlanHash=('d'*64)};Plan=[pscustomobject]@{Items=@([pscustomobject]@{ItemId=$id;MigrationSpec=[pscustomobject]@{Adapter='WindowsFeature'}})}}
+    function script:Get-WsmAdapterState {param($Spec)[pscustomobject]@{Exists=$true}}
+    function script:Test-WsmAdapterConfiguration {param($Spec)[pscustomobject]@{Passed=$true;Actual=[pscustomobject]@{Exists=$true}}}
+    function script:Get-WsmBootStamp {'original-boot'}
+    $paths=Get-WsmOperationPaths $Root $pair;$state=Get-WsmOperationState $paths $script:adapterRecoveryPackage
+    $intent=[pscustomobject]@{ItemId=$id;Phase='AdapterCreating';Adapter='WindowsFeature';ManifestHash=('d'*64);AbsentBefore=$true;BeforeHash=('e'*64);BootBefore='original-boot'};$state.PendingOperations=@($intent);Add-WsmJournal $paths $state AdapterIntent $id $intent
+    $result=Repair-WsmOperation fixture ('d'*64) $Root
+    if($result.State.Stage -cne 'RebootRequired' -or $result.State.Items[0].Status -cne 'RebootRequired' -or $result.State.Items[0].BootBefore -cne 'original-boot'){throw 'Interrupted feature install bypassed reboot barrier or lost durable boot baseline'}
+} (Join-Path $root 'feature-interruption')
 Write-Host ('PASS: interrupted workspace and adapter intent recovery; scope/workspace boundaries, drift guard, SID mapping, provider evidence and bounded index reader. Evidence: '+$root)

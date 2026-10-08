@@ -35,10 +35,10 @@ function Invoke-WsmNativeTool {
 function Invoke-WsmServiceSecurity([string]$Name,[string]$Sddl) {
     $descriptor=New-Object Security.AccessControl.RawSecurityDescriptor($Sddl)
     $r=Invoke-WsmNativeTool 'sc.exe' @('sdset',$Name,$Sddl)
-    if(-not $r.Succeeded){$error=New-Object InvalidOperationException('Service security update failed; native code '+$r.NativeCode);$error.Data['NativeCode']=$r.NativeCode;throw $error}
+    if(-not $r.Succeeded){throw (New-WsmNativeFailure 'sc.exe' $r.NativeCode 'Service security update')}
     $r.NativeCode
 }
 function Get-WsmServiceSecurity([string]$Name) {
-    $r=Invoke-WsmNativeTool 'sc.exe' @('sdshow',$Name);if(-not $r.Succeeded){throw ('Service security query failed; native code '+$r.NativeCode)}
+    $r=Invoke-WsmNativeTool 'sc.exe' @('sdshow',$Name);if(-not $r.Succeeded){throw (New-WsmNativeFailure 'sc.exe' $r.NativeCode 'Service security query')}
     $sddl=@($r.Output.Split([char]10) | ForEach-Object {$_.Trim()} | Where-Object {$_ -match '^(?:O:|G:|D:|S:)'});if($sddl.Count -ne 1){throw 'Unrecognized service security descriptor output.'};[void](New-Object Security.AccessControl.RawSecurityDescriptor($sddl[0]));$sddl[0]
 }

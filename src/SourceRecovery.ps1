@@ -21,6 +21,7 @@ function Invoke-WsmSourceFreezeWorkflow {
     [CmdletBinding(SupportsShouldProcess)]param([string]$PlanPath,[string]$ExpectedHash,[string]$Path,[string]$Owner,[string]$Evidence,[Parameter(Mandatory)][string]$Acknowledgement,[switch]$SourceIdentityReleased,[string]$ReleaseEvidence,[ValidateRange(1,48)][int]$ValidHours=4,[Parameter(Mandatory)][string]$SourceStateDirectory,[string]$PreviousFreezePath,[string]$PreviousFreezeHash,[string]$PreviousAttemptPath,[string]$PreviousAttemptHash)
     $p=Read-WsmMigrationPlan $PlanPath $ExpectedHash;Assert-WsmMigrationHost (Get-WsmMachineIdentity) $p.Source.Fingerprint
     Assert-WsmSourceWorkspaceSeparation $p $SourceStateDirectory
+    Assert-WsmSourceWorkspaceSeparation $p $Path
     if($Acknowledgement -cne 'OWNER-CONFIRMED-QUIESCENCE' -or -not $Owner -or -not $Evidence -or ($SourceIdentityReleased -and -not $ReleaseEvidence)){throw 'Freeze owner/quiescence/release evidence required.'}
     $args=@{PlanPath=$PlanPath;ExpectedHash=$ExpectedHash;Path=$Path;Owner=$Owner;Evidence=$Evidence;Acknowledgement=$Acknowledgement;SourceIdentityReleased=$SourceIdentityReleased;ReleaseEvidence=$ReleaseEvidence;ValidHours=$ValidHours;SourceStateDirectory=$SourceStateDirectory;PreviousFreezePath=$PreviousFreezePath;PreviousFreezeHash=$PreviousFreezeHash}
     if($WhatIfPreference){$args.WhatIf=$true;return (Invoke-WsmFreezeCore @args)}

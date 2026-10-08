@@ -14,7 +14,7 @@ function Restore-WsmJournalCheckpoint($Paths,$State) {
     Read-WsmJournalEvents $Paths | ForEach-Object {$event=$_.Row;$eventHash=$_.Hash;if($event.Sequence -gt $copy.Sequence){$d=$event.Detail;$id=$event.ItemId
         switch -Exact ($event.Action){
             'AdapterIntent' {$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)+@($d)}
-            'AdapterRecovered' {$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id)+@($d);$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)}
+            'AdapterRecovered' {if($d.Status -eq 'RebootRequired'){$copy.Stage='RebootRequired'};$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id)+@($d);$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)}
             'AdapterBuildAbandoned' {$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id);$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)}
             'FileScopeIntent' {$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)+@($d)}
             'FileScopePrepared' {$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)+@($d)}

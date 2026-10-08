@@ -82,3 +82,15 @@ ScheduledTask 規格必須填 CatchUpPolicy，草稿 ReviewRequired 不可核准
 ## 檔案回退中斷
 
 檔案回退先寫 durable RollbackIntent，保存目前內容與前代備份雜湊、固定的 displaced 保留路徑。若中斷，先執行 RepairOperation；它驗證 target／retained／backup 是否符合原意圖，再完成原來的重新命名。任何內容漂移都阻擋，不刪除現場。已回退項目不會再次選入新回退预覽；新交易可能存在時仍必須先有有效 RollbackReconcile owner 證據。設定回退不會自動啟動來源或代表交易資料已安全回復。
+
+## 實體路徑、大索引與錯誤診斷
+
+在實際來源／目標，以既有祖先的檔案 handle 取得 NT 裝置路徑，再附上尚未建立的子路徑，檢查 SUBST／多磁碟代號造成的同一實體資料碰撞。管理端仍只做文字映射預檢；實際目標要再次核對。重解析點明確阻擋。SMB／遠端 UNC 的伺服器與 share 別名目前沒有通用可靠判定，generic FileScope 阻擋並要求専用 alias／ownership 流程，不能把它視為已完成的 UNC 遷移。API 依據：[GetFinalPathNameByHandleW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew)。
+
+包驗證串流讀取受信任 JSONL，同時逐 chunk／整檔驗證；重複目的地使用固定 5,000 個鍵 hash 的緩衝及最多 64 路的磁碟合併。檔案 metadata 核對型別、資料／目錄、ACL、UTC、bytes；實際還原亦比較 creation／last-write 时间。時間戳記單獨漂移也會阻擋重試。ADS、junction、鎖住檔案與未驗證長路徑不會靜默略過。
+
+選單錯誤另顯示 Category／NativeCode／Hint；timeout、權限、容量、檔案鎖、無效輸入、查無服務及待刪除服務有個別處理建議。還原失敗的 item 與 durable journal 保留原生碼和分類，不含 stdout／參數／密碼。建議不會自動重試有副作用的操作；先核對實际狀態。
+
+SMB 分享完整比對所有預期 ACE，額外授權也屬漂移，帳號以目標 SID 比對；Everyone 的顯示名稱依本機語系解析。啟用只移除工具的暫時 world deny，規格原先明確要求的 world deny 會保留。Block-SmbShareAccess 只能建立 Full deny，Read／Change deny 必須専用流程；它們不會被工具默默放大。停用分享不表示已關閉所有既有 SMB open handles，停寫與資料協調證據仍必須包含既有客戶端的排空／關閉。
+
+一般 adapter 回退先寫 intent，再停用、驗證 staging 和刪除工具所建立物件；中斷後 RepairOperation 對已刪除的物件完成 checkpoint，不再次刪除。設定漂移或所有權／規格不符阻擋。角色安裝中斷的 boot baseline 已在原生安裝之前落盤；無法確認安裝器回傳時，重開機門檻維持到實際 boot stamp 改變。角色安裝器的自啟動副作用隔離仍是未完成項。

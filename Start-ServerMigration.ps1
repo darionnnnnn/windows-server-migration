@@ -52,7 +52,7 @@ function Review-Pair([string]$SelectedPair) {
                 $preview=Get-WsmDecisionPreview $Workspace $SelectedPair $ids $decision $reason; $preview | Select-Object Selected,Changed | Format-List; $preview.Sample | Format-Table; $preview.Conflicts | Format-Table
                 if ((Read-MenuValue '輸入 APPLY 套用') -ceq 'APPLY') { Set-WsmDecision $Workspace $SelectedPair $ids $decision $reason $view.DecisionRevision | Out-Null }
             }
-        }} catch [OperationCanceledException] { Write-Host $_.Exception.Message } catch [IO.EndOfStreamException] { throw } catch { Write-Host ('操作失敗：'+$_.Exception.Message) -ForegroundColor Red }
+        }} catch [OperationCanceledException] { Write-Host $_.Exception.Message } catch [IO.EndOfStreamException] { throw } catch { Write-Host ('操作失敗：'+$_.Exception.Message) -ForegroundColor Red;Get-WsmFailureDetails $_ | Format-List Category,NativeCode,Hint }
     }
 }
 try {
@@ -124,7 +124,7 @@ try {
                 '22' { Show-WsmMigrationWizard $Workspace }
                 default { Write-Host '無效選項。' }
             }
-        } catch [OperationCanceledException] { Write-Host $_.Exception.Message } catch [IO.EndOfStreamException] { throw } catch { Write-Host ('操作失敗：'+$_.Exception.Message) -ForegroundColor Red }
+        } catch [OperationCanceledException] { Write-Host $_.Exception.Message } catch [IO.EndOfStreamException] { throw } catch { Write-Host ('操作失敗：'+$_.Exception.Message) -ForegroundColor Red;Get-WsmFailureDetails $_ | Format-List Category,NativeCode,Hint }
     }
 } catch {
     [Console]::Error.WriteLine($_.Exception.Message)

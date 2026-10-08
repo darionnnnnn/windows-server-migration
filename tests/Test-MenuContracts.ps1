@@ -1,5 +1,6 @@
 ﻿#requires -Version 5.1
 $ErrorActionPreference='Stop'
+Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '..\Start-ServerMigration.ps1'),[ref]$tokens,[ref]$errors)
 if($errors.Count){throw ($errors | Out-String)}

@@ -18,11 +18,11 @@
 
 ## 當期待辦（尚未實作／待補齊，不能宣告完成）
 
-- [ ] rollback／activation 半完成的可恢復 checkpoint。adapter durable absent-before intent 與 staging／absent／drift reconciliation 已通過 fixture。
+- [ ] activation 半完成的可恢復 checkpoint；file／一般 adapter rollback intent 已實作及通過 phase／drift fixture，啟用後協調與重試仍需補。
 
 - [ ] 部分原生錯誤退出碼、超時、已分類修復建議及其他 adapter 原生錯誤分類。
-- [ ] 大 payload index 的 metadata 去重／記憶體上限與進度、大量小檔真實測試。ZIP 匯出中斷續跑已經 fault fixture 驗證；實際 >4GiB 已通過，長路徑目前明確阻擋。
-- [ ] 完整 IIS schema／nested 設定與額外配置 drift、服務依賴／帳號／補充設定的逐字段驗證及更多 adapter 正反例。
+- [ ] 大量小檔端到端真實資料測試；payload index 串流、固定 5k key 緩衝／磁碟排序與進度已實作。ZIP 匯出中斷續跑已經 fault fixture 驗證；實際 >4GiB 已通過，長路徑目前明確阻擋。
+- [ ] 完整 IIS schema／nested 設定與額外配置 drift、服務補充設定、角色安裝副作用與更多 adapter 正反例；遠端 UNC 的別名／所有權碰撞専用處理仍未完成。
 - [ ] 跨台應用循環群組的 freeze／activation／rollback 協調與承接生產資格資料契約；現在必要 provider 缺結果會阻擋。
 - [ ] 依真實盤點為實際入選的第三方 runtime／DB／角色補專用自動模組或已驗收專用流程，未知項不能默默排除。
 - [ ] 最新所有程式的全量 5.1／7 fixture、CLI、DOM QA、CI、公共 PR 文件同步與整輪再核對。
@@ -37,6 +37,12 @@
 已提出隔離 Server 環境與代表性來源盤點輸入需求，尚未收到。這些缺失不會被改寫成「不在本輪範圍」。不自行操作未指派的生產主機。
 
 ## 已有證據（均不代表生產資格）
+
+- 1efc13a 的兩個 GitHub CI（37728898196／37728894208）通過；之後的新改動仍需再驗。
+- 真實 SUBST 碰撞、ADS／排他鎖／junction、固定 5k 緩衝的 100,000 key merge／跨段重複與清理、嚴格 artifact metadata、分類原生錯誤、分享完整 ACL fixtures 通過。
+- Windows PowerShell 5.1 一萬筆規格：wsm-spec-scale-2eb1cdccf5e7446b952f4b4904d9595f，draft14.01s／preview44.66s／atomic apply42.51s。批次操作有持續進度；不是單筆搜尋時間或實機性能承諾。
+- 最新 metadata pipeline：wsm-pipeline-ac06dde0aa8d4af1b61992e4386360cb，含 timestamp-only drift 阻擋；後續 adapter rollback／SMB 改動另需最後版回歸。
+- File／一般 adapter 的 rollback intent：搬移前／中／後、停止前／後及移除後恢復；未知備份／配置漂移不採認。角色中斷仍保留 reboot barrier。
 
 - SourceRecovery：兩個服務部分停寫失敗保留原始設定與執行狀態；重試、來源明確唯一寫入權回復 fixture 通過。來源及目標工作目錄與 FileScope 重疊在建立操作目录前阻擋。
 - MenuContracts：0 取消、literal:0、EOF、錯誤保留原頁與篩選原子編輯通過；網域改名 credential 已接入精靈記憶體 SecretRef。

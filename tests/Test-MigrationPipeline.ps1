@@ -1,11 +1,14 @@
 ﻿#requires -Version 5.1
+param([ValidateRange(0,10000)][int]$SmallFiles=0)
 $ErrorActionPreference='Stop'
+$pipelineWatch=[Diagnostics.Stopwatch]::StartNew()
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
 $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-pipeline-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($root)
 $sourceRoot=Join-Path $root 'source';$sourceState=Join-Path $root 'source-state';[void][IO.Directory]::CreateDirectory($sourceState);$targetRoot=Join-Path $root 'target';$packages=Join-Path $root 'packages';$workspace=Join-Path $root 'manager';$targetState=Join-Path $root 'target-state'
 [void][IO.Directory]::CreateDirectory($sourceRoot);[void][IO.Directory]::CreateDirectory((Join-Path $sourceRoot 'nested'));[void][IO.Directory]::CreateDirectory((Join-Path $sourceRoot 'excluded'))
 [IO.File]::WriteAllText((Join-Path $sourceRoot 'nested\unicode-中文.txt'),'initial fixture');[IO.File]::WriteAllText((Join-Path $sourceRoot 'excluded\not-selected.txt'),'never packaged')
 $large=New-Object byte[] 2500000;for($n=0;$n -lt $large.Length;$n++){$large[$n]=[byte]($n%251)};[IO.File]::WriteAllBytes((Join-Path $sourceRoot 'chunked.bin'),$large)
+if($SmallFiles){$smallRoot=Join-Path $sourceRoot 'small-files';[void][IO.Directory]::CreateDirectory($smallRoot);for($n=0;$n -lt $SmallFiles;$n++){[IO.File]::WriteAllText((Join-Path $smallRoot ('file-'+$n+'.txt')),('fixture bytes '+$n))}}
 $source=[pscustomobject]@{HostId=[Guid]::NewGuid().ToString();Fingerprint=('a'*64);Name='fixture-source'}
 $item=New-WsmItem $source.HostId Storage DataRoot 'Approved data' 'approved-root' @{Path=$sourceRoot}
 $inv=New-WsmInventory $source 1 @($item);$inventoryPath=Join-Path $root 'inventory.json';[IO.File]::WriteAllText($inventoryPath,($inv | ConvertTo-Json -Depth 40),(New-Object Text.UTF8Encoding($false)))
@@ -20,7 +23,7 @@ Set-WsmDecision $workspace $pair @($item.ItemId) Include 'fixture approved' 1 | 
 $planPath=Join-Path $root 'plan.json';$approval=Approve-WsmMigrationPlan $workspace $pair $targetIdentity $identity.SHA256 $planPath 2 ISOLATED-PILOT
 & $module {$script:fixtureFingerprint=('a'*64)}
 $package=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState $packages -ChunkBytes 65536
-if(-not $package.Sealed -or $package.Files -ne 2 -or $package.Generation -ne 1){throw 'Initial package counters incorrect.'}
+if(-not $package.Sealed -or $package.Files -ne (2+$SmallFiles) -or $package.Generation -ne 1){throw 'Initial package counters incorrect.'}
 $verified=Test-WsmMigrationPackage $package.ManifestPath $package.SHA256
 & $module {$script:originalZipVerifier=(Get-Command Test-WsmZipVolume).ScriptBlock;$script:zipFault=$true;function script:Test-WsmZipVolume {param($Path,$Expected,$ExpectedHash='')if($script:zipFault -and $Path -like '*-0002.zip.partial'){$script:zipFault=$false;throw 'Injected ZIP interruption after first sealed volume'};& $script:originalZipVerifier $Path $Expected $ExpectedHash}}
 $zipFailed=$false;try{Export-WsmPackageZip $package.ManifestPath $package.SHA256 (Join-Path $root 'zip') -VolumeBytes 1MB | Out-Null}catch{$zipFailed=$true};if(-not $zipFailed -or (Test-Path (Join-Path $root 'zip\transport.json'))){throw 'ZIP interruption fixture failed or incomplete transport was sealed.'}
@@ -37,6 +40,10 @@ if($preview.Blocked -or $preview.Rows[0].Action -ne 'Create'){throw 'Fresh targe
 $state=Invoke-WsmRestore $package.ManifestPath $package.SHA256 $targetState
 if($state.Stage -ne 'Succeeded' -or (Get-FileHash (Join-Path $targetRoot 'chunked.bin')).Hash -ine (Get-FileHash (Join-Path $sourceRoot 'chunked.bin')).Hash){throw 'File restore/content mismatch.'}
 if(Test-Path (Join-Path $targetRoot 'excluded')){throw 'Excluded subtree restored.'}
+$timestampFile=Join-Path $targetRoot 'chunked.bin';$savedWrite=[IO.File]::GetLastWriteTimeUtc($timestampFile);[IO.File]::SetLastWriteTimeUtc($timestampFile,$savedWrite.AddSeconds(-30))
+$timestampDrift=Get-WsmRestorePreview $package.ManifestPath $package.SHA256 $targetState;if(-not $timestampDrift.Blocked){throw 'Timestamp-only drift was ignored'}
+& $module {param($Path,$Hash,$Target)$p=Test-WsmMigrationPackage $Path $Hash;$check=Test-WsmFileScope $p.Plan.Items[0] $p $Target;if($check.Passed -or $check.Problems -notmatch 'timestamp'){throw 'File timestamp was not compared against artifact metadata'}} $package.ManifestPath $package.SHA256 $targetRoot
+[IO.File]::SetLastWriteTimeUtc($timestampFile,$savedWrite)
 $again=Invoke-WsmRestore $package.ManifestPath $package.SHA256 $targetState;if($again.Items.Count -ne 1){throw 'Retry duplicated ownership rows.'}
 if(-not (Test-WsmJournal $targetState $pair).Consistent){throw 'Journal checkpoint/hash chain inconsistent.'}
 $checkpointPath=Join-Path (Join-Path $targetState $pair) 'state.json';$oldCheckpoint=[IO.File]::ReadAllText($checkpointPath)
@@ -53,7 +60,7 @@ Set-WsmValidationEvidence $package.ManifestPath $package.SHA256 $targetState $it
 $staged=Invoke-WsmValidation $package.ManifestPath $package.SHA256 $targetState Staged;if($staged.Passed){throw 'Configuration alone incorrectly passed business gate.'}
 Set-WsmValidationEvidence $package.ManifestPath $package.SHA256 $targetState $item.ItemId BusinessStaged 'Fixture owner' 'fixture functional read passed' $true | Out-Null
 if(-not (Invoke-WsmValidation $package.ManifestPath $package.SHA256 $targetState Staged).Passed){throw 'Valid business evidence failed.'}
-[IO.File]::WriteAllText((Join-Path $targetRoot 'unexpected.txt'),'new target data');$drift=Get-WsmRestorePreview $package.ManifestPath $package.SHA256 $targetState;if(-not $drift.Blocked){throw 'Unowned target change did not block retry.'};[IO.File]::Delete((Join-Path $targetRoot 'unexpected.txt'))
+$priorTargetWrite=[IO.Directory]::GetLastWriteTimeUtc($targetRoot);[IO.File]::WriteAllText((Join-Path $targetRoot 'unexpected.txt'),'new target data');$drift=Get-WsmRestorePreview $package.ManifestPath $package.SHA256 $targetState;if(-not $drift.Blocked){throw 'Unowned target change did not block retry.'};[IO.File]::Delete((Join-Path $targetRoot 'unexpected.txt'));[IO.Directory]::SetLastWriteTimeUtc($targetRoot,$priorTargetWrite)
 # Final full snapshot replaces only the previously owned root, preserving its rollback root.
 & $module {$script:fixtureFingerprint=('a'*64)}
 $freezePath=Join-Path $root 'freeze.json';$freeze=Export-WsmFreezeRecord $planPath $approval.SHA256 $freezePath 'Fixture owner' 'fixture writers quiesced' OWNER-CONFIRMED-QUIESCENCE -SourceIdentityReleased -ReleaseEvidence 'fixture old name and IP withdrawn' -SourceStateDirectory $sourceState
@@ -97,4 +104,5 @@ if($rolledBack.Stage -ne 'RolledBack' -or -not (Test-Path (Join-Path $targetRoot
 $bad=$false;try{Get-WsmRestorePreview $package.ManifestPath $package.SHA256 $targetState | Out-Null}catch{$bad=$true};if(-not $bad){throw 'Old generation accepted.'}
 # Independently trusted manifest protects its indexes, whose hashes protect every chunk.
 $blob=Get-ChildItem (Join-Path $final.Directory 'payload') -Filter *.blob | Select-Object -First 1;[IO.File]::WriteAllText($blob.FullName,'tampered');$bad=$false;try{Test-WsmMigrationPackage $final.ManifestPath $final.SHA256 | Out-Null}catch{$bad=$true};if(-not $bad){throw 'Tampered payload accepted.'}
-Write-Host ('PASS: real file/ACL package and staged restore, exclusion, chunks, retry, drift, final generation/deletion/backup, evidence invalidation, old generation and tampering. Evidence: '+$root)
+$pipelineEvidence=[pscustomobject]@{SmallFiles=$SmallFiles;ElapsedSeconds=$pipelineWatch.Elapsed.TotalSeconds;PrivateBytes=[Diagnostics.Process]::GetCurrentProcess().PrivateMemorySize64;HostApisAreFixtures=$true;RealFilesAndMetadata=$true;ProductionVerified=$false};[IO.File]::WriteAllText((Join-Path $root 'result.json'),($pipelineEvidence | ConvertTo-Json))
+Write-Host ('PASS: real file/ACL package and staged restore, exclusion, chunks, retry, drift, final generation/deletion/backup, evidence invalidation, old generation and tampering. SmallFiles='+$SmallFiles+' / '+[Math]::Round($pipelineWatch.Elapsed.TotalSeconds,2)+'s. Evidence: '+$root)

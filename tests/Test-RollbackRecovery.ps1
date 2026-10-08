@@ -19,4 +19,20 @@ $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-rollback-recovery-'+[Guid]::New
         if(-not (Test-WsmJournal (Join-Path $folder 'state') $pair).Consistent){throw 'Recovered rollback journal/checkpoint differs'}
     }
 } $root
+& $module {
+    param($Root)
+    function script:Get-WsmAdapterState {param($Spec)[pscustomobject]@{Exists=$script:rollbackExists}}
+    function script:Test-WsmAdapterConfiguration {param($Spec,$Phase)[pscustomobject]@{Passed=(-not $script:rollbackDrift -and ($Phase -eq 'Final' -or $script:rollbackStopped))}}
+    function script:Invoke-WsmAdapterActivation {param($Spec,$Enable)if($Enable){throw 'Rollback activated producer'};$script:rollbackStopped=$true}
+    function script:Remove-WsmCreatedAdapter {param($Spec)$script:removeCalls++;$script:rollbackExists=$false}
+    foreach($phase in @('BeforeStop','AfterStop','AfterRemove','Drift')){
+        $script:rollbackExists=$phase -ne 'AfterRemove';$script:rollbackStopped=$phase -eq 'AfterStop';$script:rollbackDrift=$phase -eq 'Drift';$script:removeCalls=0;$pair=[Guid]::NewGuid().ToString();$id='b'*64
+        $item=[pscustomobject]@{ItemId=$id;MigrationSpec=[pscustomobject]@{Adapter='Service';Desired=[pscustomobject]@{Name='FixtureSvc'}}};$paths=Get-WsmOperationPaths (Join-Path $Root 'adapter-rollback') $pair
+        $package=[pscustomobject]@{Manifest=[pscustomobject]@{PairId=$pair;BatchId=[Guid]::NewGuid().ToString();PlanHash=('a'*64);Target=[pscustomobject]@{Fingerprint=('c'*64)}}};$state=Get-WsmOperationState $paths $package
+        $op=[pscustomobject]@{ItemId=$id;Phase='RollbackAdapter';Adapter='Service';ManifestHash=('d'*64);SpecHash=(Get-WsmHashText ($item.MigrationSpec | ConvertTo-Json -Depth 40 -Compress))};$state.Items=@([pscustomobject]@{ItemId=$id;Status='Succeeded';CreatedByTool=$true});$state.PendingOperations=@($op);Add-WsmJournal $paths $state RollbackIntent $id $op
+        if($phase -eq 'Drift'){$blocked=$false;try{Complete-WsmAdapterRollback $item $op $paths $state}catch{$blocked=$true};if(-not $blocked -or $script:removeCalls -or -not $script:rollbackExists){throw 'Drifting rollback adapter removed'};continue}
+        Complete-WsmAdapterRollback $item $op $paths $state
+        if($script:rollbackExists -or $state.PendingOperations.Count -or $state.Items[0].Status -ne 'RolledBack' -or ($phase -eq 'AfterRemove' -and $script:removeCalls)){throw 'Adapter rollback phase recovery duplicated removal or retained pending ownership'}
+    }
+} $root
 Write-Host ('PASS: durable file rollback before/between/after rename, retained new data and drifting backup refusal. Evidence: '+$root)

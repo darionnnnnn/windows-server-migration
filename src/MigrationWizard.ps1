@@ -71,5 +71,5 @@ function Show-WsmMigrationWizard {
         }}finally{$secrets.Clear()}}
         '4' {Show-WsmMigrationMenu $Workspace}
         default{Write-Host 'Invalid role.'}
-    }}catch [OperationCanceledException]{Write-Host $_.Exception.Message}catch [IO.EndOfStreamException]{throw}catch{Write-Host ('操作失敗：'+$_.Exception.Message) -ForegroundColor Red}}
+    }}catch [OperationCanceledException]{Write-Host $_.Exception.Message}catch [IO.EndOfStreamException]{throw}catch{Write-Host ('操作失敗：'+$_.Exception.Message) -ForegroundColor Red;Get-WsmFailureDetails $_ | Format-List Category,NativeCode,Hint}}
 }

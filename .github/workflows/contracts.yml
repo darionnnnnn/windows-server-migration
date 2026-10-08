@@ -33,6 +33,13 @@ jobs:
           ./tests/Test-SourceRecovery.ps1
           ./tests/Test-MenuContracts.ps1
           ./tests/Test-RollbackRecovery.ps1
+          ./tests/Test-PhysicalPaths.ps1
+          ./tests/Test-FileEdges.ps1
+          ./tests/Test-ArtifactKeySpool.ps1
+          ./tests/Test-ArtifactRecords.ps1
+          ./tests/Test-FailureDetails.ps1
+          ./tests/Test-ShareContracts.ps1
+          ./tests/Test-SpecScale.ps1 -Items 200
       - name: Inventory ZIP trust and extraction boundaries
         shell: powershell
         run: ./tests/Test-Archive.ps1

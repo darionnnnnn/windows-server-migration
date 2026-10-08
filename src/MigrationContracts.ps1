@@ -28,7 +28,8 @@ function Assert-WsmFields($Object,[string[]]$Allowed,[string[]]$Required=@()) {
 }
 function Assert-WsmWorkspaceSeparation($Plan,[string]$Workspace,[ValidateSet('SourcePath','TargetPath')][string]$ScopeField) {
     $workspacePath=[IO.Path]::GetFullPath($Workspace).TrimEnd('\');Assert-WsmNoReparse $workspacePath
-    foreach($i in $Plan.Items){if($i.Decision -eq 'Include' -and $i.MigrationSpec.Adapter -eq 'FileScope'){$root=[IO.Path]::GetFullPath($i.MigrationSpec.$ScopeField).TrimEnd('\');if($workspacePath -ieq $root -or $workspacePath.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($workspacePath+'\',[StringComparison]::OrdinalIgnoreCase)){throw ($ScopeField+' overlaps operation evidence/state workspace; move the tool workspace outside business data before any operation.')}}}
+    $physicalWorkspace=Get-WsmPhysicalPath $workspacePath;$destinations=New-Object 'System.Collections.Generic.List[string]'
+    foreach($i in $Plan.Items){if($i.Decision -eq 'Include' -and $i.MigrationSpec.Adapter -eq 'FileScope'){$root=[IO.Path]::GetFullPath($i.MigrationSpec.$ScopeField).TrimEnd('\');$physicalRoot=Get-WsmPhysicalPath $root;if((Test-WsmPathOverlap $workspacePath $root) -or (Test-WsmPathOverlap $physicalWorkspace $physicalRoot)){throw ($ScopeField+' overlaps operation evidence/state workspace; move the tool workspace outside business data before any operation.')};if($ScopeField -eq 'TargetPath'){foreach($prior in $destinations){if(Test-WsmPathOverlap $prior $physicalRoot){throw 'Target scopes overlap through physical aliases.'}};$destinations.Add($physicalRoot)}}}
 }
 function Assert-WsmSourceWorkspaceSeparation($Plan,[string]$Workspace) {
     Assert-WsmWorkspaceSeparation $Plan $Workspace SourcePath
