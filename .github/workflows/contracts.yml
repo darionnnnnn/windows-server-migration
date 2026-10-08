@@ -45,3 +45,10 @@ jobs:
       - name: Fleet integration (small CI fixture)
         shell: pwsh
         run: ./tests/Test-FleetScale.ps1 -Hosts 10 -ItemsPerHost 200
+      - name: Retain synthetic failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-fixture-diagnostics
+          path: ${{ runner.temp }}/wsm-pipeline-*/target-state/**/*.file-validation.json
+          if-no-files-found: ignore
