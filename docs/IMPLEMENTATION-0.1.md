@@ -27,7 +27,7 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 - [ ] 更多 adapter 原生正反例與精準欄位稽核；IIS recursive schema／nested drift、Win32 own-process SCM supplement、安裝副作用隔離／quarantine、專用 UNC／DFS 角色 scope 契約已有實作與 fixture。完整 Server API／provider identity 資格、更多服務帳號模式與第三方安裝副作用仍未驗收。
 - [ ] 跨台循環應用的實際 freeze／activation／rollback 協調與資格驗收；GroupPlan／Receipt／Barrier／RollbackResult／Qualification 契約及消費端已實作，真實群組／產品證據待取得。
 - [ ] 依真實盤點為實際入選的第三方 runtime／DB／角色補專用自動模組或已驗收專用流程，未知項不能默默排除。
-- [ ] 最後 checkpoint CI 結果，以及真實瀏覽器／主控台和整輪實機再核對；`546b3cc` 已推送、公共 draft PR 已同步；CI 執行中。最新本機測試覆蓋與尚未完成的大量基準見下方，不以舊快照代替最後修改。
+- [ ] 真實瀏覽器／主控台和整輪實機再核對；程式 checkpoint `10c896a` 已推送、公共 draft PR 已同步，完整 CI 已通過。最新本機測試覆蓋與尚未完成的大量基準見下方，不以舊快照代替最後修改。
 
 ## 需要實際環境的驗收（不能用合成代替）
 
@@ -40,6 +40,8 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 
 ## 本輪固定快照與最後修改驗證
 
+- 程式／測試 checkpoint `10c896a`：GitHub Actions [37792481411](https://github.com/darionnnnnn/windows-server-migration/actions/runs/37792481411) 全部工作通過，涵蓋 54 個測試腳本（主要 WinPS 5.1，Fleet／Contracts／Delta 另有 PS7），實際 >4 GiB 與最新 LabReport／設定還原皆通過。正式 src／入口雜湊與最後本機固定快照一致。後續文件同步不改程式或測試，不重算為另一份生產资格。
+
 - `wsm-complete-regression-404a5292f0294e39adad3aabc8da63af`：51 個獨立 child-process 測試，在 Windows PowerShell 5.1／PowerShell 7 各 51/51 通過；src／入口雜湊重驗未變。包含 100k 報告分塊 DOM、十台 × 200 fleet、小型完整 pipeline、真實 >4 GiB、分類設定門檻、原生 helper 與取消等。這是新增 LabReport／設定差異報告及進度接線前的完整快照，不宣稱等於最後 54 個測試全套重新執行。
 - `wsm-integrated-final-a0c4645aca3e42f3b49cd2bc7ad110b1`：對修改影響的 12 個測試於兩個 engine 執行，含新增 API／選單／CLI、設定差異與真實核准包→還原→報告、取消及 delta。WinPS 5.1 的新 consumer 測試因未指定 UTF-8 讀取 zh-TW JSON 失敗，已修正；PS7 native fixture 一次因測試負載觸發真實 timeout，單獨同程式重跑通過，沒有放寬正式 timeout 或宣稱該次全通過。
 - `wsm-final-lab-locked-952eecc875b34ce097a0f31f29bef197`：最後 LabReport 鎖定／安裝類型／語系修改的 6 項（LabValidation、LabReportConsumer、ConfigArtifactWorkflow、ConfigArtifactReview、EntryPoint、OperationRequests）在兩個 engine 通過；包含實際 CLI 環境報告、來源設定變更清單、真實檔案還原／drift、operation lock 排他、state／journal 不變。原生 OS identity／Server collectors 的還原劇本為 fixture，不能當成 Server 資格。
@@ -47,7 +49,7 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 - 10,000 小檔完整端到端測試仍在執行；前次被使用者暫停的 10k run 不計為通過。微基準每 5,000 列 JSON 從約 7.44 秒降至 1.28 秒，不能推成完整 Server 性能或 RTO 證據。
 - 瀏覽器政策拒絕代理開啟 `file://`，沒有以其他途徑繞過；最新離線報告的實際瀏覽器 QA 留待使用者於測試機確認。Node DOM 不代替此項。
 - `546b3cc` 首輪 CI 揭露 SourceTaskReconciliation 測試在模組內重入時引用外層 `$module` 的作用域錯誤；改為直接呼叫既有模組函式，5.1／7 重驗通過。CI 多腳本步驟改逐一獨立 child process 並檢查 exit code，避免 fixture 狀態互相污染；正式 src／入口未改。
-- CI `7036af7`／`524c924` 揭露 delta fixture 的暫存來源 ACL 未持久化 AI 控制位元，target Set-Acl 後增加 AI，Exact 比對正確阻擋。fixture 封裝前對自有暫存來源 ACL 寫回並擷取持久化基準，新增完整 baseline readback 斷言；正式 ACL 政策及全部 src／入口不放寬。增量流程移至獨立 CI job，84ce490 的 5.1／7 GitHub job 通過。ConfigArtifactWorkflow 在 runner 呈現相同 AI 基準差異，亦於核准前持久化暫存來源 ACL；最後設定／還原／LabReport 工作流程已於 5.1／7 本機重驗通過，最後全量 CI 待結果。
+- CI `7036af7`／`524c924` 揭露 delta fixture 的暫存來源 ACL 未持久化 AI 控制位元，target Set-Acl 後增加 AI，Exact 比對正確阻擋。fixture 封裝前對自有暫存來源 ACL 寫回並擷取持久化基準，新增完整 baseline readback 斷言；正式 ACL 政策及全部 src／入口不放寬。增量流程移至獨立 CI job，84ce490 的 5.1／7 GitHub job 通過。ConfigArtifactWorkflow 在 runner 呈現相同 AI 基準差異，亦於核准前持久化暫存來源 ACL；最後設定／還原／LabReport 工作流程已於 5.1／7 本機重驗通過，`10c896a` 完整 CI 通過。
 - 原生進度／取消已接入長時間 hash／copy／native wait 與 delta preflight；helper 每秒至多約一次有界進度更新，不輸出 paths／raw stdout，完成後清除。安裝器子程序／服務副作用仍需本機確認。
 - 使用者新增離線實機回傳需求：`Export-WsmLabValidationReport`、角色 6、`-Action LabReport`、OperationRequest 均已接線。JSON 保留完整 checks，TXT 優先 FAIL／Blocked 且標示省略數；人工／業務證據維持 NotTested，ProductionVerified=false。未知產品專用模組及真實資格待實際盤點及報告後補齊。
 

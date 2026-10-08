@@ -495,7 +495,7 @@ P1 表示若未解決，可能選錯／還原錯誤、遺失資料或誤報完�
 
 使用者要求全部未實作項目補齊後才停。0.3 已加入 D/E/F 隔離 pilot 核心與更多 A/B/C 接線，仍在「實作→核對→补齊」循環，未標整輪完成、未進入不同模型 closeout。最新逐項程式、有效測試、當期待辦與環境驗收統一維護於 [實作核對表](IMPLEMENTATION-0.1.md)，現行操作契約在 [OPERATIONS.md](OPERATIONS.md)。原 A–F／R01–R16 條件完整保留，不以刪 TODO 代替完成。
 
-本輪基準 7287399，主代理整合並獨立驗證，按使用者要求以 gpt-6-luna low／medium／high 委派；本輪已推送 checkpoint 為 546b3cc，包含 adapter、payload、target identity、source result、restore/journal recovery、cutover、SID map、角色精靈、深層 enterprise collector、跨主機切換證據門檻與對應 fixtures。沒有對實際 Server 做任何設定還原／改名／IP 操作。
+本輪基準 7287399，主代理整合並獨立驗證，按使用者要求以 gpt-6-luna low／medium／high 委派；本輪程式／測試已推送 checkpoint 為 10c896a，完整 GitHub CI 37792481411 通過，包含 adapter、payload、target identity、source result、restore/journal recovery、cutover、SID map、角色精靈、深層 enterprise collector、跨主機切換證據門檻與對應 fixtures。沒有對實際 Server 做任何設定還原／改名／IP 操作。
 
 原型檔 Get-ServerMigrationInventory.ps1 屬使用者本機探索檔，不改寫或加入正式版本。100k 合成與 real-file fixture 只證明相應管理端／檔案契約；尚未提供來源真實盤點及隔離 Server 測試結果，不宣稱角色產品或十台生產驗收通過。
 ### 2026-10-08 測試主機的離線驗證回傳（使用者定案）
