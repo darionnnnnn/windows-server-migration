@@ -1,0 +1,28 @@
+# Local runtime state, server evidence and migration payloads.
+/work/
+/outputs/
+/inventory/
+/inventories/
+/artifacts/
+/payloads/
+/packages/
+/reports/
+/logs/
+/secrets/
+/backups/
+/migration-workspace/
+
+# Secrets and private certificate material.
+.env
+.env.*
+*.pfx
+*.p12
+*.key
+*.log
+*.zip
+
+# Local editor/OS files.
+.vs/
+.idea/
+Thumbs.db
+Desktop.ini
