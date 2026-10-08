@@ -32,6 +32,8 @@ try {
     $configPath=Join-Path $sourceRoot 'web.config';$businessPath=Join-Path $sourceRoot 'business.dat'
     [IO.File]::WriteAllText($configPath,'approved-config-v1',(New-Object Text.UTF8Encoding($false)))
     [IO.File]::WriteAllText($businessPath,'business-data-v1',(New-Object Text.UTF8Encoding($false)))
+    # Persist runner-specific ACL control bits on test-owned paths before exact package capture.
+    foreach($fixturePath in @($sourceRoot,$configPath,$businessPath)){$fixtureAcl=Get-Acl -LiteralPath $fixturePath;Set-Acl -LiteralPath $fixturePath -AclObject $fixtureAcl}
     $source=[pscustomobject]@{HostId=[Guid]::NewGuid().ToString();Fingerprint=('a'*64);Name='fixture-source';OS='Fixture Server';Version='10.0.fixture'}
     $item=New-WsmItem $source.HostId Storage DataRoot 'Fixture data scope' 'fixture-config-scope' @{Path=$sourceRoot}
     $inventory=New-WsmInventory $source 1 @($item);$inventoryPath=Join-Path $root 'inventory.json';[IO.File]::WriteAllText($inventoryPath,($inventory | ConvertTo-Json -Depth 40),(New-Object Text.UTF8Encoding($false)))
