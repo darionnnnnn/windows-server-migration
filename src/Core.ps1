@@ -1,8 +1,9 @@
 ﻿function Get-WsmUtc { [DateTime]::UtcNow.ToString('o') }
 function New-WsmContractError([string]$Message) { New-Object IO.InvalidDataException($Message) }
+$script:WsmJsonDateKindSupported=(Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')
 function ConvertFrom-WsmJson([string]$Text) {
-    if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) { $Text | ConvertFrom-Json -DateKind String }
-    else { $Text | ConvertFrom-Json }
+    if ($script:WsmJsonDateKindSupported) { ConvertFrom-Json -InputObject $Text -DateKind String }
+    else { ConvertFrom-Json -InputObject $Text }
 }
 function Get-WsmHashText([string]$Text) {
     $sha = [Security.Cryptography.SHA256]::Create()

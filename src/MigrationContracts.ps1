@@ -47,18 +47,26 @@ function Assert-WsmNoReparse([string]$Path) {
 }
 function Get-WsmAdapterMatrix {
     foreach ($name in @('FileScope','ScheduledTask','Service','SmbShare','MachineEnvironment','WindowsFeature','IISPool','IISSite','Certificate','LocalUser','LocalGroup','FirewallRule','ManualWorkflow')) {
-        [pscustomobject]@{ Adapter=$name; Version=1; ExportImplemented=$true; RestoreImplemented=$true; VerifyImplemented=$true; ProductionVerified=$false; RequiredMode='IsolatedPilot'; Rollback='SnapshotOrRemoveCreated'; Secrets='InMemoryCredentialOrIndependentArtifact'; SupportedSource='Windows Server with required API'; SupportedTarget='Windows Server with required API' }
+        $automatic=$name -ne 'ManualWorkflow';$rollback='RemoveCreatedAfterDriftAndTransactionReview';if($name -eq 'FileScope'){$rollback='Durable owned scope switch; retain displaced data; reconcile new transactions'}elseif($name -in @('WindowsFeature','ManualWorkflow')){$rollback='Reviewed dedicated product/role rollback'}
+        $consistency='Disabled staged consumer; owner-confirmed source freeze';if($name -eq 'FileScope'){$consistency='Immutable / OwnerFreeze / ProductBackup with exact freeze binding'}elseif($name -eq 'ManualWorkflow'){$consistency='Product-specific owner procedure; no automatic restorer'}
+        $dependencies=@();if($name -notin @('FileScope','ManualWorkflow')){$dependencies=@(Get-WsmAdapterRequiredCommands $name)}
+        [pscustomobject]@{ Adapter=$name; Version=1; CollectorImplemented=$automatic; ExportImplemented=($automatic -and $name -ne 'Certificate'); RestoreImplemented=$automatic; VerifyImplemented=$automatic; ProductionVerified=$false; EvidenceType='Native APIs: fixtures; FileScope: local real-file fixtures; Server lab pending'; RequiredMode='IsolatedPilot'; Rollback=$rollback; Secrets='InMemoryCredentialOrIndependentArtifact'; SupportedSource='Exact OS/build/edition/product tuple requires qualification record'; SupportedTarget='Exact OS/build/edition/product tuple requires qualification record'; Dependencies=$dependencies; Permissions='Elevated local administrator, approved API and artifact access; SACL needs security privilege'; ConsistencyMethod=$consistency; RebootBehavior=$(if($name -eq 'WindowsFeature'){'No automatic restart; durable boot barrier'}else{'Reviewed identity rename can require restart'}); SideEffects=$(if($name -eq 'WindowsFeature'){'Owner isolation before install; quarantine reviewed new consumers after return'}else{'Explicit final state applied only at reviewed cutover'}); CapabilityScope=$(if($name -eq 'Certificate'){'Owner-exported protected PFX/certificate artifact; private key ACL needs dedicated qualification'}elseif($name -eq 'ManualWorkflow'){'Procedure/artifact/business evidence only'}else{'Only fields accepted and read back by typed adapter contract'}) }
     }
 }
 function Assert-WsmMigrationSpec($Spec) {
-    $allowed=@('Adapter','Desired','SourcePath','TargetPath','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy','SecretRef','Owner','Evidence','DesiredFinalState','BusinessChecks','Product','Procedure','Artifacts','RequiredCommands','AclControlPolicy','CatchUpPolicy')
+    $allowed=@('Adapter','Desired','SourcePath','TargetPath','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy','SecretRef','Owner','Evidence','DesiredFinalState','BusinessChecks','Product','Procedure','Artifacts','RequiredCommands','AclControlPolicy','CatchUpPolicy','RemoteStorage','AccountMode','ManagedAccountEvidence','ConfigFiles','ConfigOverrides')
     Assert-WsmFields $Spec $allowed @('Adapter','Owner','Evidence')
+    if(($Spec.PSObject.Properties['ConfigFiles'] -or $Spec.PSObject.Properties['ConfigOverrides']) -and $Spec.Adapter -cne 'FileScope'){throw (New-WsmContractError 'Configuration artifact classification requires FileScope.')}
+    if(($Spec.PSObject.Properties['AccountMode'] -or $Spec.PSObject.Properties['ManagedAccountEvidence']) -and $Spec.Adapter -cne 'Service'){throw 'Service identity fields require a Service adapter.'}
+    if($Spec.PSObject.Properties['RemoteStorage']){if($Spec.Adapter -cne 'ManualWorkflow'){throw (New-WsmContractError 'RemoteStorage requires a dedicated ManualWorkflow.')};[void](Assert-WsmRemoteStorageContract $Spec.RemoteStorage ([string]$Spec.Owner))}
     if($Spec.PSObject.Properties['AclControlPolicy'] -and ($Spec.Adapter -ne 'FileScope' -or $Spec.AclControlPolicy -cnotin @('Exact','AllowAutoInheritedUpgrade'))){throw 'ACL control policy must be explicitly reviewed for FileScope.'}
     if($Spec.PSObject.Properties['CatchUpPolicy'] -and $Spec.Adapter -ne 'ScheduledTask'){throw 'CatchUpPolicy is only valid for ScheduledTask.'}
     if (@((Get-WsmAdapterMatrix).Adapter) -cnotcontains $Spec.Adapter -or [string]::IsNullOrWhiteSpace($Spec.Owner) -or [string]::IsNullOrWhiteSpace($Spec.Evidence)) { throw (New-WsmContractError 'Unknown adapter or missing owner/evidence.') }
     if ($Spec.Adapter -eq 'FileScope') {
+        Assert-WsmConfigArtifactSpec $Spec
         foreach ($f in @('SourcePath','TargetPath','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy')) { if (-not $Spec.PSObject.Properties[$f]) { throw ('FileScope requires '+$f) } }
         [void](ConvertTo-WsmCanonicalPath $Spec.SourcePath); [void](ConvertTo-WsmCanonicalPath $Spec.TargetPath)
+        if($Spec.SourcePath.StartsWith('\\') -or $Spec.TargetPath.StartsWith('\\')){throw (New-WsmContractError 'UNC/DFS/NAS scope requires an owner-reviewed dedicated provider identity, alias/ownership and consistency workflow; generic FileScope cannot approve an unresolved remote scope.')}
         if (@('Immutable','OwnerFreeze','ProductBackup') -cnotcontains $Spec.Consistency -or @('DaclOwner','DaclOwnerSacl') -cnotcontains $Spec.Metadata -or @('Block','ReplaceOwned') -cnotcontains $Spec.ConflictPolicy) { throw 'Invalid file scope policy.' }
         foreach ($p in $Spec.ExcludedRelativePaths) { Assert-WsmRelativePath $p }
     }
@@ -95,6 +103,7 @@ function Approve-WsmMigrationPlan {
         if (@(Get-WsmReviewIssues $Workspace $PairId | Where-Object Gate -EQ ReviewComplete).Count) { throw 'Complete review and dependencies before migration approval.' }
         if ($target.Fingerprint -ceq $c.Source.Fingerprint) { throw 'Source and target must be different machines.' }
         $included=@($c.Items | Where-Object Decision -EQ Include); if (-not $included.Count) { throw 'No selected migration items.' }
+        [void](Assert-WsmRemoteStorageScopes $included)
         $destinations=@{}
         foreach ($i in $included) {
             if (-not $i.PSObject.Properties['MigrationSpec']) { throw ('No migration specification for '+$i.ItemId) }; Assert-WsmMigrationSpec $i.MigrationSpec
@@ -116,5 +125,6 @@ function Read-WsmMigrationPlan([string]$Path,[string]$ExpectedHash) {
     foreach ($id in @($p.BatchId,$p.PairId,$p.ApprovalId,$p.Source.HostId,$p.Target.HostId)) { Assert-WsmId $id }
     if ($p.Mode -cne 'IsolatedPilot' -or $p.Source.Fingerprint -notmatch '^[a-f0-9]{64}$' -or $p.Target.Fingerprint -notmatch '^[a-f0-9]{64}$') { throw 'Invalid migration mode/identity.' }
     $seen=@{}; foreach ($i in $p.Items) { if ($i.ItemId -notmatch '^[a-f0-9]{64}$' -or $seen.ContainsKey($i.ItemId) -or @('Include','Exclude') -cnotcontains $i.Decision) { throw 'Invalid migration item.' }; $seen[$i.ItemId]=$true; if ($i.Decision -eq 'Include') { Assert-WsmMigrationSpec $i.MigrationSpec } }
+    [void](Assert-WsmRemoteStorageScopes @($p.Items | Where-Object Decision -CEQ Include))
     $p
 }

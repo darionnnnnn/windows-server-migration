@@ -6,6 +6,7 @@ $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-probes-'+[Guid]::NewGuid().ToSt
 & $module {
     function script:Get-WsmExtendedDiscovery { param($HostId) @() }
     function script:Get-WsmEnterpriseDiscovery { param($HostId,[switch]$Deep) @() }
+    function script:Get-WsmServiceSupplementState {param($Name)throw 'Fixture supplemental SCM capture unavailable'}
     function script:Get-WsmPreflight { [pscustomobject]@{ IsServer=$true; Administrator=$true; Is64Bit=$true; OS='Fixture Server'; Version='10.0.fixture' } }
     function script:Get-CimInstance { param($ClassName,$Filter)
         switch ($ClassName) {

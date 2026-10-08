@@ -87,11 +87,13 @@ function Export-WsmDecisions {
     $c.Items | ForEach-Object { [pscustomobject][ordered]@{ BatchId=$c.BatchId; PairId=$c.PairId; SourceHostId=$c.Source.HostId; ItemId=$_.ItemId; InventoryRevision=$c.InventoryRevision; DecisionRevision=$c.DecisionRevision; Category=$_.Category; Name=(ConvertTo-WsmCsvSafe $_.Name); AllowedDecisions='Include|Exclude|Pending'; Decision=$_.Decision; Reason=(ConvertTo-WsmCsvSafe $_.Reason) } } | Export-Csv -LiteralPath $Path -NoTypeInformation -Encoding UTF8
 }
 function Import-WsmDecisions {
-    [CmdletBinding(SupportsShouldProcess)] param([string]$Workspace,[string]$PairId,[string]$Path,[switch]$Preview,[string]$ExpectedHash)
+    [CmdletBinding(SupportsShouldProcess)] param([string]$Workspace,[string]$PairId,[string]$Path,[switch]$Preview,[string]$ExpectedHash,[int]$ExpectedRevision=-1)
     $snapshot=Read-WsmFileSnapshot $Path $ExpectedHash
     $rows=@($snapshot.Text | ConvertFrom-Csv)
     Invoke-WsmLocked $Workspace {
-        $c=Get-WsmCatalog $Workspace $PairId; $index=@{}; foreach ($i in $c.Items) { $index[$i.ItemId]=$i }; $seen=@{}
+        $c=Get-WsmCatalog $Workspace $PairId
+        if($ExpectedRevision -ge 0 -and $c.DecisionRevision -ne $ExpectedRevision){throw (New-WsmContractError 'CSV preview revision is stale; preview the current CSV and catalog again.')}
+        $index=@{}; foreach ($i in $c.Items) { $index[$i.ItemId]=$i }; $seen=@{}
         if (-not $rows.Count) { if ($Preview) { return [pscustomobject]@{ DecisionRevision=$c.DecisionRevision; SourceHash=$snapshot.Hash; Rows=0; Changed=0; Changes=@() } }; return $c }
         $processed=0
         foreach ($r in $rows) {

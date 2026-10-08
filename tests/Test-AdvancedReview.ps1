@@ -59,12 +59,12 @@ Check ($candidates.Count -eq 2 -and @($candidates | Where-Object { $_.Settings.O
 Reject { & $module { Read-WsmXml '<!DOCTYPE a [<!ENTITY x SYSTEM "file:///C:/fixture">]><a>&x;</a>' } } 'DTD input accepted'
 $summary=@(Get-WsmCategorySummary $workspace $pair)
 Check (($summary | Measure-Object Total -Sum).Sum -eq 126) 'Category counts omit manual item'
-$result=[pscustomobject]@{ SchemaVersion=1; ToolVersion='0.1.0'; Kind='StageResult'; BatchId=$c.BatchId; PairId=$pair; SourceHostId=$source.HostId; RunId=[Guid]::NewGuid().ToString(); Sequence=1; Stage='Restore'; Status='Blocked'; InventoryRevision=2; DecisionRevision=(Rev); ProducedUtc=[DateTime]::UtcNow.ToString('o') }
+$result=[pscustomobject]@{ SchemaVersion=1; ToolVersion='0.1.0'; Kind='StageResult'; BatchId=$c.BatchId; PairId=$pair; SourceHostId=$source.HostId; RunId=[Guid]::NewGuid().ToString(); Sequence=1; Stage='Inventory'; Status='Blocked'; InventoryRevision=2; DecisionRevision=(Rev); ProducedUtc=[DateTime]::UtcNow.ToString('o') }
 $resultFile=Save $result 'result.json'; Import-WsmStageResult $workspace $resultFile (Get-FileHash $resultFile).Hash
 Reject { Import-WsmStageResult $workspace $resultFile (Get-FileHash $resultFile).Hash } 'Duplicate result overwrote current state'
-$result.Sequence=2; $result.Status='Succeeded'; $resultFile=Save $result 'false-success.json'
+$result.Sequence=2; $result.Stage='Restore'; $result.Status='Succeeded'; $resultFile=Save $result 'false-success.json'
 Reject { Import-WsmStageResult $workspace $resultFile (Get-FileHash $resultFile).Hash } 'Unsupported adapter success unlocked migration'
-$result.RunId=[Guid]::NewGuid().ToString(); $result.Sequence=1; $result.Status='Blocked'; $resultFile=Save $result 'new-run-stale.json'
+$result.RunId=[Guid]::NewGuid().ToString(); $result.Sequence=1; $result.Stage='Inventory'; $result.Status='Blocked'; $resultFile=Save $result 'new-run-stale.json'
 Reject { Import-WsmStageResult $workspace $resultFile (Get-FileHash $resultFile).Hash } 'New run reset stage sequence and overwrote newer result'
 $report=Join-Path $root 'report.html'; Export-WsmReport $workspace $pair $report
 $text=[IO.File]::ReadAllText($report+'.txt')

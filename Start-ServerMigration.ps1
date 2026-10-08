@@ -1,11 +1,12 @@
 ﻿#requires -Version 5.1
 [CmdletBinding()] param(
     [string]$Action='Menu',[switch]$DeepDiscovery,
+    [ValidateSet('Source','Target')][string]$Role='Source',[ValidateSet('Staged','Final')][string]$Phase='Staged',[string]$ManifestPath,[string]$StateDirectory,
     [string]$Workspace,[string]$Path,[string]$ExpectedHash,[string]$TargetName,[string]$PairId,
     [string]$Category,[string]$Search,[string]$Decision='Pending',[string]$Reason,[int]$ExpectedRevision=-1,[string]$ItemId,[string]$Name,[string]$NaturalKey,[string]$Owner,[string]$Evidence,[string]$Mapping,[ValidateSet('Path','Account','Endpoint')][string]$MappingType='Path')
 $ErrorActionPreference='Stop'
 if (-not $Workspace) { $Workspace=Join-Path $PSScriptRoot 'migration-workspace' }
-Import-Module (Join-Path $PSScriptRoot 'src\WindowsServerMigration.psd1') -Force
+Import-Module (Join-Path $PSScriptRoot 'src\WindowsServerMigration.psd1') -Force -DisableNameChecking
 function Read-MenuValue([string]$Label) {
     $value=Read-Host ($Label+'（0 取消；literal:0 表示文字 0）')
     if($null -eq $value){throw (New-Object IO.EndOfStreamException('Console input ended.'))}
@@ -57,12 +58,13 @@ function Review-Pair([string]$SelectedPair) {
 }
 try {
     if ($Action -eq 'Operation') { $result=Invoke-WsmOperationRequest $Path $ExpectedHash; $result; exit (Get-WsmOperationStatusCode $result) }
-    if ($Action -cnotin @('Menu','Inventory','Initialize','Import','ImportZip','Report','FleetReport','ExportCsv','ImportCsv','Issues','RulePreview','ApplyRule','ManualItem','Mapping','Evidence','Approve','FleetGraph','ImportResult','Capabilities','ConsistencyGroup','TemplatePreview','ApplyTemplate','ExportTemplate')) { throw (New-Object IO.InvalidDataException('Unknown action.')) }
+    if ($Action -cnotin @('Menu','LabReport','Inventory','Initialize','Import','ImportZip','Report','FleetReport','ExportCsv','ImportCsvPreview','ImportCsv','Issues','RulePreview','ApplyRule','ManualItem','Mapping','Evidence','Approve','FleetGraph','ImportResult','Capabilities','ConsistencyGroup','TemplatePreview','ApplyTemplate','ExportTemplate')) { throw (New-Object IO.InvalidDataException('Unknown action.')) }
     if ($Action -ne 'Menu') {
-        if ($Action -in @('Inventory','Import','ImportZip','Report','FleetReport','ExportCsv','ImportCsv','Approve','FleetGraph','ImportResult') -and [string]::IsNullOrWhiteSpace($Path)) { throw (New-Object IO.InvalidDataException('This action requires -Path.')) }
-        if ($Action -in @('Import','ImportZip','ImportResult') -and $ExpectedHash -notmatch '^[a-fA-F0-9]{64}$') { throw (New-Object IO.InvalidDataException('This action requires an independently obtained -ExpectedHash.')) }
-        if ($Action -in @('ApplyRule','ManualItem','Mapping','Evidence','Approve','ConsistencyGroup','ApplyTemplate') -and $ExpectedRevision -lt 0) { throw (New-Object IO.InvalidDataException('This action requires -ExpectedRevision from the current catalog/preview.')) }
+        if ($Action -in @('LabReport','Inventory','Import','ImportZip','Report','FleetReport','ExportCsv','ImportCsvPreview','ImportCsv','Approve','FleetGraph','ImportResult') -and [string]::IsNullOrWhiteSpace($Path)) { throw (New-Object IO.InvalidDataException('This action requires -Path.')) }
+        if ($Action -in @('Import','ImportZip','ImportResult','ImportCsv') -and $ExpectedHash -notmatch '^[a-fA-F0-9]{64}$') { throw (New-Object IO.InvalidDataException('This action requires an independently obtained -ExpectedHash.')) }
+        if ($Action -in @('ImportCsv','ApplyRule','ManualItem','Mapping','Evidence','Approve','ConsistencyGroup','ApplyTemplate') -and $ExpectedRevision -lt 0) { throw (New-Object IO.InvalidDataException('This action requires -ExpectedRevision from the current catalog/preview.')) }
         switch ($Action) {
+            LabReport { $result=Export-WsmLabValidationReport -OutputDirectory $Path -Role $Role -ManifestPath $ManifestPath -ExpectedHash $ExpectedHash -StateDirectory $StateDirectory -Phase $Phase; $result; exit (Get-WsmOperationStatusCode $result) }
             Inventory { $result=Export-WsmInventory -OutputDirectory $Path -DeepDiscovery:$DeepDiscovery; $result; if ($result.Incomplete -gt 0) { exit 2 } }
             Initialize { Initialize-WsmWorkspace $Workspace }
             Import { Import-WsmInventory $Workspace $Path $ExpectedHash $TargetName }
@@ -70,7 +72,8 @@ try {
             Report { Export-WsmReport $Workspace $PairId $Path }
             FleetReport { Export-WsmFleetReport $Workspace $Path }
             ExportCsv { Export-WsmDecisions $Workspace $PairId $Path }
-            ImportCsv { Import-WsmDecisions $Workspace $PairId $Path }
+            ImportCsvPreview { Import-WsmDecisions $Workspace $PairId $Path -Preview -ExpectedHash $ExpectedHash -ExpectedRevision $ExpectedRevision | ConvertTo-Json -Depth 8 }
+            ImportCsv { Import-WsmDecisions $Workspace $PairId $Path -ExpectedHash $ExpectedHash -ExpectedRevision $ExpectedRevision }
             Issues { $issues=@(Get-WsmReviewIssues $Workspace $PairId); $issues; if ($issues.Count) { exit 2 } }
             RulePreview { Get-WsmRulePreview $Workspace $PairId -Category $Category -Search $Search -Decision $Decision -Reason $Reason }
             ApplyRule { Invoke-WsmReviewRule $Workspace $PairId -Category $Category -Search $Search -Decision $Decision -Reason $Reason -ExpectedRevision $ExpectedRevision }
@@ -129,6 +132,6 @@ try {
 } catch {
     [Console]::Error.WriteLine($_.Exception.Message)
     if ($_.Exception -is [IO.InvalidDataException] -or $_.Exception -is [Management.Automation.ParameterBindingException]) { exit 4 }
-    if ($_.Exception -is [IO.EndOfStreamException]) { exit 3 }
+    if ($_.Exception -is [IO.EndOfStreamException] -or $_.Exception -is [OperationCanceledException]) { exit 3 }
     exit 1
 }

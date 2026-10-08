@@ -1,5 +1,5 @@
 ﻿function Get-WsmOperationActions {
-    [ordered]@{SourceResume='Invoke-WsmSourceResume';SpecBundleExport='Export-WsmMigrationSpecBundle';SpecBundlePreview='Get-WsmMigrationSpecBundlePreview';SpecBundleImport='Import-WsmMigrationSpecBundle';RepairWorkspace='Repair-WsmWorkspace';RawEvidence='Export-WsmRawEvidenceManifest';RegisterTarget='Register-WsmTarget';ToolRelease='Export-WsmToolRelease';SourceResult='Export-WsmSourceStageResult';IdentityMap='Set-WsmIdentityMap';ConfigureMigration='Set-WsmMigrationSpec';ApproveMigration='Approve-WsmMigrationPlan';EstimatePackage='Get-WsmPackageEstimate';ExportPackage='Export-WsmMigrationPackage';CheckPackage='Test-WsmMigrationPackage';RestorePreview='Get-WsmRestorePreview';Restore='Invoke-WsmRestore';FreezeSource='Export-WsmFreezeRecord';ValidationEvidence='Set-WsmValidationEvidence';Validate='Invoke-WsmValidation';CutoverPlan='New-WsmCutoverPlan';Cutover='Invoke-WsmCutover';Acceptance='Get-WsmAcceptanceGates';ExportResult='Export-WsmStageResult';Repair='Repair-WsmOperation';RollbackPreview='Get-WsmRollbackPreview';Rollback='Invoke-WsmRollback';CheckJournal='Test-WsmJournal';PackageZip='Export-WsmPackageZip';ImportPackageZip='Import-WsmPackageZip';MigrationReport='Export-WsmOperationReport'}
+    [ordered]@{LabReport='Export-WsmLabValidationReport';ConfigReview='Export-WsmConfigArtifactReview';ConfigScopeDraft='Export-WsmConfigArtifactScopeDraft';DeltaManifest='New-WsmArtifactDeltaManifest';DeltaCheck='Test-WsmArtifactDeltaManifest';DeltaZip='Export-WsmArtifactDeltaZip';DeltaImport='Import-WsmArtifactDeltaZip';DeltaRestore='Invoke-WsmArtifactDeltaRestore';DeltaRepair='Repair-WsmArtifactDeltaRestore';CancellationToken='New-WsmCancellationToken';RequestCancellation='Request-WsmCancellation';GroupPlan='New-WsmConsistencyGroupPlan';GroupReceipt='New-WsmConsistencyGroupReceipt';GroupBarrier='Assert-WsmConsistencyGroupBarrier';RollbackResult='Export-WsmRollbackResult';QualificationKey='Get-WsmQualificationRecordKey';QualificationRecord='New-WsmQualificationRecord';QualificationAdd='Add-WsmQualification';QualificationRevoke='Revoke-WsmQualification';QualificationLookup='Resolve-WsmProductionQualification';QualificationMatrix='Get-WsmQualificationMatrix';SourceTaskTemplate='Export-WsmSourceTaskReconciliationTemplate';SourceResume='Invoke-WsmSourceResume';SpecBundleExport='Export-WsmMigrationSpecBundle';SpecBundlePreview='Get-WsmMigrationSpecBundlePreview';SpecBundleImport='Import-WsmMigrationSpecBundle';RepairWorkspace='Repair-WsmWorkspace';RawEvidence='Export-WsmRawEvidenceManifest';RegisterTarget='Register-WsmTarget';ToolRelease='Export-WsmToolRelease';SourceResult='Export-WsmSourceStageResult';IdentityMap='Set-WsmIdentityMap';ConfigureMigration='Set-WsmMigrationSpec';ApproveMigration='Approve-WsmMigrationPlan';EstimatePackage='Get-WsmPackageEstimate';ExportPackage='Export-WsmMigrationPackage';CheckPackage='Test-WsmMigrationPackage';RestorePreview='Get-WsmRestorePreview';Restore='Invoke-WsmRestore';FreezeSource='Export-WsmFreezeRecord';ValidationEvidence='Set-WsmValidationEvidence';Validate='Invoke-WsmValidation';CutoverPlan='New-WsmCutoverPlan';Cutover='Invoke-WsmCutover';Acceptance='Get-WsmAcceptanceGates';ExportResult='Export-WsmStageResult';Repair='Repair-WsmOperation';RollbackPreview='Get-WsmRollbackPreview';Rollback='Invoke-WsmRollback';CheckJournal='Test-WsmJournal';PackageZip='Export-WsmPackageZip';ImportPackageZip='Import-WsmPackageZip';MigrationReport='Export-WsmOperationReport'}
 }
 function Invoke-WsmOperationRequest {
     [CmdletBinding(SupportsShouldProcess)]param([string]$Path,[string]$ExpectedHash,[hashtable]$Secrets=@{})
@@ -13,8 +13,21 @@ function Invoke-WsmOperationRequest {
     & $command @arguments
 }
 function Get-WsmOperationStatusCode($Result) {
-    foreach($r in @($Result)){if($r.PSObject.Properties['Blocked'] -and $r.Blocked){return 2};if($r.PSObject.Properties['Passed'] -and -not $r.Passed){return 2};if($r.PSObject.Properties['Stage'] -and $r.Stage -in @('Failed','Blocked','ManualEvidenceRequired','RebootRequired','PostCutoverValidationRequired')){if($r.Stage -eq 'Failed'){return 1};return 2};if($r.PSObject.Properties['FinalAccepted'] -and (-not $r.FinalAccepted -or -not $r.RetirementReady)){return 2}}
-    0
+    $code=0
+    foreach($r in @($Result)){
+        if($null -eq $r){continue}
+        $states=@();foreach($field in @('Stage','Status')){if($r.PSObject.Properties[$field]){$states+=@([string]$r.$field)}}
+        if($r.PSObject.Properties['Result'] -and $r.Result -and $r.Result.PSObject.Properties['Kind'] -and $r.Result.Kind -ceq 'StageResult' -and $r.Result.PSObject.Properties['Status']){$states+=@([string]$r.Result.Status)}
+        if($states -ccontains 'Failed'){return 1}
+        if($states -ccontains 'Cancelled'){$code=3;continue}
+        $blocked=@($states | Where-Object {$_ -cin @('NotStarted','Ready','Running','Blocked','Partial','RetryPending','ManualEvidenceRequired','RebootRequired','PostCutoverValidationRequired','ReviewRequired')}).Count -gt 0
+        if($r.PSObject.Properties['Qualified'] -and -not $r.Qualified){$blocked=$true}
+        if($r.PSObject.Properties['Blocked'] -and $r.Blocked){$blocked=$true}
+        if($r.PSObject.Properties['Passed'] -and -not $r.Passed){$blocked=$true}
+        if($r.PSObject.Properties['FinalAccepted'] -and (-not $r.FinalAccepted -or -not $r.RetirementReady)){$blocked=$true}
+        if($blocked -and $code -eq 0){$code=2}
+    }
+    $code
 }
 function Show-WsmMigrationMenu {
     param([string]$Workspace)

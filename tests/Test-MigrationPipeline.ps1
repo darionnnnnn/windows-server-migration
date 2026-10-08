@@ -25,11 +25,13 @@ $planPath=Join-Path $root 'plan.json';$approval=Approve-WsmMigrationPlan $worksp
 $package=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState $packages -ChunkBytes 65536
 if(-not $package.Sealed -or $package.Files -ne (2+$SmallFiles) -or $package.Generation -ne 1){throw 'Initial package counters incorrect.'}
 $verified=Test-WsmMigrationPackage $package.ManifestPath $package.SHA256
-& $module {$script:originalZipVerifier=(Get-Command Test-WsmZipVolume).ScriptBlock;$script:zipFault=$true;function script:Test-WsmZipVolume {param($Path,$Expected,$ExpectedHash='')if($script:zipFault -and $Path -like '*-0002.zip.partial'){$script:zipFault=$false;throw 'Injected ZIP interruption after first sealed volume'};& $script:originalZipVerifier $Path $Expected $ExpectedHash}}
-$zipFailed=$false;try{Export-WsmPackageZip $package.ManifestPath $package.SHA256 (Join-Path $root 'zip') -VolumeBytes 1MB | Out-Null}catch{$zipFailed=$true};if(-not $zipFailed -or (Test-Path (Join-Path $root 'zip\transport.json'))){throw 'ZIP interruption fixture failed or incomplete transport was sealed.'}
-$transport=Export-WsmPackageZip $package.ManifestPath $package.SHA256 (Join-Path $root 'zip') -VolumeBytes 1MB
-$zipAgain=Export-WsmPackageZip $package.ManifestPath $package.SHA256 (Join-Path $root 'zip') -VolumeBytes 1MB;if($zipAgain.SHA256 -ine $transport.SHA256){throw 'Completed ZIP retry changed trusted transport.'}
-if($transport.Volumes -lt 3){throw 'ZIP volume split not enforced.'}
+$volumeBytes=1MB;if($SmallFiles){$volumeBytes=64MB}else{
+    & $module {$script:originalZipVerifier=(Get-Command Test-WsmZipVolume).ScriptBlock;$script:zipFault=$true;function script:Test-WsmZipVolume {param($Path,$Expected,$ExpectedHash='')if($script:zipFault -and $Path -like '*-0002.zip.partial'){$script:zipFault=$false;throw 'Injected ZIP interruption after first sealed volume'};& $script:originalZipVerifier $Path $Expected $ExpectedHash}}
+    $zipFailed=$false;try{Export-WsmPackageZip $package.ManifestPath $package.SHA256 (Join-Path $root 'zip') -VolumeBytes $volumeBytes | Out-Null}catch{$zipFailed=$true};if(-not $zipFailed -or (Test-Path (Join-Path $root 'zip\transport.json'))){throw 'ZIP interruption fixture failed or incomplete transport was sealed.'}
+}
+$transport=Export-WsmPackageZip $package.ManifestPath $package.SHA256 (Join-Path $root 'zip') -VolumeBytes $volumeBytes
+$zipAgain=Export-WsmPackageZip $package.ManifestPath $package.SHA256 (Join-Path $root 'zip') -VolumeBytes $volumeBytes;if($zipAgain.SHA256 -ine $transport.SHA256){throw 'Completed ZIP retry changed trusted transport.'}
+if(-not $SmallFiles -and $transport.Volumes -lt 3){throw 'ZIP volume split not enforced.'}
 $unpacked=Import-WsmPackageZip $transport.Path $transport.SHA256 (Join-Path $root 'unpacked')
 if($unpacked.SHA256 -ine $package.SHA256 -or -not $unpacked.Valid){throw 'Verified multipart ZIP import failed.'}
 if(@(Get-ChildItem (Join-Path $package.Directory 'payload') -Filter *.blob).Count -lt 3){throw 'Large file was not split into bounded payload chunks.'}
@@ -83,6 +85,8 @@ Set-WsmValidationEvidence $final.ManifestPath $final.SHA256 $targetState $item.I
     function script:New-NetIPAddress {param($InterfaceAlias,$IPAddress,$PrefixLength,$DefaultGateway,$ErrorAction)$script:fixtureAddresses+=@([pscustomobject]@{InterfaceAlias=$InterfaceAlias;IPAddress=$IPAddress;PrefixLength=$PrefixLength;AddressState='Preferred'})}
     function script:Remove-NetIPAddress {param([Parameter(ValueFromPipeline)]$InputObject,[switch]$Confirm)process{$script:fixtureAddresses=@($script:fixtureAddresses | Where-Object IPAddress -NE $InputObject.IPAddress)}}
     function script:Set-DnsClientServerAddress {param($InterfaceAlias,$ServerAddresses)$script:fixtureDns=$ServerAddresses}
+    function script:Get-DnsClientServerAddress {param($InterfaceAlias,$AddressFamily,$ErrorAction)[pscustomobject]@{ServerAddresses=$script:fixtureDns}}
+    function script:Get-NetRoute {param($InterfaceAlias,$DestinationPrefix,$ErrorAction)[pscustomobject]@{NextHop='192.0.2.1'}}
 }
 $network=[pscustomobject]@{FinalName=$env:COMPUTERNAME;InterfaceAlias='FixtureNIC';FinalIP='192.0.2.20';PrefixLength=24;DefaultGateway='192.0.2.1';DnsServers=@('192.0.2.53');TemporaryIP=@('192.0.2.10');DomainProcedureEvidence='fixture domain identity prechecked';RollbackProcedure='fixture stop/reconcile then identity rollback';Owner='Fixture owner';MaintenanceWindowUtc=[DateTime]::UtcNow.AddMinutes(-1).ToString('o');ValidUntilUtc=[DateTime]::UtcNow.AddHours(1).ToString('o')}
 $networkPath=Join-Path $root 'network.json';[IO.File]::WriteAllText($networkPath,($network | ConvertTo-Json -Depth 10),(New-Object Text.UTF8Encoding($false)))
@@ -94,6 +98,8 @@ $gates=Get-WsmAcceptanceGates $final.ManifestPath $final.SHA256 $targetState;if(
 Set-WsmValidationEvidence $final.ManifestPath $final.SHA256 $targetState $item.ItemId BusinessFinal 'Fixture owner' 'final client read passed' $true | Out-Null
 foreach($check in @('DNS','Kerberos','ExternalConnectivity','Monitoring','SecurityAgent','License','UserAcceptance')){Set-WsmValidationEvidence $final.ManifestPath $final.SHA256 $targetState '' $check 'Fixture owner' ('fixture '+$check+' passed') $true | Out-Null}
 $gates=Get-WsmAcceptanceGates $final.ManifestPath $final.SHA256 $targetState;if(-not $gates.FinalAccepted -or $gates.RetirementReady){throw 'FinalAccepted/RetirementReady not distinct.'}
+# Only the observation clock is advanced in this fixture; no real elapsed-time qualification is claimed.
+& $module {function script:Get-WsmObservationClock {[DateTimeOffset]::UtcNow.AddHours(25)}}
 foreach($check in @('BackupRestore','LongCycleJobs','Observation','RetirementRetention')){Set-WsmValidationEvidence $final.ManifestPath $final.SHA256 $targetState '' $check 'Fixture owner' ('fixture '+$check+' passed') $true | Out-Null}
 if(-not (Get-WsmAcceptanceGates $final.ManifestPath $final.SHA256 $targetState).RetirementReady){throw 'Complete retirement evidence rejected.'}
 $rollback=Get-WsmRollbackPreview $final.ManifestPath $final.SHA256 $targetState;$bad=$false;try{Invoke-WsmRollback $final.ManifestPath $final.SHA256 $targetState $rollback.PreviewHash ('ROLLBACK '+$pair) | Out-Null}catch{$bad=$true};if(-not $bad){throw 'Post-transaction rollback allowed without reconciliation.'}

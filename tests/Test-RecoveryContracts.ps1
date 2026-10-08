@@ -59,13 +59,23 @@ if((Get-WsmCatalog $root $c.PairId).InventoryRevision -ne 2 -or (Test-Path (Join
 } (Join-Path $root 'workspace-boundaries')
 & $module {
     param($Root)
-    $id='a'*64;$pair=[Guid]::NewGuid().ToString();$script:adapterRecoveryPackage=[pscustomobject]@{Manifest=[pscustomobject]@{PairId=$pair;BatchId=[Guid]::NewGuid().ToString();Target=[pscustomobject]@{Fingerprint=('b'*64)};PlanHash=('d'*64)};Plan=[pscustomobject]@{Items=@([pscustomobject]@{ItemId=$id;MigrationSpec=[pscustomobject]@{Adapter='WindowsFeature'}})}}
+    $id='a'*64;$pair=[Guid]::NewGuid().ToString();$script:adapterRecoveryPackage=[pscustomobject]@{Manifest=[pscustomobject]@{PairId=$pair;BatchId=[Guid]::NewGuid().ToString();Target=[pscustomobject]@{Fingerprint=('b'*64)};PlanHash=('d'*64)};Plan=[pscustomobject]@{Items=@([pscustomobject]@{ItemId=$id;MigrationSpec=[pscustomobject]@{Adapter='WindowsFeature';Desired=[pscustomobject]@{IsolationEvidence='fixture';SideEffects=@()}}})}}
     function script:Get-WsmAdapterState {param($Spec)[pscustomobject]@{Exists=$true}}
     function script:Test-WsmAdapterConfiguration {param($Spec)[pscustomobject]@{Passed=$true;Actual=[pscustomobject]@{Exists=$true}}}
     function script:Get-WsmBootStamp {'original-boot'}
     $paths=Get-WsmOperationPaths $Root $pair;$state=Get-WsmOperationState $paths $script:adapterRecoveryPackage
-    $intent=[pscustomobject]@{ItemId=$id;Phase='AdapterCreating';Adapter='WindowsFeature';ManifestHash=('d'*64);AbsentBefore=$true;BeforeHash=('e'*64);BootBefore='original-boot'};$state.PendingOperations=@($intent);Add-WsmJournal $paths $state AdapterIntent $id $intent
+    $baselinePath=Join-Path $paths.Root ($id+'.installer-baseline.json');Write-WsmJson $baselinePath ([pscustomobject]@{Items=@();Utc=(Get-WsmUtc)})
+    function script:Get-WsmInstallerSnapshot {[pscustomobject]@{Items=@();Utc=(Get-WsmUtc)}}
+    $intent=[pscustomobject]@{ItemId=$id;Phase='AdapterCreating';Adapter='WindowsFeature';ManifestHash=('d'*64);AbsentBefore=$true;BeforeHash=('e'*64);BootBefore='original-boot';InstallerBaselinePath=$baselinePath;InstallerBaselineHash=(Get-FileHash -LiteralPath $baselinePath).Hash};$state.PendingOperations=@($intent);Add-WsmJournal $paths $state AdapterIntent $id $intent
     $result=Repair-WsmOperation fixture ('d'*64) $Root
     if($result.State.Stage -cne 'RebootRequired' -or $result.State.Items[0].Status -cne 'RebootRequired' -or $result.State.Items[0].BootBefore -cne 'original-boot'){throw 'Interrupted feature install bypassed reboot barrier or lost durable boot baseline'}
 } (Join-Path $root 'feature-interruption')
+& $module {
+    . (Join-Path $PSScriptRoot '..\src\Cancellation.ps1')
+    $cancel=New-Object OperationCanceledException('fixture owner cancellation');$cancel.Data['CancellationRequested']=$true;$cancel.Data['CancellationBoundary']='AfterChunk';$cancel.Data['PairId']=[Guid]::NewGuid().ToString();$cancel.Data['PlanHash']='a'*64;$cancel.Data['ManifestHash']='b'*64;$cancel.Data['OperationId']=[Guid]::NewGuid().ToString();$cancel.Data['NativeResult']='Cancelled';$cancel.Data['AutomaticRetrySafe']=$false
+    $details=Get-WsmCancellationFailureDetails $cancel
+    if($details.Category -cne 'Cancelled' -or $details.ExitCode -ne 3 -or $details.OperationId -cne $cancel.Data['OperationId'] -or $details.AutomaticRetrySafe -ne $false -or $details.RawOutputIncluded -ne $false){throw 'Owner cancellation lost its exit-3 classification, operation scope, or no-retry/no-output contract.'}
+    $publicDetails=Get-WsmFailureDetails $cancel
+    if($publicDetails.Category -cne 'Cancelled' -or $publicDetails.ExitCode -ne 3 -or $publicDetails.AutomaticRetrySafe -ne $false -or $publicDetails.RawOutputIncluded -ne $false){throw 'Public failure details did not classify owner cancellation as exit 3 without retry or raw output.'}
+}
 Write-Host ('PASS: interrupted workspace and adapter intent recovery; scope/workspace boundaries, drift guard, SID mapping, provider evidence and bounded index reader. Evidence: '+$root)

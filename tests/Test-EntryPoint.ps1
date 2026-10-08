@@ -23,6 +23,26 @@ if ($LASTEXITCODE -ne 4) { throw 'Unknown action must return 4.' }
 if ($LASTEXITCODE -ne 4) { throw 'Invalid trusted hash must return 4.' }
 $ErrorActionPreference='Stop'
 if ((Get-WsmCatalog $workspace $c.PairId).DecisionRevision -ne 0) { throw 'Rejected CLI input changed review.' }
+$csv=Join-Path $root 'decisions.csv';Export-WsmDecisions $workspace $c.PairId $csv
+$csvRows=@(Import-Csv -LiteralPath $csv);$csvRows[0].Decision='Exclude';$csvRows[0].Reason='owner reviewed exclusion';$csvRows | Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8
+$previewLog=Join-Path $root 'csv-preview.json'
+& $engine -NoProfile -NonInteractive -File $entry -Action ImportCsvPreview -Workspace $workspace -PairId $c.PairId -Path $csv *> $previewLog
+if($LASTEXITCODE -ne 0){throw 'CSV preview must return 0.'}
+$csvPreview=Get-Content -LiteralPath $previewLog -Raw | ConvertFrom-Json
+if($csvPreview.Changed -ne 1 -or $csvPreview.DecisionRevision -ne 0 -or (Get-WsmCatalog $workspace $c.PairId).DecisionRevision -ne 0){throw 'CSV preview changed the catalog or omitted the review diff.'}
+$ErrorActionPreference='Continue'
+& $engine -NoProfile -NonInteractive -File $entry -Action ImportCsvPreview -Workspace $workspace -PairId $c.PairId -Path $csv -ExpectedHash $csvPreview.SourceHash -ExpectedRevision 1 *> (Join-Path $root 'csv-preview-revision.log')
+if($LASTEXITCODE -ne 4){throw 'CSV preview must honor an explicitly supplied expected revision.'}
+& $engine -NoProfile -NonInteractive -File $entry -Action ImportCsv -Workspace $workspace -PairId $c.PairId -Path $csv *> (Join-Path $root 'csv-no-preview-binding.log')
+if($LASTEXITCODE -ne 4){throw 'CSV apply without preview hash/revision must return 4.'}
+$ErrorActionPreference='Stop'
+& $engine -NoProfile -NonInteractive -File $entry -Action ImportCsv -Workspace $workspace -PairId $c.PairId -Path $csv -ExpectedHash $csvPreview.SourceHash -ExpectedRevision $csvPreview.DecisionRevision *> (Join-Path $root 'csv-apply.log')
+if($LASTEXITCODE -ne 0 -or (Get-WsmCatalog $workspace $c.PairId).Items[0].Decision -cne 'Exclude'){throw 'CSV preview-bound apply did not commit the reviewed decision.'}
+$ErrorActionPreference='Continue'
+& $engine -NoProfile -NonInteractive -File $entry -Action ImportCsv -Workspace $workspace -PairId $c.PairId -Path $csv -ExpectedHash $csvPreview.SourceHash -ExpectedRevision $csvPreview.DecisionRevision *> (Join-Path $root 'csv-stale-preview.log')
+if($LASTEXITCODE -ne 4){throw 'CSV stale preview revision must return 4.'}
+$ErrorActionPreference='Stop'
+if((Get-WsmCatalog $workspace $c.PairId).DecisionRevision -ne 1){throw 'Rejected stale CSV preview changed review state.'}
 Write-Host ('PASS: CLI success 0, blocked 2, invalid action/hash 4, rejected input retains state. Evidence: '+$root)
 # CI wrappers inherit native LASTEXITCODE; the expected rejection above is not a test failure.
 $global:LASTEXITCODE=0

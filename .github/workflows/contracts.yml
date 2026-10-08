@@ -40,9 +40,44 @@ jobs:
           ./tests/Test-FailureDetails.ps1
           ./tests/Test-ShareContracts.ps1
           ./tests/Test-SpecScale.ps1 -Items 200
+      - name: Durable activation account and installer contracts
+        shell: powershell
+        run: |
+          ./tests/Test-ActivationRecovery.ps1
+          ./tests/Test-CutoverActivationWorkflow.ps1
+          ./tests/Test-ObservationWorkflow.ps1
+          ./tests/Test-ServiceIdentity.ps1
+          ./tests/Test-ServiceSupplement.ps1
+          ./tests/Test-InstallerSafety.ps1
+          ./tests/Test-ShareQuiescence.ps1
+          ./tests/Test-ShareSourceWorkflow.ps1
+          ./tests/Test-SourceTaskReconciliation.ps1
+          ./tests/Test-CrossHostCoordination.ps1
+          ./tests/Test-RemoteStorageContracts.ps1
+          ./tests/Test-RemoteStorageApproval.ps1
+          ./tests/Test-Qualification.ps1
+          ./tests/Test-FleetExecutionBindings.ps1
+          ./tests/Test-Cancellation.ps1
+          ./tests/Test-CancellationWorkflow.ps1
+          ./tests/Test-NativeExecution.ps1
+          ./tests/Test-TaskSecurity.ps1
+          ./tests/Test-TaskSecurityWorkflow.ps1
+          ./tests/Test-DeltaContracts.ps1
+          ./tests/Test-DeltaWorkflow.ps1
+          ./tests/Test-DeltaMenu.ps1
+          ./tests/Test-ConfigArtifactContracts.ps1
+          ./tests/Test-ConfigArtifactWorkflow.ps1
+          ./tests/Test-ConfigArtifactReview.ps1
+          ./tests/Test-LabValidation.ps1
+          ./tests/Test-LabReportConsumer.ps1
+          ./tests/Test-PreflightCancellation.ps1
+          ./tests/Test-TaskFolderJournal.ps1
       - name: Inventory ZIP trust and extraction boundaries
         shell: powershell
         run: ./tests/Test-Archive.ps1
+      - name: Actual file above 4 GiB
+        shell: powershell
+        run: ./tests/Test-LargePayload.ps1
       - name: Noninteractive exit code contract
         shell: powershell
         run: ./tests/Test-EntryPoint.ps1

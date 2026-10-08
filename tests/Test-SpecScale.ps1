@@ -1,10 +1,11 @@
 ﻿#requires -Version 5.1
 param([ValidateRange(1,10000)][int]$Items=10000)
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'Helper-Fixtures.ps1')
 Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force
 $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-spec-scale-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($root);Initialize-WsmWorkspace $root | Out-Null
 $source=[pscustomobject]@{HostId=[Guid]::NewGuid().ToString();Fingerprint=('a'*64);Name='fixture-scale'}
-$rows=@(for($n=0;$n -lt $Items;$n++){$name='FixtureService'+$n;New-WsmItem $source.HostId Services Service $name $name ([ordered]@{Name=$name;DisplayName=$name;PathName='C:\Fixture\service.exe';StartMode='Manual';StartName='LocalSystem';Description='Fixture'})})
+$rows=@(for($n=0;$n -lt $Items;$n++){$name='FixtureService'+$n;New-WsmItem $source.HostId Services Service $name $name ([ordered]@{Name=$name;DisplayName=$name;PathName='C:\Fixture\service.exe';StartMode='Manual';StartName='LocalSystem';Description='Fixture';Supplement=(New-WsmFixtureServiceSupplement)})})
 $inventory=New-WsmInventory $source 1 $rows;$path=Join-Path $root 'inventory.json';[IO.File]::WriteAllText($path,($inventory | ConvertTo-Json -Depth 25));$c=Import-WsmInventory $root $path (Get-FileHash $path).Hash target
 Set-WsmDecision $root $c.PairId @($c.Items | ForEach-Object ItemId) Include 'scale fixture reviewed' 0 | Out-Null
 $watch=[Diagnostics.Stopwatch]::StartNew();$bundlePath=Join-Path $root 'specs.json';$draft=Export-WsmMigrationSpecBundle $root $c.PairId $bundlePath;$draftSeconds=$watch.Elapsed.TotalSeconds

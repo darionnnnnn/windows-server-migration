@@ -5,6 +5,8 @@ $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-source-recovery-'+[Guid]::NewGu
 $source=[pscustomobject]@{HostId=[Guid]::NewGuid().ToString();Fingerprint=('a'*64);Name='fixture-source'}
 & $module {
     param($Source,$SourceRoot)
+    . (Join-Path $PSScriptRoot 'Helper-Fixtures.ps1')
+    $script:fixtureSupplement=New-WsmFixtureServiceSupplement
     $script:sourceFixture=$Source;$script:sourceRoot=$SourceRoot;$script:fixtureFingerprint=('a'*64);$script:sourceRevision=0;$script:sourceServices=@{}
     foreach($name in @('FixtureSourceOne','FixtureSourceTwo')){$script:sourceServices[$name]=[pscustomobject]@{Name=$name;Mode='Auto';State='Running'}}
     function script:Get-WsmMachineIdentity {[pscustomobject]@{Fingerprint=$script:fixtureFingerprint;Name='fixture';OS='Fixture Server';Version='10.fixture';IsServer=$true;Administrator=$true;Is64Bit=$true}}
@@ -14,7 +16,7 @@ $source=[pscustomobject]@{HostId=[Guid]::NewGuid().ToString();Fingerprint=('a'*6
     function script:Start-Service {param($Name)$script:sourceServices[$Name].State='Running'}
     function script:Export-WsmInventory {
         param($OutputDirectory,[switch]$DeepDiscovery)
-        $script:sourceRevision++;$items=@(foreach($s in ($script:sourceServices.Values | Sort-Object Name)){New-WsmItem $script:sourceFixture.HostId Services Service $s.Name $s.Name ([ordered]@{Name=$s.Name;DisplayName=$s.Name;Description='fixture';PathName='C:\Fixture\service.exe';StartMode=$s.Mode;StartName='LocalSystem';ServiceType='Own Process'})})
+        $script:sourceRevision++;$items=@(foreach($s in ($script:sourceServices.Values | Sort-Object Name)){New-WsmItem $script:sourceFixture.HostId Services Service $s.Name $s.Name ([ordered]@{Name=$s.Name;DisplayName=$s.Name;Description='fixture';PathName='C:\Fixture\service.exe';StartMode=$s.Mode;StartName='LocalSystem';ServiceType='Own Process';Supplement=$script:fixtureSupplement})})
         $inventory=New-WsmInventory $script:sourceFixture $script:sourceRevision $items;$path=Join-Path $OutputDirectory ('inventory-'+$script:sourceRevision+'.json');Write-WsmJson $path $inventory;[pscustomobject]@{Path=$path;SHA256=(Get-FileHash -LiteralPath $path).Hash}
     }
     $script:stopFaultName=''
