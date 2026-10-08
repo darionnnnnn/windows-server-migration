@@ -14,6 +14,22 @@ jobs:
       - name: Advanced review and fleet contracts
         shell: powershell
         run: ./tests/Test-AdvancedReview.ps1
+      - name: Enterprise discovery fixtures
+        shell: powershell
+        run: ./tests/Test-EnterpriseDiscovery.ps1
+      - name: Disabled staging adapter contracts
+        shell: powershell
+        run: ./tests/Test-Adapters.ps1
+      - name: Payload restore cutover and crash recovery fixtures
+        shell: powershell
+        run: ./tests/Test-MigrationPipeline.ps1
+      - name: Recovery request and IIS contracts
+        shell: powershell
+        run: |
+          ./tests/Test-RecoveryContracts.ps1
+          ./tests/Test-OperationRequests.ps1
+          ./tests/Test-IisContracts.ps1
+          ./tests/Test-BulkMigrationSpecs.ps1
       - name: Inventory ZIP trust and extraction boundaries
         shell: powershell
         run: ./tests/Test-Archive.ps1

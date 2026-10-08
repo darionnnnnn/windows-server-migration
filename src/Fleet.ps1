@@ -42,9 +42,15 @@ function Import-WsmStageResult {
         $results=@(); if ($c.PSObject.Properties['StageResults']) { $results=@($c.StageResults) }
         $older=@($results | Where-Object { $_.Stage -ceq $r.Stage })
         if ($older.Count) { $last=$older | Sort-Object Sequence -Descending | Select-Object -First 1; if ($r.Sequence -le $last.Sequence) { throw 'Duplicate, stale or conflicting result; current result retained.' } }
-        if ($r.Status -eq 'Succeeded' -and $r.Stage -ne 'Inventory') { throw 'Restore/cutover adapters are not validated; success claims cannot unlock migration gates.' }
+        if ($r.Stage -ne 'Inventory' -and $r.Status -eq 'Succeeded') {
+            if(-not $c.Approval -or -not $c.Approval.PSObject.Properties['Kind'] -or $c.Approval.Kind -ne 'MigrationPlan' -or $r.ToolVersion -ne '0.3.0'){throw 'Unqualified restore/cutover success cannot unlock migration gates.'}
+            foreach($field in @('Mode','ProductionVerified','ApprovalId','PlanHash','TargetHostId','TargetFingerprint','ManifestHash','PayloadGeneration','JournalHash')){if(-not $r.PSObject.Properties[$field]){throw 'Migration stage result requires sealed plan/target/generation binding.'}}
+            if($r.Mode -cne 'IsolatedPilot' -or $r.ProductionVerified -ne $false -or $r.ApprovalId -cne $c.Approval.ApprovalId -or $r.PlanHash -ine $c.Approval.Hash -or $r.TargetHostId -cne $c.Approval.TargetHostId -or $r.TargetFingerprint -cne $c.Approval.TargetFingerprint -or $r.ManifestHash -notmatch '^[a-fA-F0-9]{64}$' -or $r.JournalHash -notmatch '^[a-f0-9]{64}$' -or $r.PayloadGeneration -lt 1){throw 'Stage result migration binding mismatch.'}
+            $latest=@($results | Where-Object {$_.PSObject.Properties['PayloadGeneration']} | Sort-Object PayloadGeneration -Descending | Select-Object -First 1);if($latest.Count -and $r.PayloadGeneration -lt $latest[0].PayloadGeneration){throw 'Stale payload generation result refused.'}
+        }
         $produced=[DateTimeOffset]::MinValue
         if (-not $r.PSObject.Properties['ProducedUtc'] -or -not [DateTimeOffset]::TryParse($r.ProducedUtc,[ref]$produced) -or $produced.Offset -ne [TimeSpan]::Zero) { throw 'Result requires a valid UTC ProducedUtc timestamp.' }
+        if($produced -gt [DateTimeOffset]::UtcNow.AddMinutes(5)){throw 'Source result clock exceeds accepted skew; synchronize and reissue.'}
         $results+= $r; $c | Add-Member NoteProperty StageResults $results -Force
         Write-WsmJson (Get-WsmCatalogPath $Workspace $r.PairId) $c
     }

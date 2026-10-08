@@ -489,28 +489,10 @@ P1 表示若未解決，可能選錯／還原錯誤、遺失資料或誤報完�
 
 實作完成後才進入獨立體檢與交付；規劃文件完成不等於遷移工具完成。
 
-## 2026-10-08 程式逐項核對與待辦更新
+## 2026-10-08 持續補實作與完整性核對
 
-比對 `2189f395` 的第一階段與 0.2 程式，結果為「部分完成，持續實作」。完整 A–F 的現況與待辦以 [操作與驗證紀錄](IMPLEMENTATION-0.1.md) 的表格維護。原型基準行號表只作歷史證據，不代表目前程式狀態。本次沒有獨立 TODO 檔可刪；已從缺口表移除完成的子項，沒有刪除本 PLAN 的需求／驗收條件。
+使用者要求全部未實作項目補齊後才停。0.3 已加入 D/E/F 隔離 pilot 核心與更多 A/B/C 接線，仍在「實作→核對→补齊」循環，未標整輪完成、未進入不同模型 closeout。最新逐項程式、有效測試、當期待辦與環境驗收統一維護於 [實作核對表](IMPLEMENTATION-0.1.md)，現行操作契約在 [OPERATIONS.md](OPERATIONS.md)。原 A–F／R01–R16 條件完整保留，不以刪 TODO 代替完成。
 
-| R2 項目 | 已核對的實作 | 未完成／驗收缺口 |
-|---|---|---|
-| R01 | Core 審核核准匯出／受信匯入、Archive 安全盤點 ZIP | 來源／目標資料包與離線還原全旅程 |
-| R02 | InventoryRevision／DecisionRevision 分離、變動重審 | payload generation／delta／fresh live drift 驗證 |
-| R03–R04 | 非 Inventory 的結果 Succeeded 拒絕；一致性群組責任證據 | 真實切換門檻／來源停寫交接／寫入所有權／回復 |
-| R05 | AdvancedReview 絕對 canonical 路徑與重疊映射阻擋 | junction／UNC alias、目標漂移與差異刪除 |
-| R06 | 迭代循環分析、一致性群組、Fleet 跨台邊與圖 | 跨台應用 freeze／activation／rollback 執行與業務驗證 |
-| R07 | 尚無 staging／還原 adapter | 安裝器自啟／重開機／任務立即觸發與最終啟用 |
-| R08 | 盤點子項 Partial、ZIP 失敗保留、部分退出碼分類 | 工具別 native code、timeout、完整取消與階段結果 |
-| R09 | Core 同一鎖定 stream hash／read；Archive 無任意解包／執行 | migration payload／信任根部署／機密 SecretRef／簽署 |
-| R10 | 跨頁規則 preview／RuleId／undo、條件模板／逐台 preview、人工組合 | 最新 100k 效能、例外 UI 與完整主控台旅程 |
-| R11 | Fleet 年齡／時鐘提示、各階段單調序號、版本不符拒絕 | 執行結果產生器、目標／payload 身分及交接有效期限 |
-| R12 | 文字完整報告、能力命令探測、CLM 阻擋、非互動入口 | Core／語系／policy 真實組合、離線依賴發行、完整退出碼 |
-| R13 | 路徑候選仍 Unsupported、ScopeUnit／責任證據、HTML 不嵌入 raw Settings | scope-unit payload、所有未選子項與機密界限 |
-| R14 | schema／tool 版本、CSV 多身分唯讀核對、UTF-8 BOM、DTD 禁用、UTC 字串相容 | 所有角色／語系 adapter、未知欄位完整證據、實機版本矩陣 |
-| R15 | 能力矩陣 Restore／Verify 固定不宣稱支援、DiscoveryGap 保留 | 每角色出口／還原／驗證／實機證據與媒體成本 |
-| R16 | 報告維持 ExportReady=false，無虛假還原完成 | FinalAccepted／RetirementReady、備份實還原、觀察及清理 |
+本輪基準 7287399，主代理親自實作；尚未提交的工作區包含 adapter、payload、target identity、source result、restore/journal recovery、cutover、SID map、角色精靈、深層 enterprise collector、跨主機切換證據門檻與對應 fixtures。沒有對實際 Server 做任何設定還原／改名／IP 操作。
 
-程式／測試對照：A 在 Inventory／Discovery／Core，B 在 AdvancedReview／Review／Templates，C 在 Reports／Fleet／Archive；入口 Start-ServerMigration。25 契約與 32 advanced 測試分別在 5.1／7.6.5 通過，另有 ZIP／盤點 fixture／DOM（包含大型列印 guard）與十台 2,000 筆合成整合。新增企業 collector 的完整 fixture、最後版真實瀏覽器 QA 與代表性 Server 實測仍未完成。
-
-實機、還原與生產驗收不可由上述合成證據取代；D/E/F 尚未補齊，保留全部待辦。不以收到使用者環境資料前的空白結果，推定任何角色不需遷移。
+原型檔 Get-ServerMigrationInventory.ps1 屬使用者本機探索檔，不改寫或加入正式版本。100k 合成與 real-file fixture 只證明相應管理端／檔案契約；尚未提供來源真實盤點及隔離 Server 環境，不宣稱角色產品或十台生產驗收通過。

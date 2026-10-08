@@ -4,9 +4,9 @@
     [pscustomobject]@{ PowerShellVersion=$PSVersionTable.PSVersion.ToString(); Is64Bit=[Environment]::Is64BitProcess; Administrator=$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator); IsServer=($os.ProductType -ne 1); OS=$os.Caption; Version=$os.Version; InventoryOnly=$true; RestoreSupported=$false }
 }
 function Export-WsmInventory {
-    [CmdletBinding()] param([Parameter(Mandatory)][string]$OutputDirectory)
-    $pre=Get-WsmPreflight
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$OutputDirectory,[switch]$DeepDiscovery)
     if ([string]$ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { throw 'Inventory requires FullLanguage; this tool does not change enterprise language policy.' }
+    $pre=Get-WsmPreflight
     if (-not $pre.IsServer -or -not $pre.Administrator -or -not $pre.Is64Bit) { throw 'Run as administrator in 64-bit PowerShell on Windows Server.' }
     $root=[IO.Path]::GetFullPath($OutputDirectory)
     if (-not (Test-Path -LiteralPath $root)) { [void][IO.Directory]::CreateDirectory($root); Protect-WsmDirectory $root }
@@ -24,7 +24,7 @@ function Export-WsmInventory {
             catch { $status='Failed'; if ($_.Exception -is [UnauthorizedAccessException] -or $_.FullyQualifiedErrorId -match 'Unauthorized|PermissionDenied') { $status='PermissionDenied' }; $items.Add((New-WsmItem $hostId $Category 'CollectorFailure' ($Category+' collector incomplete') ('probe:'+ $Category) @{ ErrorType=$_.Exception.GetType().FullName } @() $status)) }
         }
         Add-Probe System { New-WsmItem $hostId System Platform $env:COMPUTERNAME 'platform' @{ OS=$pre.OS; Version=$pre.Version; Architecture='x64'; ComputerSystem=(Get-CimInstance Win32_ComputerSystem | Select-Object Domain,PartOfDomain) } }
-        Add-Probe Services { foreach ($s in Get-CimInstance Win32_Service) { New-WsmItem $hostId Services Service $s.DisplayName $s.Name ($s | Select-Object Name,DisplayName,PathName,StartMode,StartName,ServiceType) } }
+        Add-Probe Services { foreach ($s in Get-CimInstance Win32_Service) { New-WsmItem $hostId Services Service $s.DisplayName $s.Name ($s | Select-Object Name,DisplayName,Description,PathName,StartMode,StartName,ServiceType) } }
         Add-Probe Tasks { Get-ScheduledTask -ErrorAction Stop | ForEach-Object { $t=$_; New-WsmItem $hostId Tasks ScheduledTask ($t.TaskPath+$t.TaskName) ($t.TaskPath+$t.TaskName) @{ TaskName=$t.TaskName; TaskPath=$t.TaskPath; Xml=(Export-ScheduledTask -TaskName $t.TaskName -TaskPath $t.TaskPath -ErrorAction Stop) } } }
         Add-Probe Runtime { foreach ($key in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')) { foreach ($a in Get-ItemProperty $key -ErrorAction Stop | Where-Object DisplayName) { New-WsmItem $hostId Runtime InstalledApplication $a.DisplayName $a.PSPath ($a | Select-Object DisplayName,DisplayVersion,Publisher,InstallLocation) } } }
         Add-Probe Storage { foreach ($s in Get-SmbShare -ErrorAction Stop) { New-WsmItem $hostId Storage Share $s.Name $s.Name @{ Definition=($s | Select-Object Name,Path,Description,Special,EncryptData); Access=@(Get-SmbShareAccess -Name $s.Name -ErrorAction Stop) } }; foreach ($v in Get-CimInstance Win32_Volume) { New-WsmItem $hostId Storage Volume ([string]$v.DeviceID) $v.DeviceID ($v | Select-Object DeviceID,DriveLetter,Label,FileSystem,Capacity) } }
@@ -43,9 +43,10 @@ function Export-WsmInventory {
             }
         }
         Add-Probe External { Get-WsmExtendedDiscovery $hostId }
+        Add-Probe Roles { Get-WsmEnterpriseDiscovery $hostId -Deep:$DeepDiscovery }
         $candidates=@(Get-WsmPathCandidates $hostId $items.ToArray()); foreach ($candidate in $candidates) { $items.Add($candidate) }
         foreach ($category in $script:Categories) { $items.Add((New-WsmItem $hostId $category DiscoveryGap ($category+' discovery scope requires owner confirmation') ('scope:'+ $category) @{ Note='This first-stage collector is not exhaustive. Confirm dependencies, files/ACLs, service recovery and triggers, task credentials, IIS modules/encryption, DNS/HTTP bindings, environment/ODBC/COM+, databases, AD/DHCP, clusters, queues, agents, licensing and external integrations.' } @() Unsupported)) }
-        $source=[pscustomobject]@{ HostId=$hostId; Fingerprint=$fingerprint; Name=$env:COMPUTERNAME; OS=$pre.OS; Version=$pre.Version }
+        $depth='Metadata';if($DeepDiscovery){$depth='Deep'};$source=[pscustomobject]@{ HostId=$hostId; Fingerprint=$fingerprint; Name=$env:COMPUTERNAME; OS=$pre.OS; Version=$pre.Version; DiscoveryDepth=$depth }
         $nextRevision=$state.Revision+1
         while (Test-Path -LiteralPath (Join-Path $root ('inventory-'+$nextRevision+'.json'))) { $nextRevision++ }
         $inventory=New-WsmInventory $source $nextRevision $items.ToArray()

@@ -21,7 +21,7 @@ function Write-WsmJson([string]$Path, $Data) {
     try {
         $json=$Data | ConvertTo-Json -Depth 40
         if ([Text.Encoding]::UTF8.GetByteCount($json) -gt 128MB) { throw 'Output exceeds 128 MiB; no scope splitting is implemented. Preserve the existing workspace and request large-inventory support.' }
-        [IO.File]::WriteAllText($temporary, $json, (New-Object Text.UTF8Encoding($false)))
+        $stream=[IO.File]::Open($temporary,'CreateNew','Write','None');try{$bytes=[Text.Encoding]::UTF8.GetBytes($json);$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
         if ([IO.File]::Exists($Path)) {
             $backup=Join-Path $directory ([Guid]::NewGuid().ToString('N')+'.bak')
             [IO.File]::Replace($temporary, $Path, $backup)
@@ -39,7 +39,7 @@ function Assert-WsmEnvelope($Data, [string]$Kind) {
         if (-not $Data.PSObject.Properties[$field]) { throw (New-WsmContractError ('Missing envelope field: ' + $field)) }
     }
     if (($Data.SchemaVersion -isnot [int] -and $Data.SchemaVersion -isnot [long]) -or $Data.SchemaVersion -ne 1 -or $Data.Kind -cne $Kind) { throw (New-WsmContractError 'Unsupported schema or envelope kind.') }
-    if (@('0.1.0','0.2.0') -cnotcontains $Data.ToolVersion) { throw (New-WsmContractError 'Unsupported tool version; do not reinterpret future data.') }
+    if (@('0.1.0','0.2.0','0.3.0') -cnotcontains $Data.ToolVersion) { throw (New-WsmContractError 'Unsupported tool version; do not reinterpret future data.') }
 }
 function Assert-WsmInventory($Inventory) {
     Assert-WsmEnvelope $Inventory 'Inventory'
@@ -116,6 +116,7 @@ function Initialize-WsmWorkspace {
 }
 function Get-WsmFleet {
     param([Parameter(Mandatory)][string]$Workspace)
+    if([IO.File]::Exists((Join-Path $Workspace 'workspace-transaction.json'))){throw 'Interrupted workspace transaction; run RepairWorkspace before reading or editing.'}
     $fleet = Read-WsmJson (Join-Path $Workspace 'fleet.json')
     Assert-WsmEnvelope $fleet 'Fleet'
     Assert-WsmId $fleet.BatchId
@@ -183,7 +184,7 @@ function Import-WsmInventory {
                 $prior=$previous[$entry.ItemId]
                 if ($prior.SettingsHash -ceq $entry.SettingsHash -and $prior.Present -and $prior.Status -ceq $entry.Status -and $prior.Adapter -ceq $entry.Adapter -and (($prior.Dependencies | ConvertTo-Json -Compress -Depth 10) -ceq ($entry.Dependencies | ConvertTo-Json -Compress -Depth 10))) {
                     [void](Get-WsmReviewDefaults $item)
-                    foreach ($field in @('Decision','Reason','ReviewedBy','ReviewedUtc','RuleId','Mapping','Evidence','Owner','AccountMapping','EndpointMapping','ApplicationGroup','BuiltIn','ConsistencyGroup','ConsistencyOwner','ConsistencyEvidence')) { if ($prior.PSObject.Properties[$field]) { $item.$field = $prior.$field } }
+                    foreach ($field in @('Decision','Reason','ReviewedBy','ReviewedUtc','RuleId','Mapping','Evidence','Owner','AccountMapping','EndpointMapping','ApplicationGroup','BuiltIn','ConsistencyGroup','ConsistencyOwner','ConsistencyEvidence','MigrationSpec')) { if ($prior.PSObject.Properties[$field]) { $item | Add-Member NoteProperty $field $prior.$field -Force } }
                 } else { $item.Reason='Changed since previous inventory; review required.' }
                 $previous.Remove($entry.ItemId)
             }
@@ -196,10 +197,9 @@ function Import-WsmInventory {
         $pair.SourceName=$inventory.Source.Name
         $catalog = [pscustomobject][ordered]@{ SchemaVersion=1; ToolVersion=$script:ToolVersion; Kind='Catalog'; BatchId=$fleet.BatchId; PairId=$pair.PairId; Source=$inventory.Source; TargetName=$pair.TargetName; InventoryRevision=$inventory.Revision; DecisionRevision=$decisionRevision; InventoryHash=$ExpectedHash.ToLowerInvariant(); ImportedUtc=(Get-WsmUtc); Approval=$null; Items=@($items.ToArray()); History=$history }
         if ($old -and $old.PSObject.Properties['ReviewView']) { $catalog | Add-Member NoteProperty ReviewView $old.ReviewView }
-        foreach ($field in @('PairPlan','CrossHostDependencies','StageResults')) { if ($old -and $old.PSObject.Properties[$field]) { $catalog | Add-Member NoteProperty $field $old.$field } }
+        foreach ($field in @('PairPlan','CrossHostDependencies','StageResults','IdentityMap')) { if ($old -and $old.PSObject.Properties[$field]) { $catalog | Add-Member NoteProperty $field $old.$field } }
         $catalog | Add-Member NoteProperty EvidenceUtc $inventory.CreatedUtc
-        Write-WsmJson (Get-WsmCatalogPath $Workspace $pair.PairId) $catalog
-        Write-WsmJson (Join-Path $Workspace 'fleet.json') $fleet
+        Write-WsmWorkspaceTransaction $Workspace $catalog $fleet
         $catalog
     }
 }

@@ -48,7 +48,7 @@ function Get-WsmReviewIssues {
         if ($i.Decision -eq 'Include') {
             if (-not $i.Present -or $i.Status -ne 'Success') { [pscustomobject]@{ ItemId=$i.ItemId; Gate='ExportReady'; Issue='Inventory incomplete or item absent' } }
             foreach ($d in $i.Dependencies) { if ($d.Type -eq 'Mandatory' -and (-not $index.ContainsKey($d.ItemId) -or $index[$d.ItemId].Decision -ne 'Include')) { [pscustomobject]@{ ItemId=$i.ItemId; Gate='ReviewComplete'; Issue=('Mandatory dependency not included: '+$d.ItemId) } } }
-            [pscustomobject]@{ ItemId=$i.ItemId; Gate='ExportReady'; Issue='Restore adapter not yet implemented; manual migration required' }
+            if(-not $i.PSObject.Properties['MigrationSpec'] -or -not $i.MigrationSpec){[pscustomobject]@{ ItemId=$i.ItemId; Gate='ExportReady'; Issue='Reviewed migration specification required' }}else{try{Assert-WsmMigrationSpec $i.MigrationSpec;[pscustomobject]@{ ItemId=$i.ItemId; Gate='ProductionQualification'; Issue='Adapter is implemented for isolated pilot; real-server qualification not completed' }}catch{[pscustomobject]@{ ItemId=$i.ItemId; Gate='ExportReady'; Issue='Migration specification invalid; refresh adapter fields' }}}
         }
     }
     Get-WsmDependencyCycles $c.Items

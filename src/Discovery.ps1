@@ -13,7 +13,7 @@ function Get-WsmExtendedDiscovery([string]$HostId) {
         catch { $status='Failed'; if ($_.Exception -is [UnauthorizedAccessException] -or $_.FullyQualifiedErrorId -match 'Unauthorized|PermissionDenied') { $status='PermissionDenied' }; New-WsmItem $HostId $Category CollectorFailure $Key ('extended:'+ $Key) @{ ErrorType=$_.Exception.GetType().FullName } @() $status }
     }
     Probe System 'capability-matrix' { New-WsmItem $HostId System Capabilities 'Command/language capability matrix' 'capabilities' @{ Commands=@(Get-WsmCapabilities) } }
-    Probe System 'system-policy' { New-WsmItem $HostId System SystemConfiguration 'Time zone / language / updates' 'system-configuration' @{ TimeZone=(Get-TimeZone | Select-Object Id); Culture=[string](Get-Culture); UICulture=[string](Get-UICulture); Updates=@(Get-HotFix | Select-Object HotFixID); Environment=[Environment]::GetEnvironmentVariables('Machine') } }
+    Probe System 'system-policy' { New-WsmItem $HostId System SystemConfiguration 'Time zone / language / updates' 'system-configuration' @{ TimeZone=(Get-TimeZone | Select-Object Id); Culture=[string](Get-Culture); UICulture=[string](Get-UICulture); Updates=@(Get-HotFix | Select-Object HotFixID); Environment=(Get-WsmMachineEnvironment) } }
     Probe Runtime 'odbc' {
         foreach ($branch in @('HKLM:\SOFTWARE\ODBC\ODBC.INI','HKLM:\SOFTWARE\WOW6432Node\ODBC\ODBC.INI')) {
             if (Test-Path -LiteralPath $branch) { foreach ($key in Get-ChildItem -LiteralPath $branch -ErrorAction Stop) { New-WsmItem $HostId Runtime OdbcDsn $key.PSChildName $key.Name @{ Properties=(Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction Stop) } } }
@@ -38,7 +38,7 @@ function Get-WsmExtendedDiscovery([string]$HostId) {
     }
     Probe Network 'host-proxy-tls' {
         $hosts=Join-Path $env:windir 'System32\drivers\etc\hosts'
-        New-WsmItem $HostId Network HostsFile 'hosts file' 'hosts' @{ Content=[IO.File]::ReadAllText($hosts) }
+        New-WsmItem $HostId Network HostsFile 'hosts file' 'hosts' @{ Content=(Get-WsmHostsText) }
         foreach ($branch in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings','HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL')) { if (Test-Path -LiteralPath $branch) { New-WsmItem $HostId Network RegistryEndpoint $branch $branch @{ Properties=(Get-ItemProperty -LiteralPath $branch -ErrorAction Stop) } } }
     }
 }

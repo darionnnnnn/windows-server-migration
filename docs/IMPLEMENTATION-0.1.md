@@ -1,4 +1,58 @@
-# 0.2 操作與驗證紀錄
+# 0.3 逐項實作與驗證紀錄
+
+2026-10-08，分支 codex/implementation，本轮起點 7287399；新增改動仍在工作區。狀態為「持續補齊，未完成全規劃」，尚未進入不同模型獨立體檢。已完成項從當期待辦移除，原始 PLAN 的需求及驗收條件保留。
+
+## 實作對照
+
+| 項目 | 已實作程式／交付 | 目前證據與界限 |
+|---|---|---|
+| A／R14–15 來源探索 | Inventory、Discovery、EnterpriseDiscovery、RawEvidenceManifest | 原 probes／deep enterprise fixtures；未知產品仍明確 Unsupported／Partial；真實 Server 矩陣待環境 |
+| B／R05、R10 大量審核 | AdvancedReview、Review、Templates、MigrationWizard、IdentityMapping | 原 25／32 語義契約、100k 合成；runtime SID 必须符合批准 TargetAccount；精靈與部分異常旅程待加測 |
+| C／R01、R11 集中／離線文件 | Core、WorkspaceRecovery、Reports、Fleet、Archive | catalog／fleet 交易中斷測試；源／目標 StageResult 綁 plan／target／generation，非生產資格 |
+| D／R02、R09、R13 資料包 | Payload、StreamingDigest、PackageTransport、ToolRelease | 真實測試目錄 bytes／ACL／chunk／排除／ZIP分卷／受信解包／改包阻擋；資料最終代次是 full snapshot、非變更量傳輸 |
+| E／R07、R08、R12 還原與驗證 | Restore、Adapters、IisAdapter、NativeTools、JournalRecovery、Recovery | disabled task 註冊、service staging、feature reboot、HTTPS metadata；file scope 真實檔案／ACL與日誌 replay；服務／IIS OS API 為 fixture |
+| F／R03–04、R06、R16 切換／回退 | Cutover、CrossHostGates、SourceResults、OperationReport | fixture 網路及啟用、source freeze 漂移界限、provider 過期／缺證據阻擋、新交易協調、FinalAccepted／RetirementReady 分離 |
+| 工具部署／可信操作 | 精確 tool fingerprint、固定 API OperationRequest、module／CLI、OPERATIONS.md | 白名單資料請求、記憶體 SecretRef、UTF8 BOM／5.1；工具未用企業憑證簽署，policy／信任根由企業驗收 |
+
+目前 generic 自動 adapter：FileScope、ScheduledTask、Service、SmbShare、MachineEnvironment、WindowsFeature、IISPool、IISSite、Certificate、LocalUser、LocalGroup、FirewallRule；另有 ManualWorkflow 的專用流程證據門檻。implemented 不等於 ProductionVerified；能力矩陣全部仍維持 ProductionVerified=false。ManualWorkflow 不視為產品自動還原實作。
+
+## 當期待辦（尚未實作／待補齊，不能宣告完成）
+
+- [ ] rollback／activation 半完成的可恢復 checkpoint。adapter durable absent-before intent 與 staging／absent／drift reconciliation 已通過 fixture。
+- [ ] source freeze 部分失敗、重試／過期 renewal、可核對的來源復原程序。
+- [ ] 部分原生錯誤退出碼、超時、已分類修復建議、各舊子選單取消旅程与 domain credential 的精靈接線。
+- [ ] 大 payload index 的 metadata 去重／記憶體上限與進度、大量小檔真實測試。ZIP 匯出中斷續跑已經 fault fixture 驗證；實際 >4GiB 已通過，長路徑目前明確阻擋。
+- [ ] 完整 IIS schema／nested 設定與額外配置 drift、服務依賴／帳號／補充設定的逐字段驗證及更多 adapter 正反例。
+- [ ] 跨台應用循環群組的 freeze／activation／rollback 協調與承接生產資格資料契約；現在必要 provider 缺結果會阻擋。
+- [ ] 依真實盤點為實際入選的第三方 runtime／DB／角色補專用自動模組或已驗收專用流程，未知項不能默默排除。
+- [ ] 最新所有程式的全量 5.1／7 fixture、CLI、DOM QA、CI、公共 PR 文件同步與整輪再核對。
+
+## 需要實際環境的驗收（不能用合成代替）
+
+- [ ] 代表性来源盤點和完整十台清單；owner／產品版本／媒體／容量／RPO／RTO／維護窗。
+- [ ] Server 2016／2025／Core、zh-TW／en-US、32bit runtime、不同 policy／權限的 collector／export／restore／verify 矩陣。
+- [ ] 真正 IIS／服務／任務／分享／憑證／帳號還原及 reboot 後 staging、網域改名／IP／DNS／Kerberos、實際業務接受。
+- [ ] 單台 pilot、兩台有相依應用、實際十台波次、回退演練、備份實還原／長週期工作／觀察／保留清理。
+
+已提出隔離 Server 環境與代表性來源盤點輸入需求，尚未收到。這些缺失不會被改寫成「不在本輪範圍」。不自行操作未指派的生產主機。
+
+## 已有證據（均不代表生產資格）
+
+- 批次規格草稿／整批預覽／一次 revision 原子套用：Test-BulkMigrationSpecs 通過；無效一列整批不寫入、缺列不排除、舊版拒絕。
+- 最新 pipeline：wsm-pipeline-150cc633649340148357b480e32741bf，包含 ZIP 中斷續跑、相同 transport 重試、freeze renewal。
+- 實際 >4GiB：wsm-large-file-d1d5277ac9bd443d8a0f3c0de4b3a309，4294967313 bytes／513 chunks／143.0594秒；整檔 hash、尾端和實際還原通過。已修正 Math.Max int32 溢位。
+- 全量 5.1 contracts／inventory／advanced／archive／report DOM／CLI／adapters／deep discovery／IIS／recovery／requests 通過；批次規格及後續改動需納入最後一版重跑。
+
+- Pipeline（Windows PowerShell 5.1）：wsm-pipeline-82ed7c270c2f468cb109a6c2411897e8，包含 bytes／ACL、分卷、retry、final/deletion/backup、證據失效、改包、journal/checkpoint 落盤中斷 replay。之後有新修改，最後版必須再跑。
+- RecoveryContracts：wsm-recovery-2af559f2868f40e0b02268b1a09518df，管理端交易中斷、freeze 非停寫漂移、SID override 拒絕、bounded reader、provider 缺失／過期。
+- Adapters、EnterpriseDiscovery、IisContracts：5.1 fixture 通過；IIS fixtures 只驗 metadata／規格，不是真正建立 IIS。
+- 合成十台×10,000：wsm-scale-473e7b8a0c9c4a6494d097207bf94dd1，總耗時 973.6 秒；在管理端 PowerShell 7 單台搜尋／分頁 10 次量測平均1.3236秒、最大1.8166秒。不是 WinPS5／Server／網路效能承諾。
+
+下方為前版歷史操作與驗證記錄；現況以上表及 OPERATIONS.md 為準。
+
+---
+
+# 0.2 歷史記錄（非目前待辦）
 
 日期：2026-10-08。狀態：第一階段實作中，非全計畫完成。本次比對基準：`2189f395`，分支：`codex/implementation`。本輪主代理親自實作與驗證；尚未進行不同模型獨立體檢。
 

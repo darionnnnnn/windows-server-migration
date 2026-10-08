@@ -1,6 +1,6 @@
 ﻿#requires -Version 5.1
 [CmdletBinding()] param(
-    [string]$Action='Menu',
+    [string]$Action='Menu',[switch]$DeepDiscovery,
     [string]$Workspace,[string]$Path,[string]$ExpectedHash,[string]$TargetName,[string]$PairId,
     [string]$Category,[string]$Search,[string]$Decision='Pending',[string]$Reason,[int]$ExpectedRevision=-1,[string]$ItemId,[string]$Name,[string]$NaturalKey,[string]$Owner,[string]$Evidence,[string]$Mapping,[ValidateSet('Path','Account','Endpoint')][string]$MappingType='Path')
 $ErrorActionPreference='Stop'
@@ -47,13 +47,14 @@ function Review-Pair([string]$SelectedPair) {
     }
 }
 try {
+    if ($Action -eq 'Operation') { $result=Invoke-WsmOperationRequest $Path $ExpectedHash; $result; exit (Get-WsmOperationStatusCode $result) }
     if ($Action -cnotin @('Menu','Inventory','Initialize','Import','ImportZip','Report','FleetReport','ExportCsv','ImportCsv','Issues','RulePreview','ApplyRule','ManualItem','Mapping','Evidence','Approve','FleetGraph','ImportResult','Capabilities','ConsistencyGroup','TemplatePreview','ApplyTemplate','ExportTemplate')) { throw (New-Object IO.InvalidDataException('Unknown action.')) }
     if ($Action -ne 'Menu') {
         if ($Action -in @('Inventory','Import','ImportZip','Report','FleetReport','ExportCsv','ImportCsv','Approve','FleetGraph','ImportResult') -and [string]::IsNullOrWhiteSpace($Path)) { throw (New-Object IO.InvalidDataException('This action requires -Path.')) }
         if ($Action -in @('Import','ImportZip','ImportResult') -and $ExpectedHash -notmatch '^[a-fA-F0-9]{64}$') { throw (New-Object IO.InvalidDataException('This action requires an independently obtained -ExpectedHash.')) }
         if ($Action -in @('ApplyRule','ManualItem','Mapping','Evidence','Approve','ConsistencyGroup','ApplyTemplate') -and $ExpectedRevision -lt 0) { throw (New-Object IO.InvalidDataException('This action requires -ExpectedRevision from the current catalog/preview.')) }
         switch ($Action) {
-            Inventory { $result=Export-WsmInventory -OutputDirectory $Path; $result; if ($result.Incomplete -gt 0) { exit 2 } }
+            Inventory { $result=Export-WsmInventory -OutputDirectory $Path -DeepDiscovery:$DeepDiscovery; $result; if ($result.Incomplete -gt 0) { exit 2 } }
             Initialize { Initialize-WsmWorkspace $Workspace }
             Import { Import-WsmInventory $Workspace $Path $ExpectedHash $TargetName }
             ImportZip { Import-WsmInventoryArchive $Workspace $Path $ExpectedHash $TargetName }
@@ -80,17 +81,17 @@ try {
     }
     if ([Console]::IsInputRedirected -or [Environment]::GetCommandLineArgs() -contains '-NonInteractive') { throw '非互動環境請指定 -Action；Menu 需要互動主控台。' }
     while ($true) {
-        Write-Host "`nWindows Server Migration 0.2 — 盤點／離線審核；還原尚未實作"
+        Write-Host "`nWindows Server Migration 0.3 — 盤點／審核／隔離 pilot 遷移"
         Write-Host '1 本機來源盤點  2 建立管理工作區  3 匯入盤點  4 審核／排除  5 分類 HTML'
         Write-Host '6 匯出 CSV  7 匯入 CSV  8 全批次報告  9 查詢阻擋項目  10 核准審核文件  11 補查證據／負責人'
         Write-Host '12 人工補列  13 路徑／帳號／端點映射  14 應用組合／內建分類  15 配對／波次規劃  16 跨主機相依  17 結果包匯入'
-        Write-Host '18 循環相依的一致性群組  19 安全匯入盤點ZIP  20 匯出規則模板  21 預覽／套用模板  0 離開'
+        Write-Host '18 循環相依的一致性群組  19 安全匯入盤點ZIP  20 匯出規則模板  21 預覽／套用模板  22 正式搬移／還原／切換階段  0 離開'
         $menuChoice=Read-Host '選項'
         if ($null -eq $menuChoice) { throw 'Console input ended.' }
         try {
             switch ($menuChoice) {
                 '0' { exit 0 }
-                '1' { Export-WsmInventory -OutputDirectory (Read-Host '來源盤點受控目錄（每台固定同一目錄）') | Format-List }
+                '1' { $output=Read-Host '來源盤點受控目錄（每台固定同一目錄；0 取消）';if($output -eq '0'){continue};$deep=(Read-Host '包含 COM+／角色物件／服務與排程 ACL 的深層盤點？ YES／NO') -ceq 'YES';Export-WsmInventory -OutputDirectory $output -DeepDiscovery:$deep | Format-List }
                 '2' { Initialize-WsmWorkspace $Workspace | Format-List }
                 '3' { $file=Read-Host 'inventory JSON 路徑'; $hash=Read-Host '經可信管道取得的 SHA256'; $target=Read-Host '新主機暫用名稱（新配對必填）'; Import-WsmInventory $Workspace $file $hash $target | Select-Object PairId,InventoryRevision,DecisionRevision | Format-List }
                 '4' { Review-Pair (Select-Pair) }
@@ -111,6 +112,7 @@ try {
                 '19' { Import-WsmInventoryArchive $Workspace (Read-Host '盤點 ZIP 路徑') (Read-Host '獨立可信 ZIP SHA256') (Read-Host '新主機暫用名稱') | Select-Object PairId,InventoryRevision,DecisionRevision | Format-List }
                 '20' { Export-WsmReviewTemplate $Workspace (Select-Pair) (Read-Host '已套用規則的 RuleId') (Read-Host '模板 JSON 輸出路徑') | Format-List }
                 '21' { $selected=Select-Pair; $file=Read-Host '模板 JSON 路徑'; $hash=Read-Host '可信 SHA256'; $preview=Get-WsmTemplatePreview $Workspace $selected $file $hash; $preview | Select-Object Selected,Changed,DecisionRevision | Format-List; $preview.Sample | Format-Table; $preview.Conflicts | Format-Table; if ((Read-Host '確認此台實際命中與衝突，輸入 APPLY') -ceq 'APPLY') { Invoke-WsmReviewTemplate $Workspace $selected $file $hash $preview.DecisionRevision | Format-List } }
+                '22' { Show-WsmMigrationWizard $Workspace }
                 default { Write-Host '無效選項。' }
             }
         } catch { Write-Host ('操作失敗：'+$_.Exception.Message) -ForegroundColor Red }
