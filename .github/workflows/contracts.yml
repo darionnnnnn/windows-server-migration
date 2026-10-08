@@ -144,6 +144,7 @@ jobs:
           if-no-files-found: ignore
   delta-workflow:
     runs-on: windows-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Windows PowerShell delta workflow
