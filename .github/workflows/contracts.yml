@@ -97,8 +97,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
           & powershell.exe -NoProfile -File ./tests/Test-DeltaContracts.ps1
           if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
-          & powershell.exe -NoProfile -File ./tests/Test-DeltaWorkflow.ps1
-          if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
           & powershell.exe -NoProfile -File ./tests/Test-DeltaMenu.ps1
           if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
           & powershell.exe -NoProfile -File ./tests/Test-ConfigArtifactContracts.ps1
@@ -140,3 +138,13 @@ jobs:
           name: synthetic-fixture-diagnostics
           path: C:/Users/runneradmin/AppData/Local/Temp/wsm-pipeline-*/target-state/**/*.file-validation.json
           if-no-files-found: ignore
+  delta-workflow:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Windows PowerShell delta workflow
+        shell: powershell
+        run: ./tests/Test-DeltaWorkflow.ps1
+      - name: PowerShell 7 delta workflow
+        shell: pwsh
+        run: ./tests/Test-DeltaWorkflow.ps1

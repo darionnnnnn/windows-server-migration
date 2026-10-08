@@ -68,6 +68,7 @@ $workflowPath=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\src\DeltaWorkf
         foreach($row in $baseRows){$path=$targetRoot;if($row.RelativePath){$path=Join-Path $targetRoot $row.RelativePath};if($row.Directory){if(-not [IO.Directory]::Exists($path)){[void][IO.Directory]::CreateDirectory($path)}}else{Restore-WsmPayloadBytes $row $base.Root $path}}
         foreach($row in $baseRows){if(-not $row.Directory){$path=$targetRoot;if($row.RelativePath){$path=Join-Path $targetRoot $row.RelativePath};Set-WsmFileMetadata $path $row.Metadata @{}}}
         foreach($row in @($baseRows | Where-Object Directory | Sort-Object {if($_.RelativePath){$_.RelativePath.Split([char]92).Count}else{0}} -Descending)){$path=$targetRoot;if($row.RelativePath){$path=Join-Path $targetRoot $row.RelativePath};Set-WsmFileMetadata $path $row.Metadata @{}}
+        $initialBaseCheck=Test-WsmFileScope $baseItem $base $targetRoot @{};Assert-DeltaWorkflow $initialBaseCheck.Passed ('Fixture initial target differs from trusted base: '+($initialBaseCheck.Problems -join '; '))
         $baseDigest=Get-WsmFileScopeDigest $targetRoot $spec.Metadata;$paths=Get-WsmOperationPaths $stateRoot $plan.PairId
         New-DeltaWorkflowState $paths $base $baseItem $baseDigest
         [IO.File]::WriteAllText((Join-Path $sourceRoot 'change.txt'),'new content with a new chunk')
