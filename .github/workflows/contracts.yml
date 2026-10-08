@@ -1,0 +1,22 @@
+name: Windows PowerShell contracts
+on: [push, pull_request]
+jobs:
+  fixtures:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Windows PowerShell 5.1 contracts
+        shell: powershell
+        run: ./tests/Test-Contracts.ps1
+      - name: Windows PowerShell 5.1 collector fixtures
+        shell: powershell
+        run: ./tests/Test-InventoryFixture.ps1
+      - name: PowerShell 7 contracts
+        shell: pwsh
+        run: ./tests/Test-Contracts.ps1
+      - name: Offline report controls
+        shell: powershell
+        run: ./tests/Test-Report.ps1
+      - name: Fleet integration (small CI fixture)
+        shell: pwsh
+        run: ./tests/Test-FleetScale.ps1 -Hosts 10 -ItemsPerHost 200

@@ -1,37 +1,53 @@
 # Windows Server Migration
 
-用 PowerShell 協助企業 Windows Server 跨版本遷移：探索盤點、分類審核、排除項目、匯出搬移包、還原與逐項驗證。主要來源為 Windows Server 2016，目標為 2025，約十台主機。
+以 PowerShell 協助約十台企業 Windows Server 的本機盤點與離線集中審核。主要規劃為 Server 2016 → 2025；新主機先用不同名稱／IP，驗證後接手舊身分。
 
-## 現況
+## 實作現況：0.1 第一階段
 
-GitHub 初始提交僅包含規劃文件與專案入口；下述盤點原型目前仍只保留在本機，尚未隨本次規劃提交發布。選單與還原功能尚未實作，這個儲存庫目前不是可直接執行的完整遷移工具。
+已提供繁體中文選單、來源盤點 JSON／ZIP、固定來源識別、集中主機配對、分類／搜尋／分頁、納入與排除理由、批次 CSV、撤銷、設定變動重新審核、必要相依項目檢查、離線 HTML 與多主機報告、核准審核文件及 SHA256 驗證。
 
-目前只有 `Get-ServerMigrationInventory.ps1`，執行唯讀系統查詢，輸出原始盤點資料、排程 XML、IIS 中央設定、收集狀態及 ZIP。尚未實作選單、可執行遷移清單、網站／服務程式資料匯出、還原或功能驗證。
+**目前不是完整遷移或還原工具。** 盤點 ZIP 只有設定證據，不含網站／服務檔案、資料庫、私鑰或帳號密碼。所有納入項目目前仍需要人工遷移；核准文件只代表 `ReviewComplete`，`ExportReady` 固定為 false。尚未提供來源停寫、資料搬移包、目標還原、最終差異、切換或退役功能。
 
-既有腳本經 PowerShell 語法檢查與模擬 ZIP 檔案雜湊驗證；尚未在 Windows Server 2016／2025 上驗證。檔頭的 PowerShell 2+ 是語法意圖，不代表已測試支援；新工具建議以 Windows PowerShell 5.1 為主要基線，其他來源由前置檢查判定。
+本階段依 [R2 計畫](docs/MIGRATION-1-PLAN.md) 建立 A/B/C 的基礎；仍有 A/B/C 驗收缺口，詳見 [操作與驗證紀錄](docs/IMPLEMENTATION-0.1.md)。舊版 `Get-ServerMigrationInventory.ps1` 是本機探索原型，未列入這個版本，不要拿它當成正式還原流程。
 
-## 本輪規劃
+## 開始操作
 
-請閱讀 [MIGRATION-1-PLAN.md](docs/MIGRATION-1-PLAN.md)。目前為 R2 複審草案，等待使用者定案；本輪未變更既有腳本。新增的離線交接、資料世代、門檻、啟用與退出碼等都是待實作要求，不能套用到現有腳本來宣稱已支援。
-
-R2 已按實際操作者、值班交接、管理者、程式契約及全批次影響審查，補入 16 項缺口與對應驗收；詳見 PLAN 的「R2 多視角複審」。
-
-建議操作順序：各台本機探索 → 管理端審核 → 將核准計畫送回來源 → 匯出包送到目標 → 本機還原與暫用身分驗證 → 維護窗來源停寫／最後差異 → 目標套用最終差異並重驗 → 名稱／IP 接手及啟用 → 正式業務驗收 → 集中彙整與觀察。
-
-管理端報告是離線彙整，顯示最後收到的結果與過期提示；不能當成即時主機狀態，也不能遠端控制來源。最終業務接受與舊機退役是不同門檻。
-
-## 現有盤點腳本的執行方式
-
-在來源主機使用系統管理員權限開啟 64 位元 Windows PowerShell。將腳本複製到主機上的工具目錄，執行：
+把整個專案目錄複製到各來源主機。使用系統管理員身分開啟 **64 位元 Windows PowerShell 5.1**：
 
 ```powershell
-powershell.exe -NoProfile -File "C:\MigrationTools\Get-ServerMigrationInventory.ps1" -OutputRoot "D:\MigrationInventory"
+powershell.exe -NoProfile -File C:\MigrationTools\Start-ServerMigration.ps1
 ```
 
-依實際磁碟調整輸出目錄。先閱讀輸出的 `READ-ME-FIRST.txt` 與 `CollectionStatus.csv`。ZIP 建立需 .NET Framework 4.5+；壓縮失敗時保留資料夾，不將部分 ZIP 當成成功備份。
+若執行原則拒絕，依企業的簽章／執行政策處理。工具不會自動修改執行原則。
 
-產出含敏感系統設定，應存放在受控目錄。此階段不包含應用程式資料、資料庫、私鑰或密碼，不能直接用於完整還原。
+來源端選「1 本機來源盤點」，每台主機固定使用同一個受控輸出目錄。管理端選「2 建立管理工作區」→「3 匯入盤點」→「4 審核／排除」。大量項目使用選項 6／7 的 CSV 批次處理，再輸出選項 5 的分類文件與選項 8 的全批次報告。
 
-## 後續驗收
+ZIP 非加密；task XML、IIS 設定可能含敏感資訊。保留於企業允許的受控儲存及傳輸管道，**不要提交實際盤點到這個公開 GitHub 儲存庫**。管理端匯入的是解壓後 JSON；SHA256 應由可信管道取得，同一包內的雜湊只能協助發現意外毀損，不能證明來源可信。
 
-逐階段驗收依 PLAN。真正的遷移成功必須包含來源／目標設定比對、選取資料及權限驗證、功能測試、名稱／IP 切換後測試。未知或未支援項目必須保持待確認或阻擋狀態，不能自動當成不需要遷移。
+## 非互動操作
+
+```powershell
+# 各來源本機執行；同一台固定同一目錄以延續來源識別／版本。
+.\Start-ServerMigration.ps1 -Action Inventory -Path D:\MigrationEvidence
+
+# 管理端只處理本機資料，不需 WinRM。
+.\Start-ServerMigration.ps1 -Action Initialize -Workspace D:\MigrationReview
+.\Start-ServerMigration.ps1 -Action Import -Workspace D:\MigrationReview `
+  -Path D:\Inbox\inventory-1.json -ExpectedHash '<可信的64字元SHA256>' -TargetName NEW-SERVER-01
+# 匯入輸出 PairId；後續命令使用這個值。
+.\Start-ServerMigration.ps1 -Action Report -Workspace D:\MigrationReview `
+  -PairId '<PairId>' -Path D:\Reports\server01.html
+.\Start-ServerMigration.ps1 -Action FleetReport -Workspace D:\MigrationReview -Path D:\Reports\fleet.html
+```
+
+輸出文件的父目錄須先建立。非互動操作遇到錯誤回傳退出碼 1；成功退出碼 0 不代表已完成遷移。`Inventory` 即使查詢部分失敗仍保留可用結果，必須查看輸出的 `Incomplete` 與每個項目的 `Status`。
+
+## 驗證
+
+```powershell
+powershell.exe -NoProfile -File .\tests\Test-Contracts.ps1
+powershell.exe -NoProfile -File .\tests\Test-InventoryFixture.ps1
+pwsh -NoProfile -File .\tests\Test-FleetScale.ps1 -Hosts 10 -ItemsPerHost 10000
+```
+
+測試使用合成資料／替代 OS 查詢，不會盤點測試電腦或修改系統服務。真實 Server 2016／2025 的盤點與目標還原驗收尚未進行。離線報告顯示收到資料的時間與資料年齡，不能當成即時主機狀態。
