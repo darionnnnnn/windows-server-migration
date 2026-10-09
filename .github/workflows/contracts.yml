@@ -170,11 +170,18 @@ jobs:
         engine: [powershell, pwsh]
     steps:
       - uses: actions/checkout@v4
+      - name: Windows settings review contracts
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          $engine = '${{ matrix.engine }}'
+          & $engine -NoProfile -NonInteractive -File ./tests/Test-WindowsSettingsReview.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows settings review child process failed.' }
       - name: General host, environment, ownership and delivery contracts
         shell: pwsh
         run: |
           $engine = '${{ matrix.engine }}'
-          foreach ($test in @('Test-WindowsSettingsReview.ps1','Test-GeneralHostGates.ps1','Test-SoftwareInventory.ps1','Test-OracleClientContracts.ps1','Test-OracleIntegration.ps1','Test-SettingTransitions.ps1','Test-SettingTransitionRecovery.ps1','Test-OutputWorkspace.ps1','Test-OutputWorkflow.ps1','Test-EnvironmentConfirmation.ps1','Test-GeneralHostDeltaIntegration.ps1','Test-DeltaVolumeTransport.ps1','Test-ExternalReadinessEvidence.ps1','Test-FullZipCheckpointRecovery.ps1','Test-FullDeliveryBudgets.ps1','Test-SourceWizardEnrollment.ps1','Test-DeltaDirectoryMemberBudget.ps1','Test-ManagerOutputWorkspace.ps1','Test-TargetWorkspaceBinding.ps1','Test-FullDirectoryImport.ps1','Test-TargetOutputModeWizard.ps1','Test-WorkspaceTransfer.ps1','Test-DeliveryReceipts.ps1','Test-WindowsSettingInventory.ps1')) {
+          foreach ($test in @('Test-GeneralHostGates.ps1','Test-SoftwareInventory.ps1','Test-OracleClientContracts.ps1','Test-OracleIntegration.ps1','Test-SettingTransitions.ps1','Test-SettingTransitionRecovery.ps1','Test-OutputWorkspace.ps1','Test-OutputWorkflow.ps1','Test-EnvironmentConfirmation.ps1','Test-GeneralHostDeltaIntegration.ps1','Test-DeltaVolumeTransport.ps1','Test-ExternalReadinessEvidence.ps1','Test-FullZipCheckpointRecovery.ps1','Test-FullDeliveryBudgets.ps1','Test-SourceWizardEnrollment.ps1','Test-DeltaDirectoryMemberBudget.ps1','Test-ManagerOutputWorkspace.ps1','Test-TargetWorkspaceBinding.ps1','Test-FullDirectoryImport.ps1','Test-TargetOutputModeWizard.ps1','Test-WorkspaceTransfer.ps1','Test-DeliveryReceipts.ps1','Test-WindowsSettingInventory.ps1')) {
             Write-Host ('Starting ' + $engine + ' ' + $test)
             & $engine -NoProfile -File (Join-Path tests $test)
             if ($LASTEXITCODE -ne 0) { throw ('Failed: ' + $test) }
