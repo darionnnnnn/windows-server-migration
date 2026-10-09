@@ -1,9 +1,10 @@
-﻿# MIGRATION 第 2 輪規劃：一般服務主機與離線準備
+﻿# MIGRATION 第 2 輪規劃：一般服務主機、完整環境確認與企業 EOS 遷移資格
 
 > 日期：2026-10-09
-> 狀態：規劃中；使用者已定案產品方向，本文件尚未實作。
-> 基準：codex/implementation，349195cacb8be17ad2ca672afa27b738e738b3d0。
-> 來源：使用者要求聚焦一般服務主機、告知離線環境相依、逐項確認 Windows 設定、告知但不搬特殊產品。
+> 狀態：規劃中；2026-10-09 深度複審已補強規格，新增功能尚未實作／實機驗收。
+> 複審基準：codex/implementation，991fc864126d226b65eb0fdbe440c7f7d41040af；前輪程式與測試基準保留於下方。
+> 來源：一般主機既有定案，以及使用者要求企業 Windows Server EOS 正式工具程度、Oracle TNS_ADMIN 與完整已安裝環境／相依工具／使用者軟體 Markdown 確認。
+> 複審證據：[深度複審](MIGRATION-2-REVIEW.md)；確認文件格式：[環境與軟體確認表](ENVIRONMENT-SOFTWARE-CONFIRMATION.md)。
 
 ## 前一輪確認
 
@@ -21,18 +22,23 @@
 4. Windows 系統設定獨立審核，預設不批次搬入；每項可選沿用目標、核准搬入、外部處理。沿用目標的影響也必須顯示。
 5. 完成表示核准範圍逐項有結果且必要相依已處理，不表示整台舊機複製成功。特殊角色另行處理完成前不能宣告整台服務接手或舊機可退役。
 6. 各台本機執行、离線集中彙整、選單與 CLI、類別報告、大量排除與十台波次沿用。
+7. Oracle Database 引擎／listener 仍是特殊產品；一般應用所需 Oracle Client／Instant Client／ODAC／ODP.NET、TNS_ADMIN 及其設定檔是本輪必要交付，不能因名稱含 Oracle 一併排除。
+8. 每台輸出完整 `.md` 確認文件，包含全部已發現軟體與環境，不只入選相依。沒有來源 Server 證據時只能交空白確認表，不能拿開發機軟體清單冒充。
+9. 正式程度以精確支援矩陣、可稽核核准、實際業務及復原證據判定。A–D 功能完成不等於正式資格；E 的資格／發行／放行證據同樣是必要交付。
 
 ## 批次總覽
 
 | 批次 | 內容 | 規模 | 相依／輸出使用端 |
 |---|---|---|---|
 | A | 範圍分類與特殊服務告知 | 中 | 來源盘點 → 管理端 B/C/D |
-| B | 離線準備清單與目標差異核對 | 大 | A → 使用者準備 → 目標預檢／還原 |
+| B | 完整環境／軟體盤點、離線準備、Oracle 用戶端設定 | 大 | A → 使用者確認／準備 → C／目標預檢／還原 |
 | C | Windows 設定清單與逐項決策 | 大 | A/B → 規格核准／設定還原與驗證 |
-| D | 選單、文件與十台彙整接線 | 中 | A/B/C → 操作者／管理者 |
-| E | 既有包與狀態相容、企業交付界限、驗證 | 中 | A–D → 可試用版本及實機回傳 |
+| D | Markdown 確認文件、選單與十台彙整接線 | 中 | A/B/C → 操作者／管理者／核准 |
+| E | 相容、實機資格、切換復原與企業放行證據 | 大 | A–D → 隔離試用 → 資格審查；合格後另行正式放行 |
 
 順序 A → B → C → D → E。每批需輸入／輸出及實際呼叫端完整，完成適當驗證後獨立 commit／push，確認遠端 SHA。批次內可先交付完整子段；不可推送半接線功能。
+
+各批次同時受文末「深度複審補強契約」約束：B 拆 B1／B2，E 拆 E1–E3；下方原始批次條目不是完整交接清單。原始需求與新增必要交付對照 [R2-01–R2-20](MIGRATION-2-REVIEW.md)。
 
 ## 批次 A：範圍分類
 
@@ -65,6 +71,8 @@
 - Inventory.ps1:29 收 DisplayName／DisplayVersion／Publisher／InstallLocation。
 - Discovery.ps1:17–20 有 32／64 位元 ODBC DSN；EnterpriseDiscovery.ps1:12 有 COM+ metadata。
 - 現有 collector 是分散證據，缺可交給管理者取得安裝檔的彙整清單及與一般項的明確關聯。
+- Inventory.ps1:29 只有 HKLM Uninstall 兩種 view；Discovery.ps1:17–20 只有 machine DSN；EnterpriseDiscovery.ps1:1 只收 Machine 環境。缺使用者／可攜軟體與有效 consumer context。
+- ConfigArtifactContracts.ps1:1–4 的自動辨識只有 web.config／app.config／exe.config／appsettings JSON；src／tests 無 Oracle 專用識別及測試。既有人工 ConfigFiles 能列檔，不代表有效 Oracle 設定路徑已驗證。
 
 ### 改動與契約
 
@@ -75,7 +83,7 @@
 - 安裝軟體清單 ≠ 每個服務的相依清單。只有已證實或 owner 確認的 required 關係才作阻擋；候選需覆核，不依名稱猜精確最低版本。不把較新版本自動當相容。
 - 十台可依產品／版本／架構彙整取得媒體清單，保留每台需求與驗證，不能用其他主機的通過取代本機。
 - 使用者安裝後，本機重查可證實條件：缺少、符合、版本不同待批准、不支援、無法驗證。人工項需 owner 與依據。必需未完成時預覽列出問題，還原／啟用依受影響項阻擋。
-- 目標準備證據綁定 TargetIdentity、工具／計畫、requirements revision、來源證據與時間；新盤點、需求改變、目標環境漂移需重查。套用後重開機未完成不能視為 ready。
+- 目標準備證據綁定 TargetIdentity、工具、requirements revision、來源證據與時間；核准後再綁計畫 hash，順序依 B1 避免循環。新盤點、需求改變、目標環境漂移需重查。套用後重開機未完成不能視為 ready。
 - generic WindowsFeature 亦不得在本模式中順帶安裝來補環境。必要角色由使用者用媒體準備，工具只核對。舊 pilot 明確核准安裝契約保留相容，不能擅改既有計畫。
 
 ### 驗收
@@ -117,11 +125,11 @@
 
 - 管理／來源／目標角色旅程接入：選一般主機範圍 → 看特殊服務 → 環境準備清單 → Windows 設定選擇 → 使用者准备新主機 → 本機重查 → 規格核准與搬移 → readback／業務確認 → 切換／回退。
 - 使用中文且沿用現有分頁、搜尋、分類計數、CSV preview／revision、跨頁規則與撤销；大量資料不逐筆阻塞問答，不改既有 all 的範圍語義。
-- 類別文件 HTML／完整 TXT／CSV 與權威 JSON：一般搬移清單、離線準備清單、Windows 設定決策、特殊服務／探索缺口、目標差異及未完成事項。每項可追至來源 ItemId，全部摘要數量能對帳。
+- 類別文件 HTML／完整 TXT／CSV 與權威 JSON：一般搬移清單、離線準備清單、Windows 設定決策、特殊服務／探索缺口、目標差異及未完成事項；另必須提供每台完整 Markdown 環境／軟體確認文件。每項可追至來源 ItemId，全部摘要數量能對帳。
 - 特殊告知項已讀與外部處置分開記；報告明列「工具未搬」及是否影響入選服務。泛用範圍完成與整台接手／可退役分開，不能把特殊告知全轉 PASS。
 - Fleet 十台總覽呈現來源／目標配對、需準備項、依賴阻擋、系统設定決策與驗證、特殊處置及本輪進度；离線導入拒絕重複／過期／錯機結果。
 - LabReport 的 TXT 優先显示問題，完整 JSON 留本機；依使用者貼回結果補實機證據，省略的項目不當通過。公開報告輸出脫敏摘要，原始 registry／DSN／設定留受控證據。
-- 不先插入進階帳號管理或線上 dashboard；沿用離線方式及既有核准，正式角色分離／簽章發行列待後續企業放行。
+- 不先插入進階帳號管理或線上 dashboard；沿用離線方式及既有核准。來源／目標操作者、應用 owner、遷移核准人、平台／資安核准人的責任及簽章信任證據納入 E 的必要放行項，可由企業既有離線變更流程滿足。
 
 ### 驗收
 
@@ -145,12 +153,119 @@
 - 驗證至少一個準備不足阻擋、外部特殊相依確認、系統設定沿用／核准時區、一個中斷接續、reboot 與回退；業務交易／排程行為由 owner 確認。
 - 透過 LabReport TXT／JSON 回傳來源／目標與具體未完成項；根據實際差異才加入不同 source OS／Core／32-bit／政策／特殊資料組合。十台分波次，不全排列測試。
 - 代表性工作量先定維護窗、RPO／RTO／空間目標，再做一次封裝→還原量測。這不是要求大量小檔重跑每種故障。
-- 結束前主代理逐條核對 A–E、原始四點需求、舊資料相容与文件；缺實作繼續補，缺外部資格保留 NotTested，不從 TODO 偷刪。
+- 結束前主代理逐條核對 A–E（含 B1／B2、E1–E3）、原始與本次新增需求、舊資料相容與文件；缺實作繼續補，缺外部資格保留 NotTested，不從 TODO 偷刪。
 
 ## 本輪交付與範圍外
 
-- 交付：一般主機處置分類、離線相依與媒體准备清單、Windows 設定逐項決策、有限且已驗證的設定套用、目標核對與 gate、六類文件、選單／CLI／Fleet／LabReport 接線、對應測試及操作手冊。
+- 交付：一般主機處置分類、完整環境／軟體 Markdown 確認、離線相依與媒體準備、Oracle 用戶端／TNS_ADMIN／受審核設定檔搬移、Windows 逐項決策、有限已驗套用、目標 gate、六類文件及 Markdown、選單／CLI／Fleet／LabReport 接線、測試／手冊與企業資格／放行包。
 - 不做：自動取得／安裝第三方軟體、所有 runtime 自動部署、專用產品／角色遷移、完整 registry／系統磁碟還原、機器綁定密碼／授權複製、所有 OS 默认值推導、全部系統政策自動匯入、網際網路依賴。
 - 特殊項只告知／外部處理，但必要外部相依必須確認；單純「忽略」不允許宣告整台可退役。
-- 企業簽章／加密材料交換／正式角色分離及安全審核仍是正式使用放行條件，後續依企業既有政策落地；本輪無法以程式測試取代。
+- 企業簽章／加密交換／角色分離及安全審核是 E 明確可查證的放行條件，可沿用企業流程；外部材料未提供時記具體缺口，不能以程式測試或規劃書代替。
 - 實作啟動：使用者確認下一輪開始實作後，按 A–E 分段驗證並推送。本文件完成不代表功能已完成。
+
+## 深度複審補強契約（2026-10-09，與上述 A–E 同屬必要驗收）
+
+以下是本次需求的補強，不是可選建議。與前文較簡略的敘述有差異時，以這裡的明確契約為準；既有離線／人工安裝／特殊產品不搬的範圍保留。
+
+### A 補強：物件與相依分類不能互相冒充
+
+- 第三方伺服器產品、一般應用本體、client driver／runtime、監控／資安／備份代理分開。SMTP、NLB、容器／Docker、排程平台、硬體 driver／dongle 授權亦須出現在已發現或未知清單，不因此新增產品自動還原。
+- 一個軟體可以是多個服務的相依；SoftwareId／PreparationId 與 ItemId 的關聯允許一對多、跨台及共用 scope。同名不同版本、架構、SID、安裝位置、Oracle Home 不合併身分。fleet 媒體去重只是投影，不能抹除各台需求。
+- 既有 Review.ps1:50 的 Mandatory 依賴只接受 Include；新 Preparation／ExternalDependency 需明確型別、來源、有效證據與完整 consumer。不得把特殊產品 Include 或移除依賴來繞過 gate；同型檢查包含核准、preview、restore、activate、fleet、LabReport、retirement。
+
+### B1：完整已安裝環境／使用者軟體與離線準備
+
+**輸入／輸出**：來源 inventory／owner 補登 → 完整 SoftwareCatalog／CoverageMatrix／PreparationRequirements → D 確認文件與決策 → 目標準備核對、C 設定映射與 E gate。
+
+- 來源包含 HKLM 32／64 Uninstall、已載入且有權讀取的 HKU 使用者 Uninstall／環境／DSN、roles／optional features、已知 runtime 安裝位置、服務／task／IIS 指向的 executable／腳本／app-local runtime、核准的 portable 搜尋根目錄與 owner 補登。以 SID 標示 user scope；HKU 的 class view 不重複計數。
+- 未載入 profile、無權限、無登錄安裝、超過搜尋預算均為 CoverageGap。本輪不自動載入 hive、不登入其他帳號、不讀任意 process 記憶體、不全磁碟掃描。owner 用指定帳號本機補盤點或人工補登並附證據；「未查到」不能標「不存在」。
+- 每列有 SoftwareId、原始名稱／版本／publisher、架構（未知即 Unknown）、scope／SID、位置、registry view／檔案／API 證據、ItemId、時間與 capture 狀態；registry view／Program Files 位置本身不能證明 executable bitness，缺版本不寫成零或最新。
+- 增列有實際 evidence／owner 提示的 Java／JRE／JDK、Python／venv、Node.js／套件環境、PHP、PowerShell module、IIS URL Rewrite／ARR／ISAPI／Hosting Bundle、ODBC driver／system／user／file DSN、OLE DB／COM registration。lockfile／runtimeconfig／deps 只作 metadata，不執行套件管理器。
+- 服務帳號環境／工作目錄／service-specific environment、IIS pool bitness／LoadUserProfile、task identity／working directory、app-local 設定／user profile 分開。管理員終端成功不能代表 LocalSystem／gMSA／業務帳號成功；mapped drive 不能當跨帳號 UNC。
+- **全部已發現軟體**都需處置：使用者重裝、核准可攜檔／設定搬移、保留已驗相容目標、外部產品流程、明確不需要。未選服務也保留列；Unknown／未確認不隱藏，必要相依標「不需要」仍阻擋。
+- 不搬整個 Program Files／MSI 安裝狀態代替產品安裝。installer 已建立同名 service／task／IIS 時列 ownership／設定衝突，只經核准採用已驗設定或外部流程；不把既有目標物件改標工具建立。可攜軟體需完整檔案／runtime／授權與可再部署證據。
+- 每個準備項列內部媒體／hash／簽章或人工驗證、版本／架構、vendor OS 支援證據與查證日期、安裝順序、授權、restart／reboot／副作用。只有來源已裝並不代表支援 Server 2025；不把新版自動當相容。
+- 手動 installer 也可能自啟服務／排程、外連或寫 DB。安裝前建立目標隔離基準，安裝後本機差異核對／quarantine；無法阻止重複工作或生產寫入時停止 staging。使用者說裝完或 installer exit 0 不等於 ready。
+- 準備證據綁 PairId、來源／目標 fingerprint、inventory／requirements／decision revision、工具 fingerprint、帳號 context、有效期與 hash。核准前以 requirements revision 綁定，plan 產出時引用該 hash；核准後再綁 plan hash，避免準備必須先有 plan 的循環。改版／漂移／pending reboot 撤銷受影響證據。
+
+**B1 驗收**：HKLM／HKU／portable／人工列都到 D 的完整 `.md`；同名異版本／SID／view 不合併，空／失敗／profile 未載入／搜尋上限有 coverage；missing driver／wrong bitness／installer 自啟／同名既有 service／reboot 正確阻擋，其他獨立項可繼續。
+
+### B2：Oracle TNS_ADMIN 與用戶端設定必須形成搬移閉環
+
+**輸入／輸出**：consumer／client metadata、有效設定證據、owner 確認 → 精確設定檔／環境／路徑映射與機密外部交付 → approved package／目標 readback／實際 consumer 測試 → 啟用／回復 gate。
+
+1. **辨認 consumer**：OCI／ODBC／ODP.NET managed、unmanaged、Core／JDBC 等 provider、版本、x86／x64、Home／Instant Client、帳號、工作目錄、關聯 ItemId。搜尋順序依實際 driver／版本核對，不共用單一規則。[Oracle 19.3 ODP.NET](https://docs.oracle.com/en/database/oracle/oracle-data-access-components/19.3/odpnt/InstallConfig.html)與[Oracle 26 ODP.NET](https://docs.oracle.com/en/database/oracle/oracle-database/26/odpnt/InstallConfig.html)已有不同配置能力。
+2. **候選與有效值**：Machine／可讀 User／服務自有 TNS_ADMIN、32／64 Oracle registry view、Home／Instant Client 的 network/admin、app／web.config／程式設定／JDBC 配置；需要的 NLS_LANG／LDAP_ADMIN／LOCAL／ORA_TZFILE 與 PATH 順序也列出。標記實際採用依據、被遮蔽值及未知，不能只讀管理員 `$env:TNS_ADMIN`；Windows 環境／登錄／Home 行為見[Oracle Net 文件](https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/local-naming-parameters-in-tns-ora-file.html)。
+3. **檔案入包**：已確認使用的 tnsnames.ora／sqlnet.ora／ldap.ora／oraaccess.xml、owner 核准的 IFILE／參照檔，列入精確 ConfigFiles 與受控 FileScope／ConfigArtifact。保存原始 bytes／encoding、hash、ACL／SID mapping、來源／目標路徑及敏感等級。不能只在文件提醒使用者自行記得拷貝。
+4. **界限**：bounded 參照解析遇循環、語法不支援、UNC、超出核准 scope、缺檔即列缺口並阻擋 consumer，不偷偷擴 scope。共用設定只有一個權威搬移 owner，多個 Home 不互相覆蓋。listener.ora／DB data／listener service 屬特殊產品，不因同目錄就搬入。
+5. **設定映射**：預覽舊→新 TNS_ADMIN、檔案路徑、registry view／key／value type、User SID、服務環境與 app 設定；同路徑無衝突可保留 bytes，變更只依核准項，不全域字串 replace、不搬整個 Oracle registry。Machine 值走既有受審核 MachineEnvironment；User／registry 值納入 B2 受限用戶端設定契約（精確白名單、原值備份、readback、ownership／回復）或已完成且驗證的外部步驟。缺受驗 adapter 不顯示自動搬入；PATH 仍人工合併。
+6. **機密**：wallet／cwallet.sso／ewallet.p12／私鑰／密碼／機器綁定材料走外部受控交付、目標重建或產品復原；不進一般 ZIP／Markdown／公開 repo。sqlnet／連線檔亦先分類。DPAPI 不假設跨機拷貝可解密，依[Microsoft DPAPI](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata)核對產品程序。
+7. **目標驗證**：使用者先安裝 client／provider。離線驗檔案／ACL／hash／bitness／有效路徑／alias，再在明確允許的隔離測試，以真正 service account／IIS pool／task context 驗設定解析、必要網路／TCPS、DB 登入與 owner 最小查詢／交易。只靜態核對維持 NotTested。`tnsping` 僅驗 listener，不代表 DB、認證或業務成功，見[Oracle Testing Connections](https://docs.oracle.com/en/database/oracle/oracle-database/19/netag/testing-connections.html)。測試程式由 owner 批准於工具外執行，不執行包內任意腳本。
+8. **啟用／回退**：env 變更後以新程序／受控 recycle 或必要 reboot 驗證，不假設現有程序立即讀到。provider 換版、alias／設定／目標漂移、wallet 未交付使受影響證據失效；只回復工具持有且未漂移設定，查所有共用 consumer 並保留新資料。
+
+**B2 驗收**：無 TNS_ADMIN 的 fallback、Machine／User／服務／app 衝突、多 Home／32與64位、空／不存在／UNC、中文空白路徑、原始 encoding、IFILE／缺檔／循環、registry 型別、app override、wallet 外部材料、排除 DB 保留 client、共享設定及回復漂移。真實 Server 至少驗 fleet 相符的 Oracle consumer、實際帳號連線／業務及一次回復；fleet 有不同架構／provider 時不可互相冒充。無 Oracle lab 則維持未取得 Oracle 資格。
+
+### C 補強：設定決策與真正執行身分
+
+- 每列顯示 Apply／KeepTarget／External 的實際可用性、native API／權限、staging 副作用、restart／reboot、readback 與 rollback level；collector 未覆蓋只能 Unknown／External，不能因有清單標題就聲稱完整盤點。
+- Windows 全類選否只決定 OS 設定偏好；已入選 Oracle TNS_ADMIN 等業務相依仍需明確映射／驗證，拒絕搬入列阻擋 ItemId 與外部處置。
+- 補 W32Time／時鐘同步、TLS／NTLM／SMB、long-path／filesystem 能力、reboot 後 GPO／安全政策有效值與服務帳號權利核對。2016→2025 的 TLS 1.0／1.1 預設停用、NTLMv1／SMTP 等移除依[Microsoft features 文件](https://learn.microsoft.com/en-us/windows-server/get-started/removed-deprecated-features-windows-server?tabs=ws25)列相容風險；不自動降安全基準。SMB 核對實際 client／server／有效政策，見[SMB signing](https://learn.microsoft.com/en-us/windows-server/storage/file-server/smb-signing-overview)。
+
+**C 補驗**：OS 全類選否仍顯示 required client 設定；時區／DST／catch-up／clock skew、user profile／IIS bitness、有效政策及 reboot 前後差異有 owner 結果，不能用管理員測試替代服務帳號。
+
+### D 補強：完整 Markdown、使用者確認與決策回流
+
+- 以 [ENVIRONMENT-SOFTWARE-CONFIRMATION.md](ENVIRONMENT-SOFTWARE-CONFIRMATION.md) 為格式契約，實際每台輸出 `environment-software-<PairId>-r<InventoryRevision>-d<DecisionRevision>.md`；fleet 另有索引。repo 空白模板不是實際清單，HTML 分頁／列印上限不能造成 Markdown 截斷。
+- 文件涵蓋 metadata／有效期、coverage、全部軟體、runtime／driver／工具、Oracle／設定檔、Windows 決策、特殊／未知、人工補登、目標差異／驗證、阻擋、owner 確認與交接；每列能追 SoftwareId／PreparationId／ItemId／JSON evidence pointer，總數能對帳。
+- Markdown 可註記但不是權威可執行輸入。直接改 `.md`／勾選不變更 gate；回填由管理端 wizard 或 validated CSV／JSON preview 錄入，綁 revision／hash、重新核准及產出文件。畫面／文件明确提示。
+- 所有格式使用同一安全投影，escape 管線、換行、反引號、連結與 HTML；CSV 保留 formula 防護，不可信名稱不變成可執行內容／外部圖片。密碼／完整連線字串／wallet 永不輸出，內部路徑／endpoint 依分享分級，不能聲稱遮密碼即能公開。
+- 新快照另存，列新增／修改／刪除／漂移；只保留未受影響且仍有效的人工決策，受影響 dependency closure 重新核准。舊文件標過期；不可因重跑清空全部決策或默認接受新增項。
+- 預覽寫入／不搬／外部負責、consumer、缺什麼／誰補／下一步入口、可否接續、退出碼與報告位置；Ctrl+C／EOF／console 關閉／磁碟滿／權限不足不能當同意，重入依 journal reconciliation。
+
+**D 補驗**：JSON 與 Markdown 每列／數量一致，排除／未知／manual／超過2,000列不漏；特殊字元無注入／機密外洩；勾選文件不放行、過期回填需 fresh preview。第一次操作者、值班接手、業務 owner、只看文件的審查人各走旅程；CLI／選單／API 不得繞同一 gate。
+
+### E1：相容與跨段完整性
+
+- 相容回歸涵蓋舊 inventory／包／schema／plan／delta／approval／journal／ownership／ToolFingerprint，B 的型別相依不能繞過旧 Mandatory gate。執行中 pair 維持原版或明確協調重建，禁止熱換。
+- 準備 → 設定映射 → 審核 → 核准 → 包 → staging → readback → final → activate → fleet／LabReport → rollback／retirement，每個 producer 的新增資料都有 consumer；縮減報告不能當完整 gate 輸入。
+- 批次內完整子段按適当驗證 commit／push，核對遠端 SHA；文件修改只查引用／契約／Markdown／diff，不假造新增程式測試通過。固定 snapshot／hash、同環境有效證據沿用，不重跑無門檻大型全劇本。
+
+### E2：資料一致性、切換、故障復原與退役
+
+- 記 source EOS 官方來源／查詢日／時區、owner、維護窗、RPO／RTO、最大中斷、備份復原點／實際復原演練。官方日期不一致時記兩者，先採較早期限排程並由管理者確認；不硬編碼或假定 ESU。[Server release information](https://learn.microsoft.com/en-us/windows/release-health/windows-server-release-info)與[Server 2016 lifecycle](https://learn.microsoft.com/en-us/lifecycle/products/windows-server-2016)供查證。
+- 分靜態／可停寫業務檔／open files／DB／queue／共享狀態；無 writer-aware 一致性程序不可 generic 拷貝。VSS 不保證任意產品一致性，也不擴充特殊產品搬移。final 前重查 source hash／所有 writers quiescence。
+- 包、暫存、解壓、現存 target、backup／rollback 保留資料的峰值空間與最慢傳輸階段入維護窗，代表 workload 量測一次。保留 ADS／ACL／SID／reparse／EFS／sparse／hardlink／long-path 已有支援或阻擋邊界；未讀檔／read error 顯示不完整，不當排除。刪除需精確批准，不刪未持有資料。
+- 切換前核對管理 console／回復通道、source fencing／target isolation、DNS／TTL／cache／PTR、SPN／delegation／duplicate SPN、AD／gMSA 權限、DHCP reservation／LB／allowlist、備份／監控／資安 agent 及 owner。不允許同名／同 IP／同負載雙寫；無法證明 fencing 就 blocked。
+- 名稱／IP／domain 身分與 reboot 後重查 target identity／effective GPO／required runtime／設定／憑證 ACL／外部相依，保留核准的 bootstrap→cutover identity 關聯，不接受任意複製 fingerprint 的主機。
+- 排程驗 DST／時區／catch-up／事件與開機 trigger／身分／工作目錄；服務 recovery／trigger／IIS 安裝副作用不能使 staging 提前上線。隔離測試不得重複寄信／扣款／queue 消費，owner 指定測試交易與清理。
+- 業務驗收含 DB identity／service／schema、TLS／hostname、實際 read／write 權限、中文／code page／時區、外部 consumer／新 source IP allowlist、錯誤率／延遲，不僅 Running／HTTP 200／listener 可達。
+- 回退分未開新交易與已可能有新交易；後者停止所有相關 writers、保存最新 target、對帳／產品同步及 owner 批准後才接回來源。沿用 Recovery.ps1:47、53 的 NewTransactionsPossible／RollbackReconcile gate；文字勾選不證明反向資料同步完成，來源不自動啟動。
+- 退役需觀察期（含最長週期任務或有證據的人工演練）、backup restore／監控接手、外部 consumer 舊路徑流量、特殊產品處置、資料保存期限、帳號／憑證／CMDB／DNS／授權交接。明列可回退期限／不可回退時間點／刪除責任；一般 scope PASS 不等於 RetirementReady。
+- 十台依相依圖分波次，共用 TNS／DB／UNC 變更列全部 consumer，循環群組沿用 barrier；局部試搬不解除群組切換 gate。一台失敗的停波／繼續條件由 wave owner 明列。
+
+**E2 補驗**：source freeze 漂移／漏外部 writer、磁碟滿、程序中斷／斷電、reboot policy／identity 改變、部分 activation、已有新交易回退、共享相依失效／群組阻擋及退役長週期任務；真實 Server／產品停寫及復原演練，fixtures 不替代。實際 workload 符合維護窗／RPO／RTO 才標該範圍合格。
+
+### E3：正式資格與發行／企業放行包
+
+| Gate | 必要證據 | 不得當作成功的代用品 |
+|---|---|---|
+| ReviewComplete | 完整環境／coverage／Oracle／Windows／特殊處置、owner、相依閉合 | 已讀／排除／Markdown 勾選 |
+| PreparationReady | exact target／版本／架構／帳號、隔離安裝後核對、外部相依、restart 完成 | 別台 ready／installer exit 0／未探測 |
+| RestoreReady／StagedVerified | 新核准 plan／manifest／scope／config hash、空間／相容、staging readback | 舊 installer 契約繞過新模式禁止安裝 |
+| CutoverReady／FinalAccepted | final 一致性／fencing／外部 receipt、實際 consumer／業務／觀察 | HTTP 200／tnsping／fixture／省略 TXT 摘要 |
+| RetirementReady | 新資料回退、觀察／backup restore、特殊外部流程及退役批准 | 一般 scope 完成 |
+| ProductionQualified | exact tool／adapter／OS build／edition／installation type／product／provider／architecture 的 ServerLab、IsolatedPilot、ProductionAcceptance，加企業信任／發行證據 | report／自填 reference／hash 自我授權 |
+
+- Qualification.ps1 的既有 exact tuple／expiry／revocation 保留；補 InstallationType 與 Oracle provider／consumer 等維度的相容 schema／qualified scope，未知 tuple 不泛化。owner／hash 不證明獨立授權，正式 registry 必須有企業信任根／獨立審查與過期／revocation 執行門檻。
+- 必交 release manifest、release notes、依賴／SBOM 清單、支援／不支援矩陣、已知限制、簽章信任方式、權限／FullLanguage 要求、復原 runbook、離線診斷／機密清理／保存期限與企業變更核准。外部簽章／加密工具可沿用，但需 target 實證與責任人，不能只有 README 提醒。
+- hash 清單、程式簽章、材料簽章、執行核准用途分開；hash 不證明作者。簽章後先產最終 bytes fingerprint，再建 plan／qualification；不能沿用未簽版核准，執行中仍不熱換。
+- 整體回查可信來源／完整性／加密保管／ACL、entry／解壓大小／compression ratio／disk quota、防 traversal／reparse／overlap、lock／交易寫入／atomic rename／失敗材料保留。已存在契約沿用、缺口補負例，不預設全須重寫。
+- **本輪不直接開生產執行開關**。E1→E2→E3 均列必要工作；缺實際 Server／Oracle／企業材料維持 NotTested／Blocked。E3 完成後仍須使用者／企業明確授權與可驗 gate 實作、安全審核才另段啟用，qualification 記錄不是開關。此為授權界限，不免除產出正式資格／放行包。
+
+**E3 補驗**：未簽／不可信／過期／revoked／wrong tuple 的材料拒絕放行；簽署後 bytes 與 plan／qualification 不一致阻擋；該 OS／provider 真實資格缺口仍可在 fleet／LabReport／Markdown 查到。
+
+### 整體複檢與本次執行紀錄
+
+- [複審 R2-01–R2-20](MIGRATION-2-REVIEW.md)逐條落於 A／B1／B2／C／D／E1–E3，需求／交付物／相依／驗收不從待辦偷刪。OS 全類選否不繞過業務相依、Markdown 非可執行輸入、準備證據不與核准 plan 循環。
+- 原一般主機／離線／人工安裝／特殊產品不搬／OS 逐項設定保留。Oracle client 設定與完整軟體 Markdown 是本次必要補入；Oracle DB 不新增自動還原。
+- 本次修改限規劃、複審、確認模板與入口，未修改 src／tests／入口程式，未執行來源／目標 Server 盤點、Oracle DB 連線或生產遷移。功能／實機／正式資格保持未完成。

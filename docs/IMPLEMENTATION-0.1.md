@@ -27,6 +27,7 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 - [ ] 更多 adapter 原生正反例與精準欄位稽核；IIS recursive schema／nested drift、Win32 own-process SCM supplement、安裝副作用隔離／quarantine、專用 UNC／DFS 角色 scope 契約已有實作與 fixture。完整 Server API／provider identity 資格、更多服務帳號模式與第三方安裝副作用仍未驗收。
 - [ ] 跨台循環應用的實際 freeze／activation／rollback 協調與資格驗收；GroupPlan／Receipt／Barrier／RollbackResult／Qualification 契約及消費端已實作，真實群組／產品證據待取得。
 - [ ] 依第 2 輪定案補一般主機的離線準備清單、目標核對與特殊項告知；特殊 DB／角色不新增自動模組，必要外部相依仍需 owner 確認。
+- [ ] 依 2026-10-09 深度複審補完整 HKLM／可讀 HKU／可攜／人工軟體 Markdown 確認、Oracle client／TNS_ADMIN／精確設定檔及實際 consumer 驗證、B1／B2／E1–E3 gate 與正式資格／放行包。20 項缺口已寫入 MIGRATION-2-PLAN／REVIEW；ENVIRONMENT-SOFTWARE-CONFIRMATION 是模板，尚無來源／目標 Server 真實清單，不能標已實作。
 - [ ] 真實瀏覽器／主控台和整輪實機再核對；程式 checkpoint `10c896a` 已推送、公共 draft PR 已同步，完整 CI 已通過。最新本機測試覆蓋與尚未完成的大量基準見下方，不以舊快照代替最後修改。
 
 ## 需要實際環境的驗收（不能用合成代替）

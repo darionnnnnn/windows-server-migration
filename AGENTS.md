@@ -17,3 +17,4 @@
 - 2026-10-09 下一輪入口：docs/MIGRATION-2-PLAN.md（規劃中，尚未實作）。聚焦一般服務主機；runtime／軟體／必要角色只列離線準備清單由使用者安裝，特殊產品保留告知與外部相依確認，Windows 系統設定逐項選擇。不把計畫方向寫成已交付行為。
 - 前一輪測試效率調整段落已完成：349195c 遠端一致；CI 37800134683 全部通過。整體舊 PLAN 的實機／業務資格及獨立體檢仍未完成。
 - GitHub 每段完成先檢查範圍／相依／影響並適當驗證，再於本輪分支 commit／push，確認遠端 SHA；不 force push 或自行 merge。
+- 2026-10-09 第2輪深度複審：docs/MIGRATION-2-REVIEW.md 的20項缺口已納入 PLAN 必要契約，包含完整機器／使用者／可攜軟體 Markdown、Oracle client／TNS_ADMIN／設定檔、實際consumer與企業資格／放行包。docs/ENVIRONMENT-SOFTWARE-CONFIRMATION.md 為格式模板，非已取得Server盤點。此輪只改文件，新增功能及正式資格仍未完成；Oracle DB／listener 保留特殊產品外部流程，不能一併排除一般應用client相依。
