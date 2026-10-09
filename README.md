@@ -26,7 +26,7 @@ powershell.exe -NoProfile -File C:\MigrationTools\Start-ServerMigration.ps1
 既有分類報告是離線快照，按100筆分頁，提供分類計數與搜尋；瀏覽器列印最多2,000筆。完整環境／軟體MD、JSON、TXT、CSV不使用這項列印截斷。遷移和切換仍限隔離 pilot，生產資格尚未驗收。
 
 - [操作手冊及資料契約](docs/OPERATIONS.md)：離線交換、規格／SID／機密、實際執行、重試與切換。
-- [逐項實作與未完成清單](docs/IMPLEMENTATION-0.1.md)：A–F／R01–R16 對照與證據。
+- [實作紀錄與當期外部待驗證](docs/IMPLEMENTATION-0.1.md)：第一輪歷史、已完成程式及保留的實機／企業／體檢項目。
 - [原始規劃與驗收條件](docs/MIGRATION-1-PLAN.md)：保留歷史需求；本輪範圍變更以第 2 輪為準。
 - [第 2 輪規劃](docs/MIGRATION-2-PLAN.md)：一般服務主機、離線準備、Windows 決策、Oracle設定與D2輸出目錄／可自訂大小分卷ZIP／資料夾交付；各項程式比對與實機資格狀態見文件末尾。
 - [第 2 輪深度複審](docs/MIGRATION-2-REVIEW.md)：累計28項企業 EOS 規劃缺口；再次按角色反查，補穩定作業狀態、增量分卷、白名單資料夾、既有設定回復、分階段gate與交付版本；尚非功能或正式資格通過。

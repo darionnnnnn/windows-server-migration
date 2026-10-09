@@ -1,4 +1,4 @@
-$ErrorActionPreference='Stop'
+﻿$ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $script:ToolVersion='0.3.0'
 function Assert-DeliveryReceiptTest([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message}}

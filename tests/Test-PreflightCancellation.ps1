@@ -10,7 +10,7 @@ try {
     $packageRoot=Join-Path $root 'package';[void][IO.Directory]::CreateDirectory($packageRoot)
     $item=[pscustomobject]@{ItemId='fixture-item';Decision='Include';Name='fixture scope';MigrationSpec=[pscustomobject]@{Adapter='FileScope';SourcePath=$scope;TargetPath=$scope;Metadata='DaclOwner';ConflictPolicy='ReplaceOwned';ExcludedRelativePaths=@();AclControlPolicy='AllowAutoInheritedUpgrade'}}
     $manifest=[pscustomobject]@{PairId=$pair;PlanHash=$planHash;Target=[pscustomobject]@{Fingerprint=('c'*64)};Generation=1;Bytes=([long]$bytes.Length);ArtifactsHash=('d'*64);BaseManifestHash=''}
-    $plan=[pscustomobject]@{PairId=$pair;Items=@($item)}
+    $plan=[pscustomobject]@{SchemaVersion=1;PairId=$pair;Items=@($item)}
     $package=[pscustomobject]@{Manifest=$manifest;Plan=$plan;Root=$packageRoot;SHA256=$manifestHash}
     $stateValue=[pscustomobject]@{Generation=1;ManifestHash=$manifestHash;Items=@([pscustomobject]@{ItemId=$item.ItemId;Status='Succeeded';ActualHash='placeholder'});PendingOperations=@()}
     & $module {

@@ -30,7 +30,7 @@ Firewall 使用 ActiveStore/TracePolicyStore 保存 policy source。來源及目
 | 原生設定跨段閉環 | wsm-r2-native-closure-3ce6ee67baac4df9ace6402ab099d4ca | 18 | 36 |
 | 防火牆最後修正 | wsm-r2-network-final-163010547b854f04839f1bf395c62949 | 3 | 6 |
 
-語法檢查涵蓋 144 個 src/tests/入口檔；163 個公開函式解析。Pipeline 小樣本仍保留真實 bytes/ACL/restore/final/retry 斷言；最後原生閉環 EnvironmentConfirmation 採 6 列驗語意，大量完整輸出由 CI 預設 2,501 列另驗。沒有 50k 軟體、500GiB、企業維護窗或 RPO/RTO 量測資格。
+最新語法／編碼檢查涵蓋 145 個 src/tests/入口檔；163 個公開函式解析。Pipeline 小樣本仍保留真實 bytes/ACL/restore/final/retry 斷言；最後原生閉環 EnvironmentConfirmation 採 6 列驗語意，大量完整輸出由 CI 預設 2,501 列另驗。沒有 50k 軟體、500GiB、企業維護窗或 RPO/RTO 量測資格。
 
 ## TODO 判定
 
@@ -51,3 +51,10 @@ GitHub Actions 僅記實際觀察结果，既有 checkpoint 結果不代替本�
 
 
 2026-10-10 最後邊界修正：新增 Firewall 規則必須有有效的完整列舉 marker，即使盤點沒有一般 DiscoveryGap 也不能省略。新增「missing marker without generic gap」拒絕測試；WindowsSettingsReview/InventoryFixture/Contracts 在5.1與7各3/3通過，快照 wsm-r2-marker-required-a44e297f83254e81a9a73c6e5ca1e89d 的全部runtime/test bytes前後一致且與最終工作樹相同。此補漏只改設定 review helper與對應fixture，既有無關結果不重跑。
+
+
+## CI 追加缺漏與修正（2026-10-10）
+
+37955503134 與 37956024235 的已完成失敗工作不能視為通過。GitHub connector 日誌定位到 WinPS5.1 非UTF8系統下 DeliveryReceipts 模組／測試缺BOM，以及取消預覽的舊測試Plan少SchemaVersion。補UTF8 BOM、保留取消的bytes/journal/cleanup斷言並將fixture明列Schema1；新Test-ScriptEncoding及CI入口檢查所有非ASCII脚本BOM和語法。Windows-1252 模擬重現舊測試4個解析錯誤，BOM版0個，新guard能拒絕原始檔。
+
+最後10個受影響腳本於5.1／7各10/10通過：編碼、取消預覽、DeliveryReceipts、LabReportConsumer、LabValidation、OutputWorkflow、FullDirectoryImport、DeltaMenu、Contracts、MigrationPipeline。固定快照 wsm-r2-ci-repair-57b2831a3d1440b4a5f3dc627e7e0840 的全部runtime/test SHA256前後一致且與工作樹相同。BOM也屬工具bytes，ToolFingerprint已更新；既有執行中的工具／核准不能熱換成新版。修正後的遠端CI結果另記實際觀察。

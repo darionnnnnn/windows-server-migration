@@ -1,4 +1,4 @@
-function ConvertTo-WsmDeliveryMarkdownValue($Value) {
+﻿function ConvertTo-WsmDeliveryMarkdownValue($Value) {
     if($null -eq $Value){return '(none)'}
     $text=[string]$Value
     $text=$text.Replace('\','\\').Replace('`','\`').Replace('|','\|').Replace('<','&lt;').Replace('>','&gt;')

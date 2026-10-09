@@ -186,7 +186,7 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 
 本輪固定快照 wsm-efficient-validation-7bd71e1a4e7f4d749897e4dcff0f4611 驗證完成：Pipeline、CancellationWorkflow、Report、FleetScale、SpecScale 在 Windows PowerShell 5.1 與 PowerShell 7 均為 5/5 PASS。Pipeline 分別 85.12／63.60 秒，Report 分別 4.81／9.89 秒；報告 DOM 實際驗證 2,501 筆與 11 個 chunks。這是本機功能證據，不是 Server 效能承諾。結束後核對快照與工作樹全部 50 個正式 src／入口雜湊相同；本輪未修改正式執行程式。既有 10c896a 的完整 54 腳本 CI 與 >4 GiB 證據沿用，沒有重跑無關測試。
 
-## 2026-10-09 前輪確認與新範圍
+## 2026-10-09 前輪確認與新範圍（實作前歷史）
 
 第2輪D2的full ZIP邊界子段已補9,999卷預檢與解包前全卷核對。TransportBoundaries及小型真實MigrationPipeline在固定HEAD基線快照於5.1／7各2/2通過；後者保留真實bytes／ACL與restore／final／retry測試，新增缺最後卷時不建立incoming的負例。這只完成既有full transport核心補強；新workspace、輸出旅程與delta-volume等仍待後續實作。
 
@@ -194,4 +194,4 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 
 測試效率調整段落已完成，349195c 已推送且遠端一致；GitHub Actions 37800134683 的 fixtures／delta-workflow 全部通過。受影響五腳本已於 WinPS 5.1／PS7 各 5/5 通過，正式 src／入口未改。這不代表全部旧 PLAN 完成，實際 Server／業務／名稱 IP／重開機與回退、畫面驗收及獨立體檢仍待證據。
 
-使用者定案下一輪聚焦一般服務主機：依賴軟體／runtime／必要角色僅告知並由使用者取得媒體準備；特殊角色／產品不新增自動遷移，保留告知和外部相依；Windows 系統設定獨立逐項審核。上述「依真實盤點補 DB／角色專用自動模組」待辦依使用者決策移出新方向，不計完成；一般項必要外部依賴仍須確認，不可靜默忽略。新功能與接線尚未實作，階段／相容／驗收見 [MIGRATION-2-PLAN.md](MIGRATION-2-PLAN.md)。
+使用者定案下一輪聚焦一般服務主機：依賴軟體／runtime／必要角色僅告知並由使用者取得媒體準備；特殊角色／產品不新增自動遷移，保留告知和外部相依；Windows 系統設定獨立逐項審核。上述「依真實盤點補 DB／角色專用自動模組」待辦依使用者決策移出新方向，不計完成；一般項必要外部依賴仍須確認，不可靜默忽略。此句為實作前決策；新功能與接線現已補齊並本機驗證，最新階段／相容／外部驗收見 [MIGRATION-2-PLAN.md](MIGRATION-2-PLAN.md) 與 [MIGRATION-2-VERIFICATION.md](MIGRATION-2-VERIFICATION.md)。
