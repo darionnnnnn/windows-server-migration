@@ -47,7 +47,7 @@ GitHub Actions 僅記實際觀察结果，既有 checkpoint 結果不代替本�
 
 最後清理只移除 Test-SoftwareInventory.ps1 的 EOF 空白行，正式 runtime 未改。SoftwareInventory/Contracts 在5.1與7各2/2通過；固定快照 wsm-r2-final-clean-7996352deaf34607a999d0e22cc26ec4 的全部 runtime/test hashes 前後不變且與工作樹相同。最後 diff 空白檢查及12份本機 Markdown 連結檢查通過。
 
-程式主段落 `44f9bf4dfdfdc8fbf78909789f876389ec0afcc6` 已推送並核對遠端一致。該次 CI 37955503134 已啟動，結果待實際完成後記錄。
+程式主段落 `44f9bf4dfdfdc8fbf78909789f876389ec0afcc6` 已推送並核對遠端一致。該次 CI 37955503134 已完成失敗；原因與後續修正見下方紀錄，不能視為通過。
 
 
 2026-10-10 最後邊界修正：新增 Firewall 規則必須有有效的完整列舉 marker，即使盤點沒有一般 DiscoveryGap 也不能省略。新增「missing marker without generic gap」拒絕測試；WindowsSettingsReview/InventoryFixture/Contracts 在5.1與7各3/3通過，快照 wsm-r2-marker-required-a44e297f83254e81a9a73c6e5ca1e89d 的全部runtime/test bytes前後一致且與最終工作樹相同。此補漏只改設定 review helper與對應fixture，既有無關結果不重跑。
@@ -67,4 +67,19 @@ GitHub Actions 僅記實際觀察结果，既有 checkpoint 結果不代替本�
 ScriptEncoding、Report、EnvironmentConfirmation（6列語意）、FleetScale（10台×200項）、LabReportConsumer、Contracts於5.1與7各6/6通過。最後快照 wsm-r2-print-guard-c5282b5c9af845d99e753e9a33042a50 的所有runtime/test SHA256前後不變並與工作樹相同；完整確認文件2,501列另由最終CI測試。不同模型獨立體檢仍待完成。
 
 
-遠端補驗發現：37957836407 的兩個 migration-round-two jobs 在 WindowsSettingsReview fixture 內持續至 20 分鐘上限，取消不計通過；PowerShell 7 曾輸出 JSON depth 30 截斷警告。本機完全相同快照以兩引擎及 NonInteractive 模式仍成功。已新增分段診斷輸出並把該測試放到整合 job 首位，保留全部斷言與既有逾時門檻，繼續追查遠端差異；不把尚未成功 CI 寫成完成。
+遠端補驗發現：37957836407 的兩個 migration-round-two jobs 在交付收據後段模組匯入後持續至 20 分鐘上限（起初誤定位為 WindowsSettingsReview，後續分段日誌已更正），取消不計通過；PowerShell 7 曾輸出 JSON depth 30 截斷警告。本機完全相同快照以兩引擎及 NonInteractive 模式仍成功。已新增分段診斷輸出並把該測試放到整合 job 首位，保留全部斷言與既有逾時門檻，繼續追查遠端差異；不把尚未成功 CI 寫成完成。
+
+
+非互動隔離補驗：37958816256 的同類工作亦取消，不計通過。4b13c20 保留同一套24項矩陣測試與全部斷言，把WindowsSettingsReview設為獨立的3分鐘步驟並使用NonInteractive；37960896337該步驟在5.1／7分別7秒／5秒成功。原逾時根因未重現，未宣稱修正產品序列化缺陷。診斷輸出不改正式runtime；ScriptEncoding／WindowsSettingsReview／Contracts在固定快照 `wsm-r2-ci-isolation-e5c2e7b2173443ed835f3b2cf06eaabe` 於兩引擎各3/3，145個runtime/test SHA256前後不變且與工作樹相同；此前印表及其他不變程式的有效證據沿用。
+
+
+## 最後 CI 定位更正與原生物件投影（2026-10-10）
+
+37960808476 分段日誌證實 WindowsSettingsReview 全部完成，實際停滯為 Test-DeliveryReceipts 後半段：前面的 PASS 只代表 Markdown/Fleet 單元用例。37960896337 亦取消，不計通過。來源 LabReport receipt fixture 未替換 Export-WsmInventory，本機非 Server 被拒絕採集，Server runner 則進入完整原生採集。收據用例現使用 source-bound trusted Inventory fixture，新增 NativeInventoryCollected=PASS 斷言，保留所有 full/delta/native transport/receipt assertions，沒有關閉正式 LabReport 原生盤點。
+
+正式 Inventory 與 AdapterState 的 firewall filters／SMB access 原先保存原始 CIM 物件，包含 CimClass／CimInstanceProperties／CimSystemProperties，會造成管理物件圖深度序列化。改為明確操作欄位投影，SMB 權限及 dynamic transport enum 保留文字標籤；盤點、目標狀態／readback／journal／回退共用相容資料形狀。新 InventoryFixture 及 NativeStateProjection 回歸皆能使 4b13c20 原始 raw 程式因 CIM metadata 外洩失敗，修正版通過；實際本機 firewall filter 只讀查詢也證明有限 JSON，不修改主機。這不等於完成 Server／產品資格。
+
+盤點投影中間快照 `wsm-r2-native-projection-8209a73bf4c54d10adfef7fb8a5a19ff` 的14腳本在5.1／7各14/14，runtime/test bytes前後不變；此快照先於後續AdapterState投影修正，新完整受影響快照另記。CI現在保留25項矩陣測試：新增 NativeStateProjection，DeliveryReceipts與WindowsSettingsReview各為獨立3分鐘步驟；未刪減原斷言。WinPS5.1已觀察2,501列確認用例耗時10分45秒並成功，屬合成測試，不是正式遷移效能。
+
+
+最後原生狀態投影固定快照 `wsm-r2-native-state-final-0dd731a9c6b5425db22b7c910bc08708`：ScriptEncoding／NativeStateProjection／Adapters／ShareContracts／InventoryFixture／DeliveryReceipts／LabReportConsumer／LabValidation／MigrationPipeline（2個小檔的真實bytes/ACL/恢復/回退）／Contracts於5.1與7各10/10；146個runtime/test SHA256前後不變且與最後工作樹相同。Luna high只讀複核確認firewall/SMB消費欄位及enum round-trip保留；主代理親自核對與驗收，不稱為不同模型體檢。本次runtime bytes已改指紋，既有核准依既有重新核准流程失效；此版本的遠端CI仍待實際成功。

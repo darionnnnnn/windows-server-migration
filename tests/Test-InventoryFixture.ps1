@@ -19,7 +19,8 @@ $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-probes-'+[Guid]::NewGuid().ToSt
     function script:Get-ItemProperty { param($Path,$ErrorAction) if ($Path -eq 'HKLM:\SOFTWARE\Microsoft\Cryptography') { [pscustomobject]@{ MachineGuid='fixture-machine-guid' } } else { @() } }
     function script:Get-ScheduledTask { param($ErrorAction) [pscustomobject]@{ TaskName='fixture'; TaskPath='\'; State='Ready' }; throw 'fixture task enumeration interrupted' }
     function script:Export-ScheduledTask { param($TaskName,$TaskPath,$ErrorAction) '<Task>synthetic fixture</Task>' }
-    function script:Get-SmbShare { param($ErrorAction) @() }
+    function script:Get-SmbShare { param($ErrorAction) [pscustomobject]@{Name='fixture-share';ScopeName='*';Path='C:\Fixture\share';Description='Fixture';Special=$false;EncryptData=$true} }
+    function script:Get-SmbShareAccess {param($Name,$ScopeName,$ErrorAction)[pscustomobject]@{Name=$Name;ScopeName=$ScopeName;AccountName='fixture\reader';AccessControlType='Allow';AccessRight='Read';CimClass=[pscustomobject]@{ProbeOnly='native-management-metadata'};CimInstanceProperties=@('native-management-metadata');CimSystemProperties=[pscustomobject]@{Namespace='fixture-only'}}}
     function script:Get-ChildItem { param($Path,[switch]$Recurse,$ErrorAction) if ($Path -like 'Cert:*') { @() } else { throw 'Unexpected filesystem probe in test' } }
     function script:Get-NetIPAddress { @() }
     function script:Get-DnsClientServerAddress { @() }
@@ -28,9 +29,9 @@ $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-probes-'+[Guid]::NewGuid().ToSt
         if($PolicyStore -cne 'ActiveStore' -or -not $TracePolicyStore){throw 'Firewall inventory must trace the actual policy source.'}
         foreach($sourceType in @('Local','GroupPolicy','None')){[pscustomobject]@{Name=('fixture-'+$sourceType);DisplayName=('Fixture '+$sourceType);Enabled='True';Direction='Inbound';Action='Allow';Profile='Domain';PolicyStoreSourceType=$sourceType}}
     }
-    function script:Get-NetFirewallPortFilter {param([Parameter(ValueFromPipeline)]$InputObject)process{[pscustomobject]@{Protocol='TCP';LocalPort='443';RemotePort='Any'}}}
-    function script:Get-NetFirewallAddressFilter {param([Parameter(ValueFromPipeline)]$InputObject)process{[pscustomobject]@{LocalAddress='Any';RemoteAddress='Any'}}}
-    function script:Get-NetFirewallApplicationFilter {param([Parameter(ValueFromPipeline)]$InputObject)process{[pscustomobject]@{Program='C:\Fixture\app.exe'}}}
+    function script:Get-NetFirewallPortFilter {param([Parameter(ValueFromPipeline)]$InputObject)process{[pscustomobject]@{Protocol='TCP';LocalPort='443';RemotePort='Any';IcmpType='Any';DynamicTarget='Any';DynamicTransport='Any';CimClass=[pscustomobject]@{ProbeOnly='native-management-metadata'}}}}
+    function script:Get-NetFirewallAddressFilter {param([Parameter(ValueFromPipeline)]$InputObject)process{[pscustomobject]@{LocalAddress='Any';RemoteAddress='Any';CimInstanceProperties=@('native-management-metadata')}}}
+    function script:Get-NetFirewallApplicationFilter {param([Parameter(ValueFromPipeline)]$InputObject)process{[pscustomobject]@{Program='C:\Fixture\app.exe';Package='Any';CimSystemProperties=[pscustomobject]@{Namespace='fixture-only'}}}}
     function script:Get-WindowsFeature { param($ErrorAction) @() }
     function script:Test-Path { param($LiteralPath) if ($LiteralPath -like '*applicationHost.config') { return $false }; Microsoft.PowerShell.Management\Test-Path -LiteralPath $LiteralPath }
 }
@@ -45,11 +46,20 @@ $result=Export-WsmInventory $root
 $state2=Get-Content (Join-Path $root 'source-state.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($state1.HostId -cne $state2.HostId -or $state2.Revision -ne 2) { throw 'Retry changed source identity or reused evidence.' }
 $inv=Get-Content $result.Path -Raw -Encoding UTF8 | ConvertFrom-Json
-if (@($inv.Items | Where-Object Kind -EQ PathCandidate).Count -ne 1 -or $inv.CategorySummary.Count -ne 12) { throw 'Path candidates or parent classification summary missing.' }
+if (@($inv.Items | Where-Object Kind -EQ PathCandidate).Count -ne 2 -or $inv.CategorySummary.Count -ne 12) { throw 'Path candidates or parent classification summary missing.' }
 if (@($inv.Items | Where-Object Kind -EQ ScheduledTask).Count -ne 1 -or @($inv.Items | Where-Object { $_.Category -eq 'Tasks' -and $_.Status -eq 'Failed' }).Count -ne 1) { throw 'Partial collector lost successful child or hid failure.' }
 if (@($inv.Items | Where-Object Kind -EQ DiscoveryGap).Count -ne 12) { throw 'Discovery scope gaps omitted.' }
 $firewalls=@($inv.Items | Where-Object Kind -EQ FirewallRule)
 if($firewalls.Count -ne 3){throw 'Traced firewall rules were lost during native inventory export.'}
+foreach($rule in $firewalls){
+    foreach($filter in @($rule.Settings.Ports)+@($rule.Settings.Addresses)+@($rule.Settings.Applications)){
+        foreach($name in @('CimClass','CimInstanceProperties','CimSystemProperties')){if($filter.PSObject.Properties[$name]){throw 'Native management metadata escaped the bounded firewall projection.'}}
+    }
+    if($rule.Settings.Ports[0].LocalPort -cne '443' -or $rule.Settings.Ports[0].DynamicTransport -cne 'Any' -or $rule.Settings.Addresses[0].RemoteAddress -cne 'Any' -or $rule.Settings.Applications[0].Package -cne 'Any'){throw 'Bounded firewall projection lost operational fields.'}
+}
+$shares=@($inv.Items | Where-Object Kind -EQ Share)
+if($shares.Count -ne 1 -or $shares[0].Settings.Access[0].AccountName -cne 'fixture\reader' -or $shares[0].Settings.Access[0].AccessRight -cne 'Read' -or $shares[0].Settings.Access[0].AccessControlType -cne 'Allow'){throw 'Bounded share projection lost access-control fields.'}
+foreach($name in @('CimClass','CimInstanceProperties','CimSystemProperties')){if($shares[0].Settings.Access[0].PSObject.Properties[$name]){throw 'Native management metadata escaped the bounded share projection.'}}
 & $module {param($Rules)
     foreach($entry in $Rules){$expected='Unknown';if($entry.Settings.Rule.PolicyStoreSourceType -ceq 'Local'){$expected='Local'}elseif($entry.Settings.Rule.PolicyStoreSourceType -ceq 'GroupPolicy'){$expected='GPO'};if((Get-WsmWindowsSettingControlSource $entry.Settings) -cne $expected){throw 'Native collector policy source did not reach the Windows review consumer.'}}
 } $firewalls

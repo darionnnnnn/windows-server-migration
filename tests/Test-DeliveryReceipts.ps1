@@ -37,7 +37,17 @@ try{
         . $FixturePath
         function Assert-DeliveryFlow([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message}}
         function Get-WsmMachineIdentity {[pscustomobject]@{Fingerprint=('a'*64);Name='receipt-source';OS='Windows Server fixture';Version='10.0';IsServer=$true;Administrator=$true;Is64Bit=$true}}
-        $sourceWorkRoot=Join-Path $FlowRoot 'source-workroot';$sourceEnrollment=Initialize-WsmOutputWorkspace -WorkRoot $sourceWorkRoot -Role Source
+        # This contract tests receipt references, not native host enumeration.
+        function Export-WsmInventory {
+            param([string]$OutputDirectory,[switch]$DeepDiscovery)
+            $inventory=New-WsmInventory ([pscustomobject]@{HostId=$script:ReceiptFixtureSourceId;Fingerprint=('a'*64);Name='receipt-source';OS='Windows Server fixture';Version='10.0'}) 1 @()
+            $path=Join-Path $OutputDirectory 'receipt-fixture-inventory.json'
+            Write-WsmJson $path $inventory
+            [pscustomobject]@{Path=$path;SHA256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()}
+        }
+        Write-Host 'Delivery flow: workspace enrollment.'
+        $sourceWorkRoot=Join-Path $FlowRoot 'source-workroot';$sourceEnrollment=Initialize-WsmOutputWorkspace -WorkRoot $sourceWorkRoot -Role Source;$script:ReceiptFixtureSourceId=$sourceEnrollment.HostId
+        Write-Host 'Delivery flow: report reference projection.'
         $packageRoot=Join-Path $FlowRoot 'package';[void][IO.Directory]::CreateDirectory($packageRoot)
         $projection=[pscustomobject][ordered]@{Setting='fixture';Value='safe'}
         $projectionHash=Get-WsmHashText (ConvertTo-Json -InputObject $projection -Depth 45 -Compress)
@@ -57,21 +67,26 @@ try{
         $artifactPath=Join-Path $packageRoot 'artifacts.jsonl';[IO.File]::WriteAllText($artifactPath,'',(New-Object Text.UTF8Encoding($false)));$artifactHash=(Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
         $manifest=[pscustomobject][ordered]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='MigrationPackage';PackageId=[Guid]::NewGuid().ToString('D');BatchId=$batch;PairId=$pair;ApprovalId=$approval;PlanHash=$planHash;Source=$source;Target=$target;InventoryRevision=1;DecisionRevision=1;Generation=1;BaseManifestHash='';Final=$false;FreezeHash='';ArtifactsHash=$artifactHash;Files=0;Bytes=0;Records=0;ChunkBytes=65536;SealedUtc=[DateTime]::UtcNow.ToString('o');Mode='IsolatedPilot'}
         $manifestPath=Join-Path $packageRoot 'manifest.json';Write-WsmJson $manifestPath $manifest;$manifestHash=(Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        Write-Host 'Delivery flow: full ZIP producer.'
         $zipRoot=Join-Path $FlowRoot 'zip';$zip=Export-WsmPackageZip -ManifestPath $manifestPath -ExpectedHash $manifestHash -OutputDirectory $zipRoot -VolumeBytes 1048576
         $zipDoc=Export-WsmDeliveryDocument -TransportPath $zip.Path -ExpectedHash $zip.SHA256 -ManifestPath $manifestPath -ExpectedManifestHash $manifestHash -OutputDirectory (Join-Path $FlowRoot 'zip-report')
         $sealed=Read-WsmJson $zipDoc.ReceiptPath
         $expectedDeliveryId=[Guid]::ParseExact((Get-WsmHashText ($zip.SHA256.ToLowerInvariant()+'|'+$manifest.PackageId)).Substring(0,32),'N').ToString('D')
         Assert-DeliveryFlow ($sealed.Status -ceq 'Sealed' -and $sealed.Mode -ceq 'Zip' -and $sealed.DeliveryId -ceq $expectedDeliveryId) ('ZIP delivery document did not emit a stable sealed receipt. Actual='+$sealed.Status+'/'+$sealed.Mode+'/'+$sealed.DeliveryId+' Expected='+$expectedDeliveryId)
         $sourceSealHash=(Get-FileHash -LiteralPath $zipDoc.ReceiptPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        Write-Host 'Delivery flow: source LabReport receipt reference.'
         $labReport=Export-WsmLabValidationReport -OutputDirectory (Join-Path $FlowRoot 'lab-report') -Role Source -ManifestPath $manifestPath -ExpectedHash $manifestHash -DeliveryReceiptReferences @([pscustomobject]@{Path=$zipDoc.ReceiptPath;SHA256=$sourceSealHash})
         $labReportJson=Read-WsmJson $labReport.JSONPath;$labReportText=[IO.File]::ReadAllText($labReport.TextPath)
+        Assert-DeliveryFlow (@($labReportJson.Checks | Where-Object {$_.Code -ceq 'NativeInventoryCollected' -and $_.Status -ceq 'PASS'}).Count -eq 1) 'Receipt test did not consume its trusted source inventory fixture.'
         Assert-DeliveryFlow ($labReportJson.DeliveryReceiptReferences.Count -eq 1 -and $labReportJson.DeliveryReceiptReferences[0].Status -ceq 'Sealed' -and $labReportJson.DeliveryReceiptReferencesReadinessProof -eq $false -and $labReportJson.DeliveryReceiptReferencesProductionVerified -eq $false -and $labReportText.Contains($sourceSealHash) -and $labReportJson.Readiness -ne 'Ready') 'Lab report did not retain its exact receipt reference as report-only JSON/text output.'
+        Write-Host 'Delivery flow: full Directory producer.'
         $directory=Export-WsmDirectoryDelivery -ManifestPath $manifestPath -ExpectedHash $manifestHash -OutputDirectory (Join-Path $FlowRoot 'directory-package')
         $directoryDoc=Export-WsmDeliveryDocument -TransportPath $directory.SummaryPath -ExpectedHash $directory.SummarySHA256 -ManifestPath (Join-Path $directory.Directory 'manifest.json') -ExpectedManifestHash $manifestHash -OutputDirectory (Join-Path $FlowRoot 'directory-report')
         $directoryReceipt=Read-WsmJson $directoryDoc.ReceiptPath
         Assert-DeliveryFlow ($directoryReceipt.Status -ceq 'Sealed' -and $directoryReceipt.Mode -ceq 'Directory' -and $directoryReceipt.Members.Count -eq 3 -and $directoryReceipt.Volumes.Count -eq 0) 'Directory delivery document omitted its complete package member set.'
         Write-WsmJson $reportPath ([pscustomobject]@{ReportProjectionHash=$projectionHash;Projection=$projection})
         $reportRef.SHA256=(Get-FileHash $reportPath).Hash
+        Write-Host 'Delivery flow: enrolled source ZIP producer.'
         $enrolled=Export-WsmEnrolledPackageDelivery -WorkRoot $sourceWorkRoot -ManifestPath $manifestPath -ExpectedHash $manifestHash -ReportReferences @($reportRef)
         $enrolledReceipt=Read-WsmJson $enrolled.DeliveryDocumentation.ReceiptPath
         Assert-DeliveryFlow ($enrolledReceipt.Status -ceq 'Sealed' -and $enrolledReceipt.Mode -ceq 'Zip' -and (Get-FileHash -LiteralPath $enrolled.DeliveryDocumentation.MarkdownPath -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $enrolled.DeliveryDocumentation.MarkdownHash -and [IO.File]::Exists($enrolled.IndexPath)) 'Real enrolled source delivery did not create a hash-bound Markdown document and index.'
@@ -79,12 +94,15 @@ try{
         Assert-DeliveryFlow ($enrolledIndex.ReportReferences[0].ReportProjectionHash -ceq $projectionHash -and [IO.File]::ReadAllText($enrolled.DeliveryDocumentation.MarkdownPath).Contains('ProjectionHashVerified')) 'Enrolled ZIP lost its verified report projection reference.'
         $sourceProfilePath=Join-Path $sourceWorkRoot 'workspace-control\output-profile.json'
         Set-WsmOutputPreferences -WorkRoot $sourceWorkRoot -Role Source -ExpectedProfileHash (Get-FileHash $sourceProfilePath).Hash -Mode Directory | Out-Null
+        Write-Host 'Delivery flow: enrolled source Directory producer.'
         $enrolledDirectory=Export-WsmEnrolledPackageDelivery -WorkRoot $sourceWorkRoot -ManifestPath $manifestPath -ExpectedHash $manifestHash -ReportReferences @($reportRef)
         Assert-DeliveryFlow ($enrolledDirectory.AttemptId -cne $enrolled.AttemptId -and [IO.File]::ReadAllText($enrolledDirectory.DeliveryDocumentation.MarkdownPath).Contains('ProjectionHashVerified')) 'Enrolled Directory did not preserve its independent attempt and verified report projection.'
+        Write-Host 'Delivery flow: native full import and target receipt.'
         $incoming=Import-WsmPackageZip -TransportPath $zip.Path -ExpectedHash $zip.SHA256 -OutputDirectory (Join-Path $FlowRoot 'incoming')
         $targetReceipt=Export-WsmImportedDeliveryReceipt -TransportPath $zip.Path -ExpectedHash $zip.SHA256 -ManifestPath $incoming.ManifestPath -ExpectedManifestHash $incoming.SHA256 -OutputDirectory (Join-Path $FlowRoot 'target-receipt')
         $receipt=Read-WsmJson $targetReceipt.Path;$receiptHash=(Get-FileHash -LiteralPath $targetReceipt.Path -Algorithm SHA256).Hash.ToLowerInvariant()
         Assert-DeliveryFlow ($receipt.Status -ceq 'ImportedVerified' -and -not $receipt.ReadinessProof -and -not $receipt.ProductionVerified) 'Target did not emit a report-only ImportedVerified receipt.'
+        Write-Host 'Delivery flow: manager stage-aware imports.'
         $manager=Join-Path $FlowRoot 'manager';[void][IO.Directory]::CreateDirectory((Join-Path $manager 'pairs'))
         Write-WsmJson (Join-Path $manager 'fleet.json') ([pscustomobject]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='Fleet';BatchId=$batch;CreatedUtc=[DateTime]::UtcNow.ToString('o');Pairs=@([pscustomobject]@{PairId=$pair})})
         $catalog=[pscustomobject]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='Catalog';BatchId=$batch;PairId=$pair;Source=$source;TargetName='receipt-target';ImportedUtc=[DateTime]::UtcNow.ToString('o');InventoryRevision=1;DecisionRevision=1;Items=@();Approval=[pscustomobject]@{Kind='MigrationPlan';Mode='IsolatedPilot';ApprovalId=$approval;Hash=$planHash;TargetHostId=$targetId;TargetFingerprint=$target.Fingerprint}}
@@ -98,6 +116,7 @@ try{
         Assert-DeliveryFlow ($imported.Status -ceq 'ImportedVerified' -and $summary.Status -ceq 'ImportedVerified' -and $summary.Generation -eq 1 -and -not $summary.ReadinessProof -and -not $summary.ProductionVerified) 'Manager importer failed to retain the exact report-only receipt projection.'
         # Empty approved package indexes keep this transport test independent of
         # machine-specific payload adapters while exercising native Delta contracts.
+        Write-Host 'Delivery flow: native delta receipt producers.'
         $deltaRoot=Join-Path $FlowRoot 'delta';$baseRoot=Join-Path $deltaRoot 'base';$currentRoot=Join-Path $deltaRoot 'current';[void][IO.Directory]::CreateDirectory($baseRoot);[void][IO.Directory]::CreateDirectory($currentRoot)
         $deltaSource=Join-Path $deltaRoot 'source-scope';$deltaTarget=Join-Path $deltaRoot 'target-scope';[void][IO.Directory]::CreateDirectory($deltaSource);[void][IO.Directory]::CreateDirectory($deltaTarget);$deltaItemId=Get-WsmHashText ($source.HostId+'|Storage|FileScope|receipt-delta-fixture');$deltaSpec=[pscustomobject][ordered]@{Adapter='FileScope';Owner='receipt fixture owner';Evidence='receipt fixture evidence';SourcePath=$deltaSource;TargetPath=$deltaTarget;ExcludedRelativePaths=@();Consistency='Immutable';Metadata='DaclOwner';ConflictPolicy='ReplaceOwned'};$deltaItem=[pscustomobject]@{ItemId=$deltaItemId;Decision='Include';MigrationSpec=$deltaSpec}
         $deltaPlan=[pscustomobject][ordered]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='MigrationPlan';BatchId=$batch;PairId=$pair;ApprovalId=$approval;Source=$source;Target=$target;InventoryRevision=1;DecisionRevision=1;Mode='IsolatedPilot';ToolFingerprint=(Get-WsmToolFingerprint);Items=@($deltaItem)}
