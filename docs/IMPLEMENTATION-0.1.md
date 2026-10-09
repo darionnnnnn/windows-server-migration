@@ -186,6 +186,8 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 
 ## 2026-10-09 前輪確認與新範圍
 
+第2輪已由使用者授權開始實作，起點c72f65b。A0目前完成來源物件的版本化分類、Core匯入驗證／保留、只讀assessment API、CLI ScopeAssessment與主選單23；分類不改Include／Exclude，所有軟體準備與特殊相依仍待後续受審門檻。ScopeClassification／InventoryFixture／Contracts／AdvancedReview／EntryPoint／EnterpriseDiscovery／MenuContracts在固定快照於WinPS5.1／PS7各7/7；最後wrong-kind微修在新快照對受影響兩腳本各2/2，runtime hashes不變。修正5.1 fixture預設ANSI讀UTF-8 JSON問題，不改正式JSON格式。這是本機功能／相容證據，非Server或Oracle資格；PLAN文末列A1／B1／B2／C／D／D2／E1–E3未完成項繼續實作。
+
 測試效率調整段落已完成，349195c 已推送且遠端一致；GitHub Actions 37800134683 的 fixtures／delta-workflow 全部通過。受影響五腳本已於 WinPS 5.1／PS7 各 5/5 通過，正式 src／入口未改。這不代表全部旧 PLAN 完成，實際 Server／業務／名稱 IP／重開機與回退、畫面驗收及獨立體檢仍待證據。
 
 使用者定案下一輪聚焦一般服務主機：依賴軟體／runtime／必要角色僅告知並由使用者取得媒體準備；特殊角色／產品不新增自動遷移，保留告知和外部相依；Windows 系統設定獨立逐項審核。上述「依真實盤點補 DB／角色專用自動模組」待辦依使用者決策移出新方向，不計完成；一般項必要外部依賴仍須確認，不可靜默忽略。新功能與接線尚未實作，階段／相容／驗收見 [MIGRATION-2-PLAN.md](MIGRATION-2-PLAN.md)。

@@ -177,3 +177,9 @@ TXT 預設最多列 200 項，FAIL／Blocked 優先，再列 NotTested／PASS；
 6. 回傳前後的 TXT，保留完整 JSON；人工／業務與外部認證結果另由 owner 確認，不以技术 PASS 取代。
 
 單台成功後才擴大到實際有相依的雙台，再做十台波次。只對不同版本、權限、帳號、runtime、角色或缺陷新增測試。容量／時間驗證以實際 scope 為準，先定維護窗、可用容量與資源上限，單獨測一次封裝→傳輸→還原；不要反覆把大量檔案帶入所有 fault fixtures。代表性子集成功不表示未選項目或全部生產業務已通過。
+
+## 第2輪：只讀物件範圍評估
+
+來源盤點附帶版本化分類 metadata，匯入時驗證並保留。主選單23顯示分類數量與探索缺口；CLI `-Action ScopeAssessment -Workspace <工作區> -PairId <配對GUID>` 輸出全部項目及原有相依關係的 JSON。亦可用 `Get-WsmGeneralHostAssessment -Inventory $inventory` 或 `-Catalog $catalog` 做同一投影；舊盤點沒有附帶分類時重新計算，附帶分類若損壞／不符規則則拒絕。
+
+分類是候選判斷：Oracle引擎／listener列特殊產品，用戶端／driver／runtime與代理列目標準備；混合主機仍保留一般IIS與自訂服務。未解析產品與collector缺口保持未知；名稱命中不代表產品完整識別或實機資格。此評估不改決策、不安裝、不搬移、不測網路；準備與外部相依的受審核門檻會依PLAN後續段落接入，不能用分類數量代替核准或業務驗收。

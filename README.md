@@ -29,6 +29,8 @@ powershell.exe -NoProfile -File C:\MigrationTools\Start-ServerMigration.ps1
 - [第 2 輪深度複審](docs/MIGRATION-2-REVIEW.md)：累計28項企業 EOS 規劃缺口；再次按角色反查，補穩定作業狀態、增量分卷、白名單資料夾、既有設定回復、分階段gate與交付版本；尚非功能或正式資格通過。
 - [完整環境／軟體確認表](docs/ENVIRONMENT-SOFTWARE-CONFIRMATION.md)：每台全量軟體、使用者／可攜環境、Oracle TNS_ADMIN／設定檔與目標驗證的 Markdown 格式；目前是模板，非真實 Server 清單。
 
+第2輪開始分段實作。來源分類與管理端只讀範圍評估將一般工作負載、目標準備、Windows設定、特殊產品及未知分開；主選單23或 CLI `-Action ScopeAssessment -Workspace <工作區> -PairId <配對GUID>` 可查看。分類不改動 Include／Exclude，不證明相依已完成；完整軟體盤點、Oracle設定、準備門檻與新交付流程的逐段狀態見第2輪PLAN。
+
 盤點 ZIP 只有設定證據；遷移 ZIP 才包含明確批准的 scope 資料。ZIP 不加密；可信 SHA256 須由獨立可信管道取得。工具不更改企業執行原則，憑證私鑰與密碼使用外部材料／記憶體 SecretRef。
 
 ## 非互動入口與測試

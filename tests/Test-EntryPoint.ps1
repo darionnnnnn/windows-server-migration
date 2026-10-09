@@ -14,6 +14,11 @@ $inventory=New-WsmInventory $source 1 @($item)
 $path=Join-Path $root 'inventory.json'
 [IO.File]::WriteAllText($path,($inventory | ConvertTo-Json -Depth 40),(New-Object Text.UTF8Encoding($false)))
 $c=Import-WsmInventory $workspace $path (Get-FileHash $path).Hash 'synthetic-target'
+$assessmentLog=Join-Path $root 'scope-assessment.json'
+& $engine -NoProfile -NonInteractive -File $entry -Action ScopeAssessment -Workspace $workspace -PairId $c.PairId *> $assessmentLog
+if($LASTEXITCODE -ne 0){throw 'Read-only scope assessment must return 0.'}
+$assessment=Get-Content -LiteralPath $assessmentLog -Raw | ConvertFrom-Json
+if($assessment.TotalItems -ne 1 -or $assessment.Items[0].ItemId -cne $item.ItemId -or $assessment.Items[0].Classification.Disposition -cne 'GeneralMigration' -or (Get-WsmCatalog $workspace $c.PairId).DecisionRevision -ne 0){throw 'CLI scope assessment omitted classification or changed decisions.'}
 & $engine -NoProfile -NonInteractive -File $entry -Action Issues -Workspace $workspace -PairId $c.PairId *> (Join-Path $root 'issues.log')
 if ($LASTEXITCODE -ne 2) { throw 'Pending review must return 2.' }
 $ErrorActionPreference='Continue' # Native stderr is expected for the rejection cases below.

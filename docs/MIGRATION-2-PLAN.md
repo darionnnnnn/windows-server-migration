@@ -1,7 +1,7 @@
 ﻿# MIGRATION 第 2 輪規劃：一般服務主機、完整環境確認與企業 EOS 遷移資格
 
 > 日期：2026-10-09
-> 狀態：規劃中；2026-10-09 深度複審已補強規格，新增功能尚未實作／實機驗收。
+> 狀態：實作中；2026-10-09 使用者授權開始實作並持續核對完整性。各項完成狀態見文末執行紀錄，新增功能及正式資格不得一併推定通過。
 > 複審基準：codex/implementation，991fc864126d226b65eb0fdbe440c7f7d41040af；前輪程式與測試基準保留於下方。
 > 來源：一般主機既有定案，以及使用者要求企業 Windows Server EOS 正式工具程度、Oracle TNS_ADMIN 與完整已安裝環境／相依工具／使用者軟體 Markdown 確認。
 > 複審證據：[深度複審](MIGRATION-2-REVIEW.md)；確認文件格式：[環境與軟體確認表](ENVIRONMENT-SOFTWARE-CONFIRMATION.md)。
@@ -341,6 +341,31 @@
 **E3 補驗**：未簽／不可信／過期／revoked／wrong tuple 的材料拒絕放行；簽署後 bytes 與 plan／qualification 不一致阻擋；該 OS／provider 真實資格缺口仍可在 fleet／LabReport／Markdown 查到。
 
 ### 整體複檢與本次執行紀錄
+
+#### 實作啟動（2026-10-09）
+
+- 起點：codex/implementation，c72f65b7f127f4c045124fab72aa85d191195a48；既有未追蹤 prototype 保持不動。使用者授權本輪 A–E 全部實作；實際 Server／Oracle／企業材料仍由外部受控環境提供，缺證據保留 NotTested。
+- 子代理只使用 gpt-6-luna，主模型按風險選 low／medium／high。A0 分類與盤點接線委派 high；A1 相依接線調查委派 medium（只讀）。主代理直接核對產物、consumer、負例與固定快照測試；不以代理摘要或局部 PASS 當整輪完成。
+- 各完整子段驗證後 commit／push 並確認遠端 SHA；停止前依本表及原始條目／補強契約逐項回查，未實作繼續補，不移走原需求。下表只作追蹤，不取代每批子項。
+
+| 段落 | 本輪必要交付／對照 | 狀態／實作與驗證證據 |
+|---|---|---|
+| A0 | 物件分類、Oracle engine／client界線、混合主機及完整評估投影 | 已實作／本機fixture驗證；ScopeClassification、Inventory／Core、選單23／CLI ScopeAssessment；7腳本在5.1／7各7/7，最後wrong-kind修正各2/2。非產品完整識別／實機資格 |
+| A1 | 受審處置／override、Preparation／ExternalDependency型別、必要相依全consumer | 未完成 |
+| B1 | HKLM／HKU／portable／人工全軟體、runtime／driver／context、準備／媒體／投影證據 | 未完成 |
+| B2 | 版本化Oracle有效設定、精確ConfigFiles／IFILE、目標readback／外部consumer證據 | 未完成 |
+| C | OS清單／選否、逐項決策、Create／Keep／External／UpdateReviewed／時區prior回復 | 未完成 |
+| D | 全量安全Markdown與其他報告、DocumentId、回填／gate、CLI／選單／Fleet／LabReport | 未完成 |
+| D2 | stable enrollment／state、OutputProfile、白名單資料夾、full／delta分卷、scratch／容量／交付 | 未完成 |
+| E1 | 新舊格式／schema／approval／journal／ownership與完整跨段相容 | 未完成 |
+| E2 | 一致性／fencing／名稱IP／回退新資料／退役／實機RPO與RTO證據閉環 | 未完成；尚無本輪Server／Oracle實機證據 |
+| E3 | exact資格、發行／SBOM／企業信任／安全交換／正式放行包 | 未完成；未提供企業簽章／批准材料，生產開關維持關閉 |
+
+- A0 實作者：scope_classification（gpt-6-luna high）；主代理整合 Core／CLI／CI、UTF-8 測試讀取及 wrong-kind微修。獨立核對 mixed IIS／SQL、Oracle engine／listener／client／ODAC、字典→JSON→catalog、localized role ID、偽造／額外欄位／重排欄位／Int64版本、未解析相依、legacy投影與不修改決策。
+- A0 驗證：固定快照 `wsm-r2-a0-verified-895774a630b54f83b861db6eb9ac5261` 的 ScopeClassification／InventoryFixture／Contracts／AdvancedReview／EntryPoint／EnterpriseDiscovery／MenuContracts，WinPS5.1與PS7各7/7。第一次5.1 InventoryFixture的ANSI讀UTF-8失敗已在獨立快照重現並修正。最後只加wrong-kind拒絕，於新快照 `wsm-r2-a0-final-2b0ff1777203476d9fbc4a9d2bdfb0f8` 重验受影響 ScopeClassification／EntryPoint，各2/2；runtime hashes前後不變且與A0工作樹檔案相符。未改payload，不重跑>4GiB；全輪回歸／Server／Oracle／企業资格仍未完成。
+- 接續：B1完整軟體capture委派software_capture（gpt-6-luna high）；只寫独立collector與fixture，主代理再接入來源／匯入／CLI。A1受審處置與typed gates需使用其明確軟體身分，仍未完成。
+
+#### 實作前規劃複審記錄（截至c72f65b）
 
 - [複審 R2-01–R2-20](MIGRATION-2-REVIEW.md)逐條落於 A／B1／B2／C／D／E1–E3，需求／交付物／相依／驗收不從待辦偷刪。OS 全類選否不繞過業務相依、Markdown 非可執行輸入、準備證據不與核准 plan 循環。
 - 第二次按初次／熟練／應用／值班／管理／稽核旅程反查，另納入 R2-21–R2-28 的狀態、增量、白名單資料夾、既有目標、分階段證據、報告版本、損壞重建與規模限制。結論是規劃補足必要契約；是否正確運作仍待相依完整實作與各層證據，不宣稱重新閱讀文件就取得資格。

@@ -58,6 +58,7 @@ function Assert-WsmInventory($Inventory) {
         $expected = Get-WsmHashText ($Inventory.Source.HostId + '|' + $item.Category + '|' + $item.Kind + '|' + $item.NaturalKey.ToLowerInvariant())
         if ($expected -cne $item.ItemId) { throw 'Item identity does not match its source/natural key.' }
         if ($item.SettingsHash -cne (Get-WsmHashText ($item.Settings | ConvertTo-Json -Depth 30 -Compress))) { throw 'Invalid item settings hash.' }
+        if ($item.PSObject.Properties['Classification']) { Assert-WsmScopeClassification -Item $item | Out-Null }
         if (@('Success','Partial','NotInstalled','PermissionDenied','Unsupported','Failed') -cnotcontains $item.Status) { throw 'Unknown collector status.' }
         foreach ($dependency in @($item.Dependencies)) {
             if ($dependency.ItemId -notmatch '^[a-f0-9]{64}$' -or @('Mandatory','Optional','External') -cnotcontains $dependency.Type) { throw 'Invalid dependency.' }
@@ -133,6 +134,7 @@ function Get-WsmCatalog {
     Assert-WsmEnvelope $catalog 'Catalog'
     if ($catalog.PairId -cne $PairId -or $catalog.BatchId -cne (Get-WsmFleet $Workspace).BatchId) { throw 'Catalog identity mismatch.' }
     if ($catalog.ToolVersion -eq '0.1.0') { foreach ($item in $catalog.Items) { [void](Get-WsmReviewDefaults $item) }; $catalog.ToolVersion=$script:ToolVersion; $catalog.Approval=$null }
+    foreach ($item in @($catalog.Items)) { if ($item.PSObject.Properties['Classification']) { Assert-WsmScopeClassification -Item $item | Out-Null } }
     $catalog
 }
 function New-WsmItem {
@@ -181,6 +183,7 @@ function Import-WsmInventory {
             $item = [pscustomobject][ordered]@{ ItemId=$entry.ItemId; Category=$entry.Category; Kind=$entry.Kind; Name=$entry.Name; NaturalKey=$entry.NaturalKey; Settings=$entry.Settings; SettingsHash=$entry.SettingsHash; Dependencies=@($entry.Dependencies); Status=$entry.Status; Adapter=$entry.Adapter; Decision='Pending'; Reason=''; ReviewedBy=''; ReviewedUtc=''; RuleId=''; Mapping=''; Evidence=''; Owner=''; Present=$true }
             [void](Get-WsmReviewDefaults $item)
             if ($entry.PSObject.Properties['BuiltIn']) { $item.BuiltIn=$entry.BuiltIn }
+            if ($entry.PSObject.Properties['Classification']) { $item | Add-Member NoteProperty Classification $entry.Classification }
             if ($previous.ContainsKey($entry.ItemId)) {
                 $prior=$previous[$entry.ItemId]
                 if ($prior.SettingsHash -ceq $entry.SettingsHash -and $prior.Present -and $prior.Status -ceq $entry.Status -and $prior.Adapter -ceq $entry.Adapter -and (($prior.Dependencies | ConvertTo-Json -Compress -Depth 10) -ceq ($entry.Dependencies | ConvertTo-Json -Compress -Depth 10))) {

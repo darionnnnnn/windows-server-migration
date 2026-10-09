@@ -33,12 +33,12 @@ $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-probes-'+[Guid]::NewGuid().ToSt
 [IO.File]::WriteAllText((Join-Path $root 'inventory-1.zip'),'existing evidence')
 $failed=$false; try { Export-WsmInventory $root | Out-Null } catch { $failed=$true }
 if (-not $failed) { throw 'Archive collision silently succeeded.' }
-$state1=Get-Content (Join-Path $root 'source-state.json') -Raw | ConvertFrom-Json
+$state1=Get-Content (Join-Path $root 'source-state.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($state1.Revision -ne 1) { throw 'Valid JSON generation lost on ZIP failure.' }
 $result=Export-WsmInventory $root
-$state2=Get-Content (Join-Path $root 'source-state.json') -Raw | ConvertFrom-Json
+$state2=Get-Content (Join-Path $root 'source-state.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($state1.HostId -cne $state2.HostId -or $state2.Revision -ne 2) { throw 'Retry changed source identity or reused evidence.' }
-$inv=Get-Content $result.Path -Raw | ConvertFrom-Json
+$inv=Get-Content $result.Path -Raw -Encoding UTF8 | ConvertFrom-Json
 if (@($inv.Items | Where-Object Kind -EQ PathCandidate).Count -ne 1 -or $inv.CategorySummary.Count -ne 12) { throw 'Path candidates or parent classification summary missing.' }
 if (@($inv.Items | Where-Object Kind -EQ ScheduledTask).Count -ne 1 -or @($inv.Items | Where-Object { $_.Category -eq 'Tasks' -and $_.Status -eq 'Failed' }).Count -ne 1) { throw 'Partial collector lost successful child or hid failure.' }
 if (@($inv.Items | Where-Object Kind -EQ DiscoveryGap).Count -ne 12) { throw 'Discovery scope gaps omitted.' }

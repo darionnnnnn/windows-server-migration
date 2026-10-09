@@ -50,6 +50,9 @@ function Export-WsmInventory {
         $nextRevision=$state.Revision+1
         while (Test-Path -LiteralPath (Join-Path $root ('inventory-'+$nextRevision+'.json'))) { $nextRevision++ }
         $inventory=New-WsmInventory $source $nextRevision $items.ToArray()
+        foreach ($item in $inventory.Items) { $item | Add-Member NoteProperty Classification (Get-WsmScopeClassification $item) }
+        Assert-WsmInventory $inventory
+        foreach ($item in $inventory.Items) { Assert-WsmScopeClassification $item | Out-Null }
         $path=Join-Path $root ('inventory-'+$inventory.Revision+'.json')
         if (Test-Path -LiteralPath $path) { throw 'Inventory path already exists; preserve evidence and inspect source state.' }
         Write-WsmJson $path $inventory
