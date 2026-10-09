@@ -58,3 +58,10 @@ GitHub Actions 僅記實際觀察结果，既有 checkpoint 結果不代替本�
 37955503134 與 37956024235 的已完成失敗工作不能視為通過。GitHub connector 日誌定位到 WinPS5.1 非UTF8系統下 DeliveryReceipts 模組／測試缺BOM，以及取消預覽的舊測試Plan少SchemaVersion。補UTF8 BOM、保留取消的bytes/journal/cleanup斷言並將fixture明列Schema1；新Test-ScriptEncoding及CI入口檢查所有非ASCII脚本BOM和語法。Windows-1252 模擬重現舊測試4個解析錯誤，BOM版0個，新guard能拒絕原始檔。
 
 最後10個受影響腳本於5.1／7各10/10通過：編碼、取消預覽、DeliveryReceipts、LabReportConsumer、LabValidation、OutputWorkflow、FullDirectoryImport、DeltaMenu、Contracts、MigrationPipeline。固定快照 wsm-r2-ci-repair-57b2831a3d1440b4a5f3dc627e7e0840 的全部runtime/test SHA256前後一致且與工作樹相同。BOM也屬工具bytes，ToolFingerprint已更新；既有執行中的工具／核准不能熱換成新版。修正後的遠端CI結果另記實際觀察。
+
+
+## 後段相容回歸：HTML 列印保護（2026-10-10）
+
+補驗先前CI失敗後未跑到的後段工作：TaskFolderJournal、Archive、EntryPoint已通過，Report DOM重現本輪移除既有2,000列print guard的回歸。恢復既有保護；完整HTML仍內嵌全部chunks，Markdown/JSON/TXT/CSV不截斷，列印需縮小篩選範圍。原有Report測試不改，2,501列lazy parsing/LRU/快速篩選/print guard在5.1/7通過。
+
+ScriptEncoding、Report、EnvironmentConfirmation（6列語意）、FleetScale（10台×200項）、LabReportConsumer、Contracts於5.1與7各6/6通過。最後快照 wsm-r2-print-guard-c5282b5c9af845d99e753e9a33042a50 的所有runtime/test SHA256前後不變並與工作樹相同；完整確認文件2,501列另由最終CI測試。不同模型獨立體檢仍待完成。
