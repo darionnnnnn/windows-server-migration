@@ -26,7 +26,7 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 - [ ] 取得代表性來源的實際檔案數量／大小／scope 後，針對一次封裝及還原量測耗時、容量及尖峰記憶體，與維護窗比較。取消以 10k 小檔重跑整套故障／切換劇本的門檻；檔案一致性與分段邊界仍保留測試。實際 >4GiB 已通過，長路徑目前明確阻擋。
 - [ ] 更多 adapter 原生正反例與精準欄位稽核；IIS recursive schema／nested drift、Win32 own-process SCM supplement、安裝副作用隔離／quarantine、專用 UNC／DFS 角色 scope 契約已有實作與 fixture。完整 Server API／provider identity 資格、更多服務帳號模式與第三方安裝副作用仍未驗收。
 - [ ] 跨台循環應用的實際 freeze／activation／rollback 協調與資格驗收；GroupPlan／Receipt／Barrier／RollbackResult／Qualification 契約及消費端已實作，真實群組／產品證據待取得。
-- [ ] 依真實盤點為實際入選的第三方 runtime／DB／角色補專用自動模組或已驗收專用流程，未知項不能默默排除。
+- [ ] 依第 2 輪定案補一般主機的離線準備清單、目標核對與特殊項告知；特殊 DB／角色不新增自動模組，必要外部相依仍需 owner 確認。
 - [ ] 真實瀏覽器／主控台和整輪實機再核對；程式 checkpoint `10c896a` 已推送、公共 draft PR 已同步，完整 CI 已通過。最新本機測試覆蓋與尚未完成的大量基準見下方，不以舊快照代替最後修改。
 
 ## 需要實際環境的驗收（不能用合成代替）
@@ -180,3 +180,9 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 效能測試需先有代表性工作量、測量環境、時間／記憶體／容量目標，再用一次直接封裝→還原測量；達到代表性數量或發現問題才增加規模。只記耗時沒有門檻的長跑不作「可上線」證據，也不作工具完成阻擋項。
 
 本輪固定快照 wsm-efficient-validation-7bd71e1a4e7f4d749897e4dcff0f4611 驗證完成：Pipeline、CancellationWorkflow、Report、FleetScale、SpecScale 在 Windows PowerShell 5.1 與 PowerShell 7 均為 5/5 PASS。Pipeline 分別 85.12／63.60 秒，Report 分別 4.81／9.89 秒；報告 DOM 實際驗證 2,501 筆與 11 個 chunks。這是本機功能證據，不是 Server 效能承諾。結束後核對快照與工作樹全部 50 個正式 src／入口雜湊相同；本輪未修改正式執行程式。既有 10c896a 的完整 54 腳本 CI 與 >4 GiB 證據沿用，沒有重跑無關測試。
+
+## 2026-10-09 前輪確認與新範圍
+
+測試效率調整段落已完成，349195c 已推送且遠端一致；GitHub Actions 37800134683 的 fixtures／delta-workflow 全部通過。受影響五腳本已於 WinPS 5.1／PS7 各 5/5 通過，正式 src／入口未改。這不代表全部旧 PLAN 完成，實際 Server／業務／名稱 IP／重開機與回退、畫面驗收及獨立體檢仍待證據。
+
+使用者定案下一輪聚焦一般服務主機：依賴軟體／runtime／必要角色僅告知並由使用者取得媒體準備；特殊角色／產品不新增自動遷移，保留告知和外部相依；Windows 系統設定獨立逐項審核。上述「依真實盤點補 DB／角色專用自動模組」待辦依使用者決策移出新方向，不計完成；一般項必要外部依賴仍須確認，不可靜默忽略。新功能與接線尚未實作，階段／相容／驗收見 [MIGRATION-2-PLAN.md](MIGRATION-2-PLAN.md)。

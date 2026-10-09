@@ -24,7 +24,8 @@ powershell.exe -NoProfile -File C:\MigrationTools\Start-ServerMigration.ps1
 
 - [操作手冊及資料契約](docs/OPERATIONS.md)：離線交換、規格／SID／機密、實際執行、重試與切換。
 - [逐項實作與未完成清單](docs/IMPLEMENTATION-0.1.md)：A–F／R01–R16 對照與證據。
-- [原始規劃與驗收條件](docs/MIGRATION-1-PLAN.md)：不因已寫程式而刪除驗收要求。
+- [原始規劃與驗收條件](docs/MIGRATION-1-PLAN.md)：保留歷史需求；本輪範圍變更以第 2 輪為準。
+- [第 2 輪規劃](docs/MIGRATION-2-PLAN.md)：一般服務主機、離線準備清單、Windows 設定逐項決策與特殊服務告知；規劃中，尚未實作。
 
 盤點 ZIP 只有設定證據；遷移 ZIP 才包含明確批准的 scope 資料。ZIP 不加密；可信 SHA256 須由獨立可信管道取得。工具不更改企業執行原則，憑證私鑰與密碼使用外部材料／記憶體 SecretRef。
 
