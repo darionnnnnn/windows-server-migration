@@ -66,6 +66,7 @@ $reviewPath=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\src\WindowsSetti
     Assert-WindowsReview ($absentFirewallPreview.Rows[0].SupportedActions -contains 'ReviewedMigration') 'A matching native ActiveStore/TracePolicyStore enumeration marker did not permit the reviewed firewall create path alongside the generic Network DiscoveryGap.'
     $badNetworkCases=@(
         @{Name='missing marker';Kind='IPConfiguration';Status='Success';Settings=[pscustomobject]@{};IncludeFirewall=$true;IncludeGap=$true},
+        @{Name='missing marker without generic gap';Kind='IPConfiguration';Status='Success';Settings=[pscustomobject]@{};IncludeFirewall=$true;IncludeGap=$false},
         @{Name='wrong rule count';Kind='IPConfiguration';Status='Success';Settings=[pscustomobject]@{FirewallRuleEnumeration=[pscustomobject]@{PolicyStore='ActiveStore';TracePolicyStore=$true;EnumerationComplete=$true;RuleCount=[long]0}};IncludeFirewall=$true;IncludeGap=$true},
         @{Name='partial capture';Kind='IPConfiguration';Status='Partial';Settings=$targetNetworkCapture.Settings;IncludeFirewall=$true;IncludeGap=$true},
         @{Name='failed capture';Kind='IPConfiguration';Status='Failed';Settings=$targetNetworkCapture.Settings;IncludeFirewall=$true;IncludeGap=$true}

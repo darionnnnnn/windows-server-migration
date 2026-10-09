@@ -1,7 +1,7 @@
 ﻿# MIGRATION 第 2 輪規劃：一般服務主機、完整環境確認與企業 EOS 遷移資格
 
 > 日期：2026-10-09
-> 狀態：實作中；2026-10-09 使用者授權開始實作並持續核對完整性。各項完成狀態見文末執行紀錄，新增功能及正式資格不得一併推定通過。
+> 狀態：程式實作及本機驗證完成；2026-10-10 最後邊界補漏已驗證。真實環境資格及不同模型獨立體檢仍待完成，詳見文末與 MIGRATION-2-VERIFICATION.md，不推定正式生產合格。
 > 複審基準：codex/implementation，991fc864126d226b65eb0fdbe440c7f7d41040af；前輪程式與測試基準保留於下方。
 > 來源：一般主機既有定案，以及使用者要求企業 Windows Server EOS 正式工具程度、Oracle TNS_ADMIN 與完整已安裝環境／相依工具／使用者軟體 Markdown 確認。
 > 複審證據：[深度複審](MIGRATION-2-REVIEW.md)；確認文件格式：[環境與軟體確認表](ENVIRONMENT-SOFTWARE-CONFIRMATION.md)。

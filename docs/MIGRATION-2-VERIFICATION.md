@@ -48,3 +48,6 @@ GitHub Actions 僅記實際觀察结果，既有 checkpoint 結果不代替本�
 最後清理只移除 Test-SoftwareInventory.ps1 的 EOF 空白行，正式 runtime 未改。SoftwareInventory/Contracts 在5.1與7各2/2通過；固定快照 wsm-r2-final-clean-7996352deaf34607a999d0e22cc26ec4 的全部 runtime/test hashes 前後不變且與工作樹相同。最後 diff 空白檢查及12份本機 Markdown 連結檢查通過。
 
 程式主段落 `44f9bf4dfdfdc8fbf78909789f876389ec0afcc6` 已推送並核對遠端一致。該次 CI 37955503134 已啟動，結果待實際完成後記錄。
+
+
+2026-10-10 最後邊界修正：新增 Firewall 規則必須有有效的完整列舉 marker，即使盤點沒有一般 DiscoveryGap 也不能省略。新增「missing marker without generic gap」拒絕測試；WindowsSettingsReview/InventoryFixture/Contracts 在5.1與7各3/3通過，快照 wsm-r2-marker-required-a44e297f83254e81a9a73c6e5ca1e89d 的全部runtime/test bytes前後一致且與最終工作樹相同。此補漏只改設定 review helper與對應fixture，既有無關結果不重跑。
