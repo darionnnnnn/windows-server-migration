@@ -65,3 +65,6 @@ GitHub Actions 僅記實際觀察结果，既有 checkpoint 結果不代替本�
 補驗先前CI失敗後未跑到的後段工作：TaskFolderJournal、Archive、EntryPoint已通過，Report DOM重現本輪移除既有2,000列print guard的回歸。恢復既有保護；完整HTML仍內嵌全部chunks，Markdown/JSON/TXT/CSV不截斷，列印需縮小篩選範圍。原有Report測試不改，2,501列lazy parsing/LRU/快速篩選/print guard在5.1/7通過。
 
 ScriptEncoding、Report、EnvironmentConfirmation（6列語意）、FleetScale（10台×200項）、LabReportConsumer、Contracts於5.1與7各6/6通過。最後快照 wsm-r2-print-guard-c5282b5c9af845d99e753e9a33042a50 的所有runtime/test SHA256前後不變並與工作樹相同；完整確認文件2,501列另由最終CI測試。不同模型獨立體檢仍待完成。
+
+
+遠端補驗發現：37957836407 的兩個 migration-round-two jobs 在 WindowsSettingsReview fixture 內持續至 20 分鐘上限，取消不計通過；PowerShell 7 曾輸出 JSON depth 30 截斷警告。本機完全相同快照以兩引擎及 NonInteractive 模式仍成功。已新增分段診斷輸出並把該測試放到整合 job 首位，保留全部斷言與既有逾時門檻，繼續追查遠端差異；不把尚未成功 CI 寫成完成。
