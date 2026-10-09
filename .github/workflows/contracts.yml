@@ -21,6 +21,9 @@ jobs:
       - name: General host scope classification contracts
         shell: powershell
         run: ./tests/Test-ScopeClassification.ps1
+      - name: ZIP transport boundaries
+        shell: powershell
+        run: ./tests/Test-TransportBoundaries.ps1
       - name: Advanced review and fleet contracts
         shell: powershell
         run: ./tests/Test-AdvancedReview.ps1

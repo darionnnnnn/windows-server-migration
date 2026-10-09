@@ -364,6 +364,7 @@
 - A0 實作者：scope_classification（gpt-6-luna high）；主代理整合 Core／CLI／CI、UTF-8 測試讀取及 wrong-kind微修。獨立核對 mixed IIS／SQL、Oracle engine／listener／client／ODAC、字典→JSON→catalog、localized role ID、偽造／額外欄位／重排欄位／Int64版本、未解析相依、legacy投影與不修改決策。
 - A0 驗證：固定快照 `wsm-r2-a0-verified-895774a630b54f83b861db6eb9ac5261` 的 ScopeClassification／InventoryFixture／Contracts／AdvancedReview／EntryPoint／EnterpriseDiscovery／MenuContracts，WinPS5.1與PS7各7/7。第一次5.1 InventoryFixture的ANSI讀UTF-8失敗已在獨立快照重現並修正。最後只加wrong-kind拒絕，於新快照 `wsm-r2-a0-final-2b0ff1777203476d9fbc4a9d2bdfb0f8` 重验受影響 ScopeClassification／EntryPoint，各2/2；runtime hashes前後不變且與A0工作樹檔案相符。未改payload，不重跑>4GiB；全輪回歸／Server／Oracle／企業资格仍未完成。
 - 接續：B1完整軟體capture委派software_capture（gpt-6-luna high）；只寫独立collector與fixture，主代理再接入來源／匯入／CLI。A1受審處置與typed gates需使用其明確軟體身分，仍未完成。
+- D2核心第一子段：full ZIP export在建立checkpoint／寫卷前預檢最多9,999卷；import在建立incoming包前核對所有卷的bytes／hash／精確成員集合，之後解包仍再次驗證。固定HEAD基線快照只加入本子段程式與測試；TransportBoundaries和SmallFiles=2的真實MigrationPipeline在WinPS5.1／PS7均通過（pipeline34.41／25.75秒），含缺最後一卷且尚未建立incoming、接續與final回归。10,000卷只用合成metadata拒絕，不寫一萬卷；未改payload。完整D2的workspace、資料夾／delta分卷／UI／容量／delivery仍未完成。
 
 #### 實作前規劃複審記錄（截至c72f65b）
 

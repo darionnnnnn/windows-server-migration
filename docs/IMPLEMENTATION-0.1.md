@@ -186,6 +186,8 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 
 ## 2026-10-09 前輪確認與新範圍
 
+第2輪D2的full ZIP邊界子段已補9,999卷預檢與解包前全卷核對。TransportBoundaries及小型真實MigrationPipeline在固定HEAD基線快照於5.1／7各2/2通過；後者保留真實bytes／ACL與restore／final／retry測試，新增缺最後卷時不建立incoming的負例。這只完成既有full transport核心補強；新workspace、輸出旅程與delta-volume等仍待後續實作。
+
 第2輪已由使用者授權開始實作，起點c72f65b。A0目前完成來源物件的版本化分類、Core匯入驗證／保留、只讀assessment API、CLI ScopeAssessment與主選單23；分類不改Include／Exclude，所有軟體準備與特殊相依仍待後续受審門檻。ScopeClassification／InventoryFixture／Contracts／AdvancedReview／EntryPoint／EnterpriseDiscovery／MenuContracts在固定快照於WinPS5.1／PS7各7/7；最後wrong-kind微修在新快照對受影響兩腳本各2/2，runtime hashes不變。修正5.1 fixture預設ANSI讀UTF-8 JSON問題，不改正式JSON格式。這是本機功能／相容證據，非Server或Oracle資格；PLAN文末列A1／B1／B2／C／D／D2／E1–E3未完成項繼續實作。
 
 測試效率調整段落已完成，349195c 已推送且遠端一致；GitHub Actions 37800134683 的 fixtures／delta-workflow 全部通過。受影響五腳本已於 WinPS 5.1／PS7 各 5/5 通過，正式 src／入口未改。這不代表全部旧 PLAN 完成，實際 Server／業務／名稱 IP／重開機與回退、畫面驗收及獨立體檢仍待證據。

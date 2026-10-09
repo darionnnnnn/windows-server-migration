@@ -8,14 +8,31 @@ function Test-WsmZipVolume([string]$Path,[object[]]$Expected,[string]$ExpectedHa
     try{$hash=Get-WsmCancellableStreamHash $file $CancellationToken 'ZipVolumeHashBuffer';if($ExpectedHash -and $hash -ine $ExpectedHash){throw 'Previously completed ZIP volume changed.'};$file.Position=0;$archive=New-Object IO.Compression.ZipArchive($file,[IO.Compression.ZipArchiveMode]::Read,$true);$seen=@{};$lookup=@{};foreach($e in $Expected){$lookup[$e.Name]=$e};if($archive.Entries.Count -ne $Expected.Count){throw 'ZIP volume entry count mismatch.'};foreach($entry in $archive.Entries){if($seen.ContainsKey($entry.FullName) -or -not $lookup.ContainsKey($entry.FullName) -or $entry.FullName -cne $lookup[$entry.FullName].Name -or $entry.Length -ne $lookup[$entry.FullName].Bytes){throw 'ZIP volume entry identity/size mismatch.'};$seen[$entry.FullName]=$true;$stream=$entry.Open();try{$entryHash=Get-WsmCancellableStreamHash $stream $CancellationToken 'ZipMemberHashBuffer';if($entryHash -ine $lookup[$entry.FullName].Hash){throw 'ZIP volume member changed during export.'}}finally{$stream.Dispose()}};[pscustomobject]@{Hash=$hash;Bytes=$file.Length}
     }finally{if($archive){$archive.Dispose()};$sha.Dispose();$file.Dispose()}
 }
+function Get-WsmZipMemberGroups {
+    param([object[]]$Members,[long]$VolumeBytes)
+    if($VolumeBytes -lt 1048576 -or $VolumeBytes -gt 1073741824){throw 'ZIP volume budget is outside the supported range.'}
+    $groups=New-Object 'System.Collections.Generic.List[object]';$group=New-Object 'System.Collections.Generic.List[object]';$used=[long]0
+    foreach($member in $Members){
+        if($member.Bytes -lt 0 -or [string]::IsNullOrWhiteSpace([string]$member.Name)){throw 'Invalid ZIP member budget.'}
+        $budget=[long]$member.Bytes+[Text.Encoding]::UTF8.GetByteCount([string]$member.Name)*2+256
+        if($budget -gt $VolumeBytes){throw 'Member plus ZIP overhead exceeds volume budget; use smaller chunks or larger volumes.'}
+        if($group.Count -and $used+$budget -gt $VolumeBytes){
+            $groups.Add($group.ToArray());if($groups.Count -ge 9999){throw 'ZIP delivery requires more than 9999 volumes; increase the volume budget or review the migration scope.'}
+            $group=New-Object 'System.Collections.Generic.List[object]';$used=0
+        }
+        $group.Add($member);$used+=$budget
+    }
+    if($group.Count){$groups.Add($group.ToArray())}
+    # Preserve each group as an array, including single-member groups.
+    foreach($part in $groups){Write-Output -NoEnumerate $part}
+}
 function Export-WsmPackageZip {
     param([string]$ManifestPath,[string]$ExpectedHash,[string]$OutputDirectory,[ValidateRange(1048576,1073741824)][long]$VolumeBytes=536870912,$CancellationToken=$null)
     if($CancellationToken){$header=Read-WsmTrustedJson $ManifestPath $ExpectedHash;Assert-WsmEnvelope $header 'MigrationPackage';[void](Assert-WsmCancellationTokenBinding $CancellationToken $header.PairId $header.PlanHash $ExpectedHash $OutputDirectory);Assert-WsmCancellationBoundary $CancellationToken 'BeforeZipExportValidation'}
     $p=Test-WsmMigrationPackage $ManifestPath $ExpectedHash $CancellationToken;$output=[IO.Path]::GetFullPath($OutputDirectory);if($output -ieq $p.Root -or $output.StartsWith($p.Root+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'ZIP output must be outside sealed package.'};Assert-WsmNoReparse $output;if(-not [IO.Directory]::Exists($output)){[void][IO.Directory]::CreateDirectory($output);Protect-WsmDirectory $output};Add-Type -AssemblyName System.IO.Compression.FileSystem
     if($CancellationToken){[void](Assert-WsmCancellationTokenBinding $CancellationToken $p.Manifest.PairId $p.Manifest.PlanHash $ExpectedHash $OutputDirectory);Assert-WsmCancellationBoundary $CancellationToken 'BeforeZipExport'}
     Invoke-WsmLocked $output {
-        $members=@(Get-WsmPackageMembers $p);$groups=New-Object 'System.Collections.Generic.List[object]';$group=New-Object 'System.Collections.Generic.List[object]';$used=[long]0
-        foreach($member in $members){$budget=$member.Bytes+[Text.Encoding]::UTF8.GetByteCount($member.Name)*2+256;if($budget -gt $VolumeBytes){throw 'Member plus ZIP overhead exceeds volume budget; use smaller chunks or larger volumes.'};if($group.Count -and $used+$budget -gt $VolumeBytes){$groups.Add($group.ToArray());$group=New-Object 'System.Collections.Generic.List[object]';$used=0};$group.Add($member);$used+=$budget};if($group.Count){$groups.Add($group.ToArray())}
+        $members=@(Get-WsmPackageMembers $p);$groups=@(Get-WsmZipMemberGroups $members $VolumeBytes)
         $statePath=Join-Path $output 'zip-state.json';$state=$null
         if([IO.File]::Exists($statePath)){$state=Read-WsmJson $statePath;if($state.PackageId -cne $p.Manifest.PackageId -or $state.ManifestHash -ine $ExpectedHash -or $state.VolumeBytes -ne $VolumeBytes){throw 'ZIP resume package/format differs; use a separate output directory.'}}
         else{$state=[pscustomobject]@{PackageId=$p.Manifest.PackageId;ManifestHash=$ExpectedHash;VolumeBytes=$VolumeBytes;Volumes=@();StartedUtc=(Get-WsmUtc)};Write-WsmJson $statePath $state}
@@ -41,9 +58,13 @@ function Import-WsmPackageZip {
     if($CancellationToken){if(-not $t.PSObject.Properties['PlanHash']){throw 'Cancellable import requires a transport with an approved PlanHash.'};[void](Assert-WsmCancellationTokenBinding $CancellationToken $t.PairId $t.PlanHash $t.ManifestHash $OutputDirectory);Assert-WsmCancellationBoundary $CancellationToken 'BeforeZipImport'}
     if(-not [IO.Directory]::Exists($output)){[void][IO.Directory]::CreateDirectory($output);Protect-WsmDirectory $output};Add-Type -AssemblyName System.IO.Compression.FileSystem
     Invoke-WsmLocked $output {$seen=@{};$volumes=@{};$total=[long]0
+        if(@($t.Volumes).Count -lt 1 -or @($t.Volumes).Count -gt 9999){throw 'Transport volume count is outside the supported range.'}
         foreach($v in $t.Volumes){if($v.Name -notmatch ('^package-'+[regex]::Escape($t.PackageId)+'-\d{4}\.zip$') -or $v.Hash -notmatch '^[a-f0-9]{64}$' -or $v.Bytes -lt 1 -or $v.Bytes -gt 2GB -or $volumes.ContainsKey($v.Name)){throw 'Invalid/duplicate transport volume.'};$volumes[$v.Name]=$v}
         foreach($e in $t.Entries){if($e.Name -cnotin @('manifest.json','plan.json','artifacts.jsonl','freeze.json') -and $e.Name -cnotmatch '^payload/[a-f0-9]{64}\.blob$'){throw 'Transport entry is not an approved data member.'};if($seen.ContainsKey($e.Name) -or $e.Hash -notmatch '^[a-f0-9]{64}$' -or $e.Bytes -lt 0 -or $e.Bytes -gt 1GB -or $e.Volume -lt 1 -or $e.Volume -gt $t.Volumes.Count){throw 'Invalid/colliding transport entry.'};$seen[$e.Name]=$e;$total+=$e.Bytes}
         foreach($required in @('manifest.json','plan.json','artifacts.jsonl')){if(-not $seen.ContainsKey($required)){throw 'Missing package metadata.'}};if((Get-WsmAvailableBytes $output) -lt $total+256MB){throw 'Insufficient unpack workspace capacity.'}
+        # Verify the complete trusted volume set before creating an incoming package.
+        $preflightNumber=0
+        foreach($v in $t.Volumes){$preflightNumber++;$volumePath=Join-Path $source $v.Name;$expected=@($t.Entries | Where-Object Volume -EQ $preflightNumber);$check=Test-WsmZipVolume $volumePath $expected $v.Hash $CancellationToken;if($check.Bytes -ne $v.Bytes){throw 'Volume length mismatch.'}}
         $root=Join-Path $output ('incoming-'+$t.PackageId);if(-not [IO.Directory]::Exists($root)){[void][IO.Directory]::CreateDirectory($root);Protect-WsmDirectory $root};Assert-WsmNoReparse $root;$resume=Join-Path $root 'transport-state.json';if([IO.File]::Exists($resume)){$s=Read-WsmJson $resume;if($s.TransportHash -ine $ExpectedHash){throw 'Resume transport hash mismatch.'}}else{Write-WsmJson $resume ([pscustomobject]@{TransportHash=$ExpectedHash;StartedUtc=(Get-WsmUtc)})};$extracted=@{};$number=0
         foreach($v in $t.Volumes){$number++;$volumePath=Join-Path $source $v.Name;Assert-WsmNoReparse $volumePath;$file=[IO.File]::Open($volumePath,'Open','Read','Read');$archive=$null
             try{if($file.Length -ne $v.Bytes){throw 'Volume length mismatch.'};if((Get-WsmCancellableStreamHash $file $CancellationToken 'ZipImportVolumeHashBuffer') -ine $v.Hash){throw 'Independent transport volume hash mismatch.'};$file.Position=0;$archive=New-Object IO.Compression.ZipArchive($file,[IO.Compression.ZipArchiveMode]::Read,$true)

@@ -31,6 +31,14 @@ $volumeBytes=1MB
 $transport=Export-WsmPackageZip $package.ManifestPath $package.SHA256 (Join-Path $root 'zip') -VolumeBytes $volumeBytes
 $zipAgain=Export-WsmPackageZip $package.ManifestPath $package.SHA256 (Join-Path $root 'zip') -VolumeBytes $volumeBytes;if($zipAgain.SHA256 -ine $transport.SHA256){throw 'Completed ZIP retry changed trusted transport.'}
 if($transport.Volumes -lt 3){throw 'ZIP volume split not enforced.'}
+$transportIndex=Get-Content -LiteralPath $transport.Path -Raw -Encoding UTF8 | ConvertFrom-Json
+$lastVolume=Join-Path (Split-Path $transport.Path -Parent) $transportIndex.Volumes[-1].Name
+$withheldVolume=$lastVolume+'.withheld'
+[IO.File]::Move($lastVolume,$withheldVolume)
+try{
+    $missingRejected=$false;try{Import-WsmPackageZip $transport.Path $transport.SHA256 (Join-Path $root 'missing-volume') | Out-Null}catch{$missingRejected=$true}
+    if(-not $missingRejected -or (Test-Path (Join-Path $root ('missing-volume\incoming-'+$verified.Manifest.PackageId)))){throw 'Missing final volume was not rejected before incoming package creation.'}
+}finally{[IO.File]::Move($withheldVolume,$lastVolume)}
 $unpacked=Import-WsmPackageZip $transport.Path $transport.SHA256 (Join-Path $root 'unpacked')
 if($unpacked.SHA256 -ine $package.SHA256 -or -not $unpacked.Valid){throw 'Verified multipart ZIP import failed.'}
 if(@(Get-ChildItem (Join-Path $package.Directory 'payload') -Filter *.blob).Count -lt 3){throw 'Large file was not split into bounded payload chunks.'}
