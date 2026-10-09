@@ -83,3 +83,8 @@ ScriptEncoding、Report、EnvironmentConfirmation（6列語意）、FleetScale�
 
 
 最後原生狀態投影固定快照 `wsm-r2-native-state-final-0dd731a9c6b5425db22b7c910bc08708`：ScriptEncoding／NativeStateProjection／Adapters／ShareContracts／InventoryFixture／DeliveryReceipts／LabReportConsumer／LabValidation／MigrationPipeline（2個小檔的真實bytes/ACL/恢復/回退）／Contracts於5.1與7各10/10；146個runtime/test SHA256前後不變且與最後工作樹相同。Luna high只讀複核確認firewall/SMB消費欄位及enum round-trip保留；主代理親自核對與驗收，不稱為不同模型體檢。本次runtime bytes已改指紋，既有核准依既有重新核准流程失效；此版本的遠端CI仍待實際成功。
+
+
+## 最後遠端 CI（2026-10-10）
+
+程式 commit `e97cbc048a491ba4db305003ab6436cab307dd52` 的 [GitHub Actions 37965849112](https://github.com/darionnnnnn/windows-server-migration/actions/runs/37965849112) 已實際完成：fixtures、delta-workflow、migration-round-two (powershell)、migration-round-two (pwsh) 四個 jobs 全部 success。純文件同步不改已驗 runtime/test；推送後再次核對遠端 SHA。這是公共 Windows runner 的契約回歸，不是企業 Server、Oracle、PKI 或業務正式資格。
