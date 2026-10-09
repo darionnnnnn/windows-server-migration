@@ -3,6 +3,7 @@ param([ValidateRange(0,64)][int]$SmallFiles=16)
 $ErrorActionPreference='Stop'
 $pipelineWatch=[Diagnostics.Stopwatch]::StartNew()
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
+. (Join-Path $PSScriptRoot 'ExternalReadinessEvidenceFixtures.ps1')
 $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-pipeline-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($root)
 $sourceRoot=Join-Path $root 'source';$sourceState=Join-Path $root 'source-state';[void][IO.Directory]::CreateDirectory($sourceState);$targetRoot=Join-Path $root 'target';$packages=Join-Path $root 'packages';$workspace=Join-Path $root 'manager';$targetState=Join-Path $root 'target-state'
 [void][IO.Directory]::CreateDirectory($sourceRoot);[void][IO.Directory]::CreateDirectory((Join-Path $sourceRoot 'nested'));[void][IO.Directory]::CreateDirectory((Join-Path $sourceRoot 'excluded'))
@@ -25,6 +26,9 @@ $planPath=Join-Path $root 'plan.json';$approval=Approve-WsmMigrationPlan $worksp
 $package=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState $packages -ChunkBytes 65536
 if(-not $package.Sealed -or $package.Files -ne (2+$SmallFiles) -or $package.Generation -ne 1){throw 'Initial package counters incorrect.'}
 $verified=Test-WsmMigrationPackage $package.ManifestPath $package.SHA256
+$directoryDelivery=Export-WsmDirectoryDelivery $package.ManifestPath $package.SHA256 (Join-Path $root 'directory-delivery')
+$directoryPackage=Test-WsmMigrationPackage (Join-Path $directoryDelivery.Directory 'manifest.json') $package.SHA256
+if($directoryPackage.Manifest.PackageId -cne $verified.Manifest.PackageId -or (Test-Path (Join-Path $directoryDelivery.Directory 'export-state.json'))){throw 'Clean directory delivery did not preserve package identity or leaked export state.'}
 $volumeBytes=1MB
     & $module {$script:originalZipVerifier=(Get-Command Test-WsmZipVolume).ScriptBlock;$script:zipFault=$true;function script:Test-WsmZipVolume {param($Path,$Expected,$ExpectedHash='')if($script:zipFault -and $Path -like '*-0002.zip.partial'){$script:zipFault=$false;throw 'Injected ZIP interruption after first sealed volume'};& $script:originalZipVerifier $Path $Expected $ExpectedHash}}
     $zipFailed=$false;try{Export-WsmPackageZip $package.ManifestPath $package.SHA256 (Join-Path $root 'zip') -VolumeBytes $volumeBytes | Out-Null}catch{$zipFailed=$true};if(-not $zipFailed -or (Test-Path (Join-Path $root 'zip\transport.json'))){throw 'ZIP interruption fixture failed or incomplete transport was sealed.'}
@@ -56,7 +60,7 @@ $timestampDrift=Get-WsmRestorePreview $package.ManifestPath $package.SHA256 $tar
 $again=Invoke-WsmRestore $package.ManifestPath $package.SHA256 $targetState;if($again.Items.Count -ne 1){throw 'Retry duplicated ownership rows.'}
 if(-not (Test-WsmJournal $targetState $pair).Consistent){throw 'Journal checkpoint/hash chain inconsistent.'}
 $checkpointPath=Join-Path (Join-Path $targetState $pair) 'state.json';$oldCheckpoint=[IO.File]::ReadAllText($checkpointPath)
-Set-WsmValidationEvidence $package.ManifestPath $package.SHA256 $targetState $item.ItemId BusinessStaged 'Crash fixture owner' 'durable event before checkpoint crash' $true | Out-Null
+Set-WsmExternalFixtureValidationEvidence $package.ManifestPath $package.SHA256 $targetState $item.ItemId BusinessStaged 'Crash fixture owner' 'durable event before checkpoint crash' $true | Out-Null
 [IO.File]::WriteAllText($checkpointPath,$oldCheckpoint,(New-Object Text.UTF8Encoding($false)))
 if(-not (Test-WsmJournal $targetState $pair).RecoveryRequired){throw 'Crash boundary not detected.'}
 $crashBlocked=$false;try{Invoke-WsmRestore $package.ManifestPath $package.SHA256 $targetState | Out-Null}catch{$crashBlocked=$true};if(-not $crashBlocked){throw 'Restore overwrote incomplete checkpoint.'}
@@ -65,24 +69,25 @@ if(-not (Test-WsmJournal $targetState $pair).Consistent){throw 'Durable event re
 $recovered=Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
 if(@($recovered.Evidence | Where-Object Evidence -EQ 'durable event before checkpoint crash').Count -ne 1){throw 'Replay lost durable evidence.'}
 # Remove fixture evidence through a durable replacement, so the next assertion still tests missing business acceptance.
-Set-WsmValidationEvidence $package.ManifestPath $package.SHA256 $targetState $item.ItemId BusinessStaged 'Fixture owner' 'not yet accepted' $false | Out-Null
+Set-WsmExternalFixtureValidationEvidence $package.ManifestPath $package.SHA256 $targetState $item.ItemId BusinessStaged 'Fixture owner' 'not yet accepted' $false | Out-Null
 $staged=Invoke-WsmValidation $package.ManifestPath $package.SHA256 $targetState Staged;if($staged.Passed){throw 'Configuration alone incorrectly passed business gate.'}
-Set-WsmValidationEvidence $package.ManifestPath $package.SHA256 $targetState $item.ItemId BusinessStaged 'Fixture owner' 'fixture functional read passed' $true | Out-Null
+Set-WsmExternalFixtureValidationEvidence $package.ManifestPath $package.SHA256 $targetState $item.ItemId BusinessStaged 'Fixture owner' 'fixture functional read passed' $true | Out-Null
 if(-not (Invoke-WsmValidation $package.ManifestPath $package.SHA256 $targetState Staged).Passed){throw 'Valid business evidence failed.'}
 $priorTargetWrite=[IO.Directory]::GetLastWriteTimeUtc($targetRoot);[IO.File]::WriteAllText((Join-Path $targetRoot 'unexpected.txt'),'new target data');$drift=Get-WsmRestorePreview $package.ManifestPath $package.SHA256 $targetState;if(-not $drift.Blocked){throw 'Unowned target change did not block retry.'};[IO.File]::Delete((Join-Path $targetRoot 'unexpected.txt'));[IO.Directory]::SetLastWriteTimeUtc($targetRoot,$priorTargetWrite)
 # Final full snapshot replaces only the previously owned root, preserving its rollback root.
 & $module {$script:fixtureFingerprint=('a'*64)}
-$freezePath=Join-Path $root 'freeze.json';$freeze=Export-WsmFreezeRecord $planPath $approval.SHA256 $freezePath 'Fixture owner' 'fixture writers quiesced' OWNER-CONFIRMED-QUIESCENCE -SourceIdentityReleased -ReleaseEvidence 'fixture old name and IP withdrawn' -SourceStateDirectory $sourceState
+$approvedPlan=& $module {param($Path,$Hash)Read-WsmMigrationPlan $Path $Hash} $planPath $approval.SHA256;$freezeProof=New-WsmSourceFreezeEvidenceFixture -Plan $approvedPlan -PlanHash $approval.SHA256 -Root $root -Owner 'Fixture owner'
+$freezePath=Join-Path $root 'freeze.json';$freeze=Export-WsmFreezeRecord $planPath $approval.SHA256 $freezePath 'Fixture owner' 'fixture writers quiesced' OWNER-CONFIRMED-QUIESCENCE -SourceIdentityReleased -ReleaseEvidence 'fixture old name and IP withdrawn' -SourceStateDirectory $sourceState -FreezeExternalEvidencePath $freezeProof.Path -FreezeExternalEvidenceHash $freezeProof.SHA256 -FreezeEpoch $freezeProof.FreezeEpoch
 $expiredFreeze=Get-Content -LiteralPath $freezePath -Raw | ConvertFrom-Json;$expiredFreeze.ProducedUtc=[DateTime]::UtcNow.AddHours(-2).ToString('o');$expiredFreeze.ExpiresUtc=[DateTime]::UtcNow.AddHours(-1).ToString('o');$expiredPath=Join-Path $root 'expired-freeze.json';[IO.File]::WriteAllText($expiredPath,($expiredFreeze | ConvertTo-Json -Depth 30),(New-Object Text.UTF8Encoding($false)))
-$renewedPath=Join-Path $root 'renewed-freeze.json';$freeze=Export-WsmFreezeRecord $planPath $approval.SHA256 $renewedPath 'Fixture owner' 'renewed owner freeze evidence' OWNER-CONFIRMED-QUIESCENCE -SourceIdentityReleased -ReleaseEvidence 'fixture source remains isolated' -SourceStateDirectory $sourceState -PreviousFreezePath $expiredPath -PreviousFreezeHash (Get-FileHash $expiredPath).Hash;$freezePath=$renewedPath
+$renewedProof=New-WsmSourceFreezeEvidenceFixture -Plan $approvedPlan -PlanHash $approval.SHA256 -Root $root -Owner 'Fixture owner';$renewedPath=Join-Path $root 'renewed-freeze.json';$freeze=Export-WsmFreezeRecord $planPath $approval.SHA256 $renewedPath 'Fixture owner' 'renewed owner freeze evidence' OWNER-CONFIRMED-QUIESCENCE -SourceIdentityReleased -ReleaseEvidence 'fixture source remains isolated' -SourceStateDirectory $sourceState -PreviousFreezePath $expiredPath -PreviousFreezeHash (Get-FileHash $expiredPath).Hash -FreezeExternalEvidencePath $renewedProof.Path -FreezeExternalEvidenceHash $renewedProof.SHA256 -FreezeEpoch $renewedProof.FreezeEpoch;$freezePath=$renewedPath
 [IO.File]::WriteAllText((Join-Path $sourceRoot 'nested\unicode-中文.txt'),'final fixture');[IO.File]::Delete((Join-Path $sourceRoot 'chunked.bin'))
-$final=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState $packages -ChunkBytes 65536 -BaseManifestPath $package.ManifestPath -BaseManifestHash $package.SHA256 -FreezePath $freezePath -FreezeHash $freeze.SHA256
+$final=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState $packages -ChunkBytes 65536 -BaseManifestPath $package.ManifestPath -BaseManifestHash $package.SHA256 -FreezePath $freezePath -FreezeHash $freeze.SHA256 -FreezeExternalEvidencePath $renewedProof.Path -FreezeExternalEvidenceHash $renewedProof.SHA256
 & $module {$script:fixtureFingerprint=('b'*64)}
 $restored=Invoke-WsmRestore $final.ManifestPath $final.SHA256 $targetState
 if($restored.Generation -ne 2 -or (Test-Path (Join-Path $targetRoot 'chunked.bin')) -or [IO.File]::ReadAllText((Join-Path $targetRoot 'nested\unicode-中文.txt')) -cne 'final fixture'){throw 'Final generation updates/deletion incorrect.'}
 if(-not (Test-Path -LiteralPath $restored.Items[0].Backup)){throw 'Owned root rollback point lost.'}
 if((Invoke-WsmValidation $final.ManifestPath $final.SHA256 $targetState Staged).Passed){throw 'Old-generation business evidence was reused.'}
-Set-WsmValidationEvidence $final.ManifestPath $final.SHA256 $targetState $item.ItemId BusinessStaged 'Fixture owner' 'final fixture read passed' $true | Out-Null
+Set-WsmExternalFixtureValidationEvidence $final.ManifestPath $final.SHA256 $targetState $item.ItemId BusinessStaged 'Fixture owner' 'final fixture read passed' $true | Out-Null
 # Cutover OS commands are replaced; no real computer/network configuration is changed.
 & $module {
     $script:fixtureAddresses=@([pscustomobject]@{InterfaceAlias='FixtureNIC';IPAddress='192.0.2.10';PrefixLength=24;AddressState='Preferred'})
@@ -97,20 +102,20 @@ Set-WsmValidationEvidence $final.ManifestPath $final.SHA256 $targetState $item.I
 }
 $network=[pscustomobject]@{FinalName=$env:COMPUTERNAME;InterfaceAlias='FixtureNIC';FinalIP='192.0.2.20';PrefixLength=24;DefaultGateway='192.0.2.1';DnsServers=@('192.0.2.53');TemporaryIP=@('192.0.2.10');DomainProcedureEvidence='fixture domain identity prechecked';RollbackProcedure='fixture stop/reconcile then identity rollback';Owner='Fixture owner';MaintenanceWindowUtc=[DateTime]::UtcNow.AddMinutes(-1).ToString('o');ValidUntilUtc=[DateTime]::UtcNow.AddHours(1).ToString('o')}
 $networkPath=Join-Path $root 'network.json';[IO.File]::WriteAllText($networkPath,($network | ConvertTo-Json -Depth 10),(New-Object Text.UTF8Encoding($false)))
-$cutoverPath=Join-Path $root 'cutover.json';$cutover=New-WsmCutoverPlan $final.ManifestPath $final.SHA256 $targetState $networkPath (Get-FileHash $networkPath).Hash $cutoverPath
+$cutoverPath=Join-Path $root 'cutover.json';$cutover=New-WsmCutoverPlan $final.ManifestPath $final.SHA256 $targetState $networkPath (Get-FileHash $networkPath).Hash $cutoverPath -ExternalEvidenceReferences (New-WsmCutoverEvidenceFixtureReferences -Package (Test-WsmMigrationPackage $final.ManifestPath $final.SHA256) -Root $root)
 $activated=Invoke-WsmCutover $final.ManifestPath $final.SHA256 $targetState $cutoverPath $cutover.SHA256 ('CUTOVER '+$pair)
 if($activated.Stage -ne 'PostCutoverValidationRequired' -or -not $activated.Cutover.NewTransactionsPossible){throw 'Cutover did not keep final business gate/data rollback boundary.'}
 $addresses=@(& $module {$script:fixtureAddresses});if($addresses.Count -ne 1 -or $addresses[0].IPAddress -ne '192.0.2.20'){throw 'Cutover did not apply reviewed final/remove temporary address.'}
 $gates=Get-WsmAcceptanceGates $final.ManifestPath $final.SHA256 $targetState;if($gates.FinalAccepted -or $gates.RetirementReady){throw 'Activation falsely accepted/retired server.'}
-Set-WsmValidationEvidence $final.ManifestPath $final.SHA256 $targetState $item.ItemId BusinessFinal 'Fixture owner' 'final client read passed' $true | Out-Null
-foreach($check in @('DNS','Kerberos','ExternalConnectivity','Monitoring','SecurityAgent','License','UserAcceptance')){Set-WsmValidationEvidence $final.ManifestPath $final.SHA256 $targetState '' $check 'Fixture owner' ('fixture '+$check+' passed') $true | Out-Null}
+Set-WsmExternalFixtureValidationEvidence $final.ManifestPath $final.SHA256 $targetState $item.ItemId BusinessFinal 'Fixture owner' 'final client read passed' $true | Out-Null
+foreach($check in @('DNS','Kerberos','ExternalConnectivity','Monitoring','SecurityAgent','License','UserAcceptance')){Set-WsmExternalFixtureValidationEvidence $final.ManifestPath $final.SHA256 $targetState '' $check 'Fixture owner' ('fixture '+$check+' passed') $true | Out-Null}
 $gates=Get-WsmAcceptanceGates $final.ManifestPath $final.SHA256 $targetState;if(-not $gates.FinalAccepted -or $gates.RetirementReady){throw 'FinalAccepted/RetirementReady not distinct.'}
 # Only the observation clock is advanced in this fixture; no real elapsed-time qualification is claimed.
 & $module {function script:Get-WsmObservationClock {[DateTimeOffset]::UtcNow.AddHours(25)}}
-foreach($check in @('BackupRestore','LongCycleJobs','Observation','RetirementRetention')){Set-WsmValidationEvidence $final.ManifestPath $final.SHA256 $targetState '' $check 'Fixture owner' ('fixture '+$check+' passed') $true | Out-Null}
+foreach($check in @('BackupRestore','LongCycleJobs','Observation','RetirementRetention','ExternalConsumerOldPathDrained','SpecialProductDisposition','DataRetentionHandoff','CredentialHandoff','CertificateHandoff','CMDBHandoff','DNSHandoff','LicenseHandoff','MonitoringHandoff','RollbackCutoffAndDeletionOwner')){Set-WsmExternalFixtureValidationEvidence $final.ManifestPath $final.SHA256 $targetState '' $check 'Fixture owner' ('fixture '+$check+' passed') $true | Out-Null}
 if(-not (Get-WsmAcceptanceGates $final.ManifestPath $final.SHA256 $targetState).RetirementReady){throw 'Complete retirement evidence rejected.'}
 $rollback=Get-WsmRollbackPreview $final.ManifestPath $final.SHA256 $targetState;$bad=$false;try{Invoke-WsmRollback $final.ManifestPath $final.SHA256 $targetState $rollback.PreviewHash ('ROLLBACK '+$pair) | Out-Null}catch{$bad=$true};if(-not $bad){throw 'Post-transaction rollback allowed without reconciliation.'}
-Set-WsmValidationEvidence $final.ManifestPath $final.SHA256 $targetState '' RollbackReconcile 'Fixture owner' 'fixture all writers stopped and target changes reconciled' $true | Out-Null
+Set-WsmExternalFixtureValidationEvidence $final.ManifestPath $final.SHA256 $targetState '' RollbackReconcile 'Fixture owner' 'fixture all writers stopped and target changes reconciled' $true | Out-Null
 $rollback=Get-WsmRollbackPreview $final.ManifestPath $final.SHA256 $targetState
 $rolledBack=Invoke-WsmRollback $final.ManifestPath $final.SHA256 $targetState $rollback.PreviewHash ('ROLLBACK '+$pair)
 if($rolledBack.Stage -ne 'RolledBack' -or -not (Test-Path (Join-Path $targetRoot 'chunked.bin'))){throw 'Reviewed rollback did not restore retained previous root.'}

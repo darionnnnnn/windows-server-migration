@@ -1,7 +1,7 @@
 ﻿function Get-WsmPackageMembers($Package) {
-    $root=$Package.Root;$names=@('manifest.json','plan.json','artifacts.jsonl');if($Package.Manifest.Final){$names+=@('freeze.json')};$seen=@{}
-    foreach($name in $names){$path=Join-Path $root $name;Assert-WsmNoReparse $path;[pscustomobject]@{Name=$name;Path=$path;Bytes=(New-Object IO.FileInfo($path)).Length;Hash=(Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant()}}
-    foreach($row in (Read-WsmArtifactLines (Join-Path $root 'artifacts.jsonl') $Package.Manifest.ArtifactsHash)){if($row.Directory){continue};foreach($chunk in $row.Data.Chunks){if($seen.ContainsKey($chunk.Hash)){continue};$seen[$chunk.Hash]=$true;$name='payload/'+$chunk.Hash+'.blob';[pscustomobject]@{Name=$name;Path=(Join-Path $root $name);Bytes=$chunk.Bytes;Hash=$chunk.Hash}}}
+    $root=$Package.Root;$names=@('manifest.json','plan.json','artifacts.jsonl');if($Package.Manifest.Final){$names+=@('freeze.json')};$seen=@{};$metadataBytes=[long]0
+    foreach($name in $names){$path=Join-Path $root $name;Assert-WsmNoReparse $path;$bytes=(New-Object IO.FileInfo($path)).Length;$metadataBytes+=$bytes;if($metadataBytes -gt 128MB){throw 'Full package delivery metadata exceeds its aggregate 128 MiB budget; no transport is sealed.'};[pscustomobject]@{Name=$name;Path=$path;Bytes=$bytes;Hash=(Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant()}}
+    Read-WsmArtifactLines (Join-Path $root 'artifacts.jsonl') $Package.Manifest.ArtifactsHash | ForEach-Object {$row=$_;if(-not $row.Directory){foreach($chunk in $row.Data.Chunks){if($seen.ContainsKey($chunk.Hash)){continue};if($seen.Count+$names.Count -ge 100000){throw 'Full package delivery exceeds its 100000-member budget; no transport is sealed.'};$seen[$chunk.Hash]=$true;$name='payload/'+$chunk.Hash+'.blob';[pscustomobject]@{Name=$name;Path=(Join-Path $root $name);Bytes=$chunk.Bytes;Hash=$chunk.Hash}}}}
 }
 function Test-WsmZipVolume([string]$Path,[object[]]$Expected,[string]$ExpectedHash='',$CancellationToken=$null) {
     Assert-WsmNoReparse $Path;$file=[IO.File]::Open($Path,'Open','Read','Read');$archive=$null;$sha=[Security.Cryptography.SHA256]::Create()
@@ -36,7 +36,15 @@ function Export-WsmPackageZip {
         $statePath=Join-Path $output 'zip-state.json';$state=$null
         if([IO.File]::Exists($statePath)){$state=Read-WsmJson $statePath;if($state.PackageId -cne $p.Manifest.PackageId -or $state.ManifestHash -ine $ExpectedHash -or $state.VolumeBytes -ne $VolumeBytes){throw 'ZIP resume package/format differs; use a separate output directory.'}}
         else{$state=[pscustomobject]@{PackageId=$p.Manifest.PackageId;ManifestHash=$ExpectedHash;VolumeBytes=$VolumeBytes;Volumes=@();StartedUtc=(Get-WsmUtc)};Write-WsmJson $statePath $state}
+        $checkpointNames=@{};foreach($savedVolume in @($state.Volumes)){
+            $savedMatch=[regex]::Match([string]$savedVolume.Name,('^package-'+[regex]::Escape([string]$p.Manifest.PackageId)+'-(\d{4})\.zip$'))
+            if(-not $savedMatch.Success -or $checkpointNames.ContainsKey([string]$savedVolume.Name) -or $savedVolume.Hash -notmatch '^[a-fA-F0-9]{64}$' -or $savedVolume.Bytes -lt 0 -or $savedVolume.Bytes -gt $VolumeBytes){throw 'Invalid ZIP checkpoint volume descriptor; retain state and reconcile.'}
+            $savedNumber=[int]$savedMatch.Groups[1].Value;if($savedNumber -lt 1 -or $savedNumber -gt $groups.Count){throw 'ZIP checkpoint references a volume outside the current member groups.'};$checkpointNames[[string]$savedVolume.Name]=$true
+        }
+        foreach($field in @('Status','FailureReason','UpdatedUtc')){if(-not $state.PSObject.Properties[$field]){$state | Add-Member NoteProperty $field ''}}
+        $state.Status='Exporting';$state.FailureReason='';$state.UpdatedUtc=Get-WsmUtc;Write-WsmJson $statePath $state
         $volumes=New-Object 'System.Collections.Generic.List[object]';$entries=New-Object 'System.Collections.Generic.List[object]';$number=0
+        try {
         foreach($part in $groups){$number++;$destination=Join-Path $output ('package-'+$p.Manifest.PackageId+'-'+$number.ToString('0000')+'.zip');$temp=$destination+'.partial';Assert-WsmNoReparse $destination;Assert-WsmNoReparse $temp;$expected=@(foreach($m in $part){[pscustomobject]@{Name=$m.Name;Bytes=$m.Bytes;Hash=$m.Hash;Volume=$number}});$checkpoint=@($state.Volumes | Where-Object Name -CEQ ([IO.Path]::GetFileName($destination)));$checkpointHash='';if($checkpoint.Count -gt 1){throw 'Duplicate ZIP checkpoint.'};if($checkpoint.Count){$checkpointHash=$checkpoint[0].Hash;if(-not [IO.File]::Exists($destination)){throw 'Completed ZIP volume is missing; retain checkpoint and reconcile.'}}
             if(-not [IO.File]::Exists($destination)){
                 $required=($part | Measure-Object Bytes -Sum).Sum+64MB;if((Get-WsmAvailableBytes $output) -lt $required){throw 'Insufficient ZIP workspace capacity; completed volumes retained for retry.'}
@@ -44,12 +52,19 @@ function Export-WsmPackageZip {
                 try{foreach($m in $part){Assert-WsmCancellationBoundary $CancellationToken 'BeforeZipMember';Assert-WsmNoReparse $m.Path;$entry=$archive.CreateEntry($m.Name,[IO.Compression.CompressionLevel]::NoCompression);$input=[IO.File]::Open($m.Path,'Open','Read','Read');$stream=$entry.Open();try{Copy-WsmCancellableStream $input $stream $CancellationToken 'ZipWriteBuffer'}finally{$stream.Dispose();$input.Dispose()}}}finally{$archive.Dispose()}
                 $check=Test-WsmZipVolume $temp $expected -CancellationToken $CancellationToken;if($check.Bytes -gt $VolumeBytes){throw 'ZIP actual size exceeds budget; no volume sealed.'};[IO.File]::Move($temp,$destination)
             }
-            $check=Test-WsmZipVolume $destination $expected $checkpointHash $CancellationToken;if($check.Bytes -gt $VolumeBytes){throw 'ZIP volume exceeds reviewed budget.'};$record=[pscustomobject]@{Name=[IO.Path]::GetFileName($destination);Bytes=$check.Bytes;Hash=$check.Hash};$volumes.Add($record);foreach($e in $expected){$entries.Add($e)};$state.Volumes=$volumes.ToArray();Write-WsmJson $statePath $state;Assert-WsmCancellationBoundary $CancellationToken 'ZipVolumeCheckpoint';Write-Progress -Activity 'Writing/verifying ZIP volumes' -Status ($number.ToString()+'/'+$groups.Count) -PercentComplete ([int](100*$number/$groups.Count))
+            $check=Test-WsmZipVolume $destination $expected $checkpointHash $CancellationToken;if($check.Bytes -gt $VolumeBytes){throw 'ZIP volume exceeds reviewed budget.'};if($checkpoint.Count -and $check.Bytes -ne $checkpoint[0].Bytes){throw 'Completed ZIP volume byte count differs from checkpoint.'};$record=[pscustomobject]@{Name=[IO.Path]::GetFileName($destination);Bytes=$check.Bytes;Hash=$check.Hash};$volumes.Add($record);foreach($e in $expected){$entries.Add($e)};if(-not $checkpoint.Count){$state.Volumes=@($state.Volumes)+@($record)};$state.UpdatedUtc=Get-WsmUtc;Write-WsmJson $statePath $state;Assert-WsmCancellationBoundary $CancellationToken 'ZipVolumeCheckpoint';Write-Progress -Activity 'Writing/verifying ZIP volumes' -Status ($number.ToString()+'/'+$groups.Count) -PercentComplete ([int](100*$number/$groups.Count))
         }
         $path=Join-Path $output 'transport.json'
         if([IO.File]::Exists($path)){$transport=Read-WsmJson $path;if($transport.PackageId -cne $p.Manifest.PackageId -or $transport.ManifestHash -ine $ExpectedHash -or ($transport.Volumes | ConvertTo-Json -Depth 8 -Compress) -cne ($volumes.ToArray() | ConvertTo-Json -Depth 8 -Compress) -or ($transport.Entries | ConvertTo-Json -Depth 8 -Compress) -cne ($entries.ToArray() | ConvertTo-Json -Depth 8 -Compress)){throw 'Sealed transport differs from verified completed volumes.'}}
         else{$transport=[pscustomobject]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='PackageTransport';PackageId=$p.Manifest.PackageId;PairId=$p.Manifest.PairId;PlanHash=$p.Manifest.PlanHash;ManifestHash=$ExpectedHash;Volumes=$volumes.ToArray();Entries=$entries.ToArray();CreatedUtc=(Get-WsmUtc);Mode='IsolatedPilot'};Write-WsmJson $path $transport}
+        $state.Status='Sealed';$state.FailureReason='';$state.UpdatedUtc=Get-WsmUtc;Write-WsmJson $statePath $state
         Write-Progress -Activity 'Writing/verifying ZIP volumes' -Completed;[pscustomobject]@{Path=$path;SHA256=(Get-FileHash -LiteralPath $path).Hash;Volumes=$volumes.Count;Bytes=($volumes | Measure-Object Bytes -Sum).Sum;PackageManifestHash=$ExpectedHash}
+        } catch {
+            $originalFailure=$_;$state.Status='Failed';$state.FailureReason=[string]$originalFailure.Exception.Message;$state.UpdatedUtc=Get-WsmUtc
+            if($originalFailure.Exception -is [OperationCanceledException]){$state.Status='Cancelled'}
+            try{Write-WsmJson $statePath $state}catch{Write-Warning 'ZIP export failed and the failure checkpoint could not be updated; retain the original workspace and reconcile completed volumes.'}
+            throw $originalFailure
+        }
     }
 }
 function Import-WsmPackageZip {

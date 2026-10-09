@@ -39,7 +39,14 @@ function Assert-WsmEnvelope($Data, [string]$Kind) {
     foreach ($field in @('SchemaVersion','ToolVersion','Kind')) {
         if (-not $Data.PSObject.Properties[$field]) { throw (New-WsmContractError ('Missing envelope field: ' + $field)) }
     }
-    if (($Data.SchemaVersion -isnot [int] -and $Data.SchemaVersion -isnot [long]) -or $Data.SchemaVersion -ne 1 -or $Data.Kind -cne $Kind) { throw (New-WsmContractError 'Unsupported schema or envelope kind.') }
+    if (($Data.SchemaVersion -isnot [int] -and $Data.SchemaVersion -isnot [long]) -or $Data.Kind -cne $Kind) { throw (New-WsmContractError 'Unsupported schema or envelope kind.') }
+    if ($Data.SchemaVersion -eq 1) {
+        if (($Kind -eq 'Catalog' -and $Data.PSObject.Properties['GeneralHost']) -or ($Kind -eq 'MigrationPlan' -and $Data.PSObject.Properties['ScopeMode'] -and $Data.ScopeMode -ceq 'GeneralHost')) { throw (New-WsmContractError 'GeneralHost data requires schema 2; legacy readers must reject it.') }
+    } elseif ($Data.SchemaVersion -eq 2) {
+        if ($Kind -eq 'Catalog') { if (-not $Data.PSObject.Properties['GeneralHost'] -or -not (Get-Command Assert-WsmGeneralHostContract -ErrorAction SilentlyContinue)) { throw (New-WsmContractError 'Schema 2 Catalog requires the GeneralHost contract validator.') }; Assert-WsmGeneralHostContract $Data | Out-Null }
+        elseif ($Kind -eq 'MigrationPlan') { if (-not $Data.PSObject.Properties['ScopeMode'] -or $Data.ScopeMode -cne 'GeneralHost' -or -not $Data.PSObject.Properties['GeneralHost']) { throw (New-WsmContractError 'Schema 2 MigrationPlan requires GeneralHost scope and contract.') }; if (-not (Get-Command Assert-WsmGeneralHostContract -ErrorAction SilentlyContinue)) { throw (New-WsmContractError 'GeneralHost contract validator is unavailable.') }; Assert-WsmGeneralHostContract $Data | Out-Null }
+        else { throw (New-WsmContractError 'Schema 2 is unsupported for this envelope kind.') }
+    } else { throw (New-WsmContractError 'Unsupported schema version.') }
     if (@('0.1.0','0.2.0','0.3.0') -cnotcontains $Data.ToolVersion) { throw (New-WsmContractError 'Unsupported tool version; do not reinterpret future data.') }
 }
 function Assert-WsmInventory($Inventory) {
@@ -97,6 +104,7 @@ function Protect-WsmDirectory([string]$Path) {
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
 function Invoke-WsmLocked([string]$Workspace, [scriptblock]$Action) {
+    if(Get-Command Assert-WsmOutputWorkspaceNotMigrated -ErrorAction SilentlyContinue){Assert-WsmOutputWorkspaceNotMigrated $Workspace}
     $lock = $null
     try {
         $lock = [IO.File]::Open((Join-Path $Workspace '.wsm.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
@@ -133,6 +141,8 @@ function Get-WsmCatalog {
     $catalog = Read-WsmJson (Get-WsmCatalogPath $Workspace $PairId)
     Assert-WsmEnvelope $catalog 'Catalog'
     if ($catalog.PairId -cne $PairId -or $catalog.BatchId -cne (Get-WsmFleet $Workspace).BatchId) { throw 'Catalog identity mismatch.' }
+    if ($catalog.PSObject.Properties['SoftwareCatalog']) { if (-not (Get-Command Get-WsmCatalogInventoryProjection -ErrorAction SilentlyContinue)) { throw 'Catalog software source projection validator is unavailable.' }; Assert-WsmSoftwareCatalog $catalog.SoftwareCatalog -SourceInventory (Get-WsmCatalogInventoryProjection $catalog) | Out-Null }
+    if ($catalog.SchemaVersion -eq 2) { Assert-WsmGeneralHostContract $catalog | Out-Null }
     if ($catalog.ToolVersion -eq '0.1.0') { foreach ($item in $catalog.Items) { [void](Get-WsmReviewDefaults $item) }; $catalog.ToolVersion=$script:ToolVersion; $catalog.Approval=$null }
     foreach ($item in @($catalog.Items)) { if ($item.PSObject.Properties['Classification']) { Assert-WsmScopeClassification -Item $item | Out-Null } }
     $catalog
@@ -158,6 +168,7 @@ function Import-WsmInventory {
         [Parameter(Mandatory)][string]$ExpectedHash, [string]$TargetName)
     $inventory = Read-WsmTrustedJson $Path $ExpectedHash
     Assert-WsmInventory $inventory
+    if ($inventory.PSObject.Properties['SoftwareCatalog']) { Assert-WsmSoftwareCatalog $inventory.SoftwareCatalog -SourceInventory $inventory | Out-Null }
     Invoke-WsmLocked $Workspace {
         $fleet = Get-WsmFleet $Workspace
         $existing = @($fleet.Pairs | Where-Object { $_.SourceHostId -ceq $inventory.Source.HostId })
@@ -188,7 +199,7 @@ function Import-WsmInventory {
                 $prior=$previous[$entry.ItemId]
                 if ($prior.SettingsHash -ceq $entry.SettingsHash -and $prior.Present -and $prior.Status -ceq $entry.Status -and $prior.Adapter -ceq $entry.Adapter -and (($prior.Dependencies | ConvertTo-Json -Compress -Depth 10) -ceq ($entry.Dependencies | ConvertTo-Json -Compress -Depth 10))) {
                     [void](Get-WsmReviewDefaults $item)
-                    foreach ($field in @('Decision','Reason','ReviewedBy','ReviewedUtc','RuleId','Mapping','Evidence','Owner','AccountMapping','EndpointMapping','ApplicationGroup','BuiltIn','ConsistencyGroup','ConsistencyOwner','ConsistencyEvidence','MigrationSpec')) { if ($prior.PSObject.Properties[$field]) { $item | Add-Member NoteProperty $field $prior.$field -Force } }
+                    foreach ($field in @('Decision','Reason','ReviewedBy','ReviewedUtc','RuleId','Mapping','Evidence','Owner','AccountMapping','EndpointMapping','ApplicationGroup','BuiltIn','ConsistencyGroup','ConsistencyOwner','ConsistencyEvidence','MigrationSpec','GeneralHostOverride')) { if ($prior.PSObject.Properties[$field]) { $item | Add-Member NoteProperty $field $prior.$field -Force } }
                 } else { $item.Reason='Changed since previous inventory; review required.' }
                 $previous.Remove($entry.ItemId)
             }
@@ -200,8 +211,15 @@ function Import-WsmInventory {
         $history=@(); if ($old) { $history=@($old.History)+@([pscustomobject]@{ Revision=$decisionRevision; Action='Inventory'; Utc=(Get-WsmUtc) }) }
         $pair.SourceName=$inventory.Source.Name
         $catalog = [pscustomobject][ordered]@{ SchemaVersion=1; ToolVersion=$script:ToolVersion; Kind='Catalog'; BatchId=$fleet.BatchId; PairId=$pair.PairId; Source=$inventory.Source; TargetName=$pair.TargetName; InventoryRevision=$inventory.Revision; DecisionRevision=$decisionRevision; InventoryHash=$ExpectedHash.ToLowerInvariant(); ImportedUtc=(Get-WsmUtc); Approval=$null; Items=@($items.ToArray()); History=$history }
+        if ($inventory.PSObject.Properties['SoftwareCatalog']) { $catalog | Add-Member NoteProperty SoftwareCatalog $inventory.SoftwareCatalog }
         if ($old -and $old.PSObject.Properties['ReviewView']) { $catalog | Add-Member NoteProperty ReviewView $old.ReviewView }
         foreach ($field in @('PairPlan','CrossHostDependencies','StageResults','IdentityMap')) { if ($old -and $old.PSObject.Properties[$field]) { $catalog | Add-Member NoteProperty $field $old.$field } }
+        if ($old -and $old.PSObject.Properties['GeneralHost']) {
+            $catalog.SchemaVersion=2;$priorSoftwareDecisions=@($old.GeneralHost.SoftwareDecisions);$general=$old.GeneralHost;$validIds=@{};foreach($item in @($items.ToArray())){$validIds[$item.ItemId]=$true}
+            $orphaned=New-Object System.Collections.Generic.List[object]
+            foreach($requirement in @($general.Requirements)){$orphaned.Add($requirement)}
+            $general.Requirements=@();$general.OrphanedRequirements=@($general.OrphanedRequirements)+@($orphaned.ToArray());$general.SoftwareCatalog=$null;$general.SoftwareCatalogHash='';$general.SoftwareDecisions=@();if($inventory.PSObject.Properties['SoftwareCatalog']){$general.SoftwareCatalog=$inventory.SoftwareCatalog;$general.SoftwareCatalogHash=Get-WsmHashText ($inventory.SoftwareCatalog | ConvertTo-Json -Depth 30 -Compress);$general.SoftwareDecisions=@($priorSoftwareDecisions | Where-Object {$decision=$_;$entry=@($inventory.SoftwareCatalog.Entries | Where-Object SoftwareId -CEQ $decision.SoftwareId);$entry.Count -eq 1 -and $decision.SoftwareHash -ceq (Get-WsmGeneralHostSoftwareFactsHash $entry[0])})};$general.EvidenceReceipts=@();$general.UpdatedUtc=Get-WsmUtc;$catalog | Add-Member NoteProperty GeneralHost $general
+        }
         $catalog | Add-Member NoteProperty EvidenceUtc $inventory.CreatedUtc
         Write-WsmWorkspaceTransaction $Workspace $catalog $fleet
         $catalog

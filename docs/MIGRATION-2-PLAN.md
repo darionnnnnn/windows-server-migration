@@ -5,8 +5,8 @@
 > 複審基準：codex/implementation，991fc864126d226b65eb0fdbe440c7f7d41040af；前輪程式與測試基準保留於下方。
 > 來源：一般主機既有定案，以及使用者要求企業 Windows Server EOS 正式工具程度、Oracle TNS_ADMIN 與完整已安裝環境／相依工具／使用者軟體 Markdown 確認。
 > 複審證據：[深度複審](MIGRATION-2-REVIEW.md)；確認文件格式：[環境與軟體確認表](ENVIRONMENT-SOFTWARE-CONFIRMATION.md)。
-> 輸出方式續規劃基準：9b01678d56f8fdfaced54cbdad115536eba7b688；採以下建議設計，尚未實作新目錄旅程／大小選擇／交付索引。
-> 再次反向複審基準：247c528662d24adf4c52fae3dec0c544ec821a7c；另補 R2-21–R2-28。下列穩定狀態、分階段 gate、增量分卷等仍是必要待實作契約。
+> 輸出方式續規劃基準：9b01678d56f8fdfaced54cbdad115536eba7b688；規劃當時尚未實作；本輪實作狀態以文末執行紀錄為準。
+> 再次反向複審基準：247c528662d24adf4c52fae3dec0c544ec821a7c；另補 R2-21–R2-28。穩定狀態、分階段 gate、增量分卷等為本輪必要契約；實作與外部資格分開追蹤。
 
 ## 前一輪確認
 
@@ -342,7 +342,7 @@
 
 ### 整體複檢與本次執行紀錄
 
-#### 實作啟動（2026-10-09）
+#### 實作啟動與早期進度（2026-10-09，歷史記錄）
 
 - 起點：codex/implementation，c72f65b7f127f4c045124fab72aa85d191195a48；既有未追蹤 prototype 保持不動。使用者授權本輪 A–E 全部實作；實際 Server／Oracle／企業材料仍由外部受控環境提供，缺證據保留 NotTested。
 - 子代理只使用 gpt-6-luna，主模型按風險選 low／medium／high。A0 分類與盤點接線委派 high；A1 相依接線調查委派 medium（只讀）。主代理直接核對產物、consumer、負例與固定快照測試；不以代理摘要或局部 PASS 當整輪完成。
@@ -351,20 +351,20 @@
 | 段落 | 本輪必要交付／對照 | 狀態／實作與驗證證據 |
 |---|---|---|
 | A0 | 物件分類、Oracle engine／client界線、混合主機及完整評估投影 | 已實作／本機fixture驗證；ScopeClassification、Inventory／Core、選單23／CLI ScopeAssessment；7腳本在5.1／7各7/7，最後wrong-kind修正各2/2。非產品完整識別／實機資格 |
-| A1 | 受審處置／override、Preparation／ExternalDependency型別、必要相依全consumer | 未完成 |
-| B1 | HKLM／HKU／portable／人工全軟體、runtime／driver／context、準備／媒體／投影證據 | 未完成 |
-| B2 | 版本化Oracle有效設定、精確ConfigFiles／IFILE、目標readback／外部consumer證據 | 未完成 |
-| C | OS清單／選否、逐項決策、Create／Keep／External／UpdateReviewed／時區prior回復 | 未完成 |
-| D | 全量安全Markdown與其他報告、DocumentId、回填／gate、CLI／選單／Fleet／LabReport | 未完成 |
-| D2 | stable enrollment／state、OutputProfile、白名單資料夾、full／delta分卷、scratch／容量／交付 | 未完成 |
-| E1 | 新舊格式／schema／approval／journal／ownership與完整跨段相容 | 未完成 |
-| E2 | 一致性／fencing／名稱IP／回退新資料／退役／實機RPO與RTO證據閉環 | 未完成；尚無本輪Server／Oracle實機證據 |
-| E3 | exact資格、發行／SBOM／企業信任／安全交換／正式放行包 | 未完成；未提供企業簽章／批准材料，生產開關維持關閉 |
+| A1 | 受審處置／override、Preparation／ExternalDependency型別、必要相依全consumer | 已實作；本機契約／整合驗證通過，最後固定快照回歸通過，見 MIGRATION-2-VERIFICATION.md |
+| B1 | HKLM／HKU／portable／人工全軟體、runtime／driver／context、準備／媒體／投影證據 | 已實作；本機契約／整合驗證通過，最後固定快照回歸通過，見 MIGRATION-2-VERIFICATION.md |
+| B2 | 版本化Oracle有效設定、精確ConfigFiles／IFILE、目標readback／外部consumer證據 | 已實作；本機契約／整合驗證通過，最後固定快照回歸通過，見 MIGRATION-2-VERIFICATION.md |
+| C | OS清單／選否、逐項決策、Create／Keep／External／UpdateReviewed／時區prior回復 | WindowsSettingsReview 的整類選否／可信值差異／PATH與hosts人工合併、單次CAS提交及逐設定相依已補齊；SettingTransition原值復原保留，最後固定快照驗證通過，見 MIGRATION-2-VERIFICATION.md |
+| D | 全量安全Markdown與其他報告、DocumentId、回填／gate、CLI／選單／Fleet／LabReport | 已實作；本機契約／整合驗證通過，最後固定快照回歸通過，見 MIGRATION-2-VERIFICATION.md |
+| D2 | stable enrollment／state、OutputProfile、白名單資料夾、full／delta分卷、scratch／容量／交付 | full／delta ZIP／Directory、delivery.md、封存／目標匯入收據、Manager／Fleet／Lab consumer及受控 WorkRoot 搬移／中斷恢復已補齊；最後固定快照驗證通過，見 MIGRATION-2-VERIFICATION.md |
+| E1 | 新舊格式／schema／approval／journal／ownership與完整跨段相容 | 已實作；本機契約／整合驗證通過，最後固定快照回歸通過，見 MIGRATION-2-VERIFICATION.md |
+| E2 | 一致性／fencing／名稱IP／回退新資料／退役／實機RPO與RTO證據閉環 | 型別化外部證據／來源擷取重驗接線已實作，本機最後回歸通過；實際Server／Oracle／RPO／RTO仍NotTested |
+| E3 | exact資格、發行／SBOM／企業信任／安全交換／正式放行包 | 發行／exact runtime／CMS與Crypt32離線拒絕流程已實作，本機5.1／7通過；企業有效鏈／簽章批准與Server正向資格仍NotTested，生產關閉 |
 
 - A0 實作者：scope_classification（gpt-6-luna high）；主代理整合 Core／CLI／CI、UTF-8 測試讀取及 wrong-kind微修。獨立核對 mixed IIS／SQL、Oracle engine／listener／client／ODAC、字典→JSON→catalog、localized role ID、偽造／額外欄位／重排欄位／Int64版本、未解析相依、legacy投影與不修改決策。
 - A0 驗證：固定快照 `wsm-r2-a0-verified-895774a630b54f83b861db6eb9ac5261` 的 ScopeClassification／InventoryFixture／Contracts／AdvancedReview／EntryPoint／EnterpriseDiscovery／MenuContracts，WinPS5.1與PS7各7/7。第一次5.1 InventoryFixture的ANSI讀UTF-8失敗已在獨立快照重現並修正。最後只加wrong-kind拒絕，於新快照 `wsm-r2-a0-final-2b0ff1777203476d9fbc4a9d2bdfb0f8` 重验受影響 ScopeClassification／EntryPoint，各2/2；runtime hashes前後不變且與A0工作樹檔案相符。未改payload，不重跑>4GiB；全輪回歸／Server／Oracle／企業资格仍未完成。
-- 接續：B1完整軟體capture委派software_capture（gpt-6-luna high）；只寫独立collector與fixture，主代理再接入來源／匯入／CLI。A1受審處置與typed gates需使用其明確軟體身分，仍未完成。
-- D2核心第一子段：full ZIP export在建立checkpoint／寫卷前預檢最多9,999卷；import在建立incoming包前核對所有卷的bytes／hash／精確成員集合，之後解包仍再次驗證。固定HEAD基線快照只加入本子段程式與測試；TransportBoundaries和SmallFiles=2的真實MigrationPipeline在WinPS5.1／PS7均通過（pipeline34.41／25.75秒），含缺最後一卷且尚未建立incoming、接續與final回归。10,000卷只用合成metadata拒絕，不寫一萬卷；未改payload。完整D2的workspace、資料夾／delta分卷／UI／容量／delivery仍未完成。
+- A0提交當時的接續狀態（歷史）：B1完整軟體capture委派software_capture（gpt-6-luna high）；只寫独立collector與fixture，主代理再接入來源／匯入／CLI。A1受審處置與typed gates需使用其明確軟體身分，仍未完成。
+- D2核心第一子段提交當時的狀態（歷史）：full ZIP export在建立checkpoint／寫卷前預檢最多9,999卷；import在建立incoming包前核對所有卷的bytes／hash／精確成員集合，之後解包仍再次驗證。固定HEAD基線快照只加入本子段程式與測試；TransportBoundaries和SmallFiles=2的真實MigrationPipeline在WinPS5.1／PS7均通過（pipeline34.41／25.75秒），含缺最後一卷且尚未建立incoming、接續與final回归。10,000卷只用合成metadata拒絕，不寫一萬卷；未改payload。完整D2的workspace、資料夾／delta分卷／UI／容量／delivery仍未完成。
 
 #### 實作前規劃複審記錄（截至c72f65b）
 
@@ -372,3 +372,28 @@
 - 第二次按初次／熟練／應用／值班／管理／稽核旅程反查，另納入 R2-21–R2-28 的狀態、增量、白名單資料夾、既有目標、分階段證據、報告版本、損壞重建與規模限制。結論是規劃補足必要契約；是否正確運作仍待相依完整實作與各層證據，不宣稱重新閱讀文件就取得資格。
 - 原一般主機／離線／人工安裝／特殊產品不搬／OS 逐項設定保留。Oracle client 設定與完整軟體 Markdown 是本次必要補入；Oracle DB 不新增自動還原。
 - 本次修改限規劃、複審、確認模板與入口，未修改 src／tests／入口程式，未執行來源／目標 Server 盤點、Oracle DB 連線或生產遷移。功能／實機／正式資格保持未完成。
+
+#### 跨段實作回查（2026-10-09，最後固定版本回歸通過）
+
+新增入口與受控操作見 [GENERAL-HOST-WORKFLOW.md](GENERAL-HOST-WORKFLOW.md)。先指定來源／管理／目標各自的固定 WorkRoot，再選分卷 ZIP 或 sealed Directory；預設 512 MiB，可選整數 128–1024 MiB。輸出偏好不能改寫既有 attempt，state／journal 不隨 attempt 重建。每台完整確認文件使用 DocumentId，提供 MD／JSON／HTML／TXT／CSV；文件回填只供 owner 審核，不解除 typed readiness。
+
+| 覆蓋複審項 | 本輪程式閉環與驗證範圍 |
+|---|---|
+| R2-01–04 | Oracle engine/client 分界；effective provider/consumer 的 owner binding；ConfigFiles/IFILE scope 與 wallet 排除；實際可信JSON→template→reviewed binding→draft→FileScope/GeneralHost 的整合 fixture。實際 Oracle 帳號／DB／業務仍NotTested |
+| R2-05–08 | 全軟體來源與coverage、同名異SID/view/位置保留；有限portable/app-local/driver/COM/DSN/runtime來源；準備證據要求media/hash/signature或owner驗證/vendor OS/授權/install order/isolation/restart/side effect。未知架構／版本與缺準備仍阻擋相依 |
+| R2-09–13 | Schema2 GeneralHost typed處置與逐階段需求，必要consumer preview/restore/activation一致；Windows有限設定Create/Keep/External/UpdateReviewed，時區與原型別空值prior回復；vendor/runtime/exact資格不泛化 |
+| R2-14–15 | SourceFreezeReady writer inventory/epoch；來源擷取前重驗原材料；CutoverReady身分釋放/停寫/隔離/網路fencing/owner approval；RollbackReady停写保留最新資料及對帳；SourceResumeReady唯一writer證據（已接來源恢復，本機最後回歸通過） |
+| R2-16–20 | 權限與隔離、credential外部交接、有效政策、owner業務驗收、正式release/SBOM/support/runbook與detached enterprise簽章。未供企業／實機材料保留Blocked，沒有fixture冒充資格 |
+| R2-21–23 | 三角色stable enrollment／Pair與plan隔離；Delta實際分卷與Directory，legacy/full/delta kind拒絕；乾淨白名單交付，不把checkpoint、孤兒blob或source-local證據路徑入包 |
+| R2-24–26 | exactbefore/readback/prior復原，CreatedByTool与UpdatedByTool分開；Preparation/Staged/Cutover/Final階段分離；需求投影及affected closure失效；DocumentId與target observation產新文件，索引非approval |
+| R2-27–28 | 真實full ZIP缺中間卷／末卷修改時保留每個已封存descriptor并持久failed，原bytes恢復後才能接續；full與Delta各有metadata/成員預算。最多9,999 ZIP卷；full/Delta Directory成員最多100,000，aggregate metadata128MiB，超限明確停止。大量卷／500GiB／50k軟體RAM與維護窗尚無實測資格 |
+
+- 大型確認文件：2,501筆全量producer涵蓋所有五格式與數量對帳，未截斷；後續test-only修正以小樣本在5.1／7重新驗所有語意。此證據不是50k列／企業規模或硬RAM上限承諾。
+- 本輪複審新增實際修正：服務Environment位於service key的REG_MULTI_SZ；存在但空白TNS_ADMIN不能被當作不存在；Oracle typed provider必須恰一個；PreparationReady不能被Staged測試取代；-WhatIf作業請求不能寫入無ShouldProcess的command；retirement有具名交接檢查；必要停寫／回退／唯一writer事實不可用NotApplicable解除。
+- 切換前後的typed external材料可在本機hash重驗，但hash／owner名稱本身不證明作者或企業獨立授權。正向實機測試與企業簽章／批准仍需受控外部證據；生產開關不在本輪啟用。
+
+#### 本輪 PLAN/TODO 最後程式比對（2026-10-09）
+
+A0–D2 與 E1–E3 的程式／schema／producer-consumer 已逐項比對並補漏。已完成的 delivery、Windows 設定專頁及 WorkRoot 受控搬移程式 TODO 刪除；原始需求和實機驗收條件保留。原生設定完整型別／DST、Firewall policy trace／專用完整列舉 marker、來源 after／目標 before／GPO與Unknown控制來源等最後補漏及固定快照證據見 [MIGRATION-2-VERIFICATION.md](MIGRATION-2-VERIFICATION.md)。
+
+主代理親自實作接口、wizard、原生 producer 與最後修正，精確模型身分無可信執行紀錄；subagent 皆 gpt-6-luna，主模型依範圍選 high/medium/low，最後閉環收尾使用 high。主代理已獨立驗證，不把努力等級差異或實作者回查稱為不同模型體檢。程式實作完成，實機／企業資格與不同模型體檢仍待完成，生產開關保持關閉。

@@ -1,0 +1,64 @@
+﻿{
+  "bomFormat": "ProjectSBOM-1",
+  "specVersion": "1.0",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "name": "Windows Server Migration",
+      "version": "0.3.0",
+      "supplier": "Project maintainers",
+      "scope": "local offline migration tool; production qualification blocked",
+      "license": "NOASSERTION; no repository license declared"
+    }
+  },
+  "components": [
+    {
+      "type": "application",
+      "name": "Windows Server Migration",
+      "version": "0.3.0",
+      "bundled": true,
+      "purl": "pkg:generic/windows-server-migration@0.3.0",
+      "hashes": "Per-file SHA256 values are in release.json",
+      "license": "NOASSERTION; no repository license declared"
+    },
+    {
+      "type": "platform",
+      "name": "Windows PowerShell",
+      "version": "5.1 x64",
+      "bundled": false,
+      "supplier": "Microsoft",
+      "scope": "Required host runtime; FullLanguage required"
+    },
+    {
+      "type": "platform",
+      "name": ".NET Framework",
+      "version": "OS-provided",
+      "bundled": false,
+      "supplier": "Microsoft",
+      "scope": "Used through Windows PowerShell and OS APIs; exact servicing level is host-specific"
+    },
+    {
+      "type": "library",
+      "name": "System.Security.Cryptography.Pkcs",
+      "version": "OS/runtime-provided",
+      "bundled": false,
+      "supplier": "Microsoft",
+      "scope": "Detached CMS verification for qualification and release trust"
+    },
+    {
+      "type": "library",
+      "name": "System.IO.Compression",
+      "version": "OS/runtime-provided",
+      "bundled": false,
+      "supplier": "Microsoft",
+      "scope": "ZIP package and release handling"
+    }
+  ],
+  "thirdPartyBundledComponents": [],
+  "limitations": [
+    "This inventory is a repository-level component list, not a vulnerability scan or supplier attestation.",
+    "Host roles, modules, certificates, revocation responders, and Oracle client software are not bundled.",
+    "A release manifest hash establishes byte integrity only; enterprise trust and production support require independent approvals."
+  ]
+}

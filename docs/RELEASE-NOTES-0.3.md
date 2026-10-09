@@ -1,0 +1,15 @@
+﻿# Release notes 0.3.0
+
+This release provides a locally tested, offline migration workflow limited to explicitly approved isolated pilots. It includes exact-byte tool fingerprinting, release archive manifests, qualification records, expiry/revocation checks, and exact source/target/product lookup.
+
+The qualification workflow now includes exact source and target `InstallationType` in new scope keys, exact source/target PowerShell and .NET runtime servicing metadata, and Oracle provider plus consumer product/version/architecture/context when Oracle is in scope. Production qualification requires a detached enterprise signature over the canonical qualification projection, an independently supplied trust-policy hash, role-pinned signer and root thumbprints, valid certificate chain, and current offline cache-only revocation verification. The release archive can be checked against a detached ReleaseSigner signature and its internal manifest with `Test-WsmToolRelease`.
+
+No enterprise trust policy or signed real-host evidence was supplied for this release. Server/Oracle production qualification remains **Blocked / NotTested**. `ProductionExecutionEnabled` remains `false`; the software does not change execution policy or enable production activation.
+
+See [RELEASE-QUALIFICATION.md](RELEASE-QUALIFICATION.md), [SUPPORT-MATRIX.json](SUPPORT-MATRIX.json), [RELEASE-SBOM.json](RELEASE-SBOM.json), and [RECOVERY-RUNBOOK.md](RECOVERY-RUNBOOK.md) for the exact trust and support boundaries.
+
+The general-host workflow adds source-bound installed-software capture (machine/user registry views, bounded portable/app-local evidence and explicit gaps), reviewed software dispositions and phased preparation dependencies, owner-reviewed Oracle effective configuration drafts, typed Windows setting transitions with prior-state rollback, and immutable full Markdown/JSON/HTML/text/CSV confirmation documents. Nonempty Oracle LOCAL remains external to prevent secret-bearing descriptors entering plans or journals. Oracle wallet/private-key discovery walks bounded nested folders and blocks incomplete discovery.
+
+Source, manager and target each use stable enrolled workspaces. Delivery supports ZIP volumes (default 512 MiB, enrolled limits 128–1024 MiB) or an exact sealed directory. Full and delta transports use bounded metadata/member counts and exact kind/hash readback. Failed or interrupted sealed-volume recovery preserves checkpoint descriptors and requires unchanged original archive bytes. Confirmation documents are report-only; editing them does not approve a migration.
+
+Cutover, target rollback, source resume and retirement now consume check-specific hash-bound external material with finite typed facts, exact host/plan/generation binding and expiry. Source package capture revalidates the original writer-fence evidence under its output lock. Required safety facts cannot be marked NotApplicable. These mechanisms validate the supplied evidence contract and local integrity; they do not independently prove enterprise authorization or live product behavior.

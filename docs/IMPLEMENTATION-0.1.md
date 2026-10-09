@@ -2,6 +2,8 @@
 
 2026-10-08，分支 codex/implementation，本轮起點 7287399；本輪程式／測試已提交並推送 checkpoint `10c896a`，後續為文件同步。狀態為「持續補齊，未完成全規劃」，尚未進入不同模型獨立體檢。已完成項從當期待辦移除，原始 PLAN 的需求及驗收條件保留。
 
+以上為第一輪 checkpoint 歷史；第2輪目前程式已補齊，最後驗證及當期外部待驗證見 [MIGRATION-2-VERIFICATION.md](MIGRATION-2-VERIFICATION.md)。
+
 ## 實作對照
 
 | 項目 | 已實作程式／交付 | 目前證據與界限 |
@@ -16,7 +18,9 @@
 
 目前 generic 自動 adapter：FileScope、ScheduledTask、Service、SmbShare、MachineEnvironment、WindowsFeature、IISPool、IISSite、Certificate、LocalUser、LocalGroup、FirewallRule；另有 ManualWorkflow 的專用流程證據門檻。implemented 不等於 ProductionVerified；能力矩陣全部仍維持 ProductionVerified=false。ManualWorkflow 不視為產品自動還原實作。
 
-## 當期待辦（尚未實作／待補齊，不能宣告完成）
+## 當期待辦（外部验收／獨立體檢，不能宣告正式資格）
+
+2026-10-09 程式比對：已從 TODO 移除一般主機離線準備／特殊項告知，以及完整 HKLM／可讀 HKU／可攜／人工軟體確認、Oracle client 設定與階段 gate 的「未實作」項。對應 `SoftwareInventory.ps1`、`ScopeClassification.ps1`、`GeneralHostContracts.ps1`、`OracleClientContracts.ps1`、`EnvironmentConfirmation.ps1`，並已接來源盤點、管理審核、核准／restore／delta／cutover、Fleet／LabReport 與 CLI；固定快照的 SoftwareInventory／GeneralHostGates／OracleClientContracts／OracleIntegration／EnvironmentConfirmation／LabReportConsumer 於 5.1／7 通過。來源真實清單、原生 consumer／業務與企業資格另保留待驗證。D2 delivery Markdown／管理端交付收據／Fleet-Lab 引用及受控 WorkRoot 遷移／中斷回復已實作並通過最後固定快照驗證。Windows 設定專頁／逐設定相依／單次 CAS 亦已完成；對應程式 TODO 已刪除，證據見 MIGRATION-2-VERIFICATION.md。
 
 R02 設定檔分類、精確 ConfigFiles／ConfigOverrides 核准、來源草稿／即時差異報告及完整包／delta 的重新審核門檻已實作並完成主代理驗證；新增、修改、刪除不能沿用舊核准。來源角色 11 可輸出不含設定內容的差異 JSON／JSONL，漂移時需重新核准並建立新初始基準，既有目標 ownership 先按明確回退／協調處理。這項已從未實作待辦移除。
 
@@ -26,11 +30,9 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 - [ ] 取得代表性來源的實際檔案數量／大小／scope 後，針對一次封裝及還原量測耗時、容量及尖峰記憶體，與維護窗比較。取消以 10k 小檔重跑整套故障／切換劇本的門檻；檔案一致性與分段邊界仍保留測試。實際 >4GiB 已通過，長路徑目前明確阻擋。
 - [ ] 更多 adapter 原生正反例與精準欄位稽核；IIS recursive schema／nested drift、Win32 own-process SCM supplement、安裝副作用隔離／quarantine、專用 UNC／DFS 角色 scope 契約已有實作與 fixture。完整 Server API／provider identity 資格、更多服務帳號模式與第三方安裝副作用仍未驗收。
 - [ ] 跨台循環應用的實際 freeze／activation／rollback 協調與資格驗收；GroupPlan／Receipt／Barrier／RollbackResult／Qualification 契約及消費端已實作，真實群組／產品證據待取得。
-- [ ] 依第 2 輪定案補一般主機的離線準備清單、目標核對與特殊項告知；特殊 DB／角色不新增自動模組，必要外部相依仍需 owner 確認。
-- [ ] 依 2026-10-09 深度複審補完整 HKLM／可讀 HKU／可攜／人工軟體 Markdown 確認、Oracle client／TNS_ADMIN／精確設定檔及實際 consumer 驗證、B1／B2／E1–E3 gate 與正式資格／放行包。20 項缺口已寫入 MIGRATION-2-PLAN／REVIEW；ENVIRONMENT-SOFTWARE-CONFIRMATION 是模板，尚無來源／目標 Server 真實清單，不能標已實作。
-- [ ] 依 D2 輸出續規劃接統一工作目錄、直接可讀確認文件、資料夾／ZIP交付模式、每卷大小選擇、峰值空間預檢、9,999卷界線、delivery索引與完整匯入gate。既有ZIP核心／512MiB默認不代表新選單／輸出契約已交付。
-- [ ] 依基準247c528再次複審R2-21–R2-28補穩定enrollment／pair state與attempt分離、版本化delta分卷及受控scratch、白名單資料夾副本、既有目標Create／Keep／External／受驗UpdateReviewed及原值回復、RequiredPhase／需求投影證據、DocumentId／不可變delivery／receipt、壞卷重封新hash、JSON／index／RAM預算與完整schema consumer。累計28項是規劃收斂，不計實作或實機通過。
-- [ ] 真實瀏覽器／主控台和整輪實機再核對；程式 checkpoint `10c896a` 已推送、公共 draft PR 已同步，完整 CI 已通過。最新本機測試覆蓋與尚未完成的大量基準見下方，不以舊快照代替最後修改。
+- [ ] 取得真實來源／目標的完整軟體清單與 Oracle consumer 帳號、provider、DB／TCPS／業務驗證，完成 exact Server／runtime／企業信任及放行資格；這些外部證據仍 NotTested，不能以本機 fixture 代替。
+- [ ] 真實瀏覽器／主控台及整輪 Server／業務驗收；舊 checkpoint 的 CI 是歷史證據，第2輪證據見 MIGRATION-2-VERIFICATION.md。
+- [ ] 不同於全部實作者模型的獨立體檢；主代理曾實作且模型身分無可信執行紀錄，Luna 各 effort 不算換模型，依 project-closeout 保留待驗證。
 
 ## 需要實際環境的驗收（不能用合成代替）
 
@@ -124,7 +126,7 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 | E | 既有 generic adapters、staging／readback、service identity／supplement、TaskFolder ACL ownership、journal／rollback／crash recovery | 真實 Server／產品 API、帳號／私鑰／policy／reboot 與業務正反例；未知產品不得宣告自動支援 |
 | F | reviewed cutover、activation resume、group barrier／rollback receipt、qualification registry、observation window、acceptance／retirement gates | 真實身份／網路／網域切換、單台／相依雙台／十台波次、交易協調、實際觀察與備份實還原 |
 
-此表與文件開頭的「當期待辦」同為現行狀態；原 PLAN 驗收條件保留。已寫程式／fixture 通過與 Server／業務資格分別追蹤。
+此表保留第1輪當時的實作／驗收記錄，不是第2輪程式 TODO。現行待辦以文件開頭清單及 MIGRATION-2-PLAN 執行紀錄為準；第2輪已實作的 detached CMS、精確資格、軟體／Oracle／Windows 設定與新交付功能不再因本歷史表而重列未實作。Server／業務／企業正向資格仍分別追蹤。
 ## 已完成驗證
 
 - Windows PowerShell 5.1：25 項語意契約檢查通過，涵蓋可信雜湊、舊世代拒絕、無效批次原子拒絕、相依衝突、CSV 公式防護、撤銷、HTML 字串防注入、Settings 不外洩、核准回讀、設定漂移、缺口補查證據、缺列不變更。

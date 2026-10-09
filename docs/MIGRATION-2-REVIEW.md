@@ -5,7 +5,7 @@
 > 權威規格：[MIGRATION-2-PLAN.md](MIGRATION-2-PLAN.md)；使用者確認格式：[ENVIRONMENT-SOFTWARE-CONFIRMATION.md](ENVIRONMENT-SOFTWARE-CONFIRMATION.md)。
 > 再次複審：2026-10-09，247c528662d24adf4c52fae3dec0c544ec821a7c；本節以下保留前次20項與輸出審查，新增 R2-21–R2-28 的操作／程式／全局回查。
 
-## 判斷
+## 實作前判斷（歷史；目前實作狀態以 PLAN 執行紀錄為準）
 
 原規劃具備合理的一般主機範圍、安全限制與離線流程，但尚不足以作為企業正式 EOS 遷移工具的完整驗收規格。最明確的缺漏是 Oracle 用戶端設定沒有搬移閉環、完整軟體清單未包含個人／可攜來源、交付格式未包含使用者要求的 Markdown，以及企業發行與資格仍被籠統留待後續。
 
@@ -162,3 +162,22 @@ Microsoft 列 Server 2025 的 NTLMv1／SMTP 等移除及 TLS 1.0／1.1 預設停
 整體回查：輸出設定不更改Include／Exclude或Oracle精確ConfigFiles，卷大小改變建立新transport run而非改sealed包；文件可讀不等於核准，sealed不等於transfer verified，解包不等於restore／activate，備份目錄不等於整機備份或新交易回退完成。外部加密wrapper可能增加單檔大小，媒體上限另驗。
 
 本次只更新文件並同步確認模板／入口，D2新旅程與門檻尚未實作；現有ZIP及取消fixtures未重跑，沒有新增實機PASS。依[Microsoft CompressionLevel](https://learn.microsoft.com/en-us/dotnet/api/system.io.compression.compressionlevel?view=netframework-4.8.1)與[filesystem比較](https://learn.microsoft.com/windows/win32/fileio/filesystem-functionality-comparison)核對封裝及媒體差異，不新增第三方安裝依賴。
+
+## 程式現況增補（2026-10-09）
+
+以下是本輪 source-level implementation recheck，更新上段歷史基準中的「尚未實作」狀態；不代表任何真實 Server、Oracle、企業 PKI 或業務交易已取得資格。
+
+| 新增閉環 | 已核對實作與邊界 |
+|---|---|
+| Windows settings review | `WindowsSettingsReview.ps1` 的 `Get-WsmWindowsSettingsReviewWorkspacePreview`／`Invoke-WsmWindowsSettingsReviewWizard` 以可信 source／target path+hash 建立專頁；source 必須吻合 catalog 的 inventory hash、fingerprint、revision 與 item SettingsHash。Preview 綁兩端 hash／revision、exact setting value hash 與所需 consumer。PATH／hosts 提供可讀但不可自動搬的人工合併清單；秘密與未知值 redacted。NO 僅選 class-wide KeepTarget。`Apply-WsmWindowsSettingsReview` 重讀輸入、核對 preview 與 `ExpectedRevision`，在 scratch catalog 執行 GeneralHost disposition／requirement preview+set、完整驗證後，才於鎖內以單次 catalog hash/revision compare-and-swap 寫入；每個設定的每個 consumer 都各有 exact value-hash requirement，不把同 consumer 的設定合併。Required consumer 未解除；Migrate 僅轉 `Pending`，沒有自動 Include。Apply fixture 覆蓋無效 decision 與注入最終寫入失敗時 catalog bytes 不變。 |
+| 遞送 seal/import receipt | `DeliveryReceipts.ps1` 對 Zip／Directory × Full／Delta 建立 `Sealed` 與 `ImportedVerified` receipt 及可讀 `delivery.md`；Delta 綁可信 base 與 current/import summary。管理端 `Import-WsmDeliveryReceipt` 只接納與現行 approval、plan、generation、package、transport 及模式一致的 receipt。`Get-WsmDeliveryReceiptSummary` 提供 Fleet 摘要；Lab report 的 `-DeliveryReceiptReferences` 可引用可信 receipt。所有 receipt 與報告引用都是 ReportOnly，`ReadinessProof=false`、`ProductionVerified=false`，不放行 readiness 或正式生產。 |
+| WorkRoot 受控搬移／回復 | `WorkspaceTransfer.ps1` 的 transfer／restore preview 固定來源與目的根、enrollment identity/revision、完整檔案集合與容量；套用要求精確 preview hash、`MIGRATE-WORKROOT` 與 `-StoppedAllTools`。鎖與掃描不能證明已載入 process 停止，這是 operator 前置條件。原根以 transfer marker fail closed；中斷時從原／新根產生 recovery preview，核對 marker／copy hash，再依 preview 執行回復，保留且阻擋無法證明為搬移副本的部分資料。不是備份或跨主機遷移。 |
+
+本次新增與固定 snapshot regression 於 Windows PowerShell 5.1 和 PowerShell 7 執行 Windows settings contract fixture；snapshot 內 source/test bytes 前後 SHA256 相同。這只驗證本機契約與 atomic failure fixture，不證明 Windows Server 2016／2025 實機、真實服務／Oracle consumer、企業憑證信任、RPO/RTO 或生產維護窗。`MIGRATION-2-PLAN.md` 的執行 TODO 仍以其核准紀錄為準，本增補不將任何外部實機項目標為完成。
+
+
+## 最後原生 producer-consumer 與 TODO 比對
+
+最後補齊原生 MachineEnvironment 原型別／空白與不存在、TimeZone/DST、Firewall ActiveStore/TracePolicyStore 與完整列舉 marker。source-after 與 target-before/type/DST 精確對照既有受審 spec；來源及目標 GPO/Unknown 均不可一般自動搬入。完整 Export-WsmInventory JSON→review helper、filter 中斷、特定缺口及 WinPS5.1 JSON 整數型別正反例通過兩引擎。
+
+交付 MD／receipt／Manager-Fleet-Lab、Windows 專頁／CAS／required 相依、WorkRoot 搬移／中斷回復已實作及驗證，對應未實作 TODO 已刪除。本文件前期「只改規劃」結論為歷史，最新狀態和固定快照見 [MIGRATION-2-VERIFICATION.md](MIGRATION-2-VERIFICATION.md)。真實 Server／Oracle／PKI／業務／維護窗和不同模型體檢仍未取得，不宣告正式企業資格。

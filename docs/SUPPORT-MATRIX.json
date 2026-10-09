@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "kind": "SupportMatrix",
+  "status": "BlockedNotTested",
+  "productionExecutionEnabled": false,
+  "toolVersion": "0.3.0",
+  "entries": [
+    {
+      "scope": "Windows PowerShell",
+      "runtime": "Windows PowerShell 5.1 x64 FullLanguage",
+      "status": "Local contract tests; Crypt32 cache-only verifier implemented and negative leaf test passed; no enterprise PKI positive-chain result",
+      "qualificationRequired": true
+    },
+    {
+      "scope": "Windows Server 2016 to Windows Server 2025",
+      "dimensions": ["exact build", "edition", "InstallationType", "architecture", "adapter fingerprint", "source and target PowerShellVersion/Edition/ProcessArchitecture/LanguageMode/CLRVersion/NETFrameworkRelease"],
+      "status": "No real host qualification evidence supplied",
+      "qualificationRequired": true
+    },
+    {
+      "scope": "Oracle Client and application consumers",
+      "dimensions": ["provider product/version/architecture/Oracle Home/context", "consumer product/version/architecture/runtime context"],
+      "status": "No real provider/consumer qualification or database business proof supplied",
+      "qualificationRequired": true
+    },
+    {
+      "scope": "Server roles, runtimes, drivers, agents, and special products",
+      "status": "Target preparation is manual; unsupported automatic installation; exact owner/vendor procedure required",
+      "qualificationRequired": true
+    },
+    {
+      "scope": "Production activation and retirement",
+      "status": "Disabled; requires separate enterprise change approval and real business/restore evidence",
+      "qualificationRequired": true
+    }
+  ],
+  "knownLimitations": [
+    "Fixture and local PowerShell tests do not qualify real Server, Oracle, business consumer, scale, maintenance window, or enterprise policy behavior.",
+    "Unknown tuples do not inherit a nearby qualification.",
+    "Qualification records, owner names, references, and hashes do not independently establish trust.",
+    "ZIP release packages are not encrypted."
+  ]
+}

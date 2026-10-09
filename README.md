@@ -6,7 +6,10 @@ PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目
 
 已加入資料檔案／ACL 搬移包、內容去重與分卷 ZIP、固定來源／目標配對、規格核准、停用 staging、逐項設定及業務驗收、initial／final 差異 ZIP、切換計畫、啟用接續、回退與中斷修復。保留 0.2 的分類文件、分頁／跨頁規則／CSV 排除、版本衝突、跨主機相依與集中報告。
 
-**仍在補實作及驗證，未完成全計畫，也未取得 Server 2016／2025 生產資格。** 執行功能限定使用者明確核准的隔離 pilot。未知產品保留為缺口或具責任與證據的專用流程；不會自動匯入整個 registry、執行包內腳本或啟動舊來源。實際資料、帳號密碼、憑證、企業設定不得放入這個公開 repository。
+**第2輪程式閉環已補齊，最後固定快照回歸通過；尚未取得 Server 2016／2025 生產資格。** 執行功能限定使用者明確核准的隔離 pilot。未知產品保留為缺口或具責任與證據的專用流程；不會自動匯入整個 registry、執行包內腳本或啟動舊來源。實際資料、帳號密碼、憑證、企業設定不得放入這個公開 repository。
+
+第2輪一般主機操作與資料格式見 [GENERAL-HOST-WORKFLOW.md](docs/GENERAL-HOST-WORKFLOW.md)：完整軟體／環境確認、Oracle effective設定與wallet外部處理、分階段準備證據、具原值復原的Windows設定、固定WorkRoot與ZIP／Directory交付。Source、Manager、Target使用自己的受控目錄；來源及目標交付模式需相符。每台完整MD／JSON／HTML／TXT／CSV會保留全部已發現列與探索缺口，文件回填不構成執行核准。
+逐項 PLAN/TODO 比對、最後證據與外部待驗證見 [MIGRATION-2-VERIFICATION.md](docs/MIGRATION-2-VERIFICATION.md)。
 
 ## 操作
 
@@ -20,14 +23,16 @@ powershell.exe -NoProfile -File C:\MigrationTools\Start-ServerMigration.ps1
 
 測試主機無法連線给代理時，角色精靈 6 或 `-Action LabReport -Role Source／Target -Path D:\MigrationLabReports` 產生可複製貼回的文字驗證報告及完整 JSON；先跑環境檢查，再提供可信搬移包驗證本機逐項 readback。操作步驟見手冊的「測試主機結果複製貼回」。
 
-報告是離線快照，按 100 筆分頁，提供分類計數與搜尋；列印符合項目最多 2,000 筆。遷移和切換仍限隔離 pilot，生產資格尚未驗收。
+既有分類報告是離線快照，按100筆分頁，提供分類計數與搜尋；瀏覽器列印最多2,000筆。完整環境／軟體MD、JSON、TXT、CSV不使用這項列印截斷。遷移和切換仍限隔離 pilot，生產資格尚未驗收。
 
 - [操作手冊及資料契約](docs/OPERATIONS.md)：離線交換、規格／SID／機密、實際執行、重試與切換。
 - [逐項實作與未完成清單](docs/IMPLEMENTATION-0.1.md)：A–F／R01–R16 對照與證據。
 - [原始規劃與驗收條件](docs/MIGRATION-1-PLAN.md)：保留歷史需求；本輪範圍變更以第 2 輪為準。
-- [第 2 輪規劃](docs/MIGRATION-2-PLAN.md)：一般服務主機、離線準備、Windows 決策、Oracle設定與D2輸出目錄／可自訂大小分卷ZIP／資料夾交付；規劃中，新旅程尚未實作。
+- [第 2 輪規劃](docs/MIGRATION-2-PLAN.md)：一般服務主機、離線準備、Windows 決策、Oracle設定與D2輸出目錄／可自訂大小分卷ZIP／資料夾交付；各項程式比對與實機資格狀態見文件末尾。
 - [第 2 輪深度複審](docs/MIGRATION-2-REVIEW.md)：累計28項企業 EOS 規劃缺口；再次按角色反查，補穩定作業狀態、增量分卷、白名單資料夾、既有設定回復、分階段gate與交付版本；尚非功能或正式資格通過。
 - [完整環境／軟體確認表](docs/ENVIRONMENT-SOFTWARE-CONFIRMATION.md)：每台全量軟體、使用者／可攜環境、Oracle TNS_ADMIN／設定檔與目標驗證的 Markdown 格式；目前是模板，非真實 Server 清單。
+- [正式資格／企業簽章信任／發行包](docs/RELEASE-QUALIFICATION.md)：精確 InstallationType／Oracle provider-consumer 維度、離線撤銷、signed-bytes 核驗；目前無實機或企業信任材料，production 仍 Blocked。
+- [支援矩陣](docs/SUPPORT-MATRIX.json)、[SBOM](docs/RELEASE-SBOM.json)、[0.3.0 發行說明](docs/RELEASE-NOTES-0.3.md)與[復原 runbook](docs/RECOVERY-RUNBOOK.md)：隨 ToolRelease 一併封裝；不代表生產資格。
 
 第2輪開始分段實作。來源分類與管理端只讀範圍評估將一般工作負載、目標準備、Windows設定、特殊產品及未知分開；主選單23或 CLI `-Action ScopeAssessment -Workspace <工作區> -PairId <配對GUID>` 可查看。分類不改動 Include／Exclude，不證明相依已完成；完整軟體盤點、Oracle設定、準備門檻與新交付流程的逐段狀態見第2輪PLAN。
 

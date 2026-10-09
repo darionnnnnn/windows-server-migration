@@ -78,11 +78,19 @@ function Get-WsmLatestStageResult($Catalog) {
     $current | Sort-Object @{Expression={if($_.PSObject.Properties['PayloadGeneration']){[long]$_.PayloadGeneration}else{0}};Descending=$true},@{Expression={[DateTimeOffset]::Parse($_.ProducedUtc)};Descending=$true},@{Expression={[long]$_.Sequence};Descending=$true} | Select-Object -First 1
 }
 function Get-WsmStageResultSummary($Catalog) {
-    if(-not $Catalog.PSObject.Properties['StageResults']){return ''}
-    $latest=Get-WsmLatestStageResult $Catalog
-    if(-not $latest){return ''}
-    $rows=@($Catalog.StageResults | Where-Object {(Test-WsmStageResultCurrent $Catalog $_) -and ((-not $latest.PSObject.Properties['PayloadGeneration'] -and $_.Stage -ceq 'Inventory') -or ($_.PSObject.Properties['PayloadGeneration'] -and $_.PayloadGeneration -eq $latest.PayloadGeneration))})
-    @($rows | Group-Object Stage | ForEach-Object {$row=$_.Group | Sort-Object Sequence -Descending | Select-Object -First 1;$row.Stage+':'+$row.Status} | Sort-Object) -join '; '
+    $summary=''
+    if($Catalog.PSObject.Properties['StageResults']){$latest=Get-WsmLatestStageResult $Catalog;if($latest){$rows=@($Catalog.StageResults | Where-Object {(Test-WsmStageResultCurrent $Catalog $_) -and ((-not $latest.PSObject.Properties['PayloadGeneration'] -and $_.Stage -ceq 'Inventory') -or ($_.PSObject.Properties['PayloadGeneration'] -and $_.PayloadGeneration -eq $latest.PayloadGeneration))});$summary=@($rows | Group-Object Stage | ForEach-Object {$row=$_.Group | Sort-Object Sequence -Descending | Select-Object -First 1;$row.Stage+':'+$row.Status} | Sort-Object) -join '; '}}
+    if($Catalog.PSObject.Properties['GeneralHost']){
+        $target='';if($Catalog.Approval -and $Catalog.Approval.PSObject.Properties['TargetFingerprint']){$target=[string]$Catalog.Approval.TargetFingerprint}
+        if($target){$projection=Get-WsmGeneralHostReadinessProjection $Catalog $target '' $(if($Catalog.Approval.PSObject.Properties['Hash']){$Catalog.Approval.Hash}else{''});$issues=@($projection.PendingIssues)}else{$issues=@(Get-WsmGeneralHostIssues $Catalog ReviewComplete)}
+        $suffix='GeneralHost:'+$(if($issues.Count){'Blocked'}else{'ReadyForReview'});if($issues.Count){$suffix+=' ['+(@($issues | ForEach-Object {($_.Gate+'/'+$_.ConsumerItemId+': '+$_.Issue)} | Select-Object -First 30) -join ' | ')+']';if($issues.Count -gt 30){$suffix+=' | '+($issues.Count-30)+' additional issues'}}
+        if($summary){$summary+='; '};$summary+=$suffix
+    }
+    $summary
+}
+function Get-WsmFleetDeliverySummary($Catalog) {
+    if(-not (Get-Command Get-WsmDeliveryReceiptSummary -ErrorAction SilentlyContinue)){return [pscustomobject]@{Status='ReceiptSupportUnavailable';Mode='';Generation=0;VolumeCount=0;TotalVolumeBytes=0;TransportHash='';DeliveryId='';ReportOnly=$true;ReadinessProof=$false;ProductionVerified=$false}}
+    Get-WsmDeliveryReceiptSummary $Catalog
 }
 function Test-WsmStageResultCurrent($Catalog,$Result) {
     if($Result.InventoryRevision -ne $Catalog.InventoryRevision -or $Result.DecisionRevision -ne $Catalog.DecisionRevision){return $false}

@@ -159,3 +159,19 @@ jobs:
       - name: PowerShell 7 delta workflow
         shell: pwsh
         run: ./tests/Test-DeltaWorkflow.ps1
+  migration-round-two:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        engine: [powershell, pwsh]
+    steps:
+      - uses: actions/checkout@v4
+      - name: General host, environment, ownership and delivery contracts
+        shell: pwsh
+        run: |
+          $engine = '${{ matrix.engine }}'
+          foreach ($test in @('Test-GeneralHostGates.ps1','Test-SoftwareInventory.ps1','Test-OracleClientContracts.ps1','Test-OracleIntegration.ps1','Test-SettingTransitions.ps1','Test-SettingTransitionRecovery.ps1','Test-OutputWorkspace.ps1','Test-OutputWorkflow.ps1','Test-EnvironmentConfirmation.ps1','Test-GeneralHostDeltaIntegration.ps1','Test-DeltaVolumeTransport.ps1','Test-ExternalReadinessEvidence.ps1','Test-FullZipCheckpointRecovery.ps1','Test-FullDeliveryBudgets.ps1','Test-SourceWizardEnrollment.ps1','Test-DeltaDirectoryMemberBudget.ps1','Test-ManagerOutputWorkspace.ps1','Test-TargetWorkspaceBinding.ps1','Test-FullDirectoryImport.ps1','Test-TargetOutputModeWizard.ps1','Test-WorkspaceTransfer.ps1','Test-DeliveryReceipts.ps1','Test-WindowsSettingsReview.ps1','Test-WindowsSettingInventory.ps1')) {
+            & $engine -NoProfile -File (Join-Path tests $test)
+            if ($LASTEXITCODE -ne 0) { throw ('Failed: ' + $test) }
+          }

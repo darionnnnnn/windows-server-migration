@@ -15,6 +15,7 @@ function Set-WsmDecision {
         $index=@{}; foreach ($i in $c.Items) { $index[$i.ItemId]=$i }
         $ids=@($ItemId | Select-Object -Unique)
         foreach ($id in $ids) { if (-not $index.ContainsKey($id)) { throw 'Unknown ItemId; nothing applied.' } }
+        if ($c.PSObject.Properties['GeneralHost'] -and $Decision -eq 'Include') { foreach ($id in $ids) { $i=$index[$id]; if ($i.PSObject.Properties['Classification'] -and $i.Classification.Disposition -eq 'SpecialProduct') { throw 'Special server products and roles cannot be automatically included.' }; if ($i.PSObject.Properties['Classification'] -and $i.Classification.Disposition -eq 'Preparation') { throw 'Runtime, client, driver and role preparation remains a manual target preparation step.' }; if ($i.PSObject.Properties['Classification'] -and $i.Classification.Disposition -eq 'Unknown' -and (-not $i.GeneralHostOverride -or $i.GeneralHostOverride.Disposition -cne 'Migrate')) { throw 'Unknown objects require an explicit Migrate disposition before Include.' } } }
         if (-not $PSCmdlet.ShouldProcess($PairId,('Change decisions for '+$ids.Count+' items'))) { return }
         $before=New-Object 'System.Collections.Generic.List[object]'; foreach ($id in $ids) { $i=$index[$id]; $before.Add([pscustomobject]@{ ItemId=$id; Decision=$i.Decision; Reason=$i.Reason; ReviewedBy=$i.ReviewedBy; ReviewedUtc=$i.ReviewedUtc; RuleId=$i.RuleId }) }
         foreach ($id in $ids) { $i=$index[$id]; $i.Decision=$Decision; $i.Reason=$Reason; $i.RuleId=''; $i.ReviewedBy=[Environment]::UserName; $i.ReviewedUtc=Get-WsmUtc }
@@ -53,6 +54,7 @@ function Get-WsmReviewIssues {
     }
     Get-WsmDependencyCycles $c.Items
     Get-WsmMappingIssues $c.Items
+    if ($c.PSObject.Properties['GeneralHost']) { Get-WsmGeneralHostIssues $c ReviewComplete }
 }
 function Set-WsmEvidence {
     param([string]$Workspace,[string]$PairId,[string]$ItemId,[Parameter(Mandatory)][string]$Owner,[Parameter(Mandatory)][string]$Evidence,[int]$ExpectedRevision)

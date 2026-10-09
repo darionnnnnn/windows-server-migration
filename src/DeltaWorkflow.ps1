@@ -125,7 +125,7 @@ function Test-WsmDeltaTransportContents([string]$Root,$Transport,$CancellationTo
     if($base.PlanHash -ine $Transport.PlanHash -or $current.PlanHash -ine $Transport.PlanHash -or $base.PairId -cne $Transport.PairId -or $current.PairId -cne $Transport.PairId){throw 'Transport manifest pair/plan binding mismatch.'}
     $currentApprovedPlan=Read-WsmTrustedJson $currentPlan $Transport.PlanHash
     if((Get-WsmDeltaFileHashCancellable (Join-Path $Root 'current\freeze.json') $CancellationToken 'DeltaTransportFreezeHash') -ine $current.FreezeHash){throw 'Final freeze record hash mismatch in delta transport.'}
-    [void](Read-WsmFreezeRecord (Join-Path $Root 'current\freeze.json') $current.FreezeHash $currentApprovedPlan)
+    [void](Read-WsmFreezeRecord (Join-Path $Root 'current\freeze.json') $current.FreezeHash $currentApprovedPlan $Transport.PlanHash)
     $validated=Test-WsmArtifactDeltaManifest -SummaryPath $summary -SummaryHash $Transport.SummaryHash -ChangesPath $changes -BaseManifestPath $baseManifest -BaseManifestHash $Transport.BaseManifestHash -BasePlanPath $basePlan -BasePlanHash $Transport.PlanHash -CurrentManifestPath $currentManifest -CurrentManifestHash $Transport.CurrentManifestHash -CurrentPlanPath $currentPlan -CurrentPlanHash $Transport.PlanHash
     $recordsPath=Join-Path $Root 'delta\records.jsonl';$spoolRoot=Join-Path ([IO.Path]::GetTempPath()) ('wsm-delta-bounded-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($spoolRoot);$changesSpool=$null;$recordsSpool=$null;$changesReader=$null;$recordsReader=$null
     $payloadRoot=Join-Path $Root 'current\payload'
@@ -165,6 +165,12 @@ function Test-WsmDeltaTransportZipBinding([string]$TransportPath,[string]$Expect
         try{$zipHash=[BitConverter]::ToString($sha.ComputeHash($input)).Replace('-','').ToLowerInvariant();$importHash=[BitConverter]::ToString($sha.ComputeHash($output)).Replace('-','').ToLowerInvariant();if($zipHash -cne $importHash){throw 'Imported delta binding record differs from trusted archive.'}}
         finally{$sha.Dispose();$input.Dispose();$output.Dispose()}
     }finally{if($archive){$archive.Dispose()};$file.Dispose()}
+}
+function Test-WsmDeltaVolumeTransportBinding([string]$TransportPath,[string]$ExpectedHash,[string]$ImportedRoot,$CancellationToken=$null) {
+    if($ExpectedHash -notmatch '^[a-fA-F0-9]{64}$' -or (Get-WsmDeltaVolumeHash $TransportPath) -ine $ExpectedHash){throw 'Independent delta transport index hash mismatch.'};$transport=Read-WsmJson $TransportPath;if($transport.Kind -cnotin @('ArtifactDeltaVolumeTransport','ArtifactDeltaDirectoryTransport') -or $transport.FormatVersion -ne 1){throw 'Wrong delta transport kind/version.'};Assert-WsmNoReparse $ImportedRoot
+    $record=Join-Path ([IO.Path]::GetFullPath($ImportedRoot)) 'transport.json';Assert-WsmNoReparse $record
+    if(-not [IO.File]::Exists($record) -or (Get-WsmDeltaVolumeHash $record) -ine $ExpectedHash){throw 'Imported delta volume index differs from the independently trusted sidecar.'}
+    Test-WsmDeltaVolumeTransportContents $ImportedRoot $transport $ExpectedHash $CancellationToken
 }
 function Invoke-WsmDeltaFaultPoint([string]$Name,$Context) {
     # Deterministic interruption seam used only by isolated recovery fixtures.
@@ -302,19 +308,23 @@ function Write-WsmDeltaOperationState($Paths,$CurrentPackage,$Transaction) {
     $state
 }
 function Invoke-WsmArtifactDeltaRestore {
-    [CmdletBinding(SupportsShouldProcess)]param([Parameter(Mandatory)][string]$TransportPath,[Parameter(Mandatory)][string]$ExpectedTransportHash,[Parameter(Mandatory)][string]$ImportedDirectory,[Parameter(Mandatory)][string]$TargetStateDirectory,$CancellationToken=$null)
-    Test-WsmDeltaTransportZipBinding $TransportPath $ExpectedTransportHash $ImportedDirectory
-    $transport=Read-WsmJson (Join-Path $ImportedDirectory 'transport.json');Assert-WsmEnvelope $transport 'ArtifactDeltaTransport';Assert-WsmId $transport.PairId
+    [CmdletBinding(SupportsShouldProcess)]param([Parameter(Mandatory)][string]$TransportPath,[Parameter(Mandatory)][string]$ExpectedTransportHash,[Parameter(Mandatory)][string]$ImportedDirectory,[Parameter(Mandatory)][string]$TargetStateDirectory,[object[]]$GeneralHostEvidence=@(),$CancellationToken=$null)
+    $volumeTransport=$false
+    if([IO.Path]::GetExtension($TransportPath) -ieq '.json'){$transport=Read-WsmJson $TransportPath;if($ExpectedTransportHash -notmatch '^[a-fA-F0-9]{64}$' -or (Get-WsmDeltaVolumeHash $TransportPath) -ine $ExpectedTransportHash -or $transport.Kind -cnotin @('ArtifactDeltaVolumeTransport','ArtifactDeltaDirectoryTransport') -or $transport.FormatVersion -ne 1){throw 'Delta restore requires a trusted versioned volume or directory delta transport.'};$volumeTransport=$true;$bundle=Test-WsmDeltaVolumeTransportBinding $TransportPath $ExpectedTransportHash $ImportedDirectory $CancellationToken}
+    else{Test-WsmDeltaTransportZipBinding $TransportPath $ExpectedTransportHash $ImportedDirectory $CancellationToken;$transport=Read-WsmJson (Join-Path $ImportedDirectory 'transport.json');Assert-WsmEnvelope $transport 'ArtifactDeltaTransport';Assert-WsmId $transport.PairId;$bundle=Test-WsmDeltaTransportContents $ImportedDirectory $transport $CancellationToken}
     if($transport.PlanHash -notmatch '^[a-f0-9]{64}$' -or $transport.CurrentManifestHash -notmatch '^[a-f0-9]{64}$'){throw 'Imported delta transport lacks trusted plan/current-manifest bindings.'}
     if($CancellationToken){[void](Assert-WsmCancellationTokenBinding $CancellationToken $transport.PairId $transport.PlanHash $transport.CurrentManifestHash $TargetStateDirectory)}
     Assert-WsmCancellationBoundary $CancellationToken 'DeltaApplyStart'
-    $bundle=Test-WsmDeltaTransportContents $ImportedDirectory $transport $CancellationToken;$identity=Get-WsmMachineIdentity;Assert-WsmMigrationHost $identity $bundle.CurrentManifest.Target.Fingerprint
+    $identity=Get-WsmMachineIdentity;Assert-WsmMigrationHost $identity $bundle.CurrentManifest.Target.Fingerprint
     $currentRoot=Join-Path $ImportedDirectory 'current';$baseRoot=Join-Path $ImportedDirectory 'base';$currentPackage=[pscustomobject]@{Root=$currentRoot;Manifest=$bundle.CurrentManifest;Plan=(Read-WsmTrustedJson (Join-Path $currentRoot 'plan.json') $transport.PlanHash);SHA256=$transport.CurrentManifestHash};$basePackage=[pscustomobject]@{Root=$baseRoot;Manifest=$bundle.BaseManifest;Plan=(Read-WsmTrustedJson (Join-Path $baseRoot 'plan.json') $transport.PlanHash);SHA256=$transport.BaseManifestHash}
+    if($currentPackage.Plan.SchemaVersion -eq 2 -and $currentPackage.Plan.ScopeMode -ceq 'GeneralHost'){$issues=@(Get-WsmGeneralHostIssues $currentPackage.Plan RestoreReady $currentPackage.Manifest.Target.Fingerprint '' $currentPackage.Manifest.PlanHash $GeneralHostEvidence);if($issues.Count){throw ('GeneralHost RestoreReady gate blocked delta restore: '+(($issues | ForEach-Object {[string]$_.Issue}) -join '; '))}}
     Assert-WsmWorkspaceSeparation $currentPackage.Plan $TargetStateDirectory TargetPath;$paths=Get-WsmOperationPaths $TargetStateDirectory $bundle.CurrentManifest.PairId
     if(-not $PSCmdlet.ShouldProcess($bundle.CurrentManifest.PairId,('Apply incremental FileScope delta generation '+$bundle.CurrentManifest.Generation))){return [pscustomobject]@{Preview=$true;PairId=$bundle.CurrentManifest.PairId;Generation=$bundle.CurrentManifest.Generation;ChangedRecords=$bundle.ChangedRecords;Mode='IsolatedPilot'}}
     Invoke-WsmLocked $paths.Root {
         if(-not [IO.File]::Exists($paths.State)){throw 'Incremental delta requires an existing target ownership checkpoint from the base generation.'}
         $state=Get-WsmOperationState $paths $currentPackage -AllowRecovery;$journal=Test-WsmJournal $TargetStateDirectory $bundle.CurrentManifest.PairId;if(-not $journal.Consistent){Restore-WsmJournalCheckpoint $paths $state;$state=Read-WsmJson $paths.State}
+        # Bind the already durable base-generation checkpoint before any delta staging or target scope switch.
+        Confirm-WsmOutputStateCheckpoint -StateDirectory $TargetStateDirectory -PairId $bundle.CurrentManifest.PairId -PlanHash $currentPackage.Manifest.PlanHash
         if(@($state.PendingOperations).Count -gt 0 -or $state.Cutover){throw 'Incremental delta requires a fully staged, quiescent target checkpoint before cutover.'}
         $transactionPath=Join-Path $paths.Root ('delta-transaction-g'+$bundle.CurrentManifest.Generation+'.json');$transaction=$null
         if([IO.File]::Exists($transactionPath)){$transaction=Read-WsmJson $transactionPath;Assert-WsmEnvelope $transaction 'ArtifactDeltaTransaction';if($transaction.PairId -cne $bundle.CurrentManifest.PairId -or $transaction.PlanHash -ine $transport.PlanHash -or $transaction.BaseManifestHash -ine $transport.BaseManifestHash -or $transaction.CurrentManifestHash -ine $transport.CurrentManifestHash -or $transaction.TransportHash -ine $ExpectedTransportHash){throw 'Pending delta transaction belongs to a different package; preserve and reconcile it.'}}
@@ -373,6 +383,6 @@ function Invoke-WsmArtifactDeltaRestore {
     }
 }
 function Repair-WsmArtifactDeltaRestore {
-    [CmdletBinding()]param([Parameter(Mandatory)][string]$TransportPath,[Parameter(Mandatory)][string]$ExpectedTransportHash,[Parameter(Mandatory)][string]$ImportedDirectory,[Parameter(Mandatory)][string]$TargetStateDirectory,$CancellationToken=$null)
-    Invoke-WsmArtifactDeltaRestore -TransportPath $TransportPath -ExpectedTransportHash $ExpectedTransportHash -ImportedDirectory $ImportedDirectory -TargetStateDirectory $TargetStateDirectory -CancellationToken $CancellationToken -Confirm:$false
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$TransportPath,[Parameter(Mandatory)][string]$ExpectedTransportHash,[Parameter(Mandatory)][string]$ImportedDirectory,[Parameter(Mandatory)][string]$TargetStateDirectory,[object[]]$GeneralHostEvidence=@(),$CancellationToken=$null)
+    Invoke-WsmArtifactDeltaRestore -TransportPath $TransportPath -ExpectedTransportHash $ExpectedTransportHash -ImportedDirectory $ImportedDirectory -TargetStateDirectory $TargetStateDirectory -GeneralHostEvidence $GeneralHostEvidence -CancellationToken $CancellationToken -Confirm:$false
 }

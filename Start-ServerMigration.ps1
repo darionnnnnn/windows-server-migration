@@ -58,14 +58,14 @@ function Review-Pair([string]$SelectedPair) {
 }
 try {
     if ($Action -eq 'Operation') { $result=Invoke-WsmOperationRequest $Path $ExpectedHash; $result; exit (Get-WsmOperationStatusCode $result) }
-    if ($Action -cnotin @('Menu','LabReport','Inventory','Initialize','Import','ImportZip','Report','FleetReport','ExportCsv','ImportCsvPreview','ImportCsv','Issues','RulePreview','ApplyRule','ManualItem','Mapping','Evidence','Approve','FleetGraph','ImportResult','Capabilities','ConsistencyGroup','TemplatePreview','ApplyTemplate','ExportTemplate','ScopeAssessment')) { throw (New-Object IO.InvalidDataException('Unknown action.')) }
+    if ($Action -cnotin @('Menu','LabReport','Inventory','Initialize','Import','ImportZip','Report','FleetReport','ExportCsv','ImportCsvPreview','ImportCsv','Issues','RulePreview','ApplyRule','ManualItem','Mapping','Evidence','Approve','FleetGraph','ImportResult','Capabilities','ConsistencyGroup','TemplatePreview','ApplyTemplate','ExportTemplate','ScopeAssessment','OperationRequest')) { throw (New-Object IO.InvalidDataException('Unknown action.')) }
     if ($Action -ne 'Menu') {
         if ($Action -in @('LabReport','Inventory','Import','ImportZip','Report','FleetReport','ExportCsv','ImportCsvPreview','ImportCsv','Approve','FleetGraph','ImportResult') -and [string]::IsNullOrWhiteSpace($Path)) { throw (New-Object IO.InvalidDataException('This action requires -Path.')) }
         if ($Action -in @('Import','ImportZip','ImportResult','ImportCsv') -and $ExpectedHash -notmatch '^[a-fA-F0-9]{64}$') { throw (New-Object IO.InvalidDataException('This action requires an independently obtained -ExpectedHash.')) }
         if ($Action -in @('ImportCsv','ApplyRule','ManualItem','Mapping','Evidence','Approve','ConsistencyGroup','ApplyTemplate') -and $ExpectedRevision -lt 0) { throw (New-Object IO.InvalidDataException('This action requires -ExpectedRevision from the current catalog/preview.')) }
         switch ($Action) {
             LabReport { $result=Export-WsmLabValidationReport -OutputDirectory $Path -Role $Role -ManifestPath $ManifestPath -ExpectedHash $ExpectedHash -StateDirectory $StateDirectory -Phase $Phase; $result; exit (Get-WsmOperationStatusCode $result) }
-            Inventory { $result=Export-WsmInventory -OutputDirectory $Path -DeepDiscovery:$DeepDiscovery; $result; if ($result.Incomplete -gt 0) { exit 2 } }
+            Inventory { $result=Export-WsmEnrolledInventory -WorkRoot $Path -DeepDiscovery:$DeepDiscovery; $result; if ($result.Incomplete -gt 0) { exit 2 } }
             Initialize { Initialize-WsmWorkspace $Workspace }
             Import { Import-WsmInventory $Workspace $Path $ExpectedHash $TargetName }
             ImportZip { Import-WsmInventoryArchive $Workspace $Path $ExpectedHash $TargetName }
@@ -75,6 +75,7 @@ try {
             ImportCsvPreview { Import-WsmDecisions $Workspace $PairId $Path -Preview -ExpectedHash $ExpectedHash -ExpectedRevision $ExpectedRevision | ConvertTo-Json -Depth 8 }
             ImportCsv { Import-WsmDecisions $Workspace $PairId $Path -ExpectedHash $ExpectedHash -ExpectedRevision $ExpectedRevision }
             Issues { $issues=@(Get-WsmReviewIssues $Workspace $PairId); $issues; if ($issues.Count) { exit 2 } }
+            OperationRequest { $result=Invoke-WsmOperationRequest -Path $Path -ExpectedHash $ExpectedHash;$result;exit (Get-WsmOperationStatusCode $result) }
             ScopeAssessment { Get-WsmGeneralHostAssessment -Catalog (Get-WsmCatalog $Workspace $PairId) | ConvertTo-Json -Depth 12 }
             RulePreview { Get-WsmRulePreview $Workspace $PairId -Category $Category -Search $Search -Decision $Decision -Reason $Reason }
             ApplyRule { Invoke-WsmReviewRule $Workspace $PairId -Category $Category -Search $Search -Decision $Decision -Reason $Reason -ExpectedRevision $ExpectedRevision }
@@ -98,13 +99,13 @@ try {
         Write-Host '1 本機來源盤點  2 建立管理工作區  3 匯入盤點  4 審核／排除  5 分類 HTML'
         Write-Host '6 匯出 CSV  7 匯入 CSV  8 全批次報告  9 查詢阻擋項目  10 核准審核文件  11 補查證據／負責人'
         Write-Host '12 人工補列  13 路徑／帳號／端點映射  14 應用組合／內建分類  15 配對／波次規劃  16 跨主機相依  17 結果包匯入'
-        Write-Host '18 循環相依的一致性群組  19 安全匯入盤點ZIP  20 匯出規則模板  21 預覽／套用模板  22 正式搬移／還原／切換階段  23 一般主機範圍評估（只讀）  0 離開'
+        Write-Host '18 循環相依的一致性群組  19 安全匯入盤點ZIP  20 匯出規則模板  21 預覽／套用模板  22 正式搬移／還原／切換階段  23 一般主機範圍評估（只讀）  24 一般主機離線審查模式  25 完整環境／軟體確認文件  0 離開'
         $menuChoice=Read-Host '選項'
         if ($null -eq $menuChoice) { throw 'Console input ended.' }
         try {
             switch ($menuChoice) {
                 '0' { exit 0 }
-                '1' { $output=Read-MenuValue '來源盤點受控目錄（每台固定同一目錄；0 取消）';if($output -eq '0'){continue};$deep=(Read-MenuValue '包含 COM+／角色物件／服務與排程 ACL 的深層盤點？ YES／NO') -ceq 'YES';Export-WsmInventory -OutputDirectory $output -DeepDiscovery:$deep | Format-List }
+                '1' { $output=Read-MenuValue '來源固定 WorkRoot（先指定專用目錄；內含盤點、報告及交付材料）';$mode=Read-MenuValue '交付方式 Zip／Directory';$outputArgs=@{WorkRoot=$output;Role='Source';Mode=$mode};if($mode -ceq 'Zip'){$mib=0;if(-not [int]::TryParse((Read-MenuValue '每卷上限 MiB（128–1024；建議512）'),[ref]$mib)){throw '每卷大小必須是整數 MiB。'};$outputArgs.VolumeBytes=[long]$mib*1048576};Initialize-WsmOutputWorkspace @outputArgs | Format-List;$deep=(Read-MenuValue '包含 COM+／角色物件／服務與排程 ACL 的深層盤點？ YES／NO') -ceq 'YES';Export-WsmEnrolledInventory -WorkRoot $output -DeepDiscovery:$deep | Format-List }
                 '2' { Initialize-WsmWorkspace $Workspace | Format-List }
                 '3' { $file=Read-MenuValue 'inventory JSON 路徑'; $hash=Read-MenuValue '經可信管道取得的 SHA256'; $target=Read-MenuValue '新主機暫用名稱（新配對必填）'; Import-WsmInventory $Workspace $file $hash $target | Select-Object PairId,InventoryRevision,DecisionRevision | Format-List }
                 '4' { Review-Pair (Select-Pair) }
@@ -126,6 +127,8 @@ try {
                 '20' { Export-WsmReviewTemplate $Workspace (Select-Pair) (Read-MenuValue '已套用規則的 RuleId') (Read-MenuValue '模板 JSON 輸出路徑') | Format-List }
                 '21' { $selected=Select-Pair; $file=Read-MenuValue '模板 JSON 路徑'; $hash=Read-MenuValue '可信 SHA256'; $preview=Get-WsmTemplatePreview $Workspace $selected $file $hash; $preview | Select-Object Selected,Changed,DecisionRevision | Format-List; $preview.Sample | Format-Table; $preview.Conflicts | Format-Table; if ((Read-MenuValue '確認此台實際命中與衝突，輸入 APPLY') -ceq 'APPLY') { Invoke-WsmReviewTemplate $Workspace $selected $file $hash $preview.DecisionRevision | Format-List } }
                 '22' { Show-WsmMigrationWizard $Workspace }
+                '24' { $selected=Select-Pair;$catalog=Get-WsmCatalog $Workspace $selected;Set-WsmGeneralHostMode -Workspace $Workspace -PairId $selected -ExpectedRevision $catalog.DecisionRevision | Format-List;Write-Host '完整軟體、處置及相依請使用22→操作請求的型別化預覽／套用；需重新核准。' }
+                '25' { Export-WsmEnvironmentConfirmation -Workspace $Workspace -PairId (Select-Pair) -OutputDirectory (Read-MenuValue '確認文件輸出目錄') | Format-List }
                 '23' { $assessment=Get-WsmGeneralHostAssessment -Catalog (Get-WsmCatalog $Workspace (Select-Pair)); $assessment.CountsByDisposition.GetEnumerator() | Sort-Object Key | Format-Table Key,Value; Write-Host ('完整項目：'+$assessment.TotalItems+'；探索／判別缺口：'+$assessment.Gaps.Count+'。分類不變更 Include／Exclude，亦不代表相依已完成。完整列可用 CLI -Action ScopeAssessment 取得 JSON。') }
                 default { Write-Host '無效選項。' }
             }

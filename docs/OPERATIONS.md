@@ -2,9 +2,11 @@
 
 本版持續補實作，僅供明確批准的隔離 pilot。來源、目標與管理工作區各自本機執行。不得用此文件宣稱實際十台已完成遷移。
 
+第2輪一般主機請先依 [完整操作閉環](GENERAL-HOST-WORKFLOW.md) 完成stable enrollment、完整軟體確認、typed preparation／Oracle／Windows設定及ZIP或Directory交付；下方既有旅程仍受該契約約束。
+
 ## 離線旅程
 
-1. 將相同工具版本複製到所有操作端。管理端可用 `Export-WsmToolRelease` 產生只含工具的 ZIP；其獨立 SHA256／企業簽章信任由管理者核對。工具不會修改 policy。
+1. 先確認本版是否有精確的企業資格與放行；目前 production 為 Blocked／NotTested，生產執行維持關閉。管理端可用 `Export-WsmToolRelease` 產生含檔案 manifest、SBOM、支援矩陣與 runbook 的 ZIP。企業 ReleaseSigner 對最終 ZIP bytes 做 detached CMS 簽章後，接收端用 `Test-WsmToolRelease` 核對獨立提供的 archive／signature／trust-policy SHA256、manifest、精確工具 fingerprint、角色 signer/root pins 及本機快取 CRL。驗證不啟動 OCSP／CRL/AIA 網路查詢；無法在離線環境驗證有效撤銷資料時即阻擋。ZIP 不加密，機密傳輸需另用企業核准方式。詳見 [正式資格與發行信任](RELEASE-QUALIFICATION.md)。工具不會修改 policy。
 2. 來源選 1 盤點。每台固定其受控狀態目錄；有權限時選深層探索。輸出設定 JSON、盤點 ZIP 及能力／失敗項；原始設定可能含敏感資訊。可在角色精靈來源端匯出 raw evidence 索引。
 3. 管理端建立工作區、匯入可信盤點並配對目標暫用名稱；匯入兩份 catalog／fleet 採持久交易。若中斷，所有後續读寫阻擋，選精靈管理端「工作區交易修復」，保留 transactions 證據。
 4. 每類逐項決定 Include／Exclude、排除理由、責任人、未知項的補查證據；大量資料用 CSV／跨頁规则 preview／undo／條件模板。分類 HTML 每頁 100 列，同名文字檔保留完整清單。

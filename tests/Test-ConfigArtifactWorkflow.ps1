@@ -1,6 +1,7 @@
 ﻿#requires -Version 5.1
 $ErrorActionPreference='Stop'
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
+. (Join-Path $PSScriptRoot 'ExternalReadinessEvidenceFixtures.ps1')
 $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-config-workflow-'+[Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($root)
 $draftWorkspace=Join-Path ([IO.Path]::GetTempPath()) ('wsm-config-draft-'+[Guid]::NewGuid().ToString('N'))
@@ -78,7 +79,7 @@ try {
         $rejected=$false;try{Test-WsmMigrationPackage $badPath (Get-ConfigWorkflowHash $badPath) | Out-Null}catch{$rejected=$_.Exception.Message -match 'Package|package|binding|contract'}
         Assert-ConfigWorkflow $rejected ('Package consumer accepted malformed typed header/host identity: '+$headerCase)
     }
-    $freezePath=Join-Path $root 'freeze.json';$freeze=Export-WsmFreezeRecord $planPath $approval.SHA256 $freezePath 'Fixture source owner' 'Fixture immutable source confirmed' OWNER-CONFIRMED-QUIESCENCE -SourceIdentityReleased -ReleaseEvidence 'Fixture source isolated' -SourceStateDirectory $sourceState
+    $approvedPlan=& $module {param($Path,$Hash)Read-WsmMigrationPlan $Path $Hash} $planPath $approval.SHA256;$freezeProof=New-WsmSourceFreezeEvidenceFixture -Plan $approvedPlan -PlanHash $approval.SHA256 -Root $root -Owner 'Fixture source owner';$freezePath=Join-Path $root 'freeze.json';$freeze=Export-WsmFreezeRecord $planPath $approval.SHA256 $freezePath 'Fixture source owner' 'Fixture immutable source confirmed' OWNER-CONFIRMED-QUIESCENCE -SourceIdentityReleased -ReleaseEvidence 'Fixture source isolated' -SourceStateDirectory $sourceState -FreezeExternalEvidencePath $freezeProof.Path -FreezeExternalEvidenceHash $freezeProof.SHA256 -FreezeEpoch $freezeProof.FreezeEpoch
     $originalConfig=[IO.File]::ReadAllText($configPath);$originalBusiness=[IO.File]::ReadAllText($businessPath)
     foreach($case in @('Modified','Added','Deleted')){
         switch($case){
@@ -86,14 +87,14 @@ try {
             'Added' {[IO.File]::WriteAllText((Join-Path $sourceRoot 'appsettings.new.json'),'new-config-v1',(New-Object Text.UTF8Encoding($false)))}
             'Deleted' {[IO.File]::Delete($configPath)}
         }
-        $blocked=$false;$message='';try{Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState (Join-Path $root ('packages-'+$case)) -ChunkBytes 65536 -BaseManifestPath $base.ManifestPath -BaseManifestHash $base.SHA256 -FreezePath $freezePath -FreezeHash $freeze.SHA256 | Out-Null}catch{$blocked=$true;$message=$_.Exception.Message}
+        $blocked=$false;$message='';try{Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState (Join-Path $root ('packages-'+$case)) -ChunkBytes 65536 -BaseManifestPath $base.ManifestPath -BaseManifestHash $base.SHA256 -FreezePath $freezePath -FreezeHash $freeze.SHA256 -FreezeExternalEvidencePath $freezeProof.Path -FreezeExternalEvidenceHash $freezeProof.SHA256 | Out-Null}catch{$blocked=$true;$message=$_.Exception.Message}
         Assert-ConfigWorkflow ($blocked -and $message -match 'Configuration artifact') ('Source package export did not reject specifically the '+$case.ToLowerInvariant()+' configuration drift. '+$message)
         Assert-ConfigWorkflow (@(Get-ChildItem -LiteralPath (Join-Path $root ('packages-'+$case)) -Recurse -Filter manifest.json -ErrorAction SilentlyContinue).Count -eq 0) 'A configuration-rejected package retained a sealed manifest.'
         if($case -eq 'Modified' -or $case -eq 'Deleted'){[IO.File]::WriteAllText($configPath,$originalConfig,(New-Object Text.UTF8Encoding($false)))}
         if($case -eq 'Added'){[IO.File]::Delete((Join-Path $sourceRoot 'appsettings.new.json'))}
     }
     [IO.File]::WriteAllText($businessPath,'business-data-v2',(New-Object Text.UTF8Encoding($false)))
-    $businessFinal=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState (Join-Path $root 'packages-business-final') -ChunkBytes 65536 -BaseManifestPath $base.ManifestPath -BaseManifestHash $base.SHA256 -FreezePath $freezePath -FreezeHash $freeze.SHA256
+    $businessFinal=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState (Join-Path $root 'packages-business-final') -ChunkBytes 65536 -BaseManifestPath $base.ManifestPath -BaseManifestHash $base.SHA256 -FreezePath $freezePath -FreezeHash $freeze.SHA256 -FreezeExternalEvidencePath $freezeProof.Path -FreezeExternalEvidenceHash $freezeProof.SHA256
     $businessVerified=Test-WsmMigrationPackage $businessFinal.ManifestPath $businessFinal.SHA256
     Assert-ConfigWorkflow ($businessFinal.Sealed -and $businessVerified.Valid -and $businessFinal.Final -and $businessFinal.Generation -eq 2) 'Ordinary business data byte changes did not pass actual final package export and validation.'
     $changePath=Join-Path $root 'business-changes.jsonl';$summaryPath=Join-Path $root 'business-delta.json'

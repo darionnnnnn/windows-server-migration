@@ -54,14 +54,14 @@ function Read-WsmArtifactLines([string]$Path,[string]$ExpectedHash,$Cancellation
     try{Read-WsmBoundedLines $reader | ForEach-Object {Assert-WsmCancellationBoundary $CancellationToken 'ArtifactIndexRow';ConvertFrom-WsmJson $_}}finally{$reader.Dispose();$stream.Dispose()}
 }
 function Export-WsmMigrationPackage {
-    [CmdletBinding()]param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,$CancellationToken=$null)
+    [CmdletBinding()]param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,[string]$FreezeExternalEvidencePath,[string]$FreezeExternalEvidenceHash,$CancellationToken=$null)
     try{Export-WsmMigrationPackageCore @PSBoundParameters}catch [OperationCanceledException]{
         if($CancellationToken){$token=ConvertTo-WsmCancellationTokenObject $CancellationToken;$record=[pscustomobject]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='CancellationResult';PairId=$token.PairId;PlanHash=$token.PlanHash;OperationId=$token.OperationId;Status='Cancelled';Boundary=[string]$_.Exception.Data['CancellationBoundary'];Utc=(Get-WsmUtc);EffectsRetained=$true;NextAction='Inspect unsealed package and retained chunks; retry with a new operation token after review';ProductionVerified=$false};$root=Join-Path $token.StateDirectory $token.PairId;Assert-WsmNoReparse $root;Write-WsmJson (Join-Path $root ('cancel-result-'+$token.OperationId+'.json')) $record}
         throw
     }
 }
 function Export-WsmMigrationPackageCore {
-    [CmdletBinding()] param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,$CancellationToken=$null)
+    [CmdletBinding()] param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,[string]$FreezeExternalEvidencePath,[string]$FreezeExternalEvidenceHash,$CancellationToken=$null)
     $plan=Read-WsmMigrationPlan $PlanPath $ExpectedHash; Assert-WsmMigrationHost (Get-WsmMachineIdentity) $plan.Source.Fingerprint
     if($CancellationToken){[void](Assert-WsmCancellationTokenBinding $CancellationToken $plan.PairId $ExpectedHash '' $SourceStateDirectory);Assert-WsmCancellationBoundary $CancellationToken 'BeforeSourceInventory'}
     Assert-WsmSourceWorkspaceSeparation $plan $SourceStateDirectory
@@ -72,11 +72,12 @@ function Export-WsmMigrationPackageCore {
     $base=$null;$generation=1;$freeze=$null
     if($BaseManifestPath){$base=Read-WsmTrustedJson $BaseManifestPath $BaseManifestHash;Assert-WsmEnvelope $base 'MigrationPackage';if($base.PairId -cne $plan.PairId -or $base.PlanHash -ine $ExpectedHash){throw 'Delta base plan/pair mismatch.'};$generation=$base.Generation+1}
     $needsFreeze=@($plan.Items | Where-Object {$_.Decision -eq 'Include' -and $_.MigrationSpec.Adapter -eq 'FileScope' -and $_.MigrationSpec.Consistency -ne 'Immutable'}).Count -gt 0
-    if($FreezePath){$freeze=Read-WsmFreezeRecord $FreezePath $FreezeHash $plan; if(-not $freeze){throw 'Invalid freeze record.'}}elseif($base -or $needsFreeze){throw 'Final delta and mutable scopes require independent source freeze evidence.'}
+    if($FreezePath){if(-not $FreezeExternalEvidencePath -or -not $FreezeExternalEvidenceHash){throw 'Final package export requires the original typed SourceFreezeReady JSON/hash for source-side revalidation.'};$freeze=Read-WsmFreezeRecord $FreezePath $FreezeHash $plan $ExpectedHash;if(-not $freeze){throw 'Invalid freeze record.'};$sourceFreezeProof=Assert-WsmSourceFreezeEvidence $FreezeExternalEvidencePath $FreezeExternalEvidenceHash $plan $ExpectedHash $freeze.FreezeEpoch;Assert-WsmSourceFreezeEvidenceMatchesAttestation $sourceFreezeProof $freeze}elseif($base -or $needsFreeze){throw 'Final delta and mutable scopes require independent source freeze evidence.'}
     foreach($i in $plan.Items){if($i.Decision -eq 'Include' -and $i.Kind -ne 'ManualItem'){$expectedSettings=$i.SettingsHash;if($freeze){$q=@($freeze.QuiescedSettingsHashes | Where-Object ItemId -CEQ $i.ItemId);if($q.Count -ne 1 -or $q[0].OriginalHash -cne $i.SettingsHash){throw 'Freeze configuration baseline mismatch.'};$expectedSettings=$q[0].QuiescedHash};if(-not $current.ContainsKey($i.ItemId) -or $current[$i.ItemId].SettingsHash -cne $expectedSettings){throw ('Configuration drift requires review: '+$i.ItemId)}}}
     if(-not [IO.Directory]::Exists($OutputDirectory)){[void][IO.Directory]::CreateDirectory($OutputDirectory);Protect-WsmDirectory $OutputDirectory};Assert-WsmNoReparse $OutputDirectory
     Invoke-WsmLocked $OutputDirectory {
         $estimate=Get-WsmPackageEstimate $PlanPath $ExpectedHash $OutputDirectory $CancellationToken;if($estimate.RequiredFreeBytes -gt $estimate.AvailableFreeBytes){throw 'Insufficient package workspace capacity; no package sealed.'}
+        if($FreezePath){$lockedFreeze=Read-WsmFreezeRecord $FreezePath $FreezeHash $plan $ExpectedHash;$lockedProof=Assert-WsmSourceFreezeEvidence $FreezeExternalEvidencePath $FreezeExternalEvidenceHash $plan $ExpectedHash $lockedFreeze.FreezeEpoch;Assert-WsmSourceFreezeEvidenceMatchesAttestation $lockedProof $lockedFreeze;$freeze=$lockedFreeze}
         $root=Join-Path $OutputDirectory ($plan.PairId+'-g'+$generation);if(-not [IO.Directory]::Exists($root)){[void][IO.Directory]::CreateDirectory($root);Protect-WsmDirectory $root};Assert-WsmNoReparse $root
         $manifestPath=Join-Path $root 'manifest.json';if([IO.File]::Exists($manifestPath)){throw 'Generation already sealed; use a new generation rather than overwrite evidence.'}
         $blobs=Join-Path $root 'payload';[void][IO.Directory]::CreateDirectory($blobs);Assert-WsmNoReparse $blobs
@@ -129,7 +130,7 @@ function Test-WsmMigrationPackage {
     if($files -ne $m.Files -or $bytes -ne $m.Bytes -or $records -ne $m.Records){throw 'Package summary mismatch.'}
     foreach($configItem in $plan.Items){if($configItem.Decision -ceq 'Include' -and $configItem.MigrationSpec.Adapter -ceq 'FileScope'){Assert-WsmApprovedConfigArtifacts -Spec $configItem.MigrationSpec -ArtifactsPath $index -ExpectedHash $m.ArtifactsHash -ItemId $configItem.ItemId -CancellationToken $CancellationToken | Out-Null}}
     foreach($i in $included.Values){if($i.MigrationSpec.Adapter -in @('FileScope','Certificate') -and -not $seenItems.ContainsKey($i.ItemId)){throw 'Selected payload item has no artifacts.'}}
-    if($m.Final){[void](Read-WsmFreezeRecord (Join-Path $root 'freeze.json') $m.FreezeHash $plan)}
+    if($m.Final){[void](Read-WsmFreezeRecord (Join-Path $root 'freeze.json') $m.FreezeHash $plan $m.PlanHash)}
     [pscustomobject]@{Manifest=$m;Plan=$plan;Root=$root;SHA256=$ExpectedHash;Valid=$true}
 }
 function Restore-WsmPayloadBytes($Row,[string]$PackageRoot,[string]$Destination,$CancellationToken=$null) {

@@ -7,13 +7,34 @@ function Get-WsmCapabilities {
     $commands=@('Get-CimInstance','Get-ScheduledTask','Export-ScheduledTask','Get-WindowsFeature','Get-SmbShare','Get-NetFirewallRule','Get-NetIPAddress')
     foreach ($name in $commands) { [pscustomobject]@{ Capability=$name; Available=($null -ne (Get-Command $name -ErrorAction SilentlyContinue)); LanguageMode=[string]$ExecutionContext.SessionState.LanguageMode; InventorySupported=($null -ne (Get-Command $name -ErrorAction SilentlyContinue)); ServerVersionVerified=$false; ExportSupported=$false; RestoreSupported=$false; VerifySupported=$false } }
 }
+function Get-WsmWindowsSettingInventoryEnvironmentStates {
+    $base=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine,[Microsoft.Win32.RegistryView]::Default)
+    try {
+        $key=$base.OpenSubKey('SYSTEM\CurrentControlSet\Control\Session Manager\Environment',$false)
+        if(-not $key){throw 'Machine environment registry key is unavailable; absence cannot be inferred.'}
+        try {
+            $names=@($key.GetValueNames());$states=[ordered]@{}
+            foreach($name in $script:WsmReviewedMachineEnvironmentNames){
+                if($names -contains $name){$states[$name]=[pscustomobject][ordered]@{Exists=$true;Value=$key.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames);ValueKind=$key.GetValueKind($name).ToString()}}
+                else{$states[$name]=[pscustomobject][ordered]@{Exists=$false;Value=$null;ValueKind='None'}}
+            }
+            [pscustomobject]$states
+        } finally {$key.Dispose()}
+    } finally {$base.Dispose()}
+}
+function Get-WsmWindowsSettingInventoryMetadata {
+    $environmentStates=$null;$timeZoneState=$null;$environmentComplete=$false;$timeZoneComplete=$false;$gaps=@()
+    try {$environmentStates=Get-WsmWindowsSettingInventoryEnvironmentStates;foreach($name in $script:WsmReviewedMachineEnvironmentNames){if(-not $environmentStates.PSObject.Properties[$name]){throw 'Incomplete environment state capture.'};Assert-WsmSettingValueState $environmentStates.$name MachineEnvironment};$environmentComplete=$true} catch {$environmentStates=$null;$gaps+=@('MachineEnvironmentStateUnavailable')}
+    try {$timeZoneState=Get-WsmSettingTimeZoneSnapshot;Assert-WsmSettingValueState $timeZoneState TimeZone;$timeZoneComplete=$true} catch {$timeZoneState=$null;$gaps+=@('TimeZoneStateUnavailable')}
+    [pscustomobject][ordered]@{SchemaVersion=1;Kind='WindowsSettingInventoryMetadata';ControlSource='Unknown';EnvironmentStates=$environmentStates;EnvironmentStatesComplete=$environmentComplete;TimeZoneState=$timeZoneState;TimeZoneStateComplete=$timeZoneComplete;CoverageGaps=$gaps;PolicyAssessment='Registry location and effective values do not prove absence of GPO, MDM or other management; owner policy evidence is required.'}
+}
 function Get-WsmExtendedDiscovery([string]$HostId) {
     function Probe([string]$Category,[string]$Key,[scriptblock]$Action) {
         try { & $Action }
         catch { $status='Failed'; if ($_.Exception -is [UnauthorizedAccessException] -or $_.FullyQualifiedErrorId -match 'Unauthorized|PermissionDenied') { $status='PermissionDenied' }; New-WsmItem $HostId $Category CollectorFailure $Key ('extended:'+ $Key) @{ ErrorType=$_.Exception.GetType().FullName } @() $status }
     }
     Probe System 'capability-matrix' { New-WsmItem $HostId System Capabilities 'Command/language capability matrix' 'capabilities' @{ Commands=@(Get-WsmCapabilities) } }
-    Probe System 'system-policy' { New-WsmItem $HostId System SystemConfiguration 'Time zone / language / updates' 'system-configuration' @{ TimeZone=(Get-TimeZone | Select-Object Id); Culture=[string](Get-Culture); UICulture=[string](Get-UICulture); Updates=@(Get-HotFix | Select-Object HotFixID); Environment=(Get-WsmMachineEnvironment) } }
+    Probe System 'system-policy' { $metadata=Get-WsmWindowsSettingInventoryMetadata;$captureStatus=if($metadata.CoverageGaps.Count){'Partial'}else{'Success'};New-WsmItem $HostId System SystemConfiguration 'Time zone / language / updates' 'system-configuration' @{ TimeZone=(Get-TimeZone | Select-Object Id); Culture=[string](Get-Culture); UICulture=[string](Get-UICulture); Updates=@(Get-HotFix | Select-Object HotFixID); Environment=(Get-WsmMachineEnvironment); WindowsSettingMetadata=$metadata } @() $captureStatus }
     Probe Runtime 'odbc' {
         foreach ($branch in @('HKLM:\SOFTWARE\ODBC\ODBC.INI','HKLM:\SOFTWARE\WOW6432Node\ODBC\ODBC.INI')) {
             if (Test-Path -LiteralPath $branch) { foreach ($key in Get-ChildItem -LiteralPath $branch -ErrorAction Stop) { New-WsmItem $HostId Runtime OdbcDsn $key.PSChildName $key.Name @{ Properties=(Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction Stop) } } }

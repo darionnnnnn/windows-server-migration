@@ -1,7 +1,7 @@
 ﻿function Test-WsmKnownConfigPath([string]$RelativePath,[string]$SourceRoot='') {
     if ([string]::IsNullOrWhiteSpace($RelativePath)) { if ([string]::IsNullOrWhiteSpace($SourceRoot)) { return $false }; $leaf=[IO.Path]::GetFileName($SourceRoot.TrimEnd('\')) }
     else { $leaf = [IO.Path]::GetFileName($RelativePath) }
-    return ($leaf -imatch '^web\.config$' -or $leaf -imatch '^app\.config$' -or $leaf -imatch '\.exe\.config$' -or $leaf -imatch '^appsettings.*\.json$')
+    return ($leaf -imatch '^web\.config$' -or $leaf -imatch '^app\.config$' -or $leaf -imatch '\.exe\.config$' -or $leaf -imatch '^appsettings.*\.json$' -or $leaf -imatch '^(tnsnames|sqlnet|ldap)\.ora$' -or $leaf -imatch '^oraaccess\.xml$')
 }
 function Get-WsmConfigSpecEntries($Spec,[string]$Name) {
     $property=$Spec.PSObject.Properties[$Name]
@@ -227,10 +227,14 @@ function Assert-WsmConfigArtifactSpec($Spec) {
     if (-not $Spec.PSObject.Properties['ConfigFiles'] -and -not $Spec.PSObject.Properties['ConfigOverrides']) { return }
     $configPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     foreach ($entry in (Get-WsmConfigSpecEntries $Spec 'ConfigFiles')) {
-        Assert-WsmFields $entry @('RelativePath','SHA256','Owner','Evidence') @('RelativePath','SHA256','Owner','Evidence')
+        Assert-WsmFields $entry @('RelativePath','SHA256','Owner','Evidence','OracleClient') @('RelativePath','SHA256','Owner','Evidence')
         Assert-WsmRelativePath ([string]$entry.RelativePath) -AllowRoot
         if (-not $configPaths.Add([string]$entry.RelativePath)) { throw 'Duplicate/case-colliding configuration path in approved spec.' }
         if ([string]$entry.SHA256 -notmatch '^[a-f0-9]{64}$' -or [string]::IsNullOrWhiteSpace([string]$entry.Owner) -or [string]::IsNullOrWhiteSpace([string]$entry.Evidence)) { throw 'Approved configuration file requires exact SHA256, Owner, and Evidence.' }
+        $leaf=[IO.Path]::GetFileName([string]$entry.RelativePath)
+        $oracleName=($leaf -imatch '^(tnsnames|sqlnet|ldap)\.ora$' -or $leaf -imatch '^oraaccess\.xml$')
+        if($oracleName -and -not $entry.PSObject.Properties['OracleClient']){throw 'Oracle client config files require an owner-bound OracleClient contract.'}
+        if($entry.PSObject.Properties['OracleClient']){Assert-WsmOracleConfigFileBinding $entry;Assert-WsmOracleExternalMaterialExclusions $Spec $entry.OracleClient}
     }
     $overridePaths = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     foreach ($entry in (Get-WsmConfigSpecEntries $Spec 'ConfigOverrides')) {
@@ -241,6 +245,69 @@ function Assert-WsmConfigArtifactSpec($Spec) {
         if ([string]$entry.RelativePath -match '[*?\[\]]') { throw 'Configuration overrides require one exact relative path; wildcards are forbidden.' }
         if ($entry.Classification -ceq 'BusinessData' -and $configPaths.Contains([string]$entry.RelativePath)) { throw 'BusinessData override cannot bypass an approved ConfigFiles hash baseline.' }
     }
+}
+
+function Assert-WsmOracleConfigFileBinding($ConfigFile) {
+    $oracle=$ConfigFile.OracleClient
+    Assert-WsmFields $oracle @('ContractVersion','BindingHash','Role','Encoding','Sensitivity','TargetRelativePath','Consumers','ExternalMaterials') @('ContractVersion','BindingHash','Role','Encoding','Sensitivity','TargetRelativePath','Consumers','ExternalMaterials')
+    if($oracle.ContractVersion -ne 1 -or [string]$oracle.BindingHash -notmatch '^[a-f0-9]{64}$'){throw 'OracleClient binding version or trusted owner-binding hash is invalid.'}
+    if([string]$oracle.Role -cnotin @('TnsNames','SqlNet','Ldap','OraAccess','IncludedFile')){throw 'OracleClient file role is unsupported.'}
+    if([string]$oracle.Encoding -notmatch '^(UTF-8|UTF-8-BOM|UTF-16LE|UTF-16BE|ANSI-\d{3,5})$'){throw 'OracleClient file encoding must be detected from original bytes.'}
+    if([string]$oracle.Sensitivity -cnotin @('NetworkEndpointConfig','MayReferenceCredentialsOrWallet','DirectoryServiceConfig','ProviderAccessConfig','OwnerApprovedIncludedConfig')){throw 'OracleClient file sensitivity classification is unsupported.'}
+    Assert-WsmRelativePath ([string]$oracle.TargetRelativePath)
+    if([string]$oracle.TargetRelativePath -cne [string]$ConfigFile.RelativePath){throw 'Oracle FileScope adapter preserves relative paths; target mapping must match the approved artifact path.'}
+    if(@($oracle.Consumers).Count -lt 1 -or @($oracle.Consumers).Count -gt 256){throw 'OracleClient config must bind 1–256 explicit consumers.'}
+    $consumerIds=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach($consumer in $oracle.Consumers){
+        Assert-WsmFields $consumer @('ConsumerId','ProviderSoftwareId','ProviderItemId','Provider','Version','Architecture','OracleHome','AccountType','AccountName','AccountSid','ConsumerItemIds','ObservedEffectivePath','Owner','Evidence','OwnerAttestedStaticOnly','ConnectionProofStatus') @('ConsumerId','ProviderSoftwareId','Provider','Version','Architecture','OracleHome','AccountType','AccountName','AccountSid','ConsumerItemIds','ObservedEffectivePath','Owner','Evidence','OwnerAttestedStaticOnly','ConnectionProofStatus')
+        if([string]$consumer.ConsumerId -notmatch '^[a-f0-9]{64}$' -or [string]$consumer.ProviderSoftwareId -notmatch '^sw-[a-f0-9]{32}$'){throw 'Oracle consumer identity is not linked to the B1 software catalog.'}
+        if([string]$consumer.Provider -cnotin @('OCI','ODBC','ODP.NET.Managed','ODP.NET.Unmanaged','ODP.NET.Core','JDBC') -or [string]$consumer.Version -notmatch '^[A-Za-z0-9][A-Za-z0-9._+\-]{0,63}$' -or [string]$consumer.Architecture -cnotin @('x86','x64','AnyCPU','Unknown')){throw 'Oracle provider/version/architecture binding is unsupported.'}
+        if([string]$consumer.AccountType -cnotin @('Machine','Service','IISAppPool','ScheduledTask','User','Application') -or [string]::IsNullOrWhiteSpace([string]$consumer.AccountName)){throw 'Oracle consumer account context is incomplete.'}
+        if([string]$consumer.AccountSid -and [string]$consumer.AccountSid -cnotmatch '^(S-1-\d+(?:-\d+)+|Unknown)$'){throw 'Oracle consumer SID is invalid.'}
+        if([string]$consumer.AccountType -ne 'Machine' -and -not [string]$consumer.AccountSid){throw 'Oracle non-machine consumer requires a SID or explicit Unknown value.'}
+        foreach($path in @([string]$consumer.OracleHome,[string]$consumer.ObservedEffectivePath)){if(-not $path -or $path.StartsWith('\\') -or -not [IO.Path]::IsPathRooted($path)){throw 'Oracle Home and effective paths must be local absolute paths.'}}
+        if([string]::IsNullOrWhiteSpace([string]$consumer.Owner) -or [string]::IsNullOrWhiteSpace([string]$consumer.Evidence) -or $consumer.OwnerAttestedStaticOnly -ne $true -or $consumer.ConnectionProofStatus -cne 'NotTested'){throw 'Oracle config owner evidence cannot be treated as account or business proof.'}
+        $ids=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+        foreach($id in @($consumer.ConsumerItemIds)){if([string]$id -notmatch '^[a-f0-9]{64}$' -or -not $ids.Add([string]$id)){throw 'Oracle consumer ItemIds must be unique stable inventory IDs.'}}
+        if(-not $ids.Count){throw 'Oracle consumer binding requires at least one consumer ItemId.'}
+        if(-not $consumerIds.Add([string]$consumer.ConsumerId)){throw 'Oracle config file has duplicate consumer contexts.'}
+    }
+    foreach($external in @($oracle.ExternalMaterials)){
+        Assert-WsmFields $external @('RelativePath','Class','Status','IncludedInPackage','ReferenceHash','ScopeRelation') @('RelativePath','Class','Status','IncludedInPackage','ReferenceHash','ScopeRelation')
+        Assert-WsmRelativePath ([string]$external.RelativePath)
+        if([string]$external.Class -cnotin @('ExternalSecretOrWallet','SpecialProductListenerConfig') -or [string]$external.Status -cnotin @('ExternalRequired','ExternalProductWorkflowRequired') -or [string]$external.ScopeRelation -cnotin @('InsideScope','Unknown') -or $external.IncludedInPackage -ne $false){throw 'Oracle wallet/private key/listener materials must remain outside the package.'}
+        if([string]$external.ScopeRelation -ceq 'Unknown' -and [string]$external.ReferenceHash -notmatch '^[a-f0-9]{64}$'){throw 'External wallet references must be represented only by a stable SHA-256.'}
+        if([string]$external.ScopeRelation -ceq 'InsideScope' -and [string]$external.ReferenceHash -and [string]$external.ReferenceHash -notmatch '^[a-f0-9]{64}$'){throw 'External wallet path reference hash is invalid.'}
+    }
+}
+
+function Assert-WsmOracleExternalMaterialExclusions($Spec,$OracleClient) {
+    $excluded=@(Get-WsmConfigSpecEntries $Spec 'ExcludedRelativePaths')
+    foreach($external in @($OracleClient.ExternalMaterials)){
+        if([string]$external.ScopeRelation -cne 'InsideScope'){continue}
+        $path=[string]$external.RelativePath;$matched=$false
+        foreach($entry in $excluded){$prefix=[string]$entry;if($path -ieq $prefix -or $path.StartsWith($prefix.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){$matched=$true;break}}
+        if(-not $matched){throw ('Oracle external material is inside FileScope without an explicit exclusion: '+$path)}
+    }
+}
+
+function Assert-WsmOraclePlanConfigOwnership($Plan) {
+    $owners=@{};$itemIds=@{};foreach($item in $Plan.Items){$itemIds[[string]$item.ItemId]=$true}
+    foreach($item in $Plan.Items){
+        if($item.Decision -cne 'Include' -or $item.MigrationSpec.Adapter -cne 'FileScope'){continue}
+        $spec=$item.MigrationSpec;Assert-WsmConfigArtifactSpec $spec
+        $root=[IO.Path]::GetFullPath([string]$spec.SourcePath).TrimEnd('\')
+        foreach($entry in (Get-WsmConfigSpecEntries $spec 'ConfigFiles')){
+            if(-not $entry.PSObject.Properties['OracleClient']){continue}
+            foreach($consumer in $entry.OracleClient.Consumers){
+                foreach($consumerItemId in @($consumer.ConsumerItemIds)){if(-not $itemIds.ContainsKey([string]$consumerItemId)){throw 'Oracle config binding references a consumer outside the approved migration plan.'}}
+            }
+            $path=Join-Path $root ([string]$entry.RelativePath);$key=[IO.Path]::GetFullPath($path).ToUpperInvariant()
+            if($owners.ContainsKey($key) -and $owners[$key].ItemId -cne [string]$item.ItemId){throw ('Shared Oracle config must have one authoritative FileScope owner: '+$entry.RelativePath)}
+            $owners[$key]=[pscustomobject]@{ItemId=[string]$item.ItemId;Owner=[string]$entry.Owner;BindingHash=[string]$entry.OracleClient.BindingHash}
+        }
+    }
+    [pscustomobject]@{Valid=$true;OracleConfigFiles=$owners.Count;SharedFilesHaveOneOwner=$true}
 }
 
 function Assert-WsmApprovedConfigArtifacts {

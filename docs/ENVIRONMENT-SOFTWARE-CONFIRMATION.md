@@ -1,7 +1,7 @@
-﻿# Windows Server 遷移：環境、軟體與相依設定確認表
+# Windows Server 遷移：環境、軟體與相依設定確認表
 
 > **本檔是格式契約與可填寫模板，不是已取得的 Server 盤點結果。** 尚未提供來源／目標主機證據，欄位一律待填，未勾不代表不存在，所有驗證維持 NotTested。
-> 實作後由工具依每台本機證據產生完整 Markdown，包含全部發現軟體，不只選搬項。權威規格：[MIGRATION-2-PLAN.md](MIGRATION-2-PLAN.md)，缺漏依據：[MIGRATION-2-REVIEW.md](MIGRATION-2-REVIEW.md)。
+> 工具可依每台本機證據產生完整 Markdown，包含全部發現軟體，不只選搬項。權威規格：[MIGRATION-2-PLAN.md](MIGRATION-2-PLAN.md)，缺漏依據：[MIGRATION-2-REVIEW.md](MIGRATION-2-REVIEW.md)。
 
 ## 填寫與核准方式
 
@@ -23,6 +23,7 @@
 | Target fingerprint／bootstrap身分／接手後身分 | 待填 |
 | Target OS／build／edition／installation type／架構 | 待填 |
 | Tool version／最終發行 fingerprint | 待填 |
+| Source／Target PowerShell／edition／process architecture／language mode／CLR／Framework release | 各自主機實際 Runtime；不得用管理端代替 |
 | Inventory／requirements／decision revision | 待填 |
 | JSON evidence hash／受控位置／產生 UTC／有效期 | 待填 |
 | Plan hash（核准前標未產生）／manifest generation | 待填 |

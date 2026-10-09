@@ -1,11 +1,13 @@
 ﻿#requires -Version 5.1
 $ErrorActionPreference='Stop'
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
+$externalReadinessFixturesPath=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'ExternalReadinessEvidenceFixtures.ps1'))
 $root=Join-Path 'C:\' ('wsm-activation-cutover-'+[Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($root)
 & $module {
-    param($Root)
+    param($Root,$ExternalReadinessFixturesPath)
     . (Join-Path $PSScriptRoot '..\tests\Helper-Fixtures.ps1')
+    . $ExternalReadinessFixturesPath
     $script:fixtureHost='source';$script:sourceFingerprint=('a'*64);$script:targetFingerprint=('b'*64);$script:sourceHostId=[Guid]::NewGuid().ToString();$script:inventoryRevision=0
     $script:sourceServices=@{};$script:targetServices=@{};$script:activationCalls=@{};$script:failAfterStartName='';$script:fixtureAddresses=@();$script:fixtureDns=@();$script:fixtureRoutes=@()
     function script:Get-WsmMachineIdentity {if($script:fixtureHost -eq 'source'){$fingerprint=$script:sourceFingerprint;$name='fixture-source'}else{$fingerprint=$script:targetFingerprint;$name=$env:COMPUTERNAME};[pscustomobject]@{Fingerprint=$fingerprint;Name=$name;OS='Fixture Windows Server';Version='10.fixture';IsServer=$true;Administrator=$true;Is64Bit=$true}}
@@ -45,21 +47,30 @@ $root=Join-Path 'C:\' ('wsm-activation-cutover-'+[Guid]::NewGuid().ToString('N')
     $targetIdentityPath=Join-Path $Root 'target-identity.json';$script:fixtureHost='target';$targetIdentity=Register-WsmTarget $targetState $targetIdentityPath;$planPath=Join-Path $Root 'approved-plan.json';$catalog=Get-WsmCatalog $workspace $pairId;$approval=Approve-WsmMigrationPlan $workspace $pairId $targetIdentity.Path $targetIdentity.SHA256 $planPath $catalog.DecisionRevision ISOLATED-PILOT
 
     # Freeze the source, package the final generation, and stage exact disabled services on the target.
-    $script:fixtureHost='source';$freezePath=Join-Path $Root 'freeze.json';$freeze=Export-WsmFreezeRecord $planPath $approval.SHA256 $freezePath 'Fixture source owner' 'fixture service writers stopped' OWNER-CONFIRMED-QUIESCENCE -SourceIdentityReleased -ReleaseEvidence 'fixture source identity withdrawn' -SourceStateDirectory $sourceState
-    $packageExport=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState $packages -FreezePath $freeze.Path -FreezeHash $freeze.SHA256;$manifestPath=$packageExport.ManifestPath;$manifestHash=$packageExport.SHA256;$package=Test-WsmMigrationPackage $manifestPath $manifestHash
+    $script:fixtureHost='source';$approvedPlan=Read-WsmMigrationPlan $planPath $approval.SHA256;$freezeProof=New-WsmSourceFreezeEvidenceFixture -Plan $approvedPlan -PlanHash $approval.SHA256 -Root $Root -Owner 'Fixture source owner';$freezePath=Join-Path $Root 'freeze.json';$freeze=Export-WsmFreezeRecord $planPath $approval.SHA256 $freezePath 'Fixture source owner' 'fixture service writers stopped' OWNER-CONFIRMED-QUIESCENCE -SourceIdentityReleased -ReleaseEvidence 'fixture source identity withdrawn' -SourceStateDirectory $sourceState -FreezeExternalEvidencePath $freezeProof.Path -FreezeExternalEvidenceHash $freezeProof.SHA256 -FreezeEpoch $freezeProof.FreezeEpoch
+    $packageExport=Export-WsmMigrationPackage $planPath $approval.SHA256 $sourceState $packages -FreezePath $freeze.Path -FreezeHash $freeze.SHA256 -FreezeExternalEvidencePath $freezeProof.Path -FreezeExternalEvidenceHash $freezeProof.SHA256;$manifestPath=$packageExport.ManifestPath;$manifestHash=$packageExport.SHA256;$package=Test-WsmMigrationPackage $manifestPath $manifestHash
     $script:fixtureHost='target';$restored=Invoke-WsmRestore $manifestPath $manifestHash $targetState;if($restored.Stage -ne 'Succeeded'){throw 'Service fixture did not restore into staged state.'};foreach($service in $script:targetServices.Values){if(@($service.Dependencies).Count -ne 1 -or $service.Dependencies[0] -cne 'FixtureDependency'){throw 'Restore did not preserve the reviewed non-empty service dependency.'}}
-    foreach($item in $package.Plan.Items){Set-WsmValidationEvidence $manifestPath $manifestHash $targetState $item.ItemId BusinessStaged 'Fixture business owner' 'fixture staged service check passed' $true | Out-Null}
+    foreach($item in $package.Plan.Items){Set-WsmExternalFixtureValidationEvidence $manifestPath $manifestHash $targetState $item.ItemId BusinessStaged 'Fixture business owner' 'fixture staged service check passed' $true | Out-Null}
     if(-not (Invoke-WsmValidation $manifestPath $manifestHash $targetState Staged).Passed){throw 'Reviewed staged service configuration/evidence did not pass.'}
 
     # The cutover plan binds the reviewed network and frozen final manifest.
     $script:fixtureAddresses=@([pscustomobject]@{InterfaceAlias='FixtureNIC';IPAddress='192.0.2.10';PrefixLength=24;AddressState='Preferred'});$script:fixtureDns=@('192.0.2.53');$script:fixtureRoutes=@([pscustomobject]@{InterfaceAlias='FixtureNIC';DestinationPrefix='0.0.0.0/0';NextHop='192.0.2.1'})
     $network=[pscustomobject]@{FinalName=$env:COMPUTERNAME;InterfaceAlias='FixtureNIC';FinalIP='192.0.2.20';PrefixLength=24;DefaultGateway='192.0.2.1';DnsServers=@('192.0.2.53');TemporaryIP=@('192.0.2.10');DomainProcedureEvidence='fixture domain identity prechecked';RollbackProcedure='fixture stop/reconcile then identity rollback';Owner='Fixture network owner';MaintenanceWindowUtc=[DateTime]::UtcNow.AddMinutes(-1).ToString('o');ValidUntilUtc=[DateTime]::UtcNow.AddHours(1).ToString('o')}
-    $networkPath=Join-Path $Root 'network.json';Write-WsmJson $networkPath $network;$cutoverPath=Join-Path $Root 'cutover.json';$cutover=New-WsmCutoverPlan $manifestPath $manifestHash $targetState $networkPath (Get-FileHash -LiteralPath $networkPath -Algorithm SHA256).Hash $cutoverPath;$ack='CUTOVER '+$pairId
+    $networkPath=Join-Path $Root 'network.json';Write-WsmJson $networkPath $network;$cutoverPath=Join-Path $Root 'cutover.json';$cutover=New-WsmCutoverPlan $manifestPath $manifestHash $targetState $networkPath (Get-FileHash -LiteralPath $networkPath -Algorithm SHA256).Hash $cutoverPath -ExternalEvidenceReferences (New-WsmCutoverEvidenceFixtureReferences -Package $package -Root $Root);$ack='CUTOVER '+$pairId
+
+    # WhatIf must stop before creating operation state or writing persistent validation evidence.
+    $missingState=Join-Path $Root 'target-whatif-missing';$missingPreview=Invoke-WsmCutover $manifestPath $manifestHash $missingState $cutover.Path $cutover.SHA256 $ack -WhatIf
+    if($missingPreview.Kind -cne 'CutoverExecutionPreview' -or $missingPreview.Executed -or -not $missingPreview.PreflightValidated -or $missingPreview.TargetStateRead -or $missingPreview.TargetStateGatesEvaluated -or $null -ne $missingPreview.StagedValidationPassed -or $missingPreview.Status -cne 'NotStarted' -or (Test-Path -LiteralPath $missingState)){throw 'Cutover WhatIf created state or claimed staged validation for a missing target state directory.'}
+    $statePath=Join-Path (Join-Path $targetState $pairId) 'state.json';$journalPath=Join-Path (Join-Path $targetState $pairId) 'journal.jsonl';$validationPath=Join-Path (Join-Path $targetState $pairId) 'validation-Staged.json'
+    $beforeWhatIf=[ordered]@{State=(Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash;Journal=(Get-FileHash -LiteralPath $journalPath -Algorithm SHA256).Hash;Validation=(Get-FileHash -LiteralPath $validationPath -Algorithm SHA256).Hash}
+    $existingPreview=Invoke-WsmCutover $manifestPath $manifestHash $targetState $cutover.Path $cutover.SHA256 $ack -WhatIf
+    $afterWhatIf=[ordered]@{State=(Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash;Journal=(Get-FileHash -LiteralPath $journalPath -Algorithm SHA256).Hash;Validation=(Get-FileHash -LiteralPath $validationPath -Algorithm SHA256).Hash}
+    if($existingPreview.Kind -cne 'CutoverExecutionPreview' -or $existingPreview.Executed -or -not $existingPreview.PreflightValidated -or $existingPreview.TargetStateRead -or $existingPreview.TargetStateGatesEvaluated -or $null -ne $existingPreview.StagedValidationPassed -or (ConvertTo-Json -InputObject $beforeWhatIf -Compress) -cne (ConvertTo-Json -InputObject $afterWhatIf -Compress)){throw 'Cutover WhatIf changed durable target state, journal, or validation output.'}
 
     # Fail after the first native start side effect but before its ActivationCompleted journal record.
     $plan=Read-WsmTrustedJson $planPath $approval.SHA256;$firstItem=$plan.Items|Where-Object Decision -EQ Include|Sort-Object ItemId|Select-Object -First 1;$secondItem=$plan.Items|Where-Object { $_.ItemId -cne $firstItem.ItemId -and $_.Decision -eq 'Include' }|Select-Object -First 1;$firstName=$firstItem.NaturalKey;$secondName=$secondItem.NaturalKey;$script:failAfterStartName=$firstName
     $cutoverFailed=$false;try{Invoke-WsmCutover $manifestPath $manifestHash $targetState $cutover.Path $cutover.SHA256 $ack | Out-Null}catch{$cutoverFailed=$true;$cutoverFailure=$_.Exception.Message}
-    if(-not $cutoverFailed -or $script:targetServices[$firstName].State -ne 'Running' -or $script:activationCalls[$firstName] -ne 1){throw 'Cutover did not exercise a post-effect/pre-completion activation interruption.'}
+    if(-not $cutoverFailed -or $script:targetServices[$firstName].State -ne 'Running' -or $script:activationCalls[$firstName] -ne 1){throw ('Cutover did not exercise a post-effect/pre-completion activation interruption: '+$cutoverFailure)}
     $statePath=Join-Path (Join-Path $targetState $pairId) 'state.json';$interrupted=Read-WsmJson $statePath;if(-not $interrupted.Cutover.NewTransactionsPossible -or @($interrupted.Cutover.Activations|Where-Object {$_.ItemId -ceq $firstItem.ItemId -and $_.Status -eq 'Intent'}).Count -ne 1){throw 'Cutover did not retain transaction boundary and durable first-service intent.'}
 
     # An interrupted activation cannot be resumed without explicit owner reconciliation evidence.
@@ -79,5 +90,5 @@ $root=Join-Path 'C:\' ('wsm-activation-cutover-'+[Guid]::NewGuid().ToString('N')
     $activationRows=@($resumed.Cutover.Activations);if($activationRows.Count -ne 2 -or @($activationRows|Where-Object Status -NE Completed).Count){throw 'Completed cutover did not retain exact activation checkpoints.'}
     $again=Invoke-WsmCutover $manifestPath $manifestHash $targetState $cutover.Path $cutover.SHA256 $ack;if($script:activationCalls[$firstName] -ne 1 -or $script:activationCalls[$secondName] -ne 1){throw 'Completed Cutover replayed a service activation.'}
     Write-Host ('PASS: real approved-plan/freeze/final-package/staged-restore/New-WsmCutoverPlan/Invoke-WsmCutover workflow; first service effect interrupted before completion journal; explicit resume adopts exact final state and starts next once; implicit resume, final IP drift, DNS drift and manifest hash drift rejected. OS and service/network APIs are fixtures. Root: '+$Root)
-} $root
+} $root $externalReadinessFixturesPath
 $resolvedRoot=[IO.Path]::GetFullPath($root).TrimEnd('\');if($resolvedRoot -notmatch '^C:\\wsm-activation-cutover-[0-9a-f]{32}$' -or $resolvedRoot -eq 'C:\'){throw ('Refusing fixture cleanup outside the test-owned root: '+$resolvedRoot)};Remove-Item -LiteralPath $resolvedRoot -Recurse -Force
