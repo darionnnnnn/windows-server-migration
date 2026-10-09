@@ -1,7 +1,7 @@
 name: Windows PowerShell contracts
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     paths-ignore: ['docs/**', 'README.md', 'AGENTS.md']
   pull_request:
     paths-ignore: ['docs/**', 'README.md', 'AGENTS.md']

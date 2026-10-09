@@ -1,4 +1,4 @@
-﻿# MIGRATION 第 2 輪規劃：一般服務主機、完整環境確認與企業 EOS 遷移資格
+# MIGRATION 第 2 輪規劃：一般服務主機、完整環境確認與企業 EOS 遷移資格
 
 > 日期：2026-10-09
 > 狀態：程式實作及本機驗證完成；2026-10-10 最後邊界補漏已驗證。真實環境資格及不同模型獨立體檢仍待完成，詳見文末與 MIGRATION-2-VERIFICATION.md，不推定正式生產合格。
@@ -397,3 +397,8 @@
 A0–D2 與 E1–E3 的程式／schema／producer-consumer 已逐項比對並補漏。已完成的 delivery、Windows 設定專頁及 WorkRoot 受控搬移程式 TODO 刪除；原始需求和實機驗收條件保留。原生設定完整型別／DST、Firewall policy trace／專用完整列舉 marker、來源 after／目標 before／GPO與Unknown控制來源等最後補漏及固定快照證據見 [MIGRATION-2-VERIFICATION.md](MIGRATION-2-VERIFICATION.md)。
 
 主代理親自實作接口、wizard、原生 producer 與最後修正，精確模型身分無可信執行紀錄；subagent 皆 gpt-6-luna，主模型依範圍選 high/medium/low，最後閉環收尾使用 high。主代理已獨立驗證，不把努力等級差異或實作者回查稱為不同模型體檢。程式實作完成，實機／企業資格與不同模型體檢仍待完成，生產開關保持關閉。
+
+
+#### 2026-10-10 收尾與整合授權
+
+已依本輪起點至HEAD核對A0/A1、B1/B2、C、D/D2、E1–E3及R2-01–28，沒有新增可重現程式缺陷；程式和測試146個hash與最後受驗版本相符。入口及當期待辦去除重複歷史，最終四job成功與修正摘要統一於 [MIGRATION-2-VERIFICATION.md](MIGRATION-2-VERIFICATION.md)。使用者授權整合至dev并刪除codex/implementation；main保持原狀，production保持關閉。opus low無可用執行端，本次未用subagent；可核實不同模型體檢及外部正式資格仍未完成，不能由分支整合推定驗收。skill評估無新增通用缺口，不改共用skill。
