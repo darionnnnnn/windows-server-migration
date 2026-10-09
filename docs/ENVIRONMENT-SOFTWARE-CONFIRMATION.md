@@ -28,6 +28,11 @@
 | 操作者／應用 owner／核准人／平台資安 owner | 待填 |
 | EOS官方來源／查證日／時區／規劃期限 | 待填 |
 | 維護窗／RPO／RTO／觀察／可回退期限 | 待填 |
+| 本機WorkRoot／PairId／RunId／reports位置 | 待填；來源／管理端／目標各自確認 |
+| 交付模式／每卷上限MiB與bytes | 待確認；建議分卷ZIP、512 MiB；新旅程建議自訂128–1024 MiB |
+| PackageId／Generation／full或delta／BaseManifestHash | 待填 |
+| Delivery索引／transport或manifest可信hash | 待填；可信來源須獨立核對 |
+| 實際ZIP卷數／總bytes／所需與可用空間／媒體保護 | 待填；未驗證不表示可搬運完成 |
 
 文件必須顯示未完成數、全部列數與來源 JSON 數量。重跑生成新檔，舊檔保留並標失效或仍有效的範圍。
 
@@ -146,6 +151,8 @@ Oracle client 設定為一般應用必要相依；Oracle DB engine／listener �
 - [ ] 已確認哪些Windows設定沿用目標、會造成何種影響，沒有用整類選否略過業務相依。
 - [ ] 已確認隔離安裝副作用、目標衝突、restart／reboot與真正consumer驗證，未測部分保持NotTested。
 - [ ] 已確認維護窗／RPO／RTO、含新交易回退、觀察／最長週期任務、backup restore及退役門檻。
+- [ ] 已確認輸出目錄、資料夾或分卷ZIP模式、大小單位／上限、全卷搬運清單及target解包／還原／回退峰值空間。reports可直接讀，state與機密外部材料不混入搬運集合。
+- [ ] 目標已用獨立可信transport或manifest核對完整包；單卷ZIP可讀、已複製文件或成功解包不等於業務還原成功。缺卷／錯卷／partial／混世代仍阻擋。
 - [ ] 管理者已將確認內容回流權威決策、fresh preview／核准，重新產生本文件；本勾選本身不放行。
 
 | 角色 | 姓名／職責 | 決策revision／證據參照 | 確認時間／尚未完成 |

@@ -25,7 +25,7 @@ powershell.exe -NoProfile -File C:\MigrationTools\Start-ServerMigration.ps1
 - [操作手冊及資料契約](docs/OPERATIONS.md)：離線交換、規格／SID／機密、實際執行、重試與切換。
 - [逐項實作與未完成清單](docs/IMPLEMENTATION-0.1.md)：A–F／R01–R16 對照與證據。
 - [原始規劃與驗收條件](docs/MIGRATION-1-PLAN.md)：保留歷史需求；本輪範圍變更以第 2 輪為準。
-- [第 2 輪規劃](docs/MIGRATION-2-PLAN.md)：一般服務主機、離線準備清單、Windows 設定逐項決策與特殊服務告知；規劃中，尚未實作。
+- [第 2 輪規劃](docs/MIGRATION-2-PLAN.md)：一般服務主機、離線準備、Windows 決策、Oracle設定與D2輸出目錄／可自訂大小分卷ZIP／資料夾交付；規劃中，新旅程尚未實作。
 - [第 2 輪深度複審](docs/MIGRATION-2-REVIEW.md)：20 項企業 EOS 缺口、程式證據、使用者／管理者旅程與整體影響；已補入規劃，尚非功能或正式資格通過。
 - [完整環境／軟體確認表](docs/ENVIRONMENT-SOFTWARE-CONFIRMATION.md)：每台全量軟體、使用者／可攜環境、Oracle TNS_ADMIN／設定檔與目標驗證的 Markdown 格式；目前是模板，非真實 Server 清單。
 

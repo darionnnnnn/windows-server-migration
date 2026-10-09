@@ -5,6 +5,7 @@
 > 複審基準：codex/implementation，991fc864126d226b65eb0fdbe440c7f7d41040af；前輪程式與測試基準保留於下方。
 > 來源：一般主機既有定案，以及使用者要求企業 Windows Server EOS 正式工具程度、Oracle TNS_ADMIN 與完整已安裝環境／相依工具／使用者軟體 Markdown 確認。
 > 複審證據：[深度複審](MIGRATION-2-REVIEW.md)；確認文件格式：[環境與軟體確認表](ENVIRONMENT-SOFTWARE-CONFIRMATION.md)。
+> 輸出方式續規劃基準：9b01678d56f8fdfaced54cbdad115536eba7b688；採以下建議設計，尚未實作新目錄旅程／大小選擇／交付索引。
 
 ## 前一輪確認
 
@@ -25,6 +26,7 @@
 7. Oracle Database 引擎／listener 仍是特殊產品；一般應用所需 Oracle Client／Instant Client／ODAC／ODP.NET、TNS_ADMIN 及其設定檔是本輪必要交付，不能因名稱含 Oracle 一併排除。
 8. 每台輸出完整 `.md` 確認文件，包含全部已發現軟體與環境，不只入選相依。沒有來源 Server 證據時只能交空白確認表，不能拿開發機軟體清單冒充。
 9. 正式程度以精確支援矩陣、可稽核核准、實際業務及復原證據判定。A–D 功能完成不等於正式資格；E 的資格／發行／放行證據同樣是必要交付。
+10. 輸出建議採「先指定受控工作目錄，再選交付模式」：預設分卷 ZIP、保留封存資料夾直接搬運；使用者可指定每卷上限，確認文件另存可直接閱讀的 reports。所有遷移資料只限核准 scope，不代表整機／產品完整備份。
 
 ## 批次總覽
 
@@ -33,7 +35,7 @@
 | A | 範圍分類與特殊服務告知 | 中 | 來源盘點 → 管理端 B/C/D |
 | B | 完整環境／軟體盤點、離線準備、Oracle 用戶端設定 | 大 | A → 使用者確認／準備 → C／目標預檢／還原 |
 | C | Windows 設定清單與逐項決策 | 大 | A/B → 規格核准／設定還原與驗證 |
-| D | Markdown 確認文件、選單與十台彙整接線 | 中 | A/B/C → 操作者／管理者／核准 |
+| D | Markdown、統一輸出目錄／分卷旅程與十台彙整 | 大 | A/B/C → 操作者／管理者／核准／搬運與匯入 |
 | E | 相容、實機資格、切換復原與企業放行證據 | 大 | A–D → 隔離試用 → 資格審查；合格後另行正式放行 |
 
 順序 A → B → C → D → E。每批需輸入／輸出及實際呼叫端完整，完成適當驗證後獨立 commit／push，確認遠端 SHA。批次內可先交付完整子段；不可推送半接線功能。
@@ -158,7 +160,7 @@
 ## 本輪交付與範圍外
 
 - 交付：一般主機處置分類、完整環境／軟體 Markdown 確認、離線相依與媒體準備、Oracle 用戶端／TNS_ADMIN／受審核設定檔搬移、Windows 逐項決策、有限已驗套用、目標 gate、六類文件及 Markdown、選單／CLI／Fleet／LabReport 接線、測試／手冊與企業資格／放行包。
-- 不做：自動取得／安裝第三方軟體、所有 runtime 自動部署、專用產品／角色遷移、完整 registry／系統磁碟還原、機器綁定密碼／授權複製、所有 OS 默认值推導、全部系統政策自動匯入、網際網路依賴。
+- 不做：自動取得／安裝第三方軟體、所有 runtime 自動部署、專用產品／角色遷移、完整 registry／系統磁碟還原、機器綁定密碼／授權複製、所有 OS 預設值推導、全部系統政策自動匯入、網際網路依賴。
 - 特殊項只告知／外部處理，但必要外部相依必須確認；單純「忽略」不允許宣告整台可退役。
 - 企業簽章／加密交換／角色分離及安全審核是 E 明確可查證的放行條件，可沿用企業流程；外部材料未提供時記具體缺口，不能以程式測試或規劃書代替。
 - 實作啟動：使用者確認下一輪開始實作後，按 A–E 分段驗證並推送。本文件完成不代表功能已完成。
@@ -223,6 +225,60 @@
 - 預覽寫入／不搬／外部負責、consumer、缺什麼／誰補／下一步入口、可否接續、退出碼與報告位置；Ctrl+C／EOF／console 關閉／磁碟滿／權限不足不能當同意，重入依 journal reconciliation。
 
 **D 補驗**：JSON 與 Markdown 每列／數量一致，排除／未知／manual／超過2,000列不漏；特殊字元無注入／機密外洩；勾選文件不放行、過期回填需 fresh preview。第一次操作者、值班接手、業務 owner、只看文件的審查人各走旅程；CLI／選單／API 不得繞同一 gate。
+
+### D2：輸出目錄、資料夾／分卷 ZIP 交付方式
+
+本節為使用者要求的續規劃建議；實作前依此確認行為契約，現有分卷核心不等於新操作旅程已交付。由 D 接線輸出／搬運／匯入，E1 接相容與負例，E2 驗實際空間及維護窗，E3 驗交換安全。
+
+#### 選擇建議與現況
+
+| 模式 | 操作與適用情況 | 取捨 |
+|---|---|---|
+| 分卷 ZIP（預設建議） | 指定目錄與每卷上限，工具產生多個ZIP＋權威transport索引；適合離線搬運／需限制單檔大小 | 單卷易核對／重傳；封存包與ZIP共存需要額外空間；全部卷核對後才可還原 |
+| 封存資料夾 | 複製整個已封存package目錄，目標用可信manifest驗完整內容；適合受控本機磁碟或可靠搬運路徑 | 省去ZIP封裝／副本時間，但散落檔較多易漏拷；不是無metadata的原檔拷貝，也不能免除整包驗證 |
+
+- PackageTransport.ps1:11–35 已有 Export-WsmPackageZip：VolumeBytes 預設 536,870,912 bytes（512 MiB），API 接受 1 MiB–1 GiB；獨立ZIP、actual-size check、hash、checkpoint／transport索引已有。MigrationWizard.ps1:81 的來源步驟4只詢問輸出目錄，未讓使用者選每卷大小。
+- PackageTransport.ps1:27 現用 NoCompression；ZIP 是封裝載體，不承諾容量縮小。沿用此模式以可預測空間與CPU／時間預估為主，本次不新增壓縮等級或自動安裝7-Zip。若後續要壓縮，需另驗compression-ratio安全上限／高可壓資料／實際維護窗，不可只改參數。[Microsoft CompressionLevel](https://learn.microsoft.com/en-us/dotnet/api/system.io.compression.compressionlevel?view=netframework-4.8.1)亦明列速度與壓縮效果的取捨。
+- 現有輸出是每個可單獨讀取的ZIP中存metadata／payload chunks，再由工具重建；不先建超大ZIP再二進位切成 .z01，也不讓使用者手動串接／Explorer解壓當還原。單卷可讀不代表單卷可恢復完整來源檔案／ACL。
+
+#### D2.1：先指定目錄與明確預覽
+
+**輸入／輸出**：角色／PairId／工具／核准scope → OutputProfile與空間預檢 → inventory／reports／package／transport分類輸出 → delivery索引／目標匯入。OutputProfile的模式／單卷上限是傳輸設定，不改動核准的資料scope。
+
+1. 第一次操作先指定本機受控 WorkRoot，不寫死來源主機的磁碟代號。來源、管理端、目標各有自己的目錄與帳號可用性；十台以PairId區分，同名host不共用狀態。只設定工具新建子目錄的受控權限；既有根目錄／共享位置先核對，不遞迴重設使用者其他資料的ACL，無法取得安全隔離時阻擋並提示另選受控位置。
+2. 工具在WorkRoot建立 `<PairId>/<RunId>/`；用途邏輯分成 `inventory/`、`review/`、`reports/`、`packages/g<Generation>/`、`transport/g<Generation>/`、`state/`。實際package子目錄仍沿用既有 `<PairId>-g<Generation>`，或版本化映射；不默默重排舊pair／journal。
+3. reports直接放完整確認Markdown／安全HTML／TXT／CSV；原始inventory／catalog可能含機密，留受控子目錄，不代表可公開。state不放進搬運集合；外部安裝媒體／wallet／私鑰／密碼保留既有受控交付引用，不因「所有備份放目錄」就全部收包。
+4. 輸出／state／transport／incoming／backup根目錄不得與來源scope、sealed package、目標還原scope產生物理重疊／reparse／junction逃逸；ZIP輸出在sealed package外，target解包与transport輸入分開。實際可讀寫、ACL、同volume鎖／rename、filesystem能力與free space通過才開始；不因路徑是UNC或mapped drive就假設資格，未驗證儲存介面須blocked或改本機暫存。
+5. 目錄已有其他run、不同plan／package／format時新建run或明確選同包接續；不覆寫／清空使用者選的整個目錄，不使用來源host名稱作唯一鍵。不能選空字串、來源scope內或無權位置然後默認落到current directory。
+6. 預覽列來源核准總量、排除／特殊／外部材料、WorkRoot／交付路徑、模式、單卷上限與確切bytes、預估卷數／容量／峰值free space、target解包／還原／rollback需求、權限与下一步。固定bytes是上限不是每卷恰好大小，少量資料可能只有1卷、最後一卷通常較小。
+
+#### D2.2：每卷大小與可搬運集合
+
+- 新旅程建議預設512 MiB，提供128／256／512／1024 MiB及128–1024 MiB內的整數自訂值，明列1 MiB=1,048,576 bytes。此為新UI／OutputProfile契約；保留舊API的1 MiB–1 GiB範圍及既有tiny-fixture，不靜默改舊參數。越界／0／負值／非數字／溢位／EOF阻擋或取消，不能取近似值冒充使用者選擇。
+- 大小指**實際落地ZIP檔案上限**，包含header／central directory；以實際bytes驗後才seal。大來源檔由既有payload chunk機制分散到多卷，不限制原始業務檔小於每卷上限。單個不可分metadata超過卷預算時在預檢明確阻擋，告知可增大到支援上限或需metadata格式擴充；不突破大小、不截斷索引、不假裝已完成。
+- 128MiB新旅程下限讓現有最大64MiB payload chunk保有header餘裕；不因縮小輸出卷而改已核准sealed包的ChunkBytes。變更卷大小只建立新transport run，沿用且重新驗證同一manifest；包的設定／scope／payload改變仍需既有重新核准規則。
+- 每個generation有自己的transport與完整卷清單；示意命名沿用 `package-<PackageId>-0001.zip`。預檢卷數不得超過9,999：現有export使用四位minimum width，import只接受四位檔名；超界須在產生大量檔案前阻擋並提供調整卷大小／另行受控scope規劃的下一步，不能自行刪scope。
+- 遷移ZIP交付最小集合是可信 `transport.json` 與清單中**全部**ZIP；清單逐卷列名稱／編號／Bytes／SHA256與PackageId／PairId／PlanHash／ManifestHash綁定，使用現有schema欄位與已驗映射，不強迫在ZIP內塞未受支援檔案。
+- 外層另輸出 `delivery.md`、可機器核對的版本化delivery索引（規劃名稱 `delivery-index.json`）與其hash，說明搬哪些、卷數／總量、報告的位置／hash、可信transport入口、工具版本、世代／final／base相依、未完成項與還原下一步。外層文件不是package權威，不可以覆蓋transport／manifest或自行新增可執行腳本；reports可與package分級分享。
+- 實際import所需的transport hash由獨立可信管道提供；同目錄的 `.sha256` 只協助核對，不證明作者與信任來源。收到全部文件不等於驗證完成，資料夾模式以可信manifest重新驗全payload／metadata。
+- initial與final差異沿用已實作delta transport與base/current綁定，不混用full ZIP索引；完整差異包及它依賴的可信base不可漏搬。若需只補傳單卷，以同一sealed transport卷hash核對，不重新編號／混入其他run。
+
+#### D2.3：容量、可接續與真正還原
+
+- 不估計壓縮節省；來源同磁碟需同時容納sealed package、全部已完成ZIP、正在寫的partial、reports／indexes、原始狀態與安全餘量，分磁碟則逐volume檢查。target需含輸入卷（若同volume）、incoming重建package、staging還原、既有target／backup／保留新資料及餘量；不是只用來源檔案總大小乘固定係數。原package estimate與ZIP逐卷檢查不足以證明新整體目錄容量已驗。
+- 完成狀態分 `Prepared`／`Exporting`／`Sealed`／`TransferredUnverified`／`ImportedVerified`／`RestoredVerified`；這是delivery／輸出層狀態，不重命名既有operation journal狀態。全部卷與transport seal前不標可搬運完成，import驗證不能自動觸發restore／activation。
+- 取消／磁碟滿／程序中斷保留已驗sealed包／卷與checkpoint，`.partial`不進交付集合。相同manifest／格式／卷上限接續前重驗已完成卷hash；不從零覆寫、不把傳输續跑宣稱直接從壓縮串流中段接續，單卷未完成可重新建該卷。
+- 已完成卷缺檔／被修改時依現有reconcile阻擋，不刪掉checkpoint裝作正常。缺卷／錯卷／重複entry／額外未知內容／改transport／wrong pair／generation／path traversal／高壓縮比／解壓額度／hash mismatch均拒絕變成可還原包；先預檢完整卷集合才解包，途中失敗只能留下受控incoming，不落業務target。
+- 原始packaging與transport不是enterprise完整備份。回退仍依ownership／保留target／backup／新交易對帳，不能刪除ZIP就以為已完成資料回退。清理由明確預覽後按本run工具持有範圍進行；保存期限／退役／備份復原證據未滿足，不自動刪來源package或target backup。
+- 遷移資料及原始盤點含敏感資訊，工作根目錄用受控ACL儲存；FAT／exFAT不能假裝具NTFS ACL。可搬運的ZIP承載payload bytes與權威ACL metadata，但輸出磁碟／媒體仍需企業驗證的加密保管與存取控制，本工具不自動加ZIP密碼。[Microsoft filesystem比較](https://learn.microsoft.com/windows/win32/fileio/filesystem-functionality-comparison)列出filesystem差異。若加密wrapper增加檔案大小，另預檢外層媒體上限，不承諾指定ZIP上限也涵蓋外部wrapper。
+
+#### D2 驗收與整體影響
+
+- 同一小型核准案例走資料夾／ZIP及來源選單／CLI／API；512MiB默認／自訂值確切傳入、報告可讀、全volume／entry／scope數量對帳，包身份一致，目標最終bytes／metadata／gate一致，不要求產生填滿1GiB的fixture。
+- 最小資料驗卷邊界、header計入、最後一卷、來源檔大於單卷、不可分metadata超界、0／負值／單位／overflow／EOF；卷數10,000的合成metadata在預檢拒絕，不真的寫一萬ZIP。現有>4GiB有效實測在payload未改時沿用。
+- 缺最後一卷、錯／改卷、不同generation混入、同包新卷大小、partial／中斷接續、可重傳集合、路徑重疊／junction、ACL／readonly／磁碟滿、加密wrapper及新舊schema相容做對應負例。舊ZIP API的1MiB測試保留，不為新UI下限破壞回歸。
+- snapshot與source停寫／final規則不因輸出選項改變；Oracle檔依精確ConfigFiles入包、wallet外部；軟體確認Markdown直接可讀但不成可執行核准；target解包驗證後仍先staging再cutover。Fleet顯示每台輸出mode／generation／大小／卷數／hash／交付／匯入狀態，不將某台或某卷PASS算全機搬移完成。
+- 真實來源／目標做一次具代表性的封裝／搬運／解包容量與維護窗量測，硬體／媒體／安全政策資格記在exact環境；本次只有文件續規劃，不能宣告D2已實作或取得正式資格。
 
 ### E1：相容與跨段完整性
 

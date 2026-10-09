@@ -18,3 +18,4 @@
 - 前一輪測試效率調整段落已完成：349195c 遠端一致；CI 37800134683 全部通過。整體舊 PLAN 的實機／業務資格及獨立體檢仍未完成。
 - GitHub 每段完成先檢查範圍／相依／影響並適當驗證，再於本輪分支 commit／push，確認遠端 SHA；不 force push 或自行 merge。
 - 2026-10-09 第2輪深度複審：docs/MIGRATION-2-REVIEW.md 的20項缺口已納入 PLAN 必要契約，包含完整機器／使用者／可攜軟體 Markdown、Oracle client／TNS_ADMIN／設定檔、實際consumer與企業資格／放行包。docs/ENVIRONMENT-SOFTWARE-CONFIRMATION.md 為格式模板，非已取得Server盤點。此輪只改文件，新增功能及正式資格仍未完成；Oracle DB／listener 保留特殊產品外部流程，不能一併排除一般應用client相依。
+- 2026-10-09 輸出續規劃見 PLAN D2：建議先指定受控WorkRoot，再選sealed資料夾或分卷ZIP（預設512MiB、新UI自訂128–1024MiB）；reports直接可讀，state／機密不混入交付。API原1MiB–1GiB與舊fixtures保留；9,999卷／峰值空間／全卷hash／缺卷阻擋／delivery索引尚需接線驗證，此次仍只改規劃。

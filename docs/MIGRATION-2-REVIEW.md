@@ -98,3 +98,20 @@ Microsoft 列 Server 2025 的 NTLMv1／SMTP 等移除及 TLS 1.0／1.1 預設停
 完成規劃需求對照、程式事實定位、各角色旅程／失敗情境、跨批次 producer-consumer／授權／相容／回復影響審查；交付文件與入口進行 diff／本機連結／格式核對。只修改文件，不重跑程式 regression，也未新增實機 PASS。公開 repo 不含實際企業 inventory 或機密。
 
 下一輪依 PLAN A–E 實作與驗收，每個完整可驗段落獨立 commit／push；新增功能和企業資格均尚未完成。
+
+## 輸出方式續規劃核對（2026-10-09，基準9b01678）
+
+使用者續問先指定目錄或指定大小分ZIP，建議同時提供：本機WorkRoot先建立受控分類，預設分卷ZIP／可選sealed資料夾，確認報告直接可讀。完整契約與驗收已補進 PLAN 的 D2，並由 E1／E2／E3接相容、空間／維護窗與安全交換。
+
+| 程式事實或影響 | 核對與新增規劃 |
+|---|---|
+| PackageTransport.ps1:12、27–35已有VolumeBytes／NoCompression／actual size／hash／checkpoint／transport | 預設512MiB，現有API1MiB–1GiB保留；新旅程建議128–1024MiB／自訂，ZIP不承諾縮小容量；不是先造超大ZIP再切碎 |
+| MigrationWizard.ps1:81的來源4只問目錄，沒有大小傳入 | D2要求選單／CLI／API／OutputProfile同一參數及預覽，不把既有核心寫成UI已交付 |
+| PackageTransport.ps1:23數字minimum width四位，44匯入regex恰四位 | 推論超過9,999卷會有producer／consumer不相容；尚未做大量輸出重現。規劃在預檢阻擋10,000卷，用合成metadata驗負例，不建立大量檔案 |
+| Payload.ps1:37–42的包估算與ZIP逐卷空間檢查，各只覆蓋部分階段 | 新全工作根目錄／target解包、staging、backup／新資料保留分volume計峰值，無壓縮節省假設 |
+| 同一目錄全部收包可能混入state／機密／raw設定；只讀ZIP不還原ACL | 分類根目錄、明确delivery集合／安全reports／機密外部引用，ZIP承載受信metadata；資料夾與ZIP最後都走manifest／payload驗證 |
+| 初始／final／delta與不同run卷混合，人工漏搬一卷 | generation／base／package identity、transport全卷清單／可信hash、交付與匯入狀態、缺卷／wrong pair／partial阻擋 |
+
+整體回查：輸出設定不更改Include／Exclude或Oracle精確ConfigFiles，卷大小改變建立新transport run而非改sealed包；文件可讀不等於核准，sealed不等於transfer verified，解包不等於restore／activate，備份目錄不等於整機備份或新交易回退完成。外部加密wrapper可能增加單檔大小，媒體上限另驗。
+
+本次只更新文件並同步確認模板／入口，D2新旅程與門檻尚未實作；現有ZIP及取消fixtures未重跑，沒有新增實機PASS。依[Microsoft CompressionLevel](https://learn.microsoft.com/en-us/dotnet/api/system.io.compression.compressionlevel?view=netframework-4.8.1)與[filesystem比較](https://learn.microsoft.com/windows/win32/fileio/filesystem-functionality-comparison)核對封裝及媒體差異，不新增第三方安裝依賴。
