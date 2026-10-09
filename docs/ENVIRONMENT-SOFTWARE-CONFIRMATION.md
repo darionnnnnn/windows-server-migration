@@ -15,7 +15,8 @@
 
 | 欄位 | 值 |
 |---|---|
-| 文件狀態／實際檔名 | Template；實際檔名 `environment-software-<PairId>-r<InventoryRevision>-d<DecisionRevision>.md` |
+| 文件狀態／實際檔名 | Template；實際檔名 `environment-software-<PairId>-r<InventoryRevision>-d<DecisionRevision>-<DocumentId>.md` |
+| DocumentId／TargetObservationRevision／ReportProjectionHash／階段 | 待填；同r／d重查目標仍另存新檔 |
 | PairId／波次／群組 | 待填 |
 | Source HostId／fingerprint／名稱 | 待填 |
 | Source OS／build／edition／Core或Desktop／架構 | 待填 |
@@ -28,13 +29,18 @@
 | 操作者／應用 owner／核准人／平台資安 owner | 待填 |
 | EOS官方來源／查證日／時區／規劃期限 | 待填 |
 | 維護窗／RPO／RTO／觀察／可回退期限 | 待填 |
-| 本機WorkRoot／PairId／RunId／reports位置 | 待填；來源／管理端／目標各自確認 |
+| 本機WorkRoot／EnrollmentId／PairId／AttemptId／reports位置 | 待填；首次盤點尚無PairId；來源／管理端／目標各自確認 |
+| 持續source-state／catalog／operation-state／OperationState.RunId／journal位置 | 待填；不隨attempt重建；備份／恢復owner與核對方式待填 |
 | 交付模式／每卷上限MiB與bytes | 待確認；建議分卷ZIP、512 MiB；新旅程建議自訂128–1024 MiB |
 | PackageId／Generation／full或delta／BaseManifestHash | 待填 |
 | Delivery索引／transport或manifest可信hash | 待填；可信來源須獨立核對 |
+| DeliveryId／TransportAttemptId／格式版本／完整成員集合／報告hash | 待填；seal後固定，進度另記receipt；full或delta入口不可混用 |
 | 實際ZIP卷數／總bytes／所需與可用空間／媒體保護 | 待填；未驗證不表示可搬運完成 |
+| Scratch／delta spool／乾淨資料夾副本／incoming與逐磁碟峰值 | 待填；不可漏算系統TEMP，JSON／entry／memory預算待驗 |
 
 文件必須顯示未完成數、全部列數與來源 JSON 數量。重跑生成新檔，舊檔保留並標失效或仍有效的範圍。
+
+本模板涵蓋各階段，可逐步填寫；準備時未還原的檔案／consumer測試留NotTested及RequiredPhase，不要求先完成後續階段。報告註記不改seal後交付索引，最新位置提示不能取代本份DocumentId／hash。
 
 ## 盤點覆蓋與尚未探索範圍
 
@@ -83,6 +89,10 @@
 
 準備狀態區分 Missing／Matched／VersionDifferentPendingApproval／Unsupported／Unverifiable／RebootRequired，不以 installer exit 0 或管理員說已完成代替。安裝可能建立同名服務、排程或外連；必須先隔離再核對，不覆蓋成工具 ownership。
 
+| CheckId／consumer／RequiredPhase | Requirements投影hash／revision | 實際受驗target／帳號／工具／時間／有效期 | 結果／受影響變更／fresh關聯 |
+|---|---|---|---|
+| 待填 | 待填；無關決策不自動清除有效準備 | 待填 | NotTested |
+
 ## Oracle TNS_ADMIN 與完整用戶端設定確認
 
 Oracle client 設定為一般應用必要相依；Oracle DB engine／listener 另列特殊產品。每個 consumer／Home／bitness 各一組，不只填一個全機 TNS_ADMIN。
@@ -99,6 +109,7 @@ Oracle client 設定為一般應用必要相依；Oracle DB engine／listener �
 | Wallet／私鑰／密碼／機器綁定材料 | 只填外部受控交付編號 | 重建／產品復原／SecretRef待填 | 未提供則Blocked |
 | DB／LDAP／TCPS／外部owner／有效期 | 受控摘要待填 | 實際consumer測試方式待填 | NotTested |
 | 新程序／recycle／reboot與回復 | 影響consumer及變更基準待填 | 受控步驟／原值／owner待填 | NotTested |
+| 既有TNS／設定ownership／精確before與after | 外部／工具持有、空／不存在／型別待填 | CreateNew／KeepTarget／External／受驗UpdateReviewed待填 | 無支援則Blocked／External；不得刪外部原值 |
 
 | ArtifactId／consumer／精確ConfigFiles | 來源→目標／敏感等級 | bytes／encoding／hash／ACL映射 | 相依／IFILE／外部材料 | 處置／readback／owner |
 |---|---|---|---|---|
@@ -138,9 +149,11 @@ Oracle client 設定為一般應用必要相依；Oracle DB engine／listener �
 | Gate | 本機證據摘要／時間／有效期 | 狀態／owner |
 |---|---|---|
 | ReviewComplete | 待填完整軟體／coverage／決策 | NotTested |
-| PreparationReady | 待填目標版本／帳號／外部相依／restart | NotTested |
-| StagedVerified | 待填精確包／設定／檔案與ACL readback | NotTested |
-| CutoverReady／FinalAccepted | 待填停寫／fencing／final／真正consumer／業務 | NotTested |
+| PreparationReady | 待填本階段runtime／版本／帳號／外部材料／隔離／restart | NotTested |
+| RestoreReady | 待填核准包／空間／相容／目標衝突處置 | NotTested |
+| StagedVerified／StagedDependencyVerified | 待填精確包／設定／檔案與ACL／有效TNS及consumer相依readback | NotTested |
+| CutoverReady | 待填停寫／fencing／final／最終設定下真正consumer的受控測試 | NotTested |
+| FinalAccepted | 待填切換後業務／監控／觀察及owner接受 | NotTested |
 | RetirementReady | 待填觀察／新交易回退／備份復原／特殊處置 | NotTested |
 | ProductionQualified | 待填exact tuple／lab／pilot／企業信任與批准 | NotTested |
 
@@ -153,6 +166,8 @@ Oracle client 設定為一般應用必要相依；Oracle DB engine／listener �
 - [ ] 已確認維護窗／RPO／RTO、含新交易回退、觀察／最長週期任務、backup restore及退役門檻。
 - [ ] 已確認輸出目錄、資料夾或分卷ZIP模式、大小單位／上限、全卷搬運清單及target解包／還原／回退峰值空間。reports可直接讀，state與機密外部材料不混入搬運集合。
 - [ ] 目標已用獨立可信transport或manifest核對完整包；單卷ZIP可讀、已複製文件或成功解包不等於業務還原成功。缺卷／錯卷／partial／混世代仍阻擋。
+- [ ] 已確認每個CheckId的RequiredPhase／投影hash；後續階段未驗不冒充準備失敗，也不提前放行consumer。外部持有設定不冒充CreatedByTool，更新／回退原值與漂移核對已指定。
+- [ ] 已確認stable state與attempt分開、遺失狀態的停止／復原入口、白名單資料夾完整集合、增量分卷與scratch預算、壞卷補傳或新transport重封；報告重產不覆寫舊DocumentId。
 - [ ] 管理者已將確認內容回流權威決策、fresh preview／核准，重新產生本文件；本勾選本身不放行。
 
 | 角色 | 姓名／職責 | 決策revision／證據參照 | 確認時間／尚未完成 |

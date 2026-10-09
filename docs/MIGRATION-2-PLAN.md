@@ -6,6 +6,7 @@
 > 來源：一般主機既有定案，以及使用者要求企業 Windows Server EOS 正式工具程度、Oracle TNS_ADMIN 與完整已安裝環境／相依工具／使用者軟體 Markdown 確認。
 > 複審證據：[深度複審](MIGRATION-2-REVIEW.md)；確認文件格式：[環境與軟體確認表](ENVIRONMENT-SOFTWARE-CONFIRMATION.md)。
 > 輸出方式續規劃基準：9b01678d56f8fdfaced54cbdad115536eba7b688；採以下建議設計，尚未實作新目錄旅程／大小選擇／交付索引。
+> 再次反向複審基準：247c528662d24adf4c52fae3dec0c544ec821a7c；另補 R2-21–R2-28。下列穩定狀態、分階段 gate、增量分卷等仍是必要待實作契約。
 
 ## 前一輪確認
 
@@ -188,7 +189,8 @@
 - 不搬整個 Program Files／MSI 安裝狀態代替產品安裝。installer 已建立同名 service／task／IIS 時列 ownership／設定衝突，只經核准採用已驗設定或外部流程；不把既有目標物件改標工具建立。可攜軟體需完整檔案／runtime／授權與可再部署證據。
 - 每個準備項列內部媒體／hash／簽章或人工驗證、版本／架構、vendor OS 支援證據與查證日期、安裝順序、授權、restart／reboot／副作用。只有來源已裝並不代表支援 Server 2025；不把新版自動當相容。
 - 手動 installer 也可能自啟服務／排程、外連或寫 DB。安裝前建立目標隔離基準，安裝後本機差異核對／quarantine；無法阻止重複工作或生產寫入時停止 staging。使用者說裝完或 installer exit 0 不等於 ready。
-- 準備證據綁 PairId、來源／目標 fingerprint、inventory／requirements／decision revision、工具 fingerprint、帳號 context、有效期與 hash。核准前以 requirements revision 綁定，plan 產出時引用該 hash；核准後再綁 plan hash，避免準備必須先有 plan 的循環。改版／漂移／pending reboot 撤銷受影響證據。
+- 準備證據綁 PairId、來源／目標 fingerprint、inventory／requirements／decision revision、工具 fingerprint、帳號 context、有效期與 hash。核准前以 requirements revision 綁定，plan 產出時引用該 hash；核准後再綁 plan hash，避免準備必須先有 plan 的循環。每個 CheckId 另列 RequiredPhase、consumer、實際受驗需求投影的 hash；revision 是可追溯資料，變更按受影響投影撤銷證據，不因無關決策變動要求全部重新安裝。沿用仍有效證據須有 fresh readback／關聯紀錄，不改寫原證據或繞過新核准。
+- **順序**：PreparationReady 僅驗目標已備妥的 client／runtime／帳號／隔離／restart 與該階段外部材料；由本輪搬入的 TNS 檔案與設定有效性放在 StagedDependencyVerified，真正 consumer／DB／業務測試放在 CutoverReady。檔案尚未搬入不是要求先跑還原的準備循環。任何階段未知仍阻擋其受影響 consumer；不得把所有未知移到最後以提前放行。
 
 **B1 驗收**：HKLM／HKU／portable／人工列都到 D 的完整 `.md`；同名異版本／SID／view 不合併，空／失敗／profile 未載入／搜尋上限有 coverage；missing driver／wrong bitness／installer 自啟／同名既有 service／reboot 正確阻擋，其他獨立項可繼續。
 
@@ -200,7 +202,7 @@
 2. **候選與有效值**：Machine／可讀 User／服務自有 TNS_ADMIN、32／64 Oracle registry view、Home／Instant Client 的 network/admin、app／web.config／程式設定／JDBC 配置；需要的 NLS_LANG／LDAP_ADMIN／LOCAL／ORA_TZFILE 與 PATH 順序也列出。標記實際採用依據、被遮蔽值及未知，不能只讀管理員 `$env:TNS_ADMIN`；Windows 環境／登錄／Home 行為見[Oracle Net 文件](https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/local-naming-parameters-in-tns-ora-file.html)。
 3. **檔案入包**：已確認使用的 tnsnames.ora／sqlnet.ora／ldap.ora／oraaccess.xml、owner 核准的 IFILE／參照檔，列入精確 ConfigFiles 與受控 FileScope／ConfigArtifact。保存原始 bytes／encoding、hash、ACL／SID mapping、來源／目標路徑及敏感等級。不能只在文件提醒使用者自行記得拷貝。
 4. **界限**：bounded 參照解析遇循環、語法不支援、UNC、超出核准 scope、缺檔即列缺口並阻擋 consumer，不偷偷擴 scope。共用設定只有一個權威搬移 owner，多個 Home 不互相覆蓋。listener.ora／DB data／listener service 屬特殊產品，不因同目錄就搬入。
-5. **設定映射**：預覽舊→新 TNS_ADMIN、檔案路徑、registry view／key／value type、User SID、服務環境與 app 設定；同路徑無衝突可保留 bytes，變更只依核准項，不全域字串 replace、不搬整個 Oracle registry。Machine 值走既有受審核 MachineEnvironment；User／registry 值納入 B2 受限用戶端設定契約（精確白名單、原值備份、readback、ownership／回復）或已完成且驗證的外部步驟。缺受驗 adapter 不顯示自動搬入；PATH 仍人工合併。
+5. **設定映射**：預覽舊→新 TNS_ADMIN、檔案路徑、registry view／key／value type、User SID、服務環境與 app 設定；同路徑無衝突可保留 bytes，變更只依核准項，不全域字串 replace、不搬整個 Oracle registry。Machine 值只在既有 MachineEnvironment 的無衝突／已持有範圍沿用；installer 已建立的同名值目前會被既有 restore 阻擋，必須走 C 的 Keep／External 或新受驗 UpdateReviewed，不能宣稱已有任意覆寫能力。User／registry 值納入 B2 受限用戶端設定契約（精確白名單、原值備份、readback、ownership／回復）或已完成且驗證的外部步驟。缺受驗 adapter 不顯示自動搬入；PATH 仍人工合併。
 6. **機密**：wallet／cwallet.sso／ewallet.p12／私鑰／密碼／機器綁定材料走外部受控交付、目標重建或產品復原；不進一般 ZIP／Markdown／公開 repo。sqlnet／連線檔亦先分類。DPAPI 不假設跨機拷貝可解密，依[Microsoft DPAPI](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata)核對產品程序。
 7. **目標驗證**：使用者先安裝 client／provider。離線驗檔案／ACL／hash／bitness／有效路徑／alias，再在明確允許的隔離測試，以真正 service account／IIS pool／task context 驗設定解析、必要網路／TCPS、DB 登入與 owner 最小查詢／交易。只靜態核對維持 NotTested。`tnsping` 僅驗 listener，不代表 DB、認證或業務成功，見[Oracle Testing Connections](https://docs.oracle.com/en/database/oracle/oracle-database/19/netag/testing-connections.html)。測試程式由 owner 批准於工具外執行，不執行包內任意腳本。
 8. **啟用／回退**：env 變更後以新程序／受控 recycle 或必要 reboot 驗證，不假設現有程序立即讀到。provider 換版、alias／設定／目標漂移、wallet 未交付使受影響證據失效；只回復工具持有且未漂移設定，查所有共用 consumer 並保留新資料。
@@ -210,6 +212,7 @@
 ### C 補強：設定決策與真正執行身分
 
 - 每列顯示 Apply／KeepTarget／External 的實際可用性、native API／權限、staging 副作用、restart／reboot、readback 與 rollback level；collector 未覆蓋只能 Unknown／External，不能因有清單標題就聲稱完整盤點。
+- **既有目標處置矩陣**：CreateNew 僅建立不存在的物件；KeepTarget／VerifyExternal 只核對外部持有的有效設定，保留 CreatedByTool=false；不相容則 Blocked 或外部核准修正。新增 UpdateReviewed 僅限有精確設定白名單與資格的 adapter：核准 before／after、套用前再次比較 before、持久保存原值／型別／不存在或空值、套用後 readback；回退比較工具最後值未漂移後 RestorePriorValue。CreateNew 的回退才可 RemoveCreated。時區等全機已有設定亦須走此更新語義。安裝器建立的 service／task／IIS 不泛用自動接管，不把 VerifyExternal 當現有 restore 已支援；需新增不寫入的 consumer 契約或完成外部程序。
 - Windows 全類選否只決定 OS 設定偏好；已入選 Oracle TNS_ADMIN 等業務相依仍需明確映射／驗證，拒絕搬入列阻擋 ItemId 與外部處置。
 - 補 W32Time／時鐘同步、TLS／NTLM／SMB、long-path／filesystem 能力、reboot 後 GPO／安全政策有效值與服務帳號權利核對。2016→2025 的 TLS 1.0／1.1 預設停用、NTLMv1／SMTP 等移除依[Microsoft features 文件](https://learn.microsoft.com/en-us/windows-server/get-started/removed-deprecated-features-windows-server?tabs=ws25)列相容風險；不自動降安全基準。SMB 核對實際 client／server／有效政策，見[SMB signing](https://learn.microsoft.com/en-us/windows-server/storage/file-server/smb-signing-overview)。
 
@@ -217,7 +220,7 @@
 
 ### D 補強：完整 Markdown、使用者確認與決策回流
 
-- 以 [ENVIRONMENT-SOFTWARE-CONFIRMATION.md](ENVIRONMENT-SOFTWARE-CONFIRMATION.md) 為格式契約，實際每台輸出 `environment-software-<PairId>-r<InventoryRevision>-d<DecisionRevision>.md`；fleet 另有索引。repo 空白模板不是實際清單，HTML 分頁／列印上限不能造成 Markdown 截斷。
+- 以 [ENVIRONMENT-SOFTWARE-CONFIRMATION.md](ENVIRONMENT-SOFTWARE-CONFIRMATION.md) 為格式契約，實際每台輸出 `environment-software-<PairId>-r<InventoryRevision>-d<DecisionRevision>-<DocumentId>.md`；DocumentId 每次產生新唯一值，另記 TargetObservationRevision、ReportProjectionHash、產生階段，fleet 索引引用確切版本。相同來源／決策下重查目標也不可覆寫舊檔。repo 空白模板不是實際清單，HTML 分頁／列印上限不能造成 Markdown 截斷。
 - 文件涵蓋 metadata／有效期、coverage、全部軟體、runtime／driver／工具、Oracle／設定檔、Windows 決策、特殊／未知、人工補登、目標差異／驗證、阻擋、owner 確認與交接；每列能追 SoftwareId／PreparationId／ItemId／JSON evidence pointer，總數能對帳。
 - Markdown 可註記但不是權威可執行輸入。直接改 `.md`／勾選不變更 gate；回填由管理端 wizard 或 validated CSV／JSON preview 錄入，綁 revision／hash、重新核准及產出文件。畫面／文件明确提示。
 - 所有格式使用同一安全投影，escape 管線、換行、反引號、連結與 HTML；CSV 保留 formula 防護，不可信名稱不變成可執行內容／外部圖片。密碼／完整連線字串／wallet 永不輸出，內部路徑／endpoint 依分享分級，不能聲稱遮密碼即能公開。
@@ -235,20 +238,21 @@
 | 模式 | 操作與適用情況 | 取捨 |
 |---|---|---|
 | 分卷 ZIP（預設建議） | 指定目錄與每卷上限，工具產生多個ZIP＋權威transport索引；適合離線搬運／需限制單檔大小 | 單卷易核對／重傳；封存包與ZIP共存需要額外空間；全部卷核對後才可還原 |
-| 封存資料夾 | 複製整個已封存package目錄，目標用可信manifest驗完整內容；適合受控本機磁碟或可靠搬運路徑 | 省去ZIP封裝／副本時間，但散落檔較多易漏拷；不是無metadata的原檔拷貝，也不能免除整包驗證 |
+| 封存資料夾 | 由已驗包產生白名單交付目錄，目標用可信manifest驗完整內容；適合受控本機磁碟或可靠搬運路徑 | 省去ZIP封裝時間；建立乾淨交付副本仍需計空間，散落檔較多易漏拷；完整metadata與整包驗證仍必要 |
 
 - PackageTransport.ps1:11–35 已有 Export-WsmPackageZip：VolumeBytes 預設 536,870,912 bytes（512 MiB），API 接受 1 MiB–1 GiB；獨立ZIP、actual-size check、hash、checkpoint／transport索引已有。MigrationWizard.ps1:81 的來源步驟4只詢問輸出目錄，未讓使用者選每卷大小。
 - PackageTransport.ps1:27 現用 NoCompression；ZIP 是封裝載體，不承諾容量縮小。沿用此模式以可預測空間與CPU／時間預估為主，本次不新增壓縮等級或自動安裝7-Zip。若後續要壓縮，需另驗compression-ratio安全上限／高可壓資料／實際維護窗，不可只改參數。[Microsoft CompressionLevel](https://learn.microsoft.com/en-us/dotnet/api/system.io.compression.compressionlevel?view=netframework-4.8.1)亦明列速度與壓縮效果的取捨。
 - 現有輸出是每個可單獨讀取的ZIP中存metadata／payload chunks，再由工具重建；不先建超大ZIP再二進位切成 .z01，也不讓使用者手動串接／Explorer解壓當還原。單卷可讀不代表單卷可恢復完整來源檔案／ACL。
+- **增量現況不同**：DeltaWorkflow.ps1:87–109 的 Export-WsmArtifactDeltaZip 是單一 OutputPath、沒有 VolumeBytes，並在系統 TEMP 串接 blobs.bin 後產生一個 ZIP。full 分卷核心不能證明 final delta 同樣受大小限制；新模式必須補 D2.4 的增量分卷與暫存契約。
 
 #### D2.1：先指定目錄與明確預覽
 
-**輸入／輸出**：角色／PairId／工具／核准scope → OutputProfile與空間預檢 → inventory／reports／package／transport分類輸出 → delivery索引／目標匯入。OutputProfile的模式／單卷上限是傳輸設定，不改動核准的資料scope。
+**輸入／輸出**：角色／穩定主機登錄（配對前）或 PairId（配對後）／工具／核准scope → OutputProfile與空間預檢 → inventory／reports／package／transport分類輸出 → delivery索引／目標匯入。OutputProfile的模式／單卷上限是傳輸設定，不改動核准的資料scope。
 
 1. 第一次操作先指定本機受控 WorkRoot，不寫死來源主機的磁碟代號。來源、管理端、目標各有自己的目錄與帳號可用性；十台以PairId區分，同名host不共用狀態。只設定工具新建子目錄的受控權限；既有根目錄／共享位置先核對，不遞迴重設使用者其他資料的ACL，無法取得安全隔離時阻擋並提示另選受控位置。
-2. 工具在WorkRoot建立 `<PairId>/<RunId>/`；用途邏輯分成 `inventory/`、`review/`、`reports/`、`packages/g<Generation>/`、`transport/g<Generation>/`、`state/`。實際package子目錄仍沿用既有 `<PairId>-g<Generation>`，或版本化映射；不默默重排舊pair／journal。
+2. WorkRoot 先有穩定 `hosts/<EnrollmentId>/inventory/`，同一來源重盤點繼續使用既有 source-state.json 的 HostId／Revision；PairId 由管理端匯入後建立，配對前不要求先輸入它。配對後建立 `pairs/<PairId>/` 的持續 review／operation-state 與 `attempts/<AttemptId>/` 的 reports／packages／transport／scratch。AttemptId 是本次輸出嘗試，不取代既有 OperationState.RunId，也不能讓 initial／final／reboot 各自建一份空 ownership。實際 package 子目錄及傳給 Get-WsmOperationPaths 的 state 根仍沿用既有契約或受驗版本化映射；不同核准 plan 的狀態不能直接互用，處置見 D2.4。
 3. reports直接放完整確認Markdown／安全HTML／TXT／CSV；原始inventory／catalog可能含機密，留受控子目錄，不代表可公開。state不放進搬運集合；外部安裝媒體／wallet／私鑰／密碼保留既有受控交付引用，不因「所有備份放目錄」就全部收包。
-4. 輸出／state／transport／incoming／backup根目錄不得與來源scope、sealed package、目標還原scope產生物理重疊／reparse／junction逃逸；ZIP輸出在sealed package外，target解包与transport輸入分開。實際可讀寫、ACL、同volume鎖／rename、filesystem能力與free space通過才開始；不因路徑是UNC或mapped drive就假設資格，未驗證儲存介面須blocked或改本機暫存。
+4. 分離檢查以各用途的實際子根為準：WorkRoot 僅是容器，可包含彼此分離的 package／transport／state 子目錄；不得把它整體視為可搬scope。各寫入／state／transport／incoming／backup 子根不得與來源scope、sealed package、目標還原scope產生物理重疊／reparse／junction逃逸；ZIP輸出在sealed package外，target解包與transport輸入分開。實際可讀寫、ACL、同volume鎖／rename、filesystem能力與free space通過才開始；不因路徑是UNC或mapped drive就假設資格，未驗證儲存介面須blocked或改本機暫存。
 5. 目錄已有其他run、不同plan／package／format時新建run或明確選同包接續；不覆寫／清空使用者選的整個目錄，不使用來源host名稱作唯一鍵。不能選空字串、來源scope內或無權位置然後默認落到current directory。
 6. 預覽列來源核准總量、排除／特殊／外部材料、WorkRoot／交付路徑、模式、單卷上限與確切bytes、預估卷數／容量／峰值free space、target解包／還原／rollback需求、權限与下一步。固定bytes是上限不是每卷恰好大小，少量資料可能只有1卷、最後一卷通常較小。
 
@@ -261,16 +265,28 @@
 - 遷移ZIP交付最小集合是可信 `transport.json` 與清單中**全部**ZIP；清單逐卷列名稱／編號／Bytes／SHA256與PackageId／PairId／PlanHash／ManifestHash綁定，使用現有schema欄位與已驗映射，不強迫在ZIP內塞未受支援檔案。
 - 外層另輸出 `delivery.md`、可機器核對的版本化delivery索引（規劃名稱 `delivery-index.json`）與其hash，說明搬哪些、卷數／總量、報告的位置／hash、可信transport入口、工具版本、世代／final／base相依、未完成項與還原下一步。外層文件不是package權威，不可以覆蓋transport／manifest或自行新增可執行腳本；reports可與package分級分享。
 - 實際import所需的transport hash由獨立可信管道提供；同目錄的 `.sha256` 只協助核對，不證明作者與信任來源。收到全部文件不等於驗證完成，資料夾模式以可信manifest重新驗全payload／metadata。
-- initial與final差異沿用已實作delta transport與base/current綁定，不混用full ZIP索引；完整差異包及它依賴的可信base不可漏搬。若需只補傳單卷，以同一sealed transport卷hash核對，不重新編號／混入其他run。
+- initial與final保留既有 delta 的 base/current 綁定；新旅程的每卷上限必須由新增增量分卷 producer／consumer 共同履行，不能把舊單 ZIP 當已符合，也不能交給 full importer。完整差異集合及可信 base 不可漏搬。既有卷補傳保持同一 sealed transport hash；重新封裝走新 transport，細節見 D2.4。
 
 #### D2.3：容量、可接續與真正還原
 
-- 不估計壓縮節省；來源同磁碟需同時容納sealed package、全部已完成ZIP、正在寫的partial、reports／indexes、原始狀態與安全餘量，分磁碟則逐volume檢查。target需含輸入卷（若同volume）、incoming重建package、staging還原、既有target／backup／保留新資料及餘量；不是只用來源檔案總大小乘固定係數。原package estimate與ZIP逐卷檢查不足以證明新整體目錄容量已驗。
+- 不估計壓縮節省；來源同磁碟需同時容納 sealed package、資料夾交付副本或全部 ZIP、正在寫的 partial、delta blob／排序 spool、reports／indexes、原始狀態與安全餘量，分磁碟逐 volume 檢查；新 scratch 路徑明確受控，不能漏算系統 TEMP。target需含輸入卷（若同volume）、incoming重建package、staging還原、既有target／backup／保留新資料及餘量；不是只用來源檔案總大小乘固定係數。原package estimate與ZIP逐卷檢查不足以證明新整體目錄容量已驗。
 - 完成狀態分 `Prepared`／`Exporting`／`Sealed`／`TransferredUnverified`／`ImportedVerified`／`RestoredVerified`；這是delivery／輸出層狀態，不重命名既有operation journal狀態。全部卷與transport seal前不標可搬運完成，import驗證不能自動觸發restore／activation。
 - 取消／磁碟滿／程序中斷保留已驗sealed包／卷與checkpoint，`.partial`不進交付集合。相同manifest／格式／卷上限接續前重驗已完成卷hash；不從零覆寫、不把傳输續跑宣稱直接從壓縮串流中段接續，單卷未完成可重新建該卷。
 - 已完成卷缺檔／被修改時依現有reconcile阻擋，不刪掉checkpoint裝作正常。缺卷／錯卷／重複entry／額外未知內容／改transport／wrong pair／generation／path traversal／高壓縮比／解壓額度／hash mismatch均拒絕變成可還原包；先預檢完整卷集合才解包，途中失敗只能留下受控incoming，不落業務target。
 - 原始packaging與transport不是enterprise完整備份。回退仍依ownership／保留target／backup／新交易對帳，不能刪除ZIP就以為已完成資料回退。清理由明確預覽後按本run工具持有範圍進行；保存期限／退役／備份復原證據未滿足，不自動刪來源package或target backup。
 - 遷移資料及原始盤點含敏感資訊，工作根目錄用受控ACL儲存；FAT／exFAT不能假裝具NTFS ACL。可搬運的ZIP承載payload bytes與權威ACL metadata，但輸出磁碟／媒體仍需企業驗證的加密保管與存取控制，本工具不自動加ZIP密碼。[Microsoft filesystem比較](https://learn.microsoft.com/windows/win32/fileio/filesystem-functionality-comparison)列出filesystem差異。若加密wrapper增加檔案大小，另預檢外層媒體上限，不承諾指定ZIP上限也涵蓋外部wrapper。
+
+#### D2.4：反向複審後的必要閉環
+
+以下契約新增，名稱屬規劃；現有 API／schema 不因文件寫入就具備能力。
+
+1. **穩定狀態與復原（R2-21）**：source enrollment／HostId／inventory revision、管理端 catalog／approval、目標 PairId／PlanHash／ownership／journal 持續保存；清理輸出 attempt 不清除這些權威狀態。改 WorkRoot 須明確遷移受控狀態、核對主機 fingerprint／鎖／journal 一致性與原核准綁定，不能靠複製來源 state 讓目標取得 ownership。狀態遺失或不一致先 Blocked／RepairOperation／由既有持有紀錄核對，不以新建空 state「修復」。同 plan 初始、final、重啟、取消接續仍使用同一作業狀態；新 plan 另建受控作業映射，先處理舊作業 ownership／回退與衝突，不能新建目錄後略過既有物件。本機 state 有受控備份／恢復／保存責任人；它不進一般搬運集合。
+2. **增量同一大小承諾（R2-22）**：新增版本化 delta-volume 索引與分卷 exporter／importer；保留 ArtifactDelta 的 base/current／plan／changes／records／hash 語義，以有 hash／長度／順序的 bounded blob segments 避免單一 blobs.bin 必須小於卷上限。索引明確 full 或 delta kind、格式版本、完整集合與可信 base；先驗全集再重建／既有 delta validation，不能使用 full importer 假裝支援。舊單 ZIP delta 保留舊入口與限制，新設定超界不得靜默回退成超大 ZIP。scratch／sort spool／segment／partial／incoming 都用經分離與容量檢查的受控路徑；旧 API 如保留 TEMP 行為，須列實際位置／限制，不繞新模式的預檢。
+3. **資料夾交付精確集合（R2-23）**：用 Get-WsmPackageMembers 的既有白名單語義建立乾淨 delivery package（manifest／plan／artifacts／必要 freeze／被引用 payload）；不可整目錄直接交付，原包含 export-state.json。source-state、export／transport checkpoint、journal、raw inventory、孤兒 payload／額外檔均不傳。清潔副本採新建受控目錄、逐項 bytes／hash／集合對帳、seal 後唯讀保管並在目標重新核對；不假定所有本機硬連結可作獨立副本。資料夾模式也適用 full／delta 明確型別與完整 base 相依；未知額外成員拒絕或留在非交付隔離區，不偷偷收進授權 scope。
+4. **既有設定與 gate 順序（R2-24、R2-25）**：C 的 action／ownership／rollback 矩陣和 B1 的 RequiredPhase 是所有 CLI／wizard／Fleet／LabReport／restore／activation 的共同契約。診斷階段只允許明確核准的隔離測試路徑／帳號／外部測試程序，業務 writer 仍隔離；不能為取得 CutoverReady 先做完整 production activation。最終包還原後重查變更的有效設定與 consumer；仍有效的證據以受驗投影重新關聯，不因報告重產而全部失效。
+5. **不可覆寫的文件與交付版本（R2-26）**：DocumentId／TargetObservationRevision／ReportProjectionHash 區分同一 r／d 下的不同目標結果；latest 索引只是定位提示。每個 DeliveryId 引用固定 report hash、transport hash、manifest／base；seal 後不改這份索引或內層包。匯入／還原進度另產 execution receipt／新報告；後續註記或新交付版本不改舊報告、不回寫 manifest／plan、不因純報告重產強迫 payload 重封裝。
+6. **補傳與重建區別（R2-27）**：封存卷仍完整時只補傳原卷，保持原 hash。原卷缺失／損壞時，保留失敗 checkpoint 與原因，重新驗來源 sealed package，在新 TransportAttemptId／DeliveryId 下重封裝、重產可信索引與 hash，舊交付標不可完成；來源包也毀損則停止並依來源凍結／重新封存流程處置。PackageTransport 用 CreateEntry 未固定 timestamp；[Microsoft LastWriteTime](https://learn.microsoft.com/en-us/dotnet/api/system.io.compression.ziparchiveentry.lastwritetime?view=net-9.0)說明其預設為建立時間，因此不能承諾重建卷仍有舊 hash。目標按新可信索引用獨立 incoming 核對，不將兩次 transport 的 partial 混合；相同且重新驗證的 manifest 不因只換封裝就自動重新核准資料 scope。
+7. **可量測規模與 schema（R2-28）**：9,999 卷只是檔名界線，另預檢 JSON UTF-8 bytes、成員／index 數、單筆／總 spool、記憶體、來源／目標磁碟與維護窗。現有 Read／Write-WsmJson 上限 128 MiB，envelope 只接受 SchemaVersion=1；新增欄位／格式須有明確版本協商／受驗讀寫路徑與完整 consumer 更新，不只改版本數字。超限回報哪個 index、所需／允許容量、保留狀態與下一步，不截斷確認清單、不漏資料也不自行拆 scope。超過現有界線的分段索引／串流支援另列必要實作和資格；未完成時明列不支援，而不是提高數量宣稱已達企業規模。
 
 #### D2 驗收與整體影響
 
@@ -279,11 +295,13 @@
 - 缺最後一卷、錯／改卷、不同generation混入、同包新卷大小、partial／中斷接續、可重傳集合、路徑重疊／junction、ACL／readonly／磁碟滿、加密wrapper及新舊schema相容做對應負例。舊ZIP API的1MiB測試保留，不為新UI下限破壞回歸。
 - snapshot與source停寫／final規則不因輸出選項改變；Oracle檔依精確ConfigFiles入包、wallet外部；軟體確認Markdown直接可讀但不成可執行核准；target解包驗證後仍先staging再cutover。Fleet顯示每台輸出mode／generation／大小／卷數／hash／交付／匯入狀態，不將某台或某卷PASS算全機搬移完成。
 - 真實來源／目標做一次具代表性的封裝／搬運／解包容量與維護窗量測，硬體／媒體／安全政策資格記在exact環境；本次只有文件續規劃，不能宣告D2已實作或取得正式資格。
+- 反向旅程至少驗：首次無 PairId 盤點→同 host 重盤點身分不變→配對→初始還原→重啟／取消→final 接續；state 遺失／移動／wrong plan 阻擋；full／delta 同上限與 wrong kind 拒絕；資料夾少／多成員与 checkpoint 不入包；既有 TNS_ADMIN Keep／更新／漂移回退；gate 無循環且無關決策不清掉有效準備；同 r／d 重產文件不覆寫；重封 ZIP 用新 hash；JSON／index／memory 超界在未 seal 前明確失敗。只用小資料與合成 metadata 驗契約，實機容量／帳號驗收另列。
 
 ### E1：相容與跨段完整性
 
 - 相容回歸涵蓋舊 inventory／包／schema／plan／delta／approval／journal／ownership／ToolFingerprint，B 的型別相依不能繞過旧 Mandatory gate。執行中 pair 維持原版或明確協調重建，禁止熱換。
 - 準備 → 設定映射 → 審核 → 核准 → 包 → staging → readback → final → activate → fleet／LabReport → rollback／retirement，每個 producer 的新增資料都有 consumer；縮減報告不能當完整 gate 輸入。
+- 新增 source enrollment／OutputProfile、typed dependency／RequiredPhase、UpdateReviewed、DocumentId／delivery、delta-volume 必須逐一列出 producer、schema validator、preview／approval、匯入／執行、報告／Fleet／LabReport、恢復 consumer。B1→B2／C→D／D2→E1→E2→E3 是相依順序；D2 必須等新 delta 與狀態 consumer 完整，不可只接 UI 先宣稱可交付。新 plan hash 不能直接重用舊 operation state；純 transport／報告變更不改核准 scope。設定／需求漂移需重新核准並建立可驗新 baseline，final delta 不能繞過原 plan 綁定。
 - 批次內完整子段按適当驗證 commit／push，核對遠端 SHA；文件修改只查引用／契約／Markdown／diff，不假造新增程式測試通過。固定 snapshot／hash、同環境有效證據沿用，不重跑無門檻大型全劇本。
 
 ### E2：資料一致性、切換、故障復原與退役
@@ -306,9 +324,11 @@
 | Gate | 必要證據 | 不得當作成功的代用品 |
 |---|---|---|
 | ReviewComplete | 完整環境／coverage／Oracle／Windows／特殊處置、owner、相依閉合 | 已讀／排除／Markdown 勾選 |
-| PreparationReady | exact target／版本／架構／帳號、隔離安裝後核對、外部相依、restart 完成 | 別台 ready／installer exit 0／未探測 |
-| RestoreReady／StagedVerified | 新核准 plan／manifest／scope／config hash、空間／相容、staging readback | 舊 installer 契約繞過新模式禁止安裝 |
-| CutoverReady／FinalAccepted | final 一致性／fencing／外部 receipt、實際 consumer／業務／觀察 | HTTP 200／tnsping／fixture／省略 TXT 摘要 |
+| PreparationReady | 本階段 exact target／runtime／版本／架構／帳號、隔離安裝後核對、所需外部材料、restart 完成 | 別台 ready／installer exit 0／要求尚未還原的檔案先通過 |
+| RestoreReady | PreparationReady＋新核准 plan／manifest／scope／空間／相容、目標衝突已處置 | 舊 installer 契約繞過新模式禁止安裝 |
+| StagedVerified／StagedDependencyVerified | 本次包／設定／檔案／ACL readback，按 RequiredPhase 驗 effective TNS／帳號／共用 consumer | 僅套用命令成功／未查有效設定 |
+| CutoverReady | final 一致性／fencing／外部 receipt、最終設定下實際 consumer 的受控業務測試 | 先全量啟用 writer 才能取得測試證據／HTTP 200／tnsping |
+| FinalAccepted | 切換後業務／監控／觀察與外部 owner 接受 | fixture／省略 TXT 摘要／只在切換前測試 |
 | RetirementReady | 新資料回退、觀察／backup restore、特殊外部流程及退役批准 | 一般 scope 完成 |
 | ProductionQualified | exact tool／adapter／OS build／edition／installation type／product／provider／architecture 的 ServerLab、IsolatedPilot、ProductionAcceptance，加企業信任／發行證據 | report／自填 reference／hash 自我授權 |
 
@@ -323,5 +343,6 @@
 ### 整體複檢與本次執行紀錄
 
 - [複審 R2-01–R2-20](MIGRATION-2-REVIEW.md)逐條落於 A／B1／B2／C／D／E1–E3，需求／交付物／相依／驗收不從待辦偷刪。OS 全類選否不繞過業務相依、Markdown 非可執行輸入、準備證據不與核准 plan 循環。
+- 第二次按初次／熟練／應用／值班／管理／稽核旅程反查，另納入 R2-21–R2-28 的狀態、增量、白名單資料夾、既有目標、分階段證據、報告版本、損壞重建與規模限制。結論是規劃補足必要契約；是否正確運作仍待相依完整實作與各層證據，不宣稱重新閱讀文件就取得資格。
 - 原一般主機／離線／人工安裝／特殊產品不搬／OS 逐項設定保留。Oracle client 設定與完整軟體 Markdown 是本次必要補入；Oracle DB 不新增自動還原。
 - 本次修改限規劃、複審、確認模板與入口，未修改 src／tests／入口程式，未執行來源／目標 Server 盤點、Oracle DB 連線或生產遷移。功能／實機／正式資格保持未完成。

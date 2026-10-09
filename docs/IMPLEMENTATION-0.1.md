@@ -29,6 +29,7 @@ activation checkpoint 已實作並從待辦移除：ActivationRecovery＋Invoke-
 - [ ] 依第 2 輪定案補一般主機的離線準備清單、目標核對與特殊項告知；特殊 DB／角色不新增自動模組，必要外部相依仍需 owner 確認。
 - [ ] 依 2026-10-09 深度複審補完整 HKLM／可讀 HKU／可攜／人工軟體 Markdown 確認、Oracle client／TNS_ADMIN／精確設定檔及實際 consumer 驗證、B1／B2／E1–E3 gate 與正式資格／放行包。20 項缺口已寫入 MIGRATION-2-PLAN／REVIEW；ENVIRONMENT-SOFTWARE-CONFIRMATION 是模板，尚無來源／目標 Server 真實清單，不能標已實作。
 - [ ] 依 D2 輸出續規劃接統一工作目錄、直接可讀確認文件、資料夾／ZIP交付模式、每卷大小選擇、峰值空間預檢、9,999卷界線、delivery索引與完整匯入gate。既有ZIP核心／512MiB默認不代表新選單／輸出契約已交付。
+- [ ] 依基準247c528再次複審R2-21–R2-28補穩定enrollment／pair state與attempt分離、版本化delta分卷及受控scratch、白名單資料夾副本、既有目標Create／Keep／External／受驗UpdateReviewed及原值回復、RequiredPhase／需求投影證據、DocumentId／不可變delivery／receipt、壞卷重封新hash、JSON／index／RAM預算與完整schema consumer。累計28項是規劃收斂，不計實作或實機通過。
 - [ ] 真實瀏覽器／主控台和整輪實機再核對；程式 checkpoint `10c896a` 已推送、公共 draft PR 已同步，完整 CI 已通過。最新本機測試覆蓋與尚未完成的大量基準見下方，不以舊快照代替最後修改。
 
 ## 需要實際環境的驗收（不能用合成代替）

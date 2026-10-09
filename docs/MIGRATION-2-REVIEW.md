@@ -3,12 +3,59 @@
 > 日期：2026-10-09；基準：991fc864126d226b65eb0fdbe440c7f7d41040af，codex/implementation。
 > 本報告是規劃及程式現況審查，不是實機資格證書。審查者未連線來源／目標 Server，未取得其真實軟體清單。
 > 權威規格：[MIGRATION-2-PLAN.md](MIGRATION-2-PLAN.md)；使用者確認格式：[ENVIRONMENT-SOFTWARE-CONFIRMATION.md](ENVIRONMENT-SOFTWARE-CONFIRMATION.md)。
+> 再次複審：2026-10-09，247c528662d24adf4c52fae3dec0c544ec821a7c；本節以下保留前次20項與輸出審查，新增 R2-21–R2-28 的操作／程式／全局回查。
 
 ## 判斷
 
 原規劃具備合理的一般主機範圍、安全限制與離線流程，但尚不足以作為企業正式 EOS 遷移工具的完整驗收規格。最明確的缺漏是 Oracle 用戶端設定沒有搬移閉環、完整軟體清單未包含個人／可攜來源、交付格式未包含使用者要求的 Markdown，以及企業發行與資格仍被籠統留待後續。
 
-本次已將 20 項缺口補入 PLAN，明訂交付、consumer、阻擋及驗收。這表示**規劃已補強**，不表示現有 0.3 已具備新增能力。Source／Target 原生 API、Oracle 實際帳號／產品行為、企業信任與切換復原仍須取得證據；未完成不得稱為正式工具驗收通過。
+前次20項加本次8項，共28項已補入 PLAN，明訂交付、consumer、阻擋及驗收。本次尤其修正前次輸出建議中的狀態目錄、資料夾集合及增量分卷缺口。這表示**規劃已補強**，不表示現有 0.3 已具備新增能力。Source／Target 原生 API、Oracle 實際帳號／產品行為、企業信任與切換復原仍須取得證據；未完成不得稱為正式工具驗收通過。
+
+## 再次複審：先逐角色走操作（基準247c528）
+
+以下是使用者指定的尖銳且合理質疑情境，不是蒐集到的 Reddit 評論。先找「使用者下一步真的做得下去嗎」，再用程式核對，最後檢查跨階段影響。
+
+| 操作者／合理質疑 | 反向檢查發現 | 修正及驗收入口 |
+|---|---|---|
+| 初次使用者：「還沒盤點，哪來 PairId？下次換目錄算同一台嗎？」 | 配對在管理端匯入後才產生；每個新 inventory 目錄會新建 HostId | D2.1／D2.4：先穩定登錄再配對，同 host 重盤點與換工作根的受控遷移 |
+| 值班接手：「重開後為何說沒搬過？初始成功後 final 怎麼衝突？」 | per-attempt state 會失去 ownership／journal，阻擋已有 target 或失去復原依據 | 同 plan／pair 持續 state，遺失即停止核對，不讓新目錄冒充恢復 |
+| 搬運人：「我選512MiB，最後增量怎麼還是一個巨大 ZIP？」 | 現有 delta 是單檔 ZIP，另在 TEMP 建完整 blobs.bin | 新 delta-volume、同實際上限、full／delta 分路；scratch 峰值入容量預檢 |
+| 熟練管理員：「整個資料夾照拷，為何混進接續狀態？能保證清單完整？」 | 原封存 package 本身含 export-state.json；ZIP 則只取白名單 | 建乾淨白名單資料夾，少／多檔與 hash 對帳，副本空間列預覽 |
+| Oracle owner：「安裝器早建了 TNS_ADMIN，既有 adapter 為何不能照搬？」 | restore 對非工具建立的同名物件拒絕，並無任意原值覆寫回復契約 | C：Keep／External／受驗 UpdateReviewed；原值與型別、漂移及共享 consumer 回退 |
+| 應用測試人：「檔案未還原就要我證明能通？改一項不相關設定又要重裝？」 | 準備／搬入後／業務 gate 若混用或只看全局 revision，會循環或撤銷所有準備 | B1／E3：RequiredPhase＋需求投影 hash，受控診斷、受影響證據重驗 |
+| 管理者：「同 r/d 再產報告會覆蓋昨天？壞卷重建還認舊 hash？」 | 報告檔名缺目標觀測身分；ZIP timestamp 不保證重建 bytes 相同 | D／D2.4：唯一 DocumentId／固定 DeliveryId；補傳原卷或新 transport 重封 |
+| 稽核人：「9,999卷以下就算規模合格？新 schema 舊工具能讀？」 | JSON 仍限128MiB且 envelope 只接受v1；卷數不等於成員／RAM／JSON預算 | E1／D2.4：格式協商與完整 consumer；超限明確阻擋且不截斷確認清單 |
+
+## 新增八項：程式事實、影響與可證偽驗收
+
+下表是本次發現的規劃缺口；尚未執行相應新功能或故障實機測試。
+
+| ID／優先級 | 已核對程式／規劃缺口 | 補入契約 | 必須能證偽的驗收 |
+|---|---|---|---|
+| R2-21／P0 | Inventory.ps1:17–19 的 source-state 隨 OutputDirectory；Core.ps1:174 才建 PairId；Restore.ps1:1–9 的 state 綁 pair／target／plan。前次 per-run state 設計破壞身分及 initial→final／reboot 連續性 | D2.1、D2.4、E1 | 無PairId首盤點、穩定HostId／ItemId、跨attempt同journal、遺失／wrong plan／搬根停止或受控復原；不能接管外部既有物件 |
+| R2-22／P0 | DeltaWorkflow.ps1:87–109 無VolumeBytes，TEMP合併blobs.bin後一個ZIP；前次「沿用delta」未履行自訂每卷上限 | D2現況、D2.2–D2.4、E1 | 新delta分卷實際上限／全卷／可信base；full與delta wrong kind拒絕；新舊入口相容、scratch不足先阻擋 |
+| R2-23／P0 | Payload.ps1:83 寫export-state.json；PackageTransport.ps1:1–4只取manifest／plan／artifacts／freeze／引用payload。前次整package資料夾搬運會夾帶本機state／額外檔 | D2模式、D2.4 | 白名單集合與bytes／hash一致，缺／多檔、checkpoint／孤兒blob不入交付；額外副本列峰值 |
+| R2-24／P0 | Restore.ps1:32 對既有非WindowsFeature且非CreatedByTool物件阻擋；MachineEnvironment有set／remove不代表已具原值更新／回復。installer既有TNS與全機時區更新不能只宣稱Apply | B2.5、C、D2.4 | 建立／沿用／外部驗證／受審更新分開；before漂移拒絕、原值含型別與空／不存在、回退保存prior，不刪外部物件 |
+| R2-25／P0 | B1準備證據與B2實際consumer若未分phase，未搬TNS就先要求連線；全局decision變動可不當失效整份準備 | B1、E3、D2.4 | dependency有RequiredPhase／投影hash；新檔在staging驗、final後重驗有效變更；無關決策保留仍有效證據；不需先啟用全部writer |
+| R2-26／P1 | D原檔名只有pair／inventory／decision，target重查同r/d會撞名；若改delivery索引記進度，seal後版本亦失真 | D、D2.4、確認模板 | 每次DocumentId／目標觀測／投影hash，新檔不覆蓋；固定交付引用與receipt分開，報告重產不改plan／payload |
+| R2-27／P0 | PackageTransport.ps1:27 CreateEntry未設定固定timestamp，既有checkpoint要求原ZIPhash。從同payload重封不保證同ZIPbytes，不能混用舊索引 | D2.4 | 原卷完整則補傳；卷毀損用新transport／hash／獨立incoming，保留失敗checkpoint；來源包亦壞則停止重驗 |
+| R2-28／P1 | Core.ps1:13–24 JSON read／write限128MiB、:42 envelope只允v1；PackageTransport累積members／entries。9,999卷不能證明索引與RAM可用 | D2.4、E1 | UTF8 JSON／成員／spool／RAM budgets與錯誤下一步；新格式producer／consumer完整、舊格式負例；超限不漏列、不擅拆scope |
+
+R2-27 的 timestamp 行為另核對[Microsoft LastWriteTime 文件](https://learn.microsoft.com/en-us/dotnet/api/system.io.compression.ziparchiveentry.lastwritetime?view=net-9.0)：CreateEntry 的初始時間取建立時刻。這支持「不保證重封hash不變」的推論，並非已做重封故障實測。
+
+## 再次複審：最後從全局回查
+
+| 全局不變量／跨段影響 | 本次收斂結果與仍待證據 |
+|---|---|
+| 一台來源一份穩定身分；一個作業持續ownership | Host enrollment先於pair；輸出attempt與operation state分開，初始／final／重啟／取消同一plan沿用。新plan不可直接接舊state或略過外部衝突 |
+| 需求、證據、核准沒有循環 | RequiredPhase分準備、搬入後、切換前與切換後；需求投影hash決定受影響重驗，revision／原證據仍可追；未知consumer不提前放行 |
+| 已核准scope与傳輸容器分開 | 換卷大小、ZIP重封、報告重產不改plan；設定／requirements漂移另核准與baseline。full／delta有型別、可信base，交付集合精確 |
+| 原值、外部持有物與新交易不被工具清理 | Keep／External不假造ownership；UpdateReviewed有compare／prior／readback／漂移回退；state備份、payload回退、新交易保存各自有責任人 |
+| 可讀文件完整且可審計 | 全量軟體、排除、未知與coverage仍保留；DocumentId避免覆蓋，DeliveryId引用固定hash，後續receipt分開；新格式仍走安全投影 |
+| 每個新增producer都有consumer與驗收 | enrollment／OutputProfile／typed dependency／RequiredPhase／UpdateReviewed／DocumentId／delta-volume逐一接schema、preview、approval、restore／activate、report／Fleet／LabReport、repair；未完整不得只做UI就交付 |
+| 峰值、規模、信任與資格不是同一門檻 | 包＋乾淨資料夾或ZIP＋delta scratch＋incoming＋backup逐volume預檢；JSON／RAM有界；企業簽章／信任／exact資格與實機維護窗維持E2／E3待證 |
+
+此輪結論：補強後更能作為分階段實作與驗收依據，但**規劃審查不證明工具已能正確完成企業遷移**。目前仍須完成新增consumer、Server／Oracle實測、含新交易復原與企業放行；本輪只驗文件契約、引用、完整性及改動範圍。
 
 ## 證據分級與審查範圍
 
