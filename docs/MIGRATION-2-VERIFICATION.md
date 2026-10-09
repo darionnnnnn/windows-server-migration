@@ -21,7 +21,7 @@ Firewall 使用 ActiveStore/TracePolicyStore 保存 policy source。來源及目
 
 ## 固定快照與適用範圍
 
-按修改影響分段驗證，不把不同快照相加冒充「同一最終版本跑了所有測試」。每段在 Windows PowerShell 5.1 與 PowerShell 7 執行，runtime/test SHA256 前後不變；最後網路快照須與最終工作樹全部 runtime/test bytes 相同。早期結果僅沿用未受後續修正影響的行為，新原生設定及網路修正另驗相關閉環。
+按修改影響分段驗證，不把不同快照相加冒充「同一最終版本跑了所有測試」。每段在 Windows PowerShell 5.1 與 PowerShell 7 執行，runtime/test SHA256 前後不變；最後清理快照與最終工作樹全部 runtime/test bytes 相同。早期結果僅沿用未受後續修正影響的行為，新原生設定及網路修正另驗相關閉環。
 
 | 階段 | 快照 | 每引擎腳本 | 合計PASS |
 |---|---|---|---|
@@ -43,3 +43,8 @@ Firewall 使用 ActiveStore/TracePolicyStore 保存 policy source。來源及目
 主代理親自實作接口、wizard、原生 producer 及最後修正，精確模型身分尚無可信執行紀錄。subagent 依使用者指定僅 gpt-6-luna，主模型按工作選 high/medium/low；最後閉環收尾為 high。主代理已獨立驗證 subagent 產出，自己的實作範圍未宣稱不同模型體檢。
 
 GitHub Actions 僅記實際觀察结果，既有 checkpoint 結果不代替本次 head。
+
+
+最後清理只移除 Test-SoftwareInventory.ps1 的 EOF 空白行，正式 runtime 未改。SoftwareInventory/Contracts 在5.1與7各2/2通過；固定快照 wsm-r2-final-clean-7996352deaf34607a999d0e22cc26ec4 的全部 runtime/test hashes 前後不變且與工作樹相同。最後 diff 空白檢查及12份本機 Markdown 連結檢查通過。
+
+程式主段落 `44f9bf4dfdfdc8fbf78909789f876389ec0afcc6` 已推送並核對遠端一致。該次 CI 37955503134 已啟動，結果待實際完成後記錄。

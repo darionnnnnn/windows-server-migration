@@ -97,5 +97,3 @@ try {
     if($junction -and [IO.Directory]::Exists($junction)){[IO.Directory]::Delete([IO.Path]::GetFullPath($junction),$false)}
     if([IO.Directory]::Exists($resolved)){[IO.Directory]::Delete($resolved,$true)}
 }
-
-
