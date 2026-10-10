@@ -19,7 +19,7 @@ function Set-WsmDecision {
         if (-not $PSCmdlet.ShouldProcess($PairId,('Change decisions for '+$ids.Count+' items'))) { return }
         $before=New-Object 'System.Collections.Generic.List[object]'; foreach ($id in $ids) { $i=$index[$id]; $before.Add([pscustomobject]@{ ItemId=$id; Decision=$i.Decision; Reason=$i.Reason; ReviewedBy=$i.ReviewedBy; ReviewedUtc=$i.ReviewedUtc; RuleId=$i.RuleId }) }
         foreach ($id in $ids) { $i=$index[$id]; $i.Decision=$Decision; $i.Reason=$Reason; $i.RuleId=''; $i.ReviewedBy=[Environment]::UserName; $i.ReviewedUtc=Get-WsmUtc }
-        $c.DecisionRevision++; $c.Approval=$null
+        $c.DecisionRevision++; $c.Approval=$null;if($c.SchemaVersion -eq 3){Clear-WsmAssistiveComparison $c}
         $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='Decision'; Before=$before.ToArray(); Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c
         $c
@@ -35,7 +35,7 @@ function Undo-WsmDecision {
         $index=@{}; foreach ($i in $c.Items) { $index[$i.ItemId]=$i }
         foreach ($b in $last[0].Before) { foreach ($f in @('Decision','Reason','ReviewedBy','ReviewedUtc')) { $index[$b.ItemId].$f=$b.$f } }
         foreach ($b in $last[0].Before) { if ($b.PSObject.Properties['RuleId']) { $index[$b.ItemId].RuleId=$b.RuleId } }
-        $c.DecisionRevision++; $c.Approval=$null
+        $c.DecisionRevision++; $c.Approval=$null;if($c.SchemaVersion -eq 3){Clear-WsmAssistiveComparison $c}
         $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='Undo'; Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c; $c
     }
@@ -43,6 +43,7 @@ function Undo-WsmDecision {
 function Get-WsmReviewIssues {
     param([string]$Workspace,[string]$PairId)
     $c=Get-WsmCatalog $Workspace $PairId; $index=@{}; foreach ($i in $c.Items) { $index[$i.ItemId]=$i }
+    if($c.SchemaVersion -eq 3){Get-WsmAssistiveReviewIssues $c;if($c.PSObject.Properties['GeneralHost']){Assert-WsmGeneralHostContract $c | Out-Null};return}
     foreach ($i in $c.Items) {
         if ($i.Decision -eq 'Pending') { [pscustomobject]@{ ItemId=$i.ItemId; Gate='ReviewComplete'; Issue='Decision required' } }
         if (($i.Status -ne 'Success' -or -not $i.Present) -and $i.Decision -ne 'Pending' -and ([string]::IsNullOrWhiteSpace($i.Evidence) -or [string]::IsNullOrWhiteSpace($i.Owner))) { [pscustomobject]@{ ItemId=$i.ItemId; Gate='ReviewComplete'; Issue='Incomplete discovery requires owner and external evidence, even when excluded' } }
@@ -63,7 +64,7 @@ function Set-WsmEvidence {
         $c=Get-WsmCatalog $Workspace $PairId
         if ($c.DecisionRevision -ne $ExpectedRevision) { throw 'Review changed.' }
         $rows=@($c.Items | Where-Object ItemId -CEQ $ItemId); if ($rows.Count -ne 1) { throw 'Unknown ItemId.' }
-        $rows[0].Owner=$Owner; $rows[0].Evidence=$Evidence; $c.DecisionRevision++; $c.Approval=$null
+        $rows[0].Owner=$Owner; $rows[0].Evidence=$Evidence; $c.DecisionRevision++; $c.Approval=$null;if($c.SchemaVersion -eq 3){Clear-WsmAssistiveComparison $c}
         $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='Evidence'; ItemId=$ItemId; Owner=$Owner; Evidence=$Evidence; Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c
     }
@@ -77,7 +78,7 @@ function Set-WsmMapping {
         if ($c.DecisionRevision -ne $ExpectedRevision) { throw 'Review changed.' }
         $rows=@($c.Items | Where-Object ItemId -CEQ $ItemId); if ($rows.Count -ne 1) { throw 'Unknown ItemId.' }
         $field='Mapping'; if ($Type -eq 'Account') { $field='AccountMapping' }; if ($Type -eq 'Endpoint') { $field='EndpointMapping' }
-        $rows[0].$field=$Mapping; $c.DecisionRevision++; $c.Approval=$null
+        $rows[0].$field=$Mapping; $c.DecisionRevision++; $c.Approval=$null;if($c.SchemaVersion -eq 3){Clear-WsmAssistiveComparison $c}
         $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='Mapping'; ItemId=$ItemId; Type=$Type; Mapping=$Mapping; Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c
     }
@@ -115,7 +116,7 @@ function Import-WsmDecisions {
         if (-not $changes.Count) { return $c }
         if (-not $PSCmdlet.ShouldProcess($PairId,('Apply '+$rows.Count+' CSV rows'))) { return }
         $before=New-Object 'System.Collections.Generic.List[object]'; foreach ($r in $changes) { $i=$index[$r.ItemId]; $before.Add([pscustomobject]@{ ItemId=$i.ItemId; Decision=$i.Decision; Reason=$i.Reason; ReviewedBy=$i.ReviewedBy; ReviewedUtc=$i.ReviewedUtc; RuleId=$i.RuleId }); $i.Decision=$r.Decision; $i.Reason=$r.Reason; $i.RuleId=''; $i.ReviewedBy=[Environment]::UserName; $i.ReviewedUtc=Get-WsmUtc }
-        $c.DecisionRevision++; $c.Approval=$null; $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='Decision'; Before=$before.ToArray(); Utc=(Get-WsmUtc) })
+        $c.DecisionRevision++; $c.Approval=$null;if($c.SchemaVersion -eq 3){Clear-WsmAssistiveComparison $c}; $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='Decision'; Before=$before.ToArray(); Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c; $c
     }
 }

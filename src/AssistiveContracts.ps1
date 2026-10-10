@@ -30,6 +30,7 @@ function Assert-WsmAssistiveContract($Data,[ValidateSet('Catalog','MigrationPlan
         $a=$Data.Assistive
         foreach ($field in @('ContractVersion','PairId','Revision','SourceSnapshot','TargetBaseline','TargetCurrent','Comparison','Selections','RestoreDecisionHistory','MaterialReferences','ResultReferences','UpdatedUtc')) { if (-not $a.PSObject.Properties[$field]) { throw (New-WsmContractError ('Assistive catalog missing '+$field+'.')) } }
         if ($a.ContractVersion -ne 1 -or $a.PairId -cne $Data.PairId -or ($a.Revision -isnot [int] -and $a.Revision -isnot [long]) -or $a.Revision -lt 1) { throw (New-WsmContractError 'Invalid Assistive catalog version, pair, or revision.') }
+        if($a.PSObject.Properties['ComparisonRevisionCounter'] -and (($a.ComparisonRevisionCounter -isnot [int] -and $a.ComparisonRevisionCounter -isnot [long]) -or $a.ComparisonRevisionCounter -lt 0)){throw (New-WsmContractError 'Assistive comparison revision counter is invalid.')}
         if($null -eq $a.SourceSnapshot){throw (New-WsmContractError 'Source snapshot is required.')}
         Assert-WsmAssistiveReference $a.SourceSnapshot 'Source snapshot'
         if ($a.SourceSnapshot.InventoryRevision -ne $Data.InventoryRevision -or $a.SourceSnapshot.SHA256 -ine $Data.InventoryHash) { throw (New-WsmContractError 'Assistive source snapshot does not match the catalog inventory.') }
@@ -50,16 +51,40 @@ function Assert-WsmAssistiveContract($Data,[ValidateSet('Catalog','MigrationPlan
         if($a.RestoreDecisionHistory -isnot [array] -or $a.MaterialReferences -isnot [array] -or $a.ResultReferences -isnot [array]){throw (New-WsmContractError 'Assistive history and references must be arrays.')}
         foreach($reference in @($a.MaterialReferences)){Assert-WsmAssistiveReference $reference 'Material'}
         foreach($reference in @($a.ResultReferences)){Assert-WsmAssistiveReference $reference 'Result'}
+        if($a.PSObject.Properties['SoftwareChoices']){
+            if($a.SoftwareChoices -isnot [array]){throw (New-WsmContractError 'Assistive software choices must be an array.')}
+            $choiceIds=@{}
+            foreach($choice in @($a.SoftwareChoices)){
+                Assert-WsmFields $choice @('SoftwareId','SourceVersion','ChosenVersion','Reason','UpdatedUtc') @('SoftwareId','SourceVersion','ChosenVersion','Reason','UpdatedUtc')
+                if([string]$choice.SoftwareId -notmatch '^sw-[a-f0-9]{32}$' -or $choiceIds.ContainsKey([string]$choice.SoftwareId) -or [string]::IsNullOrWhiteSpace([string]$choice.ChosenVersion) -or ([string]$choice.ChosenVersion).Length -gt 128 -or [string]$choice.ChosenVersion -match '[\x00-\x1f]' -or ([string]$choice.ChosenVersion -cne [string]$choice.SourceVersion -and [string]::IsNullOrWhiteSpace([string]$choice.Reason))){throw (New-WsmContractError 'Assistive software choice identity, version, or reason is invalid.')}
+                try{[void][DateTime]::Parse([string]$choice.UpdatedUtc).ToUniversalTime()}catch{throw (New-WsmContractError 'Assistive software choice timestamp is invalid.')}
+                $choiceIds[[string]$choice.SoftwareId]=$true
+            }
+        }
         try{[void][DateTime]::Parse([string]$a.UpdatedUtc).ToUniversalTime()}catch{throw (New-WsmContractError 'Assistive update time is invalid.')}
         return $true
     }
     if ($Kind -eq 'MigrationPlan') {
         if (-not $Data.PSObject.Properties['Assistive']) { throw (New-WsmContractError 'Schema 3 MigrationPlan requires Assistive source policy.') }
         $a=$Data.Assistive
-        foreach($field in @('ContractVersion','PairId','SourceSnapshotHash','SourcePolicy','SourceSelectionsVersion','ApprovedItemIds','MaterialReferences')){if(-not $a.PSObject.Properties[$field]){throw (New-WsmContractError ('MigrationPlan Assistive missing '+$field+'.'))}}
+        foreach($field in @('ContractVersion','PairId','SourceSnapshotHash','SourcePolicy','SourceSelectionsVersion','ApprovedItemIds','MaterialReferences','DiscoveryAuthority')){if(-not $a.PSObject.Properties[$field]){throw (New-WsmContractError ('MigrationPlan Assistive missing '+$field+'.'))}}
         if($a.ContractVersion -ne 1 -or $a.PairId -cne $Data.PairId -or $a.SourceSnapshotHash -ine $Data.InventoryHash -or $a.SourcePolicy -cne 'SourceCOnly' -or ($a.SourceSelectionsVersion -isnot [int] -and $a.SourceSelectionsVersion -isnot [long]) -or $a.SourceSelectionsVersion -lt 1 -or $a.ApprovedItemIds -isnot [array] -or $a.MaterialReferences -isnot [array]){throw (New-WsmContractError 'Invalid sealed MigrationPlan Assistive policy.')}
+        $authority=$a.DiscoveryAuthority
+        Assert-WsmFields $authority @('SourceSnapshotReference','InventoryRevision','SelectionRevision','Dispositions') @('SourceSnapshotReference','InventoryRevision','SelectionRevision','Dispositions')
+        Assert-WsmAssistiveReference $authority.SourceSnapshotReference 'Sealed discovery authority'
+        if($authority.SourceSnapshotReference.SHA256 -ine $a.SourceSnapshotHash -or ($authority.InventoryRevision -isnot [int] -and $authority.InventoryRevision -isnot [long]) -or $authority.InventoryRevision -ne $Data.InventoryRevision -or ($authority.SelectionRevision -isnot [int] -and $authority.SelectionRevision -isnot [long]) -or $authority.SelectionRevision -ne $a.SourceSelectionsVersion -or $authority.Dispositions -isnot [array]){throw (New-WsmContractError 'Sealed discovery authority reference/revision binding is invalid.')}
         $planIds=@{};foreach($item in @($Data.Items)){$planIds[[string]$item.ItemId]=$true}
         $seen=@{};foreach($id in @($a.ApprovedItemIds)){if(-not $planIds.ContainsKey([string]$id) -or $seen.ContainsKey([string]$id)){throw (New-WsmContractError 'Assistive approved items must be a unique subset of the sealed plan.')};$seen[[string]$id]=$true}
+        $dispositions=@{};$expected=@{}
+        foreach($row in @($authority.Dispositions)){
+            Assert-WsmFields $row @('ItemId','Selected','Decision','Reason') @('ItemId','Selected','Decision','Reason')
+            if([string]$row.ItemId -notmatch '^[a-f0-9]{64}$' -or $dispositions.ContainsKey([string]$row.ItemId) -or $row.Selected -isnot [bool] -or @('Pending','Include','Exclude') -cnotcontains [string]$row.Decision){throw (New-WsmContractError 'Sealed discovery disposition is malformed or duplicated.')}
+            $dispositions[[string]$row.ItemId]=$true
+            if($row.Selected -and $row.Decision -ceq 'Include'){$expected[[string]$row.ItemId]=$true}
+        }
+        if($expected.Count -ne $seen.Count){throw (New-WsmContractError 'Approved items do not exactly match the selected Include discovery dispositions.')}
+        foreach($id in $expected.Keys){if(-not $seen.ContainsKey([string]$id)){throw (New-WsmContractError 'Approved items do not exactly match the selected Include discovery dispositions.')}}
+        if($planIds.Count -ne $seen.Count){throw (New-WsmContractError 'Schema 3 plan may contain only selected approved Include items.')}
         foreach($reference in @($a.MaterialReferences)){Assert-WsmAssistiveReference $reference 'Material'}
         return $true
     }
@@ -70,15 +95,15 @@ function New-WsmAssistiveCatalogContract {
     param([Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$SourceReference,[Parameter(Mandatory)][string]$SourceHash,[Parameter(Mandatory)][int]$InventoryRevision,[Parameter(Mandatory)]$Items,$Prior)
     $selections=@{};if($Prior -and $Prior.Selections){foreach($entry in @($Prior.Selections.Items)){$selections[[string]$entry.ItemId]=$entry}}
     $selectionRows=@(foreach($item in @($Items)){$priorSelection=$null;if($selections.ContainsKey([string]$item.ItemId)){$priorSelection=$selections[[string]$item.ItemId]};[pscustomobject][ordered]@{ItemId=[string]$item.ItemId;SourceRevision=$InventoryRevision;Selected=$(if($priorSelection){[bool]$priorSelection.Selected}else{$true});Reason=$(if($priorSelection){[string]$priorSelection.Reason}else{''});UpdatedUtc=(Get-WsmUtc)}})
-    $history=[object[]]@();$materials=[object[]]@();$results=[object[]]@()
-    if($Prior){$history=[object[]]@($Prior.RestoreDecisionHistory);$materials=[object[]]@($Prior.MaterialReferences);$results=[object[]]@($Prior.ResultReferences)}
+    $history=[object[]]@();$materials=[object[]]@();$results=[object[]]@();$choices=[object[]]@()
+    if($Prior){$history=[object[]]@($Prior.RestoreDecisionHistory);$materials=[object[]]@($Prior.MaterialReferences);$results=[object[]]@($Prior.ResultReferences);if($Prior.PSObject.Properties['SoftwareChoices']){$choices=[object[]]@($Prior.SoftwareChoices)}}
     $oldSource=$null;if($Prior -and $Prior.SourceSnapshot -and $Prior.SourceSnapshot.SHA256 -ieq $SourceHash){$oldSource=$Prior.SourceSnapshot}
     [pscustomobject][ordered]@{
-        ContractVersion=1;PairId=$PairId;Revision=$(if($Prior){[int]$Prior.Revision+1}else{1})
+        ContractVersion=1;PairId=$PairId;Revision=$(if($Prior){[int]$Prior.Revision+1}else{1});ComparisonRevisionCounter=$(if($Prior -and $Prior.PSObject.Properties['ComparisonRevisionCounter']){[int]$Prior.ComparisonRevisionCounter}elseif($Prior -and $Prior.Comparison){[int]$Prior.Comparison.Revision}else{0})
         SourceSnapshot=[pscustomobject][ordered]@{Reference=$SourceReference;SHA256=$SourceHash.ToLowerInvariant();InventoryRevision=$InventoryRevision;CreatedUtc=(Get-WsmUtc)}
         TargetBaseline=$(if($Prior){$Prior.TargetBaseline}else{$null});TargetCurrent=$(if($Prior){$Prior.TargetCurrent}else{$null});Comparison=$(if($Prior -and $Prior.SourceSnapshot.SHA256 -ieq $SourceHash){$Prior.Comparison}else{$null})
         Selections=[pscustomobject][ordered]@{Revision=$(if($Prior -and $Prior.Selections){[int]$Prior.Selections.Revision+1}else{1});Items=$selectionRows}
-        RestoreDecisionHistory=$history;MaterialReferences=$materials;ResultReferences=$results;UpdatedUtc=(Get-WsmUtc)
+        RestoreDecisionHistory=$history;MaterialReferences=$materials;ResultReferences=$results;SoftwareChoices=$choices;UpdatedUtc=(Get-WsmUtc)
     }
 }
 
@@ -88,7 +113,9 @@ function New-WsmAssistiveMigrationPlanContract {
     $planIds=@{};foreach($item in @($Plan.Items)){$planIds[[string]$item.ItemId]=$true}
     $selected=@($Catalog.Assistive.Selections.Items | Where-Object {$_.Selected -and $planIds.ContainsKey([string]$_.ItemId)} | ForEach-Object {[string]$_.ItemId} | Sort-Object -Unique)
     $Plan.SchemaVersion=3;$Plan.ToolVersion='0.4.0'
-    $Plan | Add-Member NoteProperty Assistive ([pscustomobject][ordered]@{ContractVersion=1;PairId=[string]$Catalog.PairId;SourceSnapshotHash=[string]$Catalog.Assistive.SourceSnapshot.SHA256;SourcePolicy='SourceCOnly';SourceSelectionsVersion=[int]$Catalog.Assistive.Selections.Revision;ApprovedItemIds=$selected;MaterialReferences=@($Catalog.Assistive.MaterialReferences)}) -Force
+    $dispositions=@(foreach($item in @($Catalog.Items)){$selection=@($Catalog.Assistive.Selections.Items | Where-Object ItemId -CEQ $item.ItemId);if($selection.Count -ne 1){throw 'Every sealed discovery disposition requires one source selection.'};[pscustomobject][ordered]@{ItemId=[string]$item.ItemId;Selected=[bool]$selection[0].Selected;Decision=[string]$item.Decision;Reason=[string]$item.Reason}})
+    $authority=[pscustomobject][ordered]@{SourceSnapshotReference=$Catalog.Assistive.SourceSnapshot;InventoryRevision=[int]$Catalog.InventoryRevision;SelectionRevision=[int]$Catalog.Assistive.Selections.Revision;Dispositions=$dispositions}
+    $Plan | Add-Member NoteProperty Assistive ([pscustomobject][ordered]@{ContractVersion=1;PairId=[string]$Catalog.PairId;SourceSnapshotHash=[string]$Catalog.Assistive.SourceSnapshot.SHA256;SourcePolicy='SourceCOnly';SourceSelectionsVersion=[int]$Catalog.Assistive.Selections.Revision;ApprovedItemIds=$selected;MaterialReferences=@($Catalog.Assistive.MaterialReferences);DiscoveryAuthority=$authority}) -Force
     Assert-WsmAssistiveContract $Plan MigrationPlan | Out-Null
     $Plan
 }
@@ -151,7 +178,7 @@ function Set-WsmAssistiveSelections {
         $unique=@{};foreach($id in $ItemIds){if(-not $known.ContainsKey([string]$id) -or $unique.ContainsKey([string]$id)){throw 'Selection request contains an unknown or duplicate ItemId.'};$unique[[string]$id]=$true}
         foreach($id in $unique.Keys){$known[$id].Selected=$Selected;$known[$id].Reason=$Reason;$known[$id].UpdatedUtc=Get-WsmUtc}
         $catalog.Assistive.Selections.Items=@($catalog.Assistive.Selections.Items)
-        $catalog.Assistive.Selections.Revision++;$catalog.Assistive.Revision++;$catalog.Assistive.UpdatedUtc=Get-WsmUtc
+        $catalog.Assistive.Selections.Revision++;Clear-WsmAssistiveComparison $catalog
         $catalog.DecisionRevision++;$catalog.Approval=$null
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $catalog
         Assert-WsmAssistiveContract $catalog Catalog | Out-Null;$catalog

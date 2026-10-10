@@ -49,7 +49,7 @@ function Invoke-WsmReviewRule {
         $ruleId=[Guid]::NewGuid().ToString(); $before=New-Object 'System.Collections.Generic.List[object]'
         foreach ($i in $rows) { $before.Add([pscustomobject]@{ ItemId=$i.ItemId; Decision=$i.Decision; Reason=$i.Reason; ReviewedBy=$i.ReviewedBy; ReviewedUtc=$i.ReviewedUtc; RuleId=$i.RuleId }); $i.Decision=$Decision; $i.Reason=$Reason; $i.RuleId=$ruleId; $i.ReviewedBy=[Environment]::UserName; $i.ReviewedUtc=Get-WsmUtc }
         $rule=[pscustomobject]@{ RuleId=$ruleId; Category=$Category; Search=$Search; CurrentDecision=$CurrentDecision; BuiltIn=$BuiltIn; ApplicationGroup=$Group; Decision=$Decision; Reason=$Reason; Matched=$rows.Count; Utc=(Get-WsmUtc); AutoApplyOnRescan=$false }
-        $c.DecisionRevision++; $c.Approval=$null; $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='Decision'; Before=$before.ToArray(); Rule=$rule; Utc=(Get-WsmUtc) })
+        $c.DecisionRevision++; $c.Approval=$null;if($c.SchemaVersion -eq 3){Clear-WsmAssistiveComparison $c}; $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='Decision'; Before=$before.ToArray(); Rule=$rule; Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c; $rule
     }
 }
@@ -63,7 +63,7 @@ function Add-WsmManualItem {
         $i=Get-WsmReviewDefaults $i
         foreach ($kv in @{ Decision='Pending'; Reason=''; ReviewedBy=''; ReviewedUtc=''; Present=$true }.GetEnumerator()) { $i | Add-Member NoteProperty $kv.Key $kv.Value }
         $i.ManualEntry=$true; $i.Owner=$Owner; $i.Evidence=$Evidence
-        $c.Items=@($c.Items)+@($i); $c.DecisionRevision++; $c.Approval=$null
+        $c.Items=@($c.Items)+@($i);if($c.SchemaVersion -eq 3){$c.Assistive.Selections.Items=@($c.Assistive.Selections.Items)+@([pscustomobject]@{ItemId=$i.ItemId;SourceRevision=[int]$c.InventoryRevision;Selected=$true;Reason='New manual discovery defaults selected; approval remains separate.';UpdatedUtc=(Get-WsmUtc)});$c.Assistive.Selections.Revision++;Clear-WsmAssistiveComparison $c}; $c.DecisionRevision++; $c.Approval=$null
         $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='ManualItem'; ItemId=$i.ItemId; Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c; $i
     }
@@ -73,7 +73,7 @@ function Set-WsmReviewMetadata {
     Invoke-WsmLocked $Workspace {
         $c=Get-WsmCatalog $Workspace $PairId; if ($c.DecisionRevision -ne $ExpectedRevision) { throw 'Review changed.' }
         $rows=@($c.Items | Where-Object ItemId -CEQ $ItemId); if ($rows.Count -ne 1) { throw 'Unknown item.' }
-        $rows[0].ApplicationGroup=$ApplicationGroup; $rows[0].BuiltIn=$BuiltIn; $c.DecisionRevision++; $c.Approval=$null
+        $rows[0].ApplicationGroup=$ApplicationGroup; $rows[0].BuiltIn=$BuiltIn; $c.DecisionRevision++; $c.Approval=$null;if($c.SchemaVersion -eq 3){Clear-WsmAssistiveComparison $c}
         $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='Metadata'; ItemId=$ItemId; ApplicationGroup=$ApplicationGroup; BuiltIn=$BuiltIn; Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c
     }
@@ -85,7 +85,7 @@ function Set-WsmDependencies {
         $rows=@($c.Items | Where-Object ItemId -CEQ $ItemId); if ($rows.Count -ne 1) { throw 'Unknown item.' }
         $seen=@{}; foreach ($d in $Dependencies) { if ($d.ItemId -notmatch '^[a-f0-9]{64}$' -or @('Mandatory','Optional','External') -cnotcontains $d.Type -or $seen.ContainsKey($d.ItemId)) { throw 'Invalid or duplicate dependency.' }; $seen[$d.ItemId]=$true }
         $rows[0].Dependencies=@($Dependencies); $rows[0].Decision='Pending'; $rows[0].Reason='Dependencies changed; review required.'
-        $c.DecisionRevision++; $c.Approval=$null; $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='Dependencies'; ItemId=$ItemId; Utc=(Get-WsmUtc) })
+        $c.DecisionRevision++; $c.Approval=$null;if($c.SchemaVersion -eq 3){Clear-WsmAssistiveComparison $c}; $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='Dependencies'; ItemId=$ItemId; Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c
     }
 }
@@ -109,7 +109,7 @@ function Set-WsmConsistencyGroup {
         $c=Get-WsmCatalog $Workspace $PairId; if ($c.DecisionRevision -ne $ExpectedRevision) { throw 'Review changed.' }
         $index=@{}; foreach ($i in $c.Items) { $index[$i.ItemId]=$i }; foreach ($id in $ItemId) { if (-not $index.ContainsKey($id)) { throw 'Unknown item.' } }
         foreach ($id in $ItemId) { $i=$index[$id]; $i.ConsistencyGroup=$Name; $i.ConsistencyOwner=$Owner; $i.ConsistencyEvidence=$Evidence }
-        $c.DecisionRevision++; $c.Approval=$null; $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='ConsistencyGroup'; Items=@($ItemId); Name=$Name; Owner=$Owner; Evidence=$Evidence; Utc=(Get-WsmUtc) })
+        $c.DecisionRevision++; $c.Approval=$null;if($c.SchemaVersion -eq 3){Clear-WsmAssistiveComparison $c}; $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='ConsistencyGroup'; Items=@($ItemId); Name=$Name; Owner=$Owner; Evidence=$Evidence; Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c
     }
 }

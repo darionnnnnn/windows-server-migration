@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force
 $testModule=Get-Module WindowsServerMigration
@@ -41,7 +41,7 @@ try {
     Reject {Assert-WsmAssistiveContract $stale Catalog} 'Stale selection source revision was accepted.'
     $missing=Get-WsmCatalog $workspace $catalog.PairId;$missing.Assistive.SourceSnapshot=$null
     Reject {Assert-WsmAssistiveContract $missing Catalog} 'Missing source snapshot was accepted.'
-    $plan=[pscustomobject][ordered]@{SchemaVersion=3;ToolVersion='0.4.0';Kind='MigrationPlan';PairId=$catalog2.PairId;InventoryHash=$inventoryHash2;Items=@([pscustomobject]@{ItemId=$item2.ItemId});Assistive=[pscustomobject][ordered]@{ContractVersion=1;PairId=$catalog2.PairId;SourceSnapshotHash=$inventoryHash2;SourcePolicy='SourceCOnly';SourceSelectionsVersion=[int]$catalog2.Assistive.Selections.Revision;ApprovedItemIds=@($item2.ItemId);MaterialReferences=@()}}
+    $plan=[pscustomobject][ordered]@{SchemaVersion=3;ToolVersion='0.4.0';Kind='MigrationPlan';PairId=$catalog2.PairId;InventoryHash=$inventoryHash2;InventoryRevision=[int]$catalog2.InventoryRevision;Items=@([pscustomobject]@{ItemId=$item2.ItemId});Assistive=[pscustomobject][ordered]@{ContractVersion=1;PairId=$catalog2.PairId;SourceSnapshotHash=$inventoryHash2;SourcePolicy='SourceCOnly';SourceSelectionsVersion=[int]$catalog2.Assistive.Selections.Revision;ApprovedItemIds=@($item2.ItemId);MaterialReferences=@();DiscoveryAuthority=[pscustomobject][ordered]@{SourceSnapshotReference=$catalog2.Assistive.SourceSnapshot;InventoryRevision=[int]$catalog2.InventoryRevision;SelectionRevision=[int]$catalog2.Assistive.Selections.Revision;Dispositions=@([pscustomobject]@{ItemId=$item1.ItemId;Selected=$false;Decision='Pending';Reason=''},[pscustomobject]@{ItemId=$item2.ItemId;Selected=$true;Decision='Include';Reason='approved'})}}}
     Assert-WsmEnvelope $plan MigrationPlan
     Reject { $oldReader=$plan.PSObject.Copy();$oldReader.ToolVersion='0.3.0';Assert-WsmEnvelope $oldReader MigrationPlan } 'Legacy tool version accepted schema 3.'
     Reject { $bad=ConvertFrom-Json ($plan|ConvertTo-Json -Depth 30);$bad.Assistive.ApprovedItemIds=@($item1.ItemId);Assert-WsmAssistiveContract $bad MigrationPlan } 'Sealed plan accepted an item outside its plan subset.'

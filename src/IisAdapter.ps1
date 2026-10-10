@@ -3,8 +3,95 @@
     New-Object Microsoft.Web.Administration.ServerManager
 }
 function Get-WsmIisState($Spec) {
+    if($Spec.Adapter -in @('IISSection','IISLocation')){return Get-WsmIisConfigState $Spec}
     $m=New-WsmIisManager
     try { $collection=$m.Sites; if($Spec.Adapter -eq 'IISPool'){$collection=$m.ApplicationPools}; $object=$collection[$Spec.Desired.Name]; if(-not $object){return [pscustomobject]@{Exists=$false}}; [pscustomobject]@{Exists=$true; State=[string]$object.State; Configuration=(Get-WsmIisElementSnapshot $object)} } finally{$m.Dispose()}
+}
+function Get-WsmIisConfigState($Spec) {
+    $manager=New-WsmIisManager
+    try {
+        $configuration=$manager.GetApplicationHostConfiguration();$desired=$Spec.Desired
+        $section=$null
+        if($Spec.Adapter -eq 'IISLocation'){$section=$configuration.GetSection([string]$desired.SectionPath,[string]$desired.LocationPath)}else{$section=$configuration.GetSection([string]$desired.SectionPath)}
+        if($null -eq $section){return [pscustomobject]@{Exists=$false;Xml='';SectionPath=$desired.SectionPath;LocationPath=$desired.LocationPath}}
+        $xml=[string]$section.SectionInformation.GetRawXml()
+        if(-not $xml){$xml='<'+([string]$desired.SectionPath -split '/')[-1]+'/>'}
+        [pscustomobject]@{Exists=$true;Xml=$xml;SectionPath=[string]$desired.SectionPath;LocationPath=[string]$desired.LocationPath}
+    } finally {$manager.Dispose()}
+}
+
+function Split-WsmIisFieldPointer([string]$Pointer) {
+    $parts=New-Object 'System.Collections.Generic.List[string]';$buffer=New-Object Text.StringBuilder;$predicate=$false;$quoted=$false
+    foreach($character in $Pointer.TrimStart('/').ToCharArray()){
+        if($character -eq "'" -and $predicate){$quoted=-not $quoted}
+        if($character -eq '[' -and -not $quoted){$predicate=$true}
+        elseif($character -eq ']' -and -not $quoted){$predicate=$false}
+        if($character -eq '/' -and -not $predicate -and -not $quoted){$parts.Add($buffer.ToString());[void]$buffer.Clear()}else{[void]$buffer.Append($character)}
+    }
+    if($predicate -or $quoted){throw 'IIS field pointer has an unterminated key predicate.'};$parts.Add($buffer.ToString());$parts.ToArray()
+}
+function Get-WsmIisPointerNode($Document,[string]$Pointer,[switch]$AllowMissingLeaf) {
+    $parts=@(Split-WsmIisFieldPointer $Pointer);$current=$Document.DocumentElement
+    if(-not $current -or $current.LocalName -cne [regex]::Match($parts[0], '^[^\[]+').Value){throw 'IIS field pointer root does not match selected section.'}
+    for($i=1;$i -lt $parts.Count;$i++){
+        $part=$parts[$i];if($part.StartsWith('@')){return [pscustomobject]@{Node=$current;AttributeName=$part.Substring(1)}}
+        $name=$part;$keys=@{}
+        if($part -match '^([^\[]+)\[@([^=]+)=\x27(.*)\x27\]$'){$name=$Matches[1];$keyName=$Matches[2];$keyValue=[System.Net.WebUtility]::HtmlDecode($Matches[3]);$keys[$keyName]=$keyValue}elseif($part.Contains('[')){throw 'Unsupported IIS field pointer predicate.'}
+        $matches=New-Object 'System.Collections.Generic.List[object]'
+        foreach($child in $current.ChildNodes){if($child.NodeType -ne [Xml.XmlNodeType]::Element -or $child.LocalName -cne $name){continue};$keyMatch=$true;foreach($keyName in $keys.Keys){$keyAttribute=$child.Attributes[[string]$keyName];if(-not $keyAttribute -or [string]$keyAttribute.Value -cne [string]$keys[$keyName]){$keyMatch=$false;break}};if($keyMatch){$matches.Add($child)}}
+        if($matches.Count -eq 0 -and $AllowMissingLeaf -and $i -eq $parts.Count-1){return [pscustomobject]@{Node=$current;MissingName=$name;KeyAttributes=$keys}}
+        if($matches.Count -ne 1){throw 'IIS field pointer is absent or ambiguous in current configuration.'};$current=$matches[0]
+    }
+    [pscustomobject]@{Node=$current;AttributeName=''}
+}
+
+function Set-WsmIisConfigChanges($Document,$Changes) {
+    foreach($change in @($Changes)){
+        $pointer=[string]$change.FieldPointer
+        if($change.Operation -eq 'SetAttribute'){
+            $resolved=Get-WsmIisPointerNode $Document $pointer
+            $attribute=$resolved.Node.Attributes[[string]$change.AttributeName]
+            if(-not $attribute -or [string]$attribute.Value -cne [string]$change.BeforeValue){throw 'IIS config SetAttribute precondition differs from observed target XML.'}
+            $attribute.Value=[string]$change.AfterValue
+        }elseif($change.Operation -eq 'AddElement'){
+            $parent=Get-WsmIisPointerNode $Document $pointer
+            if($parent.AttributeName){throw 'IIS AddElement pointer must identify a collection element.'}
+            $fragment=New-Object System.Xml.XmlDocument;$fragment.XmlResolver=$null;$fragment.LoadXml([string]$change.AfterValue)
+            $same=@($parent.Node.ChildNodes | Where-Object {$_.NodeType -eq [Xml.XmlNodeType]::Element -and $_.LocalName -ceq $fragment.DocumentElement.LocalName -and (ConvertTo-WsmXmlComparable $_) -ceq (ConvertTo-WsmXmlComparable $fragment.DocumentElement)})
+            if($same.Count){throw 'IIS AddElement target already exists; refusing an ambiguous append.'}
+            [void]$parent.Node.AppendChild($Document.ImportNode($fragment.DocumentElement,$true))
+        }elseif($change.Operation -eq 'RemoveElement'){
+            $resolved=Get-WsmIisPointerNode $Document $pointer
+            if($resolved.AttributeName -or $resolved.Node.LocalName -cne [string]$change.ElementName){throw 'IIS RemoveElement pointer does not identify the declared element.'}
+            $fragment=New-Object System.Xml.XmlDocument;$fragment.XmlResolver=$null;$fragment.LoadXml([string]$change.BeforeValue)
+            if((ConvertTo-WsmXmlComparable $resolved.Node) -cne (ConvertTo-WsmXmlComparable $fragment.DocumentElement)){throw 'IIS RemoveElement precondition differs from observed target XML.'}
+            [void]$resolved.Node.ParentNode.RemoveChild($resolved.Node)
+        }else{throw 'Unsupported IIS configuration change.'}
+    }
+    $Document
+}
+
+function Invoke-WsmIisConfigRestore($Spec) {
+    $before=Get-WsmIisConfigState $Spec
+    if(-not $before.Exists){throw 'Selected IIS configuration section is unavailable on the target.'}
+    $document=Read-WsmXml $before.Xml
+    $updated=Set-WsmIisConfigChanges $document @($Spec.Desired.Changes)
+    $targetXml=$updated.OuterXml
+    $desired=Read-WsmXml ([string]$Spec.Desired.Xml)
+    if((ConvertTo-WsmXmlComparable $updated.DocumentElement) -cne (ConvertTo-WsmXmlComparable $desired.DocumentElement)){throw 'Applied IIS config changes do not equal the reviewed typed Desired.Xml fragment.'}
+    $manager=New-WsmIisManager
+    try{$config=$manager.GetApplicationHostConfiguration();if($Spec.Adapter -eq 'IISLocation'){$section=$config.GetSection([string]$Spec.Desired.SectionPath,[string]$Spec.Desired.LocationPath)}else{$section=$config.GetSection([string]$Spec.Desired.SectionPath)};$section.SectionInformation.SetRawXml($targetXml);$manager.CommitChanges()}finally{$manager.Dispose()}
+    [pscustomobject]@{PriorXml=$before.Xml;DesiredXml=$targetXml;Readback=(Get-WsmIisConfigState $Spec)}
+}
+function Restore-WsmIisConfigPriorXml($Spec,[string]$PriorXml) {
+    if([string]::IsNullOrWhiteSpace($PriorXml)){throw 'Exact prior IIS section XML is unavailable; retain current state and reconcile manually.'}
+    $current=Get-WsmIisConfigState $Spec;$expected=Read-WsmXml ([string]$Spec.Desired.Xml)
+    if(-not $current.Exists -or (ConvertTo-WsmXmlComparable (Read-WsmXml $current.Xml).DocumentElement) -cne (ConvertTo-WsmXmlComparable $expected.DocumentElement)){throw 'IIS section/location drifted from the exact staged desired state; rollback refused.'}
+    $manager=New-WsmIisManager
+    try{$config=$manager.GetApplicationHostConfiguration();if($Spec.Adapter -eq 'IISLocation'){$section=$config.GetSection([string]$Spec.Desired.SectionPath,[string]$Spec.Desired.LocationPath)}else{$section=$config.GetSection([string]$Spec.Desired.SectionPath)};$section.SectionInformation.SetRawXml($PriorXml);$manager.CommitChanges()}finally{$manager.Dispose()}
+    $readback=Get-WsmIisConfigState $Spec;$prior=Read-WsmXml $PriorXml
+    if(-not $readback.Exists -or (ConvertTo-WsmXmlComparable (Read-WsmXml $readback.Xml).DocumentElement) -cne (ConvertTo-WsmXmlComparable $prior.DocumentElement)){throw 'IIS prior configuration did not pass native readback after rollback.'}
+    $readback
 }
 function Get-WsmIisElementSnapshot($Element) {
     $attributes=[ordered]@{}; foreach($a in $Element.Attributes){$attributes[$a.Name]=[string]$a.Value}
