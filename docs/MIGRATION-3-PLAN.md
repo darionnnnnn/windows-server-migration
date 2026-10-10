@@ -692,3 +692,9 @@ Luna high 各自實作兩個 fixture；主代理查 diff 後分別獨立在 WinP
 完整遠端基準 `aeaeee3439f989a0a696600bad892b849565a6bc` 的 [CI 38075326191](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38075326191) 六個工作全部成功，含 fixtures、delta、第2輪兩引擎、第3輪兩引擎及Node UI。最後表單／文件段另以當輪dev提交的Checks核對，不能拿舊CI冒稱新增表單已在遠端測過。最終文件另由HtmlDocumentation、Qualification、Encoding雙引擎及實際ZIP相對連結／bytes投影檢查；發行包仍未企業簽章、未取得production資格。
 
 最終文件交付核驗：HtmlDocumentation（13 checks）、Qualification 與 ScriptEncoding 在 WinPS5.1／PS7 共6次PASS；ScriptEncoding涵蓋188個runtime/test/入口。實際ToolRelease ZIP核對15個HTML頁面、80個包內相對連結、108個程式／文件檔案前後hash一致及archive未收錄，ToolFingerprint=902fa7a5b0396ae19136b1d66b5adba9b2b62b7922d8e6fd92b7ef1269298c8f，Signed=false／ProductionVerified=false。最終ZIP bytes hash由專案外delivery-proof日誌保存，不在包內寫入自身hash形成循環。
+
+### 連續審閱的表單草稿修正 — 2026-10-11
+
+主代理反查發現同一SaveSpecReview操作按Action保留草稿，另一項目預填只填目前存在的鍵，會殘留前一FileScope的AclControlPolicy／TargetPath及進階ReviewedTargetXmlPath/Hash。明確按本項預填現先保存一般操作草稿，再清除本次審閱操作舊草稿、建立乾淨表單並填入本項投影；普通action切換仍保存草稿，成功公告說明替換範圍。Luna high實作兩個JS檔，主代理查diff後獨立Node17/17及JS syntax PASS；隔離副本僅取消fresh-prefill呼叫，精確在跨項目DOM反例失敗（舊AclControlPolicy／TargetPath仍存在，其他16項PASS），證明測試能抓舊問題。不修改核心核准／CAS／ACL讀回，也不加入新確認流程。
+
+此段主代理另於實際工作區通過HtmlConsole／HtmlDocumentation／Qualification／ScriptEncoding各兩引擎共8次PASS，最終ZIP重新核對15HTML／80相對連結／108檔案hash、archive排除及未簽章／未正式資格；程式指紋cdaaadaeb543536c238488aa1b8cbbef862e5790175c1824c131ad4280f9b8db。前段b0e37e4的遠端第三輪兩引擎及Node16已成功，不能代替本次新增DOM17的遠端驗證；完整PowerShell廣域快照與此JS差異的定向證據分開保存。

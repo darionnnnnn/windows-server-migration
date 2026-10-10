@@ -12,19 +12,41 @@ const htmlSource = fs.readFileSync(path.join(root, 'src/ui/index.html'), 'utf8')
 const operationsSource = fs.readFileSync(path.join(root, 'src/OperationRequests.ps1'), 'utf8');
 const htmlConsoleSource = fs.readFileSync(path.join(root, 'src/HtmlConsole.ps1'), 'utf8');
 
-function makeApp(fetchImpl) {
+function makeApp(fetchImpl, useDom = false) {
   const elements = new Map();
+  function makeElement(tagName = 'div') {
+    return {
+      tagName: tagName.toUpperCase(), children: [], dataset: {}, attributes: {}, className: '', classList: { toggle() {}, add() {}, remove() {} }, get lastElementChild() { return this.children[this.children.length - 1] || null; }, get lastChild() { return this.children[this.children.length - 1] || null; },
+      appendChild(node) { this.children.push(node); node.parentNode = this; return node; },
+      append(...nodes) { nodes.forEach(node => this.appendChild(node)); },
+      replaceChildren(...nodes) { this.children.forEach(node => { node.parentNode = null; }); this.children = []; this.append(...nodes); },
+      insertBefore(node, before) { const index = before ? this.children.indexOf(before) : -1; if (index < 0) this.appendChild(node); else { this.children.splice(index, 0, node); node.parentNode = this; } return node; },
+      remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(node => node !== this); this.parentNode = null; },
+      setAttribute(name, value) { this.attributes[name] = String(value); }, removeAttribute(name) { delete this.attributes[name]; },
+      focus() {}, scrollIntoView() {},
+      querySelector(selector) { return this.querySelectorAll(selector)[0] || null; },
+      querySelectorAll(selector) {
+        const found = [], matches = node => selector === '[data-type]' ? node.dataset && node.dataset.type : selector === '[data-rows]' ? node.dataset && node.dataset.rows === 'true' : selector === 'input' ? node.tagName === 'INPUT' : selector === '.collection-row' ? /(^|\s)collection-row(\s|$)/.test(node.className || '') : selector === '.collection-row input' ? false : false;
+        const visit = node => { for (const child of node.children || []) { if (matches(child)) found.push(child); visit(child); } };
+        if (selector === '.collection-row input') { const rows = []; const collectRows = node => { for (const child of node.children || []) { if (/(^|\s)collection-row(\s|$)/.test(child.className || '')) rows.push(child); collectRows(child); } }; collectRows(this); rows.forEach(row => found.push(...row.querySelectorAll('input'))); return found; }
+        visit(this); return found;
+      }
+    };
+  }
+  const makeNode = useDom ? makeElement : null;
   const document = {
     addEventListener() {},
-    getElementById(id) { if (!elements.has(id)) elements.set(id, { textContent: '', hidden: false, focus() {}, replaceChildren() {}, appendChild() {} }); return elements.get(id); },
+    getElementById(id) { if (makeNode) { const find = node => { if (node.id === id) return node; for (const child of node.children || []) { const found = find(child); if (found) return found; } return null; }; for (const root of elements.values()) { const found = find(root); if (found) return found; } } if (!elements.has(id)) { const node = makeNode ? makeNode() : { textContent: '', hidden: false, focus() {}, replaceChildren() {}, appendChild() {} }; node.id = id; elements.set(id, node); } return elements.get(id); },
     querySelectorAll() { return []; },
     querySelector() { return null; },
-    createElement() { return { appendChild() {}, setAttribute() {}, replaceChildren() {}, classList: { toggle() {} } }; }
+    createElement(tagName) { return makeNode ? makeNode(tagName) : { appendChild() {}, setAttribute() {}, replaceChildren() {}, classList: { toggle() {} } }; }
   };
   const window = { addEventListener() {} };
-  const context = { window, document, fetch: fetchImpl, URLSearchParams, encodeURIComponent, crypto: require('node:crypto').webcrypto, Date, Math, Set, Map, Object, Array, String, Number, Promise, history: { replaceState() {} }, location: { hash: '' }, Option: function Option(text, value) { this.text = text; this.value = value; } };
+  const context = { window, document, fetch: fetchImpl, URLSearchParams, encodeURIComponent, crypto: require('node:crypto').webcrypto, Date, Math, Set, Map, Object, Array, String, Number, Promise, history: { replaceState() {} }, location: { hash: '', origin: 'http://localhost' }, setInterval, clearInterval, Option: function Option(text, value) { this.text = text; this.value = value; this.dataset = {}; this.children = []; } };
   vm.runInNewContext(appSource, context, { filename: 'console.js' });
-  return window.WsmConsole;
+  const app = window.WsmConsole;
+  if (useDom) { app.__testElements = elements; app.__getElement = id => document.getElementById(id); }
+  return app;
 }
 
 test('typed metadata covers arrays, maps, objects and object arrays without raw JSON fields', () => {
@@ -245,6 +267,48 @@ test('spec review projection is allowlisted and strips secret and raw workload f
   assert.match(htmlConsoleSource, /AclControlPolicy=@\{type='enum';options=@\('Exact','AllowAutoInheritedUpgrade'\);description=/);
   assert.doesNotMatch(htmlConsoleSource, /AclControlPolicy=@\{type='enum';options=@\([^}]*'AllowAutoInheritedUpgrade'[^}]*'AllowAutoInheritedUpgrade'/);
   assert.doesNotMatch(appSource, /Fields:\s*\{\s*TypedFields/);
+});
+
+test('spec review prefill replaces the prior item form while ordinary action switching keeps its draft', () => {
+  const fields = { type: 'object', schema: { properties: {
+    TargetPath: { type: 'path' }, AclControlPolicy: { type: 'enum', options: ['Exact', 'AllowAutoInheritedUpgrade'] }, Product: { type: 'string' }
+  } } };
+  const actions = [
+    { action: 'SaveSpecReview', parameters: [
+      { name: 'ItemId', type: 'string' }, { name: 'ExpectedDecisionRevision', type: 'integer' }, { name: 'ExpectedAssistiveRevision', type: 'integer' },
+      { name: 'ExpectedSelectionRevision', type: 'integer' }, { name: 'Owner', type: 'string' }, { name: 'Evidence', type: 'string' },
+      { name: 'Fields', ...fields }, { name: 'ReviewedTargetXmlPath', type: 'path' }, { name: 'ReviewedTargetXmlHash', type: 'string' }
+    ] },
+    { action: 'SpecReview', parameters: [{ name: 'ItemId', type: 'string' }] }
+  ];
+  const ui = makeApp(async () => ({ ok: true, status: 200, json: async () => ({ actions }) }), true);
+  ui.state.actions = actions;
+  const param = index => ui.__getElement(`param-${index}`), fieldsControl = () => param(6), fieldControl = key => {
+    const wrap = fieldsControl().children.find(child => child.dataset.objectKey === key);
+    return wrap && wrap.querySelector('[data-type]');
+  };
+  const fileReview = { ItemId: 'file-item', Adapter: 'FileScope', DecisionRevision: 8, AssistiveRevision: 3, SelectionRevision: 4, Owner: 'file owner', Evidence: 'file ACL review', TypedFields: { TargetPath: 'D:\\file-target', AclControlPolicy: 'AllowAutoInheritedUpgrade' } };
+  assert.equal(ui.prefillSpecReview(fileReview), true);
+  assert.match(ui.__getElement('notice').textContent, /已以本項審閱取代先前表單草稿及進階 XML 引用/);
+  assert.equal(param(0).value, 'file-item');
+  assert.equal(fieldControl('TargetPath').value, 'D:\\file-target');
+  assert.equal(fieldControl('AclControlPolicy').value, 'AllowAutoInheritedUpgrade');
+
+  param(7).value = 'C:\\private\\reviewed-target.xml';
+  param(8).value = 'a'.repeat(64);
+  ui.setAction('SpecReview');
+  ui.setAction('SaveSpecReview');
+  assert.equal(fieldControl('AclControlPolicy').value, 'AllowAutoInheritedUpgrade');
+  assert.equal(param(7).value, 'C:\\private\\reviewed-target.xml');
+
+  const taskReview = { ItemId: 'task-item', Adapter: 'ScheduledTask', DecisionRevision: 9, AssistiveRevision: 3, SelectionRevision: 4, Owner: 'task owner', Evidence: 'task review', TypedFields: { Product: 'Fixture task' } };
+  assert.equal(ui.prefillSpecReview(taskReview), true);
+  const args = JSON.parse(JSON.stringify(ui.collectArgs(false)));
+  assert.deepEqual(args.Fields, { Product: 'Fixture task' });
+  assert.equal(args.ItemId, 'task-item');
+  assert.equal(args.ReviewedTargetXmlPath, undefined);
+  assert.equal(args.ReviewedTargetXmlHash, undefined);
+  assert.equal(ui.state.drafts.get('SaveSpecReview').Fields.AclControlPolicy, undefined);
 });
 
 test('requirement review draft binds the exact safe rows and keeps confirmation fields blank', () => {
