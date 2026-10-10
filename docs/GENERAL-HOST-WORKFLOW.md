@@ -2,6 +2,8 @@
 
 本流程供受控隔離 pilot。Windows Server、Oracle 實際帳號／產品、企業 PKI 與業務驗收仍需外部實機證據；本機 fixture 通過不等於正式上線資格。所有主機使用相同工具 bytes，以系統管理員的 64 位元 Windows PowerShell 5.1 執行。
 
+第 3 輪已定義全新 Windows 目標、非 Windows 軟體同來源版本、程式維護 JSON 比較，以及還原前選擇直接還原或等待人工補裝。新直接還原將保留待軟體項與續跑，不代表業務立即可用；目前尚未實作，現行以下流程仍依既有準備門檻。規劃與相依影響見 [MIGRATION-3-PLAN.md](MIGRATION-3-PLAN.md)。
+
 ## 工作目錄與交付
 
 首次在來源指定 WorkRoot（主選單 1）；工具註冊穩定 HostId 與 source-state，輸出 inventory 並包含全部已發現軟體及 coverage。管理端使用自己的 workspace。目標角色精靈先註冊自己的 WorkRoot，再使用穩定 target identity 與 pairs 狀態。不要把來源 state 複製為目標 state，也不要在失敗後換 attempt 以重建 operation state。

@@ -2,7 +2,7 @@
 
 - 流程：完整；本輪先討論 [MIGRATION-3-PLAN.md](docs/MIGRATION-3-PLAN.md)，全部 R3 Phase 待實作，不從規劃指示推論已授權開發。現行能力與外部待驗收見 [IMPLEMENTATION-0.1.md](docs/IMPLEMENTATION-0.1.md)；歷史規劃／複審／逐 Phase 證據見 [封存索引](docs/archive/README.md)，按需讀取，不作當期待辦。
 - 現況：0.3 第2輪 A0/A1、B1/B2、C、D/D2、E1–E3 程式及契約閉環已實作；兩引擎回歸與 GitHub CI 通過。外部 Server／Oracle／企業 PKI／業務／規模驗收及可核實的不同模型體檢未完成，ProductionVerified=false。
-- 使用範圍：一般內部網站／Windows排程及支援服務主機，主要 Server 2016 → 2025；不做資料庫、load balancer或其他專業軟體服務主機遷移。目標是企業TS可操作／交接、兩機完整軟體差異與人工補裝待辦、新版換目錄後舊路徑仍可找到核准文件。目錄衝突／新版有效位置／相容及未知版本門檻先討論；R3 PLAN列已重現的報告路徑缺陷及其餘缺口，均本輪處理，尚未實作。軟體本體由使用者安裝，環境設定另列協助搬移／外部處理。R3定案C槽來源限定＋非C跳板機小工具、可查版本／未知保留名稱仍適用；不可改成整機備份或漏掉網站／排程的相依檔案。
+- 使用範圍：一般內部網站／Windows排程及支援服務主機，主要 Server 2016 → 2025；不做資料庫、load balancer或其他專業軟體服務主機遷移。R3目標是企業TS可操作／交接、兩機軟體差異與人工待辦、舊路徑可找到核准文件。新主機全新Windows初始狀態；除Windows外軟體須同來源版本，不以新版相容代替；程式沿用配對JSON資料庫維護比較。還原前檢查目標，由使用者選直接還原或等手動補裝後還原；還原不保證立即可用，待軟體項須durable deferred／重查續跑，不能用全域跳過gate或假成功。局部Windows元件／未知版本／衝突策略先討論。R3 PLAN列R3-01–08及全部批次，均本輪處理、尚未實作。C槽來源限定＋非C小工具、完整相依及版本未知保留名稱仍適用；軟體本體使用者安裝，設定另列搬移／外部處理，不擴整機備份或自動升版。
 - 操作与契約：[README.md](README.md)、[GENERAL-HOST-WORKFLOW.md](docs/GENERAL-HOST-WORKFLOW.md)、[OPERATIONS.md](docs/OPERATIONS.md)。新規劃待辦集中於R3 PLAN；既有外部驗收待辦仍在 [IMPLEMENTATION-0.1.md](docs/IMPLEMENTATION-0.1.md)；完整軟體確認模板不是實際 Server 清單。
 - 每台 Source／Manager／Target 使用專用固定 WorkRoot。交付選 sealed Directory 或 ZIP，預設512MiB，UI整數128–1024MiB；attempt不重建state。WorkRoot搬移須停工具、預覽、核對、明確確認及受控回復，不是跨機遷移或備份。
 - 核准綁定全部src和入口實際bytes；執行中pair不能熱換工具。含核准／封裝／還原的測試使用不可變快照，測試前後核對runtime/test hashes；共享工作區局部PASS不是整輪證據。
