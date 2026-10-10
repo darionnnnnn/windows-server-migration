@@ -640,3 +640,10 @@ Probe段落固定快照驗證：wsm-r3-probe-40ffc4daddf0493487aa8e6c37a85d43，
 ### R3 來源實體磁碟分流修正 — 2026-10-11
 
 最後反查發現非 C 的 DOS 磁碟別名可能實際指向 C。來源原生範圍驗證現在拒絕盤符分類與實體 C 身分不一致，要求以原始磁碟路徑重新審閱；sealed collection proof 的 NonC 通道也不得指向 C，避免繞過主包來源政策。目標盤符映射仍獨立核准。僅疊加本段三檔至 HEAD 的不可變 source-commit-79acde 快照：AssistiveFiles 29 項及真實 SUBST PhysicalPaths 在 WinPS 5.1／PS7 共四次 PASS；未使用虛構 D 磁碟冒充原生非 C 證據。其餘最終修正與 F 全量驗證仍繼續。
+### R3 最終還原／回退讀回閉環 — 2026-10-11
+
+父目錄 ACL 可能在子檔案先前讀回後傳播；還原最後再核對全部已成功檔案／目錄，只有核准 metadata policy 通過的最終實際值才保存 ownership。原生混合世代反例證明舊流程會誤報成功，新流程列 FinalReadbackFailed。回退也在全部父目錄還原後核对 prior 檔案 bytes／metadata、既有目錄 metadata 及新檔應不存在，未通過不退休 durable intent；原生反例由 false-green 改為拒絕。回退重播則只另外接受完整 prior metadata hash，並非借現在觀測認領漂移；移除此分支的固定快照在第二次回退確實失敗。
+
+Set-WsmFileMetadata 將 ACL／attributes 寫入放在精確時間戳還原之前；保留所有原生讀回條件，Server CI 時間戳差異未放寬。回退 fixture 加 UTC／ticks／deltaTicks 診斷（不輸出 SDDL）。PreflightCancellation 的全域 TEMP 誤判改為每次測試專屬目錄，真正取消／bytes／journal／cleanup 條件保留。
+
+主代理固定快照驗證：metadata-final 的19支測試×2引擎38次PASS；final-undo 的原生／回復／delta／pipeline等14支各兩引擎PASS（runner更正不存在的Journal測試為實際TaskFolderJournal）；最新undo-replay快照的Rollback16、DirectoryReadback8、RecoveryContracts與MigrationPipeline兩引擎8次PASS，以及去除prior重播分支的原生負面反例確認。新增DirectoryReadback納入CI，R3兩引擎不因另一組失敗被取消。非C完整目錄原生時間戳、Manager匯入後receipt／stage閉環及F整輪結果另段繼續，未標整輪完成。

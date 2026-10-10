@@ -197,6 +197,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         engine: [powershell, pwsh]
     steps:
@@ -205,7 +206,7 @@ jobs:
         shell: pwsh
         run: |
           $engine = '${{ matrix.engine }}'
-          foreach ($test in @('Test-AssistiveReviewIntegrity.ps1','Test-IisConfigurationCoverage.ps1','Test-AssistiveOsProvided.ps1','Test-TextConsole.ps1','Test-AssistiveContracts.ps1','Test-AssistiveComparison.ps1','Test-AssistiveFiles.ps1','Test-AssistivePackaging.ps1','Test-AssistiveNonC.ps1','Test-AssistiveResources.ps1','Test-AssistiveProbe.ps1','Test-AssistiveRestore.ps1','Test-AssistiveRollback.ps1','Test-AssistiveStageResults.ps1','Test-AssistiveNativeReadback.ps1','Test-AssistiveTargetPreparation.ps1','Test-AssistiveReviewForms.ps1','Test-AssistiveSettingsForms.ps1','Test-AssistiveReports.ps1','Test-AssistiveHttpProbe.ps1','Test-HtmlDocumentation.ps1','Test-HtmlConsole.ps1','Test-GeneralHostGates.ps1','Test-Qualification.ps1')) {
+          foreach ($test in @('Test-AssistiveReviewIntegrity.ps1','Test-IisConfigurationCoverage.ps1','Test-AssistiveOsProvided.ps1','Test-TextConsole.ps1','Test-AssistiveContracts.ps1','Test-AssistiveComparison.ps1','Test-AssistiveFiles.ps1','Test-AssistivePackaging.ps1','Test-AssistiveNonC.ps1','Test-AssistiveResources.ps1','Test-AssistiveProbe.ps1','Test-AssistiveRestore.ps1','Test-AssistiveDirectoryReadback.ps1','Test-AssistiveRollback.ps1','Test-AssistiveStageResults.ps1','Test-AssistiveNativeReadback.ps1','Test-AssistiveTargetPreparation.ps1','Test-AssistiveReviewForms.ps1','Test-AssistiveSettingsForms.ps1','Test-AssistiveReports.ps1','Test-AssistiveHttpProbe.ps1','Test-HtmlDocumentation.ps1','Test-HtmlConsole.ps1','Test-GeneralHostGates.ps1','Test-Qualification.ps1')) {
             Write-Host ('Starting ' + $engine + ' ' + $test)
             & $engine -NoProfile -NonInteractive -File (Join-Path tests $test)
             if ($LASTEXITCODE -ne 0) { throw ('Failed: ' + $test) }

@@ -101,7 +101,7 @@ function Complete-WsmSettingTransitionRecovery($Item,$Operation,$Paths,$State) {
 function Complete-WsmAssistiveFileRollback($Item,$Operation,$Paths,$State) {
     $spec=$Item.MigrationSpec;$root=ConvertTo-WsmCanonicalPath ([string]$spec.TargetPath);$prefix=$root.TrimEnd('\')+'\'
     if(-not $Operation.PSObject.Properties['Files'] -or -not $Operation.PSObject.Properties['Directories'] -or $Operation.Files -isnot [array] -or $Operation.Directories -isnot [array]){throw 'Assistive rollback intent is missing its exact per-file/directory ownership vectors.'}
-    foreach($directory in @($Operation.Directories)){if(-not [IO.Directory]::Exists([string]$directory.TargetPath)){if(-not $directory.CreatedByTool){throw 'Previously owned Assistive directory is absent during rollback.'};continue};$live=Get-WsmFileMetadata ([string]$directory.TargetPath) $spec.Metadata;$expected=$directory.CurrentMetadata;if(-not $expected -or $live.Sddl -cne $expected.Sddl -or [int]$live.Attributes -ne [int]$expected.Attributes -or [string]$live.CreationUtc -cne [string]$expected.CreationUtc){throw ('Assistive directory ACL, owner, attributes or creation time drifted after rollback preview: '+[string]$directory.TargetPath)}}
+    foreach($directory in @($Operation.Directories)){if(-not [IO.Directory]::Exists([string]$directory.TargetPath)){if(-not $directory.CreatedByTool){throw 'Previously owned Assistive directory is absent during rollback.'};continue};$live=Get-WsmFileMetadata ([string]$directory.TargetPath) $spec.Metadata;if(-not $directory.CreatedByTool -and $directory.BackupMetadataHash -and (Get-WsmAssistiveMetadataHash $live) -ieq [string]$directory.BackupMetadataHash){continue};$expected=$directory.CurrentMetadata;if(-not $expected -or $live.Sddl -cne $expected.Sddl -or [int]$live.Attributes -ne [int]$expected.Attributes -or [string]$live.CreationUtc -cne [string]$expected.CreationUtc){throw ('Assistive directory ACL, owner, attributes or creation time drifted after rollback preview: '+[string]$directory.TargetPath)}}
     foreach($file in @($Operation.Files)){
         $target=[IO.Path]::GetFullPath([string]$file.TargetPath);$retained=[IO.Path]::GetFullPath([string]$file.Retained);$backup='';if($file.Backup){$backup=[IO.Path]::GetFullPath([string]$file.Backup)}
         if(($target -ine $root -and -not $target.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) -or [IO.Path]::GetDirectoryName($retained) -ine [IO.Path]::GetDirectoryName($target) -or [IO.Path]::GetFileName($retained) -notlike '.wsm-assistive-rollback-*'){throw 'Assistive per-file rollback path escapes its approved target scope.'}
@@ -129,6 +129,18 @@ function Complete-WsmAssistiveFileRollback($Item,$Operation,$Paths,$State) {
         if($directory.CreatedByTool){if(@([IO.Directory]::EnumerateFileSystemEntries($path)).Count -eq 0){[IO.Directory]::Delete($path);Add-WsmJournal $Paths $State 'AssistiveRollbackDirectoryRemoved' $Item.ItemId ([pscustomobject]@{Target=$path})}else{Add-WsmJournal $Paths $State 'AssistiveRollbackDirectoryRetainedExternalContent' $Item.ItemId ([pscustomobject]@{Target=$path;Reason='Directory contains content not owned by this operation.'})};continue}
         if(-not $directory.BackupMetadata -or -not $directory.BackupMetadataHash){throw 'Existing Assistive directory has no exact prior metadata snapshot; rollback is blocked.'}
         Set-WsmFileMetadata $path $directory.BackupMetadata @{};$restored=Get-WsmFileMetadata $path $spec.Metadata;if((Get-WsmAssistiveMetadataHash $restored) -ine [string]$directory.BackupMetadataHash){throw 'Assistive directory prior metadata restoration failed native readback.'};Add-WsmJournal $Paths $State 'AssistiveRollbackDirectoryMetadataRestored' $Item.ItemId ([pscustomobject]@{Target=$path;MetadataHash=$directory.BackupMetadataHash})
+    }
+    # Parent metadata restoration may propagate ACLs after an earlier child readback.
+    # Do not retire the ownership or durable intent until every final prior state matches.
+    foreach($file in @($Operation.Files)){
+        $path=[IO.Path]::GetFullPath([string]$file.TargetPath);Assert-WsmNoReparse $path
+        if($file.Backup){
+            if(-not [IO.File]::Exists($path) -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine [string]$file.BackupHash -or (Get-WsmAssistiveMetadataHash (Get-WsmFileMetadata $path $spec.Metadata)) -ine [string]$file.BackupMetadataHash){throw 'Final prior Assistive file bytes or metadata changed after directory rollback.'}
+        }elseif([IO.File]::Exists($path) -or [IO.Directory]::Exists($path)){throw 'Final Assistive new-file rollback target is no longer absent.'}
+    }
+    foreach($directory in @($Operation.Directories | Where-Object {-not $_.CreatedByTool})){
+        $path=[IO.Path]::GetFullPath([string]$directory.TargetPath);Assert-WsmNoReparse $path
+        if(-not [IO.Directory]::Exists($path) -or (Get-WsmAssistiveMetadataHash (Get-WsmFileMetadata $path $spec.Metadata)) -ine [string]$directory.BackupMetadataHash){throw 'Final prior Assistive directory metadata changed after parent rollback.'}
     }
     $record=@($State.Items | Where-Object ItemId -CEQ $Item.ItemId);if($record.Count -ne 1){throw 'Assistive rollback record disappeared.'};$record[0].Status='RolledBack';$record[0].CreatedByTool=$false;$State.PendingOperations=@($State.PendingOperations | Where-Object ItemId -CNE $Item.ItemId);Add-WsmJournal $Paths $State 'RollbackCompleted' $Item.ItemId ([pscustomobject]@{Status='RolledBack';PerFile=$true;ExternalContentRetained=$true})
 }

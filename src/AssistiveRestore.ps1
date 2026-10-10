@@ -488,6 +488,24 @@ function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hasht
         }
     }
     foreach($directoryWork in $directoriesToApply){$entry=$directoryWork.Entry;$path=$directoryWork.Path;try{Assert-WsmAssistiveFileTopology $path;if($directoryWork.PriorMetadata){$beforeMetadata=Get-WsmFileMetadata $path $entry.Metadata.MetadataMode;if($beforeMetadata.Sddl -cne $directoryWork.PriorMetadata.Sddl -or [int]$beforeMetadata.Attributes -ne [int]$directoryWork.PriorMetadata.Attributes -or [string]$beforeMetadata.CreationUtc -cne [string]$directoryWork.PriorMetadata.CreationUtc){throw 'Owned directory ACL, owner, attributes or creation time changed after preflight.'}};Set-WsmFileMetadata $path $entry.Metadata $SidMap;$actualMetadata=Assert-WsmAssistiveMetadataReadback $path $entry.Metadata $SidMap $aclPolicy;$nextDirectories=@($nextDirectories | Where-Object RelativePath -CNE ([string]$entry.RelativePath))+@([pscustomobject]@{RelativePath=[string]$entry.RelativePath;TargetPath=$path;MetadataHash=(Get-WsmAssistiveMetadataHash $actualMetadata);CurrentMetadata=$actualMetadata;BackupMetadata=$directoryWork.PriorMetadata;BackupMetadataHash=$(if($directoryWork.PriorMetadata){Get-WsmAssistiveMetadataHash $directoryWork.PriorMetadata}else{''});CreatedByTool=[bool]$directoryWork.CreatedByTool;Generation=[long]$Package.Manifest.Generation});$results.Add([pscustomobject]@{RelativePath=$entry.RelativePath;Status='DirectoryVerified';MetadataStatus='Verified';Reason=''})}catch{$results.Add([pscustomobject]@{RelativePath=$entry.RelativePath;Status='Failed';MetadataStatus='ReadbackFailed';Reason=$_.Exception.GetType().FullName})}}
+    # Parent ACL application can propagate inheritable ACEs to files already read back.
+    # Reverify final bytes and sealed metadata after all directories, then persist only
+    # a policy-verified final ownership baseline; never adopt an unexplained drift.
+    foreach($fileEntry in @($entries)){
+        $successfulFileResult=@($results | Where-Object {$_.RelativePath -ceq [string]$fileEntry.RelativePath -and $_.Status -in @('Applied','VerifiedOwned','DirectoryVerified')})
+        if(-not $successfulFileResult.Count){continue}
+        $ownedCollection=if($fileEntry.Directory){$nextDirectories}else{$nextFiles};$finalOwned=@($ownedCollection | Where-Object RelativePath -CEQ ([string]$fileEntry.RelativePath))
+        if($finalOwned.Count -ne 1 -or [long]$finalOwned[0].Generation -ne [long]$Package.Manifest.Generation){continue}
+        try{
+            $finalPath=[string]$finalOwned[0].TargetPath;Assert-WsmAssistiveFileTopology $finalPath
+            if(-not $fileEntry.Directory -and (Get-FileHash -LiteralPath $finalPath -Algorithm SHA256).Hash -ine [string]$fileEntry.Data.Hash){throw 'File bytes changed while parent directory metadata was applied.'}
+            $finalMetadata=Assert-WsmAssistiveMetadataReadback $finalPath $fileEntry.Metadata $SidMap $aclPolicy
+            $finalOwned[0].MetadataHash=Get-WsmAssistiveMetadataHash $finalMetadata;if($fileEntry.Directory){$finalOwned[0].CurrentMetadata=$finalMetadata}
+        }catch{
+            foreach($priorResult in @($results | Where-Object RelativePath -CEQ ([string]$fileEntry.RelativePath))){[void]$results.Remove($priorResult)}
+            $results.Add([pscustomobject]@{RelativePath=$fileEntry.RelativePath;Status='Failed';MetadataStatus='FinalReadbackFailed';Reason=$_.Exception.GetType().FullName})
+        }
+    }
     $statuses=@($results | ForEach-Object Status);$blocked=@($statuses | Where-Object {$_ -eq 'BlockedConflict'}).Count;$failed=@($statuses | Where-Object {$_ -in @('Failed','DirectoryVerified') -and $_ -eq 'Failed'}).Count
     $status='Succeeded';if($blocked){$status='BlockedConflict'}elseif($failed){$status='Failed'}
     $fileArray=@();foreach($fileRecord in $nextFiles){$fileArray+=@($fileRecord)};$directoryArray=@();foreach($directoryRecord in $nextDirectories){$directoryArray+=@($directoryRecord)}

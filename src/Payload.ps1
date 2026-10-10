@@ -19,8 +19,9 @@ function Set-WsmFileMetadata([string]$Path,$Metadata,[hashtable]$SidMap) {
     $sections=[Security.AccessControl.AccessControlSections]::Access -bor [Security.AccessControl.AccessControlSections]::Owner -bor [Security.AccessControl.AccessControlSections]::Group
     if($Metadata.MetadataMode -eq 'DaclOwnerSacl'){$sections=$sections -bor [Security.AccessControl.AccessControlSections]::Audit}
     $acl.SetSecurityDescriptorSddlForm($sddl,$sections); Set-Acl -LiteralPath $Path -AclObject $acl
-    if([IO.Directory]::Exists($Path)){[IO.Directory]::SetCreationTimeUtc($Path,[DateTime]::Parse($Metadata.CreationUtc).ToUniversalTime());[IO.Directory]::SetLastWriteTimeUtc($Path,[DateTime]::Parse($Metadata.LastWriteUtc).ToUniversalTime())}else{[IO.File]::SetCreationTimeUtc($Path,[DateTime]::Parse($Metadata.CreationUtc).ToUniversalTime());[IO.File]::SetLastWriteTimeUtc($Path,[DateTime]::Parse($Metadata.LastWriteUtc).ToUniversalTime())}
+    # Finish ACL/attribute writes before restoring the exact source timestamps.
     [IO.File]::SetAttributes($Path,[IO.FileAttributes]$Metadata.Attributes)
+    if([IO.Directory]::Exists($Path)){[IO.Directory]::SetCreationTimeUtc($Path,[DateTime]::Parse($Metadata.CreationUtc).ToUniversalTime());[IO.Directory]::SetLastWriteTimeUtc($Path,[DateTime]::Parse($Metadata.LastWriteUtc).ToUniversalTime())}else{[IO.File]::SetCreationTimeUtc($Path,[DateTime]::Parse($Metadata.CreationUtc).ToUniversalTime());[IO.File]::SetLastWriteTimeUtc($Path,[DateTime]::Parse($Metadata.LastWriteUtc).ToUniversalTime())}
 }
 function Get-WsmScopeEntries($Spec,[string]$PackageRoot,$CancellationToken=$null) {
     if($Spec.PSObject.Properties['ContentSelection'] -and $Spec.ContentSelection -ceq 'ExactFiles'){Get-WsmExactConfigEntries $Spec $PackageRoot $CancellationToken;return}
