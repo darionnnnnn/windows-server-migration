@@ -405,3 +405,7 @@ A0–D2 與 E1–E3 的程式／schema／producer-consumer 已逐項比對並補
 
 
 Dev integration completed 2026-10-10: all four CI jobs passed for 0a2ac7f; local and remote codex/implementation were removed after verifying full ancestry. Main unchanged. Final CI and cleanup details: [MIGRATION-2-VERIFICATION.md](MIGRATION-2-VERIFICATION.md). External and different-model qualifications remain pending.
+
+## 2026-10-10 企業情境與設定搬移界線複查
+
+依使用者再次要求新增 [ENTERPRISE-MIGRATION-COVERAGE.md](ENTERPRISE-MIGRATION-COVERAGE.md)：專業／環境軟體本體只列完整Markdown準備清單，設定檔另列受審搬移／外部程序；逐項標示FileScope、Oracle、Windows及既有adapter協助範圍，補整機／System State、特殊角色、storage語義、機器綁定秘密與有效policy等企業情境。ConfigFiles不是payload白名單，必須使用精確scope／完整排除并對帳artifact。輸出Markdown補明支援界線；未新增泛用特殊產品／runtime安裝或整機復原能力。原始外部資格需求保留。

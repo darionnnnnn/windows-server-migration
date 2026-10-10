@@ -63,3 +63,11 @@ CI失敗37955503134／37956024235、逾時或取消37957836407／37958816256／3
 ## dev integration verified (2026-10-10)
 
 Commit `0a2ac7feb1fbe939496c53a2295d93fa4d092e7d`: [GitHub Actions 38006384588](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38006384588) completed successfully, all four jobs passed. The dev-only CI trigger is verified on the actual dev push. The 146 runtime/test files are unchanged from e97cbc0. Remote dev contains the original development tip 805a2c8; local and remote codex/implementation were deleted after this check. Main remains d67d5c82e346b73a1dae43538c4759564f3e7622. This final documentation-only commit does not change runtime/test/CI bytes or establish production qualification.
+
+## 2026-10-10 企業情境與設定搬移說明補強
+
+新增企業情境／協助範圍矩陣及README／操作／確認模板引用。專業與環境軟體本體只列Markdown，由使用者安裝；一般及Oracle設定檔另列精確FileScope／typed adapter或外部程序。明列ConfigFiles不是payload白名單、整機／System State與特殊角色不推定支援，以及聲明metadata不等於還原／consumer成功。
+
+此子段src只新增EnvironmentConfirmation的Markdown說明；未改Projection schema、gate、封包／還原／adapter行為。固定快照 `wsm-enterprise-coverage-468c1fb1fb9846dbb43f474572e4c7ab` 的ScriptEncoding／EnvironmentConfirmation（6列完整五格式與語意）／Contracts／LabReportConsumer在WinPS5.1及PS7各4/4，快照hash前後不變且src/tests与工作樹逐一相符。新Markdown界線斷言可使005622b舊產生器因缺必要說明而失敗；5.1明確UTF8讀取中文，保留既有數量、秘密遮罩及安全輸出斷言。先前dev CI38006384588是005622b之前程式的證據，不宣稱為本次輸出修正head的CI。
+
+報告程式bytes已變，ToolFingerprint同步變；執行中pair不熱換工具，更新後重新核准。未新增runtime／專業軟體安裝、機器綁定秘密搬移或全企業災難復原能力，正式資格仍Blocked／NotTested。

@@ -137,3 +137,7 @@ Invoke-WsmOutputWorkspaceTransfer -PreviewPath $preview.Path -ExpectedHash $prev
 Windows 設定原生盤點另保留 WindowsSettingMetadata：白名單機器環境變數的原始 registry 值／型別、存在但空白與不存在，以及時區／DST state。讀取失敗列 coverage gap，不推成不存在。登錄值或 Get-TimeZone 成功不證明 GPO／MDM 不存在，原生 machine environment／timezone 的管理來源因此保持 Unknown，須外部政策確認，不自動開放受審寫入。來源与目標都已確認為 Local 的有限設定，才可由 exact source-after、target-before/type/DST 與既有受審 spec 提供 ReviewedMigration；新建只適用可信目標完整快照證明不存在的白名單變數。
 
 防火牆以 [Microsoft Get-NetFirewallRule](https://learn.microsoft.com/en-us/powershell/module/netsecurity/get-netfirewallrule?view=windowsserver2025-ps) 的 ActiveStore／TracePolicyStore 取得實際來源，保存明確字串 PolicyStoreSourceType；Local、GroupPolicy 與 None／未知分開，GPO、矛盾或未知來源不能被一般 Local 標籤覆蓋。這仍不取代有效政策／原生服務與業務實機驗收。
+
+## 軟體與設定搬移範圍
+
+專業／環境軟體本體只列入每台 Markdown 清單，由使用者安裝；其環境設定檔另以核准 FileScope／typed adapter 協助搬移，無支援者外部搬移／重建並留readback。完整企業情境、支援項目及設定scope陷阱見 [ENTERPRISE-MIGRATION-COVERAGE.md](ENTERPRISE-MIGRATION-COVERAGE.md)。ConfigFiles是分類／核准資訊，不能當封裝白名單；不要選整個安裝根再宣稱只搬設定。

@@ -1,4 +1,4 @@
-﻿# 0.3 操作契約
+# 0.3 操作契約
 
 本版持續補實作，僅供明確批准的隔離 pilot。來源、目標與管理工作區各自本機執行。不得用此文件宣稱實際十台已完成遷移。
 
@@ -185,3 +185,7 @@ TXT 預設最多列 200 項，FAIL／Blocked 優先，再列 NotTested／PASS；
 來源盤點附帶版本化分類 metadata，匯入時驗證並保留。主選單23顯示分類數量與探索缺口；CLI `-Action ScopeAssessment -Workspace <工作區> -PairId <配對GUID>` 輸出全部項目及原有相依關係的 JSON。亦可用 `Get-WsmGeneralHostAssessment -Inventory $inventory` 或 `-Catalog $catalog` 做同一投影；舊盤點沒有附帶分類時重新計算，附帶分類若損壞／不符規則則拒絕。
 
 分類是候選判斷：Oracle引擎／listener列特殊產品，用戶端／driver／runtime與代理列目標準備；混合主機仍保留一般IIS與自訂服務。未解析產品與collector缺口保持未知；名稱命中不代表產品完整識別或實機資格。此評估不改決策、不安裝、不搬移、不測網路；準備與外部相依的受審核門檻會依PLAN後續段落接入，不能用分類數量代替核准或業務驗收。
+
+## 企業備份／還原與軟體設定界線
+
+本工具協助受審範圍遷移，不能代替整機／System State備份。專業／環境軟體只列在每台.md，由使用者安裝；設定檔另列精確scope並以FileScope／typed adapter或外部產品程序搬移、readback及consumer驗證。完整已支援／有限協助／外部／不支援項目見 [ENTERPRISE-MIGRATION-COVERAGE.md](ENTERPRISE-MIGRATION-COVERAGE.md)。

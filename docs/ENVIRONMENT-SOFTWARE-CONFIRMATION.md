@@ -179,3 +179,7 @@ Oracle client 設定為一般應用必要相依；Oracle DB engine／listener �
 | 平台／資安／外部產品owner | 待填 | 待填 | 待填 |
 
 完成確認不等於已搬移，完成核准scope不等於整台接手／可退役，正式資格只適用已驗且有企業批准的精確支援範圍。
+
+## 軟體清單與設定搬移清單必須分開
+
+專業／環境軟體本體只列Markdown，由使用者安裝；其設定仍須逐項登記與搬移／外部重建，不以重裝完成代替設定還原。Oracle設定表亦適用一般環境設定：web.config、app.config、*.exe.config、appsettings*.json與owner指定格式。每列填 ItemId／ArtifactId／consumer、來源→目標／scope／排除、hash／encoding／ACL／SID、工具FileScope／adapter或外部程序、核准／manifest／journal、目標readback及owner結果。ConfigFiles不是封裝白名單，所有非排除scope成員都要核對。wallet／DPAPI／registry DSN／COM及不支援角色留External／Blocked。完整支援矩陣見 [ENTERPRISE-MIGRATION-COVERAGE.md](ENTERPRISE-MIGRATION-COVERAGE.md)，不宣稱涵蓋所有企業備份／災難復原情境。
