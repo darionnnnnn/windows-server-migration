@@ -659,3 +659,8 @@ Set-WsmFileMetadata 將 ACL／attributes 寫入放在精確時間戳還原之前
 ### CI ACL fixture 的環境前提修正 — 2026-10-11
 
 遠端 `5b5803d` 兩引擎通過 45 項真實 NonC／Manager／G 整合，mixed ACL case 也如預期拒絕最終漂移；positive case 仍在 runner 暫存目錄繼承 ACL 下缺檔。改用明確受保護的 source root／nested ACL，將 Everyone 映射至未在 fixture 的 Authenticated Users，避免同一 current-user 的 FullControl 合併／runner 繼承改變 sealed SDDL。保留原生 metadata helper、精確 SID-mapped SDDL 與 OwnedFiles 最終 hash；新增 positive restore 結果前置診斷。實作者與主代理分別在兩引擎 10 checks 全 PASS，早期負例無寫入、mixed 負例 FinalReadbackFailed、positive Succeeded。沒有放寬 runtime ACL／timestamp 判定；遠端 rerun 仍待確認。R3 CI 現改為收集各 script 失敗後整體 throw，避免前一個 fixture 錯誤遮住其餘驗證；原生 PowerShell AST 核對通過。
+### CI 的 verified ownership 基線補正 — 2026-10-11
+
+遠端 `f063a17` 的完整 R3 收集結果只有 Rollback／NativeReadback 失敗，Directory 的 10 個正負原生案例與其餘 consumer 通過；其餘第2輪／fixture／delta工作維持通過（WinPS 第2輪仍執行中）。兩個 synthetic ownership 測試先前直接取 runner TEMP 的原始 ACL 作已持有基線，卻在後續呼叫 metadata writer；這與正式 producer 在套用且原生讀回成功後保存 actual owned hash 不一致。fixture 現用原有 writer 建第一個 actual canonical 狀態，第二次以同一未改基線套用，必須完整 native hash 一致後才記錄 prior／owned metadata；後续 bytes、timestamp、hardlink／ADS、世代及缺失基線拒絕全部保留。所有 synthetic prior A 均同樣準備，mixed A/B 必須實際不同且精確命中 final prior file 漂移錯誤，不用其他錯誤冒充反例。
+
+Luna high 各自實作兩個 fixture；主代理查 diff 後分別獨立在 WinPS5.1／PS7 通過 NativeReadback 11、Rollback 16（共4 script runs），每次核對前後檔案 hash。沒有改 runtime、忽略控制 flags 或用 time-only fallback 替代 writer；受保護 user-only fixture 需 SeSecurityPrivilege 的失敗嘗試不納入證據。下輪 CI 仍須以原生診斷確認環境差異，尚不把推論當已證實根因。
