@@ -15,6 +15,7 @@ try {
 This is a long page: $longText
 
 [guide](docs/Guide.md#details) [missing](docs/MISSING-3-PLAN.md) [existing html](docs/legacy.html)
+[support](docs/SUPPORT-MATRIX.json)
 [script](javascript:alert(1)) [data](data:text/html,hello) [file](file:///secret) [https](https://example.com/docs)
 [injected label](javascript:alert(1))
 <script>alert('raw')</script><img src=x onerror=alert(1)>
@@ -28,6 +29,7 @@ This is a long page: $longText
     [IO.File]::WriteAllText((Join-Path $fixture 'README.md'),$readme,(New-Object Text.UTF8Encoding($false)))
     [IO.File]::WriteAllText((Join-Path $docs 'Guide.md'),$guide,(New-Object Text.UTF8Encoding($false)))
     [IO.File]::WriteAllText((Join-Path $docs 'Sibling.md'),'# Sibling',(New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText((Join-Path $docs 'SUPPORT-MATRIX.json'),'{"Status":"NotTested","literal":"<script>unsafe</script>"}',(New-Object Text.UTF8Encoding($false)))
     [IO.File]::WriteAllText((Join-Path $docs 'MIGRATION-3-PLAN.md'),'EXCLUDED_PLAN_CONTENT',(New-Object Text.UTF8Encoding($false)))
     [IO.File]::WriteAllText((Join-Path $docs 'legacy.html'),'<p>existing artifact</p>',(New-Object Text.UTF8Encoding($false)))
     $archiveSecret=Join-Path $archive 'secret.md';[IO.File]::WriteAllText($archiveSecret,'ARCHIVE_CONTENT_MUST_NEVER_BE_READ',(New-Object Text.UTF8Encoding($false)))
@@ -41,6 +43,9 @@ This is a long page: $longText
     Check ($page.Contains($longTail) -and $page.Length -gt 250000) 'Builder truncated long Markdown content instead of rendering the complete source.'
     Check ($page.Contains('name="source-sha256" content="'+$sourceHash+'"') -and $page.Contains('name="source-path" content="README.md"')) 'HTML page is missing traceable source path/hash metadata.'
     Check ($page.Contains('href="Guide.html#details"') -and $index.Contains('href="Guide.html"')) 'Existing relative Markdown links did not resolve to generated HTML artifacts.'
+    Check ($page.Contains('href="SUPPORT-MATRIX.html"') -and $index.Contains('href="SUPPORT-MATRIX.html"')) 'JSON support document did not resolve to a portable HTML artifact.'
+    $jsonPage=[IO.File]::ReadAllText((Join-Path $output 'SUPPORT-MATRIX.html'))
+    Check ($jsonPage.Contains('NotTested') -and $jsonPage.Contains('&lt;script&gt;') -and -not $jsonPage.Contains('<script>')) 'JSON document was omitted or emitted as executable markup.'
     Check ($page.Contains('href="../legacy.html"')) 'Existing relative HTML artifact link was dropped or mapped incorrectly.'
     Check ($page.Contains('href="https://example.com/docs"')) 'A valid HTTPS link was dropped.'
     Check ($page.Contains('未產生或不安全的連結') -and -not $page.Contains('href="MISSING-3-PLAN.html"')) 'A Markdown target without a generated artifact was emitted as a broken link.'

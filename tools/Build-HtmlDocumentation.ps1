@@ -32,7 +32,7 @@ function Resolve-DocumentationLink([string]$RawTarget,[string]$SourcePath){
     if(-not $decoded){return $null}
     $candidate=[IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetDirectoryName($SourcePath)) ($decoded.Replace('/',[IO.Path]::DirectorySeparatorChar))))
     if(-not (Test-WithinRoot $candidate) -or $candidate -match '(?i)(^|[\\/])archive([\\/]|$)'){return $null}
-    if([IO.Path]::GetExtension($candidate) -ieq '.md'){
+    if([IO.Path]::GetExtension($candidate) -in @('.md','.json')){
         if(-not $script:IncludedSources.ContainsKey($candidate)){return $null}
         return ([IO.Path]::GetFileNameWithoutExtension($candidate)+'.html'+$suffix)
     }
@@ -71,7 +71,7 @@ function Get-ManualLink([string]$RelativePath,[string]$Label){
     '<span>'+(Encode $Label)+'</span>'
 }
 $docsRoot=Join-Path $script:ProjectRoot 'docs'
-$sources=@(Get-Item -LiteralPath (Join-Path $script:ProjectRoot 'README.md'))+@(Get-ChildItem -LiteralPath $docsRoot -File -Filter '*.md' | Where-Object Name -NE 'MIGRATION-3-PLAN.md')
+$sources=@(Get-Item -LiteralPath (Join-Path $script:ProjectRoot 'README.md'))+@(Get-ChildItem -LiteralPath $docsRoot -File | Where-Object {$_.Extension -in @('.md','.json') -and $_.Name -ne 'MIGRATION-3-PLAN.md'})
 foreach($source in $sources){$script:IncludedSources[[IO.Path]::GetFullPath($source.FullName)]=$true}
 [void][IO.Directory]::CreateDirectory($script:OutputRoot)
 $links=New-Object Text.StringBuilder
@@ -82,7 +82,8 @@ foreach($source in $sources){
     $pageTemplate=@(
         '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-path" content="{0}"><meta name="source-sha256" content="{1}"><title>{2}</title><link rel="stylesheet" href="manual.css"></head><body><main><nav><a href="index.html">文件中心</a> · {3}</nav><p class="notice">離線文件快照；此頁不會執行搬移。實際結果及環境探測與正式資格分別確認。</p>{4}</main></body></html>'
     ) -join ''
-    $page=$pageTemplate -f (Encode $relativeSource),$sourceHash,(Encode $title),$manual,(Render $text $source.FullName)
+    $content=if($source.Extension -ieq '.json'){'<h1>'+(Encode $title)+'</h1><pre><code>'+(Encode $text)+'</code></pre>'}else{Render $text $source.FullName}
+    $page=$pageTemplate -f (Encode $relativeSource),$sourceHash,(Encode $title),$manual,$content
     [IO.File]::WriteAllText((Join-Path $script:OutputRoot $name),$page,(New-Object Text.UTF8Encoding($false)))
     $linkTemplate='<li><a href="{0}">{1}</a></li>'
     [void]$links.Append(($linkTemplate -f (Encode $name),(Encode $title)))

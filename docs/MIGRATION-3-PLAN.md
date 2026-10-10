@@ -1,4 +1,4 @@
-﻿# 第 3 輪規劃：一般網站／排程主機 EOS 搬移
+# 第 3 輪規劃：一般網站／排程主機 EOS 搬移
 
 日期：2026-10-10。狀態：**實作中：2026-10-10使用者已授權第三輪全部實作，HTML採ui-ux-pro-max；逐段核對／驗證／commit／push，所有Phase須有實際證據才能勾完成。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；上次定案起點：`d674087`；四視角複審基準：`97a98f8`；本次定案基準：`e772b4e`；本次再審基準：`884d65e`。輔助搬移、版本選擇、原路徑保存、預設全選／自訂、HTML／本機 PowerShell／文字備援、C／非 C 分工、不合併、非 IIS 不新增 adapter均沿用。IIS／排程的全部設定、物件及所選相依檔案須成套處理，非 C 路徑同樣還原；特殊能力與實機條件仍明列，不從規劃授權推論已授權實作或解除 production gate。
 
@@ -530,3 +530,7 @@ The non-C executor now proves the target native state directory and executing lo
 ### R3-E2 HTML documentation builder — 2026-10-10
 
 The development builder renders complete top-level user manuals and README to portable HTML with source path/SHA256 metadata, safe relative links and a shared index. Missing targets, unsafe schemes and archive references remain non-clickable. No archive content is enumerated or read. Main agent inspected the actual builder and independently ran Test-HtmlDocumentation on Windows PowerShell 5.1 and PowerShell 7: 11 checks each, including an exclusively locked archive fixture. Generated current manuals and full E2/U integration remain separate pending deliverables; this segment does not mark those phases complete.
+
+### R3-E2 portable JSON reference documents — 2026-10-10
+
+Support matrix and release SBOM JSON references now resolve to complete safely encoded HTML pages in the offline document center. This closes the broken raw-JSON link in the HTML-only operator documentation chain. Main agent independently ran Test-HtmlDocumentation: 13 checks each on Windows PowerShell 5.1 and PowerShell 7, including physical source hash metadata, JSON injection encoding and locked archive exclusion. Final current-document generation remains part of U/E2 closeout.
