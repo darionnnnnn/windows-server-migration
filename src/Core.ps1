@@ -1,4 +1,9 @@
-function Get-WsmUtc { [DateTime]::UtcNow.ToString('o') }
+﻿function Get-WsmUtc { [DateTime]::UtcNow.ToString('o') }
+function Get-WsmExecutionActor {
+    $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+    try{[pscustomobject][ordered]@{WindowsPrincipal=$identity.Name;WindowsSID=$identity.User.Value;ExecutionHost=[Environment]::MachineName;ProcessId=$PID;PowerShellVersion=$PSVersionTable.PSVersion.ToString();ObservedUtc=(Get-WsmUtc);IdentitySource='WindowsProcess';BrowserHumanAuthenticated=$false}}
+    finally{$identity.Dispose()}
+}
 function New-WsmContractError([string]$Message) { New-Object IO.InvalidDataException($Message) }
 $script:WsmJsonDateKindSupported=(Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')
 function ConvertFrom-WsmJson([string]$Text) {

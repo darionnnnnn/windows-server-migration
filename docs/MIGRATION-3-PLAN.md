@@ -1,4 +1,4 @@
-# 第 3 輪規劃：一般網站／排程主機 EOS 搬移
+﻿# 第 3 輪規劃：一般網站／排程主機 EOS 搬移
 
 日期：2026-10-10。狀態：**實作中：2026-10-10使用者已授權第三輪全部實作，HTML採ui-ux-pro-max；逐段核對／驗證／commit／push，所有Phase須有實際證據才能勾完成。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；上次定案起點：`d674087`；四視角複審基準：`97a98f8`；本次定案基準：`e772b4e`；本次再審基準：`884d65e`。輔助搬移、版本選擇、原路徑保存、預設全選／自訂、HTML／本機 PowerShell／文字備援、C／非 C 分工、不合併、非 IIS 不新增 adapter均沿用。IIS／排程的全部設定、物件及所選相依檔案須成套處理，非 C 路徑同樣還原；特殊能力與實機條件仍明列，不從規劃授權推論已授權實作或解除 production gate。
 
@@ -9,7 +9,7 @@
 - 授權：第三輪全部已定案功能實作；HTML樣式使用ui-ux-pro-max；分段驗證後commit／push目前dev，停止前先核對全部子項與真實consumer，缺項繼續補齊。
 - 分工：主代理契約／跨段整合及獨立驗收；GPT-6 Luna high負責契約基礎與工作負載盤點，medium負責原生HTML資產。單一檔案一名writer；後續每個交付記實作者、證據與未驗限制。
 - 基準：df21f02可復原；src／tests／入口以Git基準隔離快照保存於專案外，忽略docs/archive及個人prototype。新資料ToolVersion=0.4.0／Catalog與MigrationPlan schema3，sealed來源plan與target決策receipt分開，舊執行中state不轉版。
-- 目前：A契約與橋接驗證進行中；B與U資產並行準備，尚未正式驗收或勾完成。仍須C／D／G／E2／U接真實consumer，既有企業／Server／產品實機資格不以fixture替代。
+- 目前：A／B／S／E1／C／P／D／G／E2／U 的已交付子段及遠端提交見文末證據；最後反查仍在補 IIS 設定涵蓋、OSProvided 可攜證據及文字型別操作，F 全量回歸執行中。完成全部修正及相依驗證前不勾整段；既有企業／Server／產品實機資格不以 fixture 替代。
 
 - 2026-10-10 使用者確認沒有來源／目的 Server 可直接全驗；本輪使用小範圍可行性測試及隔離回歸，所有可執行測試須通過。無法在本機驗證的原生功能提供環境探測入口與可匯入結果，待使用者補回證據；未探測或未驗證不得標為通過或正式資格。
 - A1 契約基礎完成：0.4.0／schema 3、顯式啟用、預設選取與 CAS、盤點保存與重盤點、sealed subset／外部目的端決策 receipt、非成功返回碼。正式模組 WinPS 5.1／PS7 契約及既有語意回歸；收據實際還原消費、材料清理與橋接仍屬後續段落，R3-A 尚未整段完成。
@@ -549,3 +549,13 @@ Support matrix and release SBOM JSON references now resolve to complete safely e
 - 不可變快照：HtmlConsole 23、HttpProbe 16、HtmlDocumentation 13，以及 Qualification／EntryPoint／OperationRequests／ScriptEncoding／ReviewForms／SettingsForms 共 9 支在兩引擎 18 次執行全部通過；Node DOM 15/15，Edge mocked API fixture 的 125 列、XSS、320px、鍵盤與審閱預填通過。
 - 本機傳輸中間層會改寫 HTML／CSP，實際 loopback 為 ModifiedTransport／NotTested；原生 parser/writer 與 mocked browser 證據分開，未把它報成實際端到端通過。提供只讀 HttpIntegrityProbe 讓使用者補實機結果。
 - 最後逐條核對又確認 IIS global 分節處置、OSProvided 證據、Core 型別化文字備援及跨主機帳號／原路徑／持久 actor 缺口；仍在本輪補齊，不以本段 PASS 勾全部 Phase。
+### R3 最終反查與補齊 — 2026-10-11（驗證中）
+
+主代理再次從 TS、Server Core 操作者、產品負責人、管理者及全專案契約反查原 R3-01–25、D3-01–08與全部劇本。主代理實作／整合；本段三名 gpt-6-luna high 分別補工作負載 producer、OSProvided 證據及 HTML／文字型別表單；單一 writer，主代理自行查 diff 與實際 consumer。這是具體獨立驗證，不宣稱已取得可核實的不同模型正式體檢資格。
+
+本輪修正：來源／目的端本機 SID 不同時，唯一同產品仍可配對，但另列帳號映射待辦，多實例不自動配對；環境文件將 MigrationSpec.TargetPath 與建議 Mapping 分開；原生決策與長工作記錄 Windows principal／SID／主機／時間，Owner 聲明與瀏覽器身分驗證分開。新增 IIS 全域／宣告分節／location／configSource 及 web.config 證據、相依與站台核准前處置，未知／budget／特殊項明列人工。generic enabled 欄位不假称網站啟動。OSProvided 使用完整 XML／task與folder安全、獨立來源與目的 Windows基準／来源證明及責任人確認；同名不等於 OS 提供。排除條目仍保存封存證據，來源絕對路徑不成為新主機必要檔案位置；目的端真正重新讀回。文字備援逐欄輸入同一型別契約與預覽，再明確 APPLY，無需手製正常流程 JSON。
+
+原 U commit a3b625f 的全量原生回歸在不可變快照執行；本段修正另以最終固定快照補驗受影響 consumer。基準快照不冒稱涵蓋後來修改，所有執行結果完成後才更新本段最終數量及 Phase。2501 列環境文件驗證在 WinPS 5.1 已通過，PS7 與整輪其餘測試仍在執行。實體4GiB、企業規模與 Server／IIS／TaskScheduler／SMB／PKI／業務仍依使用者小範圍驗證決策標 NotTested；本機嚴格 HTTP 遭傳輸修改時也標 ModifiedTransport，保留探測結果，不變更使用者網路政策或把 mock API 瀏覽器測試當實際橋接驗收。
+### R3 決策與帳號審閱驗證段落 — 2026-10-11
+
+跨主機帳號差異、實際 TargetPath 投影及原生 execution actor 的完整相依改動已獨立驗證。不可變快照 review-648bb0fb 的 Integrity、Comparison、EnvironmentConfirmation（2501列）、Contracts、AdvancedReview、BulkMigrationSpecs、WindowsSettingsReview、GeneralHostGates、FleetExecutionBindings、TargetPreparation 在 WinPS 5.1 與 PS7 共20次全部通過；其餘最終 IIS／OSProvided／UI 修改仍待下一段固定快照驗證。

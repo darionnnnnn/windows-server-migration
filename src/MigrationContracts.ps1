@@ -257,7 +257,7 @@ function Set-WsmMigrationSpec {
         $rows[0] | Add-Member NoteProperty MigrationSpec $spec -Force
         $rows[0].Owner=$spec.Owner;$rows[0].Evidence=$spec.Evidence
         $c.DecisionRevision++; $c.Approval=$null;if($c.SchemaVersion -eq 3){Clear-WsmAssistiveComparison $c}
-        $c.History=@($c.History)+@([pscustomobject]@{ Action='MigrationSpec'; ItemId=$ItemId; Revision=$c.DecisionRevision; Utc=(Get-WsmUtc) })
+        $c.History=@($c.History)+@([pscustomobject]@{ Actor=(Get-WsmExecutionActor); Action='MigrationSpec'; ItemId=$ItemId; Revision=$c.DecisionRevision; Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c
     }
 }

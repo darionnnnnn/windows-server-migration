@@ -5,7 +5,7 @@
         $c=Get-WsmCatalog $Workspace $PairId; if ($c.DecisionRevision -ne $ExpectedRevision) { throw 'Review changed.' }
         $plan=[pscustomobject]@{ Owner=$Owner; Wave=$Wave; FinalName=$FinalName; TemporaryIP=$TemporaryIP; FinalIP=$FinalIP; Domain=$Domain }
         $c | Add-Member NoteProperty PairPlan $plan -Force; $c.DecisionRevision++; $c.Approval=$null
-        $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='PairPlan'; Plan=$plan; Utc=(Get-WsmUtc) })
+        $c.History=@($c.History)+@([pscustomobject]@{ Actor=(Get-WsmExecutionActor); Revision=$c.DecisionRevision; Action='PairPlan'; Plan=$plan; Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c
     }
 }
@@ -18,7 +18,7 @@ function Set-WsmCrossHostDependency {
         $edges=@(); if ($c.PSObject.Properties['CrossHostDependencies']) { $edges=@($c.CrossHostDependencies | Where-Object PairId -CNE $DependencyPairId) }
         $edges+= [pscustomobject]@{ PairId=$DependencyPairId; Type=$Type; Evidence=$Evidence }
         $c | Add-Member NoteProperty CrossHostDependencies $edges -Force; $c.DecisionRevision++; $c.Approval=$null
-        $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='CrossHostDependency'; Dependencies=$edges; Utc=(Get-WsmUtc) })
+        $c.History=@($c.History)+@([pscustomobject]@{ Actor=(Get-WsmExecutionActor); Revision=$c.DecisionRevision; Action='CrossHostDependency'; Dependencies=$edges; Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c
     }
 }

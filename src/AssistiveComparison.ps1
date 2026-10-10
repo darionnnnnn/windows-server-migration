@@ -178,7 +178,8 @@ function Get-WsmAssistiveCoverageComplete($SoftwareCatalog) {
 }
 
 function Get-WsmAssistiveSoftwareKey($Entry) {
-    $parts=@([string]$Entry.Name,[string]$Entry.Publisher,[string]$Entry.Scope,[string]$Entry.SID,[string]$Entry.Architecture,[string]$Entry.AccountContext)
+    # Host-local account identities remain evidence, not cross-host product keys.
+    $parts=@([string]$Entry.Name,[string]$Entry.Publisher,[string]$Entry.Scope,[string]$Entry.Architecture)
     (($parts | ForEach-Object { $_.Trim().ToUpperInvariant() }) -join '|')
 }
 
@@ -207,6 +208,9 @@ function New-WsmAssistiveSoftwareRows($Source,$Target,$Baseline,$Choices,$Target
         if($staleChoice){$status='StaleChosenVersion';$reason='Source version facts changed after this choice; the saved choice is not applied to the changed source observation and must be reviewed again.'}
         elseif($entry.CaptureStatus -cne 'Success'){$status='SourceEvidenceIncomplete';$reason='Source software evidence is partial or manual and needs owner verification.'}
         $row=[pscustomobject][ordered]@{SoftwareId=[string]$entry.SoftwareId;Name=[string]$entry.Name;Publisher=[string]$entry.Publisher;Scope=[string]$entry.Scope;SID=[string]$entry.SID;Architecture=[string]$entry.Architecture;SourceVersion=$sourceVersion;ChosenVersion=$chosenVersion;ObservedTargetVersion=$targetVersion;TargetSoftwareId=$targetId;BaselineObservedVersion=$baseVersion;Status=$status;Reason=$reason;SourceCaptureStatus=[string]$entry.CaptureStatus;TargetCoverageComplete=[bool]$TargetCoverageComplete}
+        $accountStatus='NotCompared';$targetSid='';$targetAccount='';if($targets.Count -eq 1){$targetSid=[string]$targets[0].SID;$targetAccount=[string]$targets[0].AccountContext;$accountStatus=if([string]$entry.SID -ceq $targetSid -and [string]$entry.AccountContext -ceq $targetAccount){'SameObservedIdentity'}else{'DifferentIdentityRequiresReview'}}
+        $row | Add-Member NoteProperty SourceAccountContext ([string]$entry.AccountContext);$row | Add-Member NoteProperty TargetSID $targetSid;$row | Add-Member NoteProperty TargetAccountContext $targetAccount;$row | Add-Member NoteProperty AccountScopeStatus $accountStatus
+        if($accountStatus -ceq 'DifferentIdentityRequiresReview'){$manual.Add([pscustomobject]@{SoftwareId=[string]$entry.SoftwareId;Name=[string]$entry.Name;Status='AccountScopeReviewRequired';Owner='';Action='Review the source and target account/SID mapping and actual consumer access; unique product pairing does not prove account equivalence.';CompatibilityDisclaimer='Local account names and SIDs are host-specific evidence.'})}
         $rows.Add($row)
         if($status -notin @('ChosenVersionObserved')){$manual.Add([pscustomobject]@{SoftwareId=[string]$entry.SoftwareId;Name=[string]$entry.Name;Status=$status;Owner='';Action=$(if($status -eq 'TargetMissing'){'Install or explicitly disposition this source software on the target.'}elseif($status -eq 'DifferentFromChosenVersion'){'Install the chosen version or update the chosen version after evidence review.'}elseif($status -eq 'Ambiguous'){'Identify the matching target instance and account scope.'}elseif($status -eq 'StaleChosenVersion'){'Review source facts and select a version against the current source observation.'}else{'Collect reliable software evidence and review with the product owner.'});CompatibilityDisclaimer='Observed version equality or selection is not compatibility evidence.'})}
     }
@@ -271,7 +275,7 @@ function Set-WsmAssistiveSoftwareVersion {
         Clear-WsmAssistiveComparison $catalog
         $sealed=($catalog.Approval -and $catalog.Approval.PSObject.Properties['Kind'] -and $catalog.Approval.Kind -ceq 'MigrationPlan')
         if(-not $sealed){$catalog.DecisionRevision++;$catalog.Approval=$null}
-        $catalog.History=@($catalog.History)+@([pscustomobject]@{Revision=$catalog.DecisionRevision;Action='AssistiveSoftwareVersion';SoftwareId=$SoftwareId;SourceVersion=$sourceVersion;ChosenVersion=$ChosenVersion;Reason=$Reason;Utc=(Get-WsmUtc)})
+        $catalog.History=@($catalog.History)+@([pscustomobject]@{ Actor=(Get-WsmExecutionActor);Revision=$catalog.DecisionRevision;Action='AssistiveSoftwareVersion';SoftwareId=$SoftwareId;SourceVersion=$sourceVersion;ChosenVersion=$ChosenVersion;Reason=$Reason;Utc=(Get-WsmUtc)})
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $catalog
         Assert-WsmAssistiveContract $catalog Catalog | Out-Null
         $catalog
