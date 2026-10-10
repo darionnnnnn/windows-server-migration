@@ -1,6 +1,6 @@
 # 第 3 輪規劃：一般網站／排程主機 EOS 搬移
 
-日期：2026-10-10。狀態：**實作中：2026-10-10使用者已授權第三輪全部實作，HTML採ui-ux-pro-max；逐段核對／驗證／commit／push，所有Phase須有實際證據才能勾完成。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；上次定案起點：`d674087`；四視角複審基準：`97a98f8`；本次定案基準：`e772b4e`；本次再審基準：`884d65e`。輔助搬移、版本選擇、原路徑保存、預設全選／自訂、HTML／本機 PowerShell／文字備援、C／非 C 分工、不合併、非 IIS 不新增 adapter均沿用。IIS／排程的全部設定、物件及所選相依檔案須成套處理，非 C 路徑同樣還原；特殊能力與實機條件仍明列，不從規劃授權推論已授權實作或解除 production gate。
+日期：2026-10-10。狀態：**實作已補齊，最終遠端驗證中：2026-10-10使用者已授權第三輪全部實作，HTML採ui-ux-pro-max；逐段核對／驗證／commit／push，所有Phase須有實際證據才能勾完成。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；上次定案起點：`d674087`；四視角複審基準：`97a98f8`；本次定案基準：`e772b4e`；本次再審基準：`884d65e`。輔助搬移、版本選擇、原路徑保存、預設全選／自訂、HTML／本機 PowerShell／文字備援、C／非 C 分工、不合併、非 IIS 不新增 adapter均沿用。IIS／排程的全部設定、物件及所選相依檔案須成套處理，非 C 路徑同樣還原；特殊能力與實機條件仍明列，不從規劃授權推論已授權實作或解除 production gate。
 
 主入口見 [README](../README.md)；既有實作證據見 [第 2 輪驗證](archive/MIGRATION-2-VERIFICATION.md)，既有能力與限制見 [涵蓋範圍](ENTERPRISE-MIGRATION-COVERAGE.md)。本輪後續待辦集中於本文；既有外部驗收仍保留於 [實作紀錄](IMPLEMENTATION-0.1.md)。
 
@@ -9,7 +9,7 @@
 - 授權：第三輪全部已定案功能實作；HTML樣式使用ui-ux-pro-max；分段驗證後commit／push目前dev，停止前先核對全部子項與真實consumer，缺項繼續補齊。
 - 分工：主代理契約／跨段整合及獨立驗收；GPT-6 Luna high負責契約基礎與工作負載盤點，medium負責原生HTML資產。單一檔案一名writer；後續每個交付記實作者、證據與未驗限制。
 - 基準：df21f02可復原；src／tests／入口以Git基準隔離快照保存於專案外，忽略docs/archive及個人prototype。新資料ToolVersion=0.4.0／Catalog與MigrationPlan schema3，sealed來源plan與target決策receipt分開，舊執行中state不轉版。
-- 目前：A／B／S／E1／C／P／D／G／E2／U 的已交付子段及遠端提交見文末證據；最後反查仍在補 IIS 設定涵蓋、OSProvided 可攜證據及文字型別操作，F 全量回歸執行中。完成全部修正及相依驗證前不勾整段；既有企業／Server／產品實機資格不以 fixture 替代。
+- 目前：A／B／S／E1／C／P／D／G／E2／U 的已交付子段及遠端提交見文末證據；IIS 設定涵蓋、OSProvided 可攜證據、文字型別操作及最後原生 NonC／Recovery 缺陷已補齊，F 本機广域／受影響回歸已通過，最新遠端 CI 核對中。完成全部修正及相依驗證前不勾整段；既有企業／Server／產品實機資格不以 fixture 替代。
 
 - 2026-10-10 使用者確認沒有來源／目的 Server 可直接全驗；本輪使用小範圍可行性測試及隔離回歸，所有可執行測試須通過。無法在本機驗證的原生功能提供環境探測入口與可匯入結果，待使用者補回證據；未探測或未驗證不得標為通過或正式資格。
 - A1 契約基礎完成：0.4.0／schema 3、顯式啟用、預設選取與 CAS、盤點保存與重盤點、sealed subset／外部目的端決策 receipt、非成功返回碼。正式模組 WinPS 5.1／PS7 契約及既有語意回歸；收據實際還原消費、材料清理與橋接仍屬後續段落，R3-A 尚未整段完成。
@@ -378,7 +378,7 @@ IIS角色／模組／runtime、task帳號／gMSA與必要secret／憑證／機�
 
 **驗收方向：** 新版換位置仍能從舊 `C:\temp`／原設定路徑取檔；原始 bytes／工作設定分別追查；目標有外部檔／同名衝突、同版本位置不同、帳號無權、先還原再安裝漂移、deferred 續跑、final 刪除與回退。必要非 C 相依以小工具／外部證據確認；衝突未處理不宣稱原路徑已可用，檔案已存回不宣稱新版／業務已可用。
 
-## 非 C 槽跳板機小工具（建議方案，待調整）
+## 非 C 槽跳板機小工具（已定案並實作）
 
 提供單一 PowerShell 入口，支援互動輸入與等價參數；來源如 `\\source\D$\Business`，目的如 `\\target\D$\Business`。跳板機的 `D:\` 是跳板機本機路徑，必須明示，不能猜它代表遠端來源。以 SMB／企業授權帳號操作，不要求 WinRM，也不在參數、報告或 log 保存密碼。
 
@@ -432,7 +432,7 @@ Manager 對必要非 C 相依接收綁定來源主機／根目錄、目的主機
 
 容量預檢按所選集合及實體volume處理package／incoming／staging／backup保留／journal／HTML索引，保守估算不承諾壓縮率；目標有mount／SUBST／多代號時不能只看drive-letter相加。沿用有界JSON／索引／路徑／transport限制，超限在寫入前揭露可處理範圍與所需外部方式，不截斷成成功；未達代表性規模證據不宣稱企業效能。E2／U／F另驗鍵盤操作、清楚label／狀態、不只靠顏色、長名稱／中文字元、進度不卡搜尋與大清單虛擬／分頁讀取。
 
-## 分批規劃、輸入／輸出與驗收（全部待實作）
+## 分批規劃、輸入／輸出與驗收（原始契約；完成證據見末段）
 
 沿用 E1（JSON 比較／人工準備）、E2（全使用者文件HTML／交接）、P（原設定路徑／不合併／無法放置）、G（兩種順序／續跑），新增 S（全選／自訂）及 U（全部功能HTML／文字備援）。版本自由選擇取代強制同版本，HTML取代使用者主要Markdown入口；先前逐檔合併建議未採用，不新增通用或逐檔合併。前後段契約／驗收一起更新，不先公開未接線還原按鈕。代號均為第三輪，不沿用舊完成狀態。
 
@@ -656,3 +656,6 @@ Set-WsmFileMetadata 將 ACL／attributes 寫入放在精確時間戳還原之前
 - 主代理獨立驗收完成：固定快照 `wsm-r3-nonc-final-fddbceaa8bda42feae62a888dc085354` 的 16 支 consumer 測試兩引擎共 32 PASS；WinPS 最初由 WinPS runner 接到原生 IIS 權限 stderr 導致 runner 中止，改用 PS7 runner 保留 child exit code 後，其剩餘 8 支全部 PASS，未放寬 probe 原生資格。最新 fixture 再由 `wsm-r3-latest-proof` 快照核對 45 Workload／9 DirectoryReadback／16 Rollback／Encoding，兩引擎共 8 PASS。只移除 NonC 最終目錄時間核對的反例快照，在真實整棵目錄測試被「final directory metadata evidence 不符實際時間」拒絕；同一正式 runtime 的正例通過。
 - 最終廣域回歸 `wsm-r3-final-runtime-9e64176f6ead4ea28f46aee1af2a3b06` 的 105 支測試各引擎全 PASS（共 210），Environment fixture=101，DeltaContracts=5,004。該快照早於最後 Recovery／NonC 修正；Recovery 最終 prior/readback／精確重播已有另記 dual 28＋8 checks-scripts 驗證，NonC 以本段 32＋8 PASS 補驗，不冒稱全部結果來自同一 runtime。4GiB 實際大檔資格另列 NotTested，不在 small suite 計數。
 - 遠端 `5460419` R3 CI 兩引擎在 mixed ACL 讀回 fixture 缺檔時失敗，未有 restore row 診斷。fixture 改用明確受保護 current-user／SYSTEM／Administrators 權限，保留刻意的父 ACL 漂移與精確 native assertion，並先輸出 restore result／metadata 錯誤；本機 dual 9 PASS。此 commit 遠端重新驗證仍必須通過，不能用本機綠燈代替 CI 結果。
+### CI ACL fixture 的環境前提修正 — 2026-10-11
+
+遠端 `5b5803d` 兩引擎通過 45 項真實 NonC／Manager／G 整合，mixed ACL case 也如預期拒絕最終漂移；positive case 仍在 runner 暫存目錄繼承 ACL 下缺檔。改用明確受保護的 source root／nested ACL，將 Everyone 映射至未在 fixture 的 Authenticated Users，避免同一 current-user 的 FullControl 合併／runner 繼承改變 sealed SDDL。保留原生 metadata helper、精確 SID-mapped SDDL 與 OwnedFiles 最終 hash；新增 positive restore 結果前置診斷。實作者與主代理分別在兩引擎 10 checks 全 PASS，早期負例無寫入、mixed 負例 FinalReadbackFailed、positive Succeeded。沒有放寬 runtime ACL／timestamp 判定；遠端 rerun 仍待確認。R3 CI 現改為收集各 script 失敗後整體 throw，避免前一個 fixture 錯誤遮住其餘驗證；原生 PowerShell AST 核對通過。

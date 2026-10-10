@@ -58,17 +58,21 @@ try {
         Check ($postResult.Status -eq 'Failed' -and $postFileResults.Count -eq 1 -and $postFileResults[0].MetadataStatus -ceq 'FinalReadbackFailed') ('Parent ACL propagation after the initial file readback was reported successful; status='+$postResult.Status+'; final result='+[string]$postFileResults[0].MetadataStatus)
         Check ((Get-WsmAssistiveMetadataHash $postActual) -cne [string]$postResult.OwnedFiles[0].MetadataHash) 'Mixed-generation child ACL fixture did not create final metadata drift for the final-readback gate.'
 
-        # Positive: preconfigure an existing target root with the explicit reviewed SID mapping.
-        # Newly created children inherit that mapped ACL before file staging, then remain equal
-        # after the native directory metadata application and final ownership readback.
-        $positiveSource=Join-Path $root 'positive-source';$positiveNested=Join-Path $positiveSource 'nested';[void][IO.Directory]::CreateDirectory($positiveNested);Add-InheritableEveryoneRead $positiveSource
+        # Positive: source and target ACLs use explicit, protected fixture rules so the test
+        # does not depend on machine temp-directory inheritance. Map Everyone to the distinct
+        # Authenticated Users SID; this avoids merging it with the current user's FullControl ACE.
+        $positiveSource=Join-Path $root 'positive-source';$positiveNested=Join-Path $positiveSource 'nested';[void][IO.Directory]::CreateDirectory($positiveNested);Set-ExplicitFixtureDirectoryAcl $positiveSource $true;Set-ExplicitFixtureDirectoryAcl $positiveNested $true
         $positiveFile=Join-Path $positiveNested 'worker.ini';[IO.File]::WriteAllText($positiveFile,'approved bytes')
         $positiveRootMeta=Get-WsmFileMetadata $positiveSource 'DaclOwner';$positiveNestedMeta=Get-WsmFileMetadata $positiveNested 'DaclOwner';$positiveFileMeta=Get-WsmFileMetadata $positiveFile 'DaclOwner'
         $targetRoot=Join-Path $root 'positive-target';[void][IO.Directory]::CreateDirectory($targetRoot)
-        $currentSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;$sidMap=@{'S-1-1-0'=$currentSid};Set-WsmFileMetadata $targetRoot $positiveRootMeta $sidMap
-        $positiveNestedNow=Join-Path $targetRoot 'nested';$script:entries=@((New-DirectoryEntry $itemId '' $positiveSource),(New-DirectoryEntry $itemId 'nested' $positiveNested),(New-FileEntry $itemId 'nested\worker.ini' $positiveFile))
+        $targetMappedSid='S-1-5-11';$sidMap=@{'S-1-1-0'=$targetMappedSid};Set-WsmFileMetadata $targetRoot $positiveRootMeta $sidMap
+        $positiveNestedNow=Join-Path $targetRoot 'nested';$script:entries=@((New-DirectoryEntry $itemId '' $positiveSource),(New-DirectoryEntry $itemId 'nested' $positiveNested),(New-FileEntry $itemId 'nested\worker.ini' $positiveFile));$script:metadataAssertErrors=@{}
         $positive=New-RunContext $targetRoot $itemId;$positiveResult=Invoke-WsmAssistiveFileScopeRestore $positive.Item $positive.Package $positive.Paths $positive.State $sidMap $null
-        $positiveTargetFile=Join-Path $positiveNestedNow 'worker.ini';$positiveActual=Get-WsmFileMetadata $positiveTargetFile 'DaclOwner';$positiveOwned=@($positiveResult.OwnedFiles|Where-Object RelativePath -CEQ 'nested\worker.ini')
+        $positiveTargetFile=Join-Path $positiveNestedNow 'worker.ini';$positiveOwned=@($positiveResult.OwnedFiles|Where-Object RelativePath -CEQ 'nested\worker.ini');$positiveFileResults=@($positiveResult.FileResults|Where-Object RelativePath -CEQ 'nested\worker.ini');$positiveTargetFileExists=[IO.File]::Exists($positiveTargetFile)
+        $positiveFileRowText=(@($positiveFileResults|ForEach-Object {($_|ConvertTo-Json -Depth 8 -Compress)}) -join '; ');$positiveOwnedText=(@($positiveOwned|ForEach-Object {($_|ConvertTo-Json -Depth 8 -Compress)}) -join '; ')
+        Write-Host ('REPRO positive restore invocation: target='+$targetRoot+'; target-directory-exists='+[IO.Directory]::Exists($targetRoot)+'; nested-directory-exists='+[IO.Directory]::Exists($positiveNestedNow)+'; target-file-exists='+$positiveTargetFileExists+'; restore-status='+$positiveResult.Status+'; file-results='+$positiveFileRowText+'; owned-files='+$positiveOwnedText+'; metadata-readback-errors='+($script:metadataAssertErrors|ConvertTo-Json -Depth 8 -Compress))
+        Check ($positiveTargetFileExists) ('Positive restore did not materialize target file before native metadata readback; status='+$positiveResult.Status+'; result='+$positiveFileRowText+'; owned-files='+$positiveOwnedText+'; metadata-readback-errors='+($script:metadataAssertErrors|ConvertTo-Json -Depth 8 -Compress)+'; target-root='+$targetRoot+'; source-file='+$positiveFile)
+        $positiveActual=Get-WsmFileMetadata $positiveTargetFile 'DaclOwner'
         Check ($positiveResult.Status -eq 'Succeeded' -and @($positiveOwned).Count -eq 1) 'Correctly mapped parent/child ACL did not produce a successful file restore.'
         Check ((Get-WsmAssistiveMetadataHash $positiveActual) -ceq [string]$positiveOwned[0].MetadataHash) 'Owned file metadata hash does not match final native target readback after all directory ACLs were applied.'
         $expectedMappedSddl=Convert-WsmMappedSddl ([string]$positiveFileMeta.Sddl) $sidMap
