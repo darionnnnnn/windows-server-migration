@@ -4,7 +4,7 @@
 
 新增方向及全部待實作項目集中於 [第 3 輪規劃草案](MIGRATION-3-PLAN.md)，目前僅討論文件。下表是第 2 輪現行實作，不能據此宣稱 C 槽限定、非 C 跳板機工具或第 3 輪完整相依已完成。
 
-2026-10-10 第三輪續訂：企業 TS 操作與交接、全新 Windows 目標、其餘軟體同來源版本、JSON 比較資料庫及還原前由使用者選直接還原或等待補裝，舊路徑仍須可存取。現行 TargetDiff 尚未執行兩機軟體比較，缺軟體仍阻擋整次 full／delta 還原，尚無新比較／decision／deferred 契約；非工具持有目的仍阻擋。報告讀 Mapping、還原讀 MigrationSpec.TargetPath 的位置不一致已用隔離 fixture 重現。第三輪 R3-01–08、分批輸入／輸出及驗收已規劃；新流程與缺陷皆未實作／修正，不把資料還原宣稱為環境或業務立即可用。
+2026-10-10 第三輪續訂：輔助搬移、預設全選／自訂、允許新版仍保存原設定舊路徑；全部使用者功能／文件HTML＋本機PowerShell／文字備援已定案。目的已有內容不合併，以HTML逐檔列無法放置／scope影響／人工重試；非IIS不新增adapter。新版與HTML入口取代先前強制同版／主要Markdown入口，保留全新Windows／JSON／兩種順序。現行TargetDiff未真正比較，缺軟體擋整次full／delta，外部目的仍阻擋；Decision=Pending非預選模型，HTML只有離線報告，未有全部文件／操作入口。Mapping／MigrationSpec.TargetPath文件缺陷已用隔離fixture重現。R3-01–10及S／U等全批次未實作／修正，存檔或版本選擇不是業務可用。
 
 ## 已實作範圍
 

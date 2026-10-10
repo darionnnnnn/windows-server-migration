@@ -2,7 +2,7 @@
 
 本流程供受控隔離 pilot。Windows Server、Oracle 實際帳號／產品、企業 PKI 與業務驗收仍需外部實機證據；本機 fixture 通過不等於正式上線資格。所有主機使用相同工具 bytes，以系統管理員的 64 位元 Windows PowerShell 5.1 執行。
 
-第 3 輪已定義全新 Windows 目標、非 Windows 軟體同來源版本、程式維護 JSON 比較，以及還原前選擇直接還原或等待人工補裝。新直接還原將保留待軟體項與續跑，不代表業務立即可用；目前尚未實作，現行以下流程仍依既有準備門檻。規劃與相依影響見 [MIGRATION-3-PLAN.md](MIGRATION-3-PLAN.md)。
+第 3 輪輔助搬移預設全選／可自訂；**全部使用者功能與文件以HTML入口**，本機PowerShell執行／文字備援。軟體可選新版取代強制同版，原設定預設原路徑保存並另驗新版生效；不合併目的既有文件，HTML列無法放置及人工重試，非IIS不新增adapter。全新Windows／JSON／還原前直接或等待補裝／逐項續跑保留。全部尚未實作；下文仍是現行文字選單、Markdown及準備門檻，第三輪需遷移全部使用者入口而非假裝已有按鈕。詳見 [MIGRATION-3-PLAN.md](MIGRATION-3-PLAN.md)。
 
 ## 工作目錄與交付
 
