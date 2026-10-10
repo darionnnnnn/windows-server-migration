@@ -1,6 +1,6 @@
 # 第 3 輪規劃：一般網站／排程主機 EOS 搬移
 
-日期：2026-10-10。狀態：**四視角複審後補強規劃；本輪僅修改文件，以下 Phase 均未實作／驗收。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；上次定案起點：`d674087`；本次複審基準：`97a98f8`。已確定輔助搬移、版本選擇、原路徑保存、預設全選／自訂、所有使用者功能與文件以 HTML 為入口、本機 PowerShell／文字備援、C／非 C 分工、不合併既有文件並列無法放置清單、非 IIS 不新增 adapter。保留全新 Windows 基準、JSON 比較及直接還原／等待選擇；以下技術與實機條件仍明列，不從審查／規劃推論已授權實作或解除 production gate。
+日期：2026-10-10。狀態：**八項建議已定案，補齊 IIS／排程及跨磁碟完整還原規劃；本輪僅修改文件，以下 Phase 均未實作／驗收。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；上次定案起點：`d674087`；四視角複審基準：`97a98f8`；本次定案基準：`e772b4e`。輔助搬移、版本選擇、原路徑保存、預設全選／自訂、HTML／本機 PowerShell／文字備援、C／非 C 分工、不合併、非 IIS 不新增 adapter均沿用。IIS／排程的全部設定、物件及所選相依檔案須成套處理，非 C 路徑同樣還原；特殊能力與實機條件仍明列，不從規劃授權推論已授權實作或解除 production gate。
 
 主入口見 [README](../README.md)；既有實作證據見 [第 2 輪驗證](archive/MIGRATION-2-VERIFICATION.md)，既有能力與限制見 [涵蓋範圍](ENTERPRISE-MIGRATION-COVERAGE.md)。本輪後續待辦集中於本文；既有外部驗收仍保留於 [實作紀錄](IMPLEMENTATION-0.1.md)。
 
@@ -12,6 +12,7 @@
 4. 所有已發現項目預設選取；使用者可調整類別、項目、檔案範圍及已支援設定。不能自動還原的也列出處置與責任，不能為了成功率隱藏。
 5. 使用者的操作、說明與所有確認／交接文件均透過 HTML 網頁入口。HTML 搭配本機 PowerShell 執行端，文字選單備援；與 CLI 共用資料、預覽及執行邏輯，無需正常流程改 JSON 或另開 Markdown。
 6. 先把目標寫入 README，再確認策略及可驗收階段；審查發現的缺陷與建議在第三輪討論及處理，不默默延到下一輪。
+7. 同一搬移工作涵蓋 IIS 設定／物件及排程全部項目，預設全選並允許使用者調整；網站／排程引用的檔案、設定或輸入／輸出目錄位於 C 以外磁碟時仍須還原。主包仍只封裝來源 C 的核准檔案，非 C 用跳板機工具接續，所有結果回到同一工作負載，不以只搬 XML 或 C 檔案當作完整還原。
 
 軟體本體不自動安裝的既有範圍仍適用；TS 可協助人工準備，但完成安裝、檔案搬移與業務驗收分別記錄，不能互相代替。
 
@@ -23,6 +24,20 @@
 4. **比較儲存：** 程式自行寫入 JSON 作持久資料庫，記錄基準、兩機現況、比對、選取、自訂、版本選擇、人工工作及結果；使用者不需手填資料庫。不新增 SQL／SQLite／雲端或常駐服務。
 5. **操作與範圍：** 已選 HTML＋本機 PowerShell／文字備援，最新指示再要求所有使用者功能與文件均以 HTML 呈現。沿用主工具 C 槽、其他槽跳板機、軟體本體人工安裝；所有已發現項目預選，不支援項目出列處置，不擴整機映像。
 6. **目的衝突與非 IIS：** 不協助合併既有文件，不自動覆寫外部內容；HTML 明確逐檔列出因目的端已有文件而無法放置的項目。非 IIS 完整盤點相依、保存所選檔案／設定及列人工處置，不新增產品專用還原 adapter。
+7. **本次八項建議與成套還原：** 使用者已指示依建議處理，D3-01–08列為本輪已定策略；採策略不等於已取得企業期限／主機／樣本或特殊能力資格。IIS／排程完整還原契約及驗收見下文，非 C 檔案不改進主 C 封包。
+
+### 本次八項定案：策略、理由與操作影響
+
+| 定案 | 已採用策略及理由 | 專案／操作影響與驗收落點 |
+|---|---|---|
+| D3-01：特殊檔案 | 所有範圍都偵測長路徑、ADS／EFS／連結／稀疏與壓縮等特殊語意；未受驗項阻擋受影響範圍並列人工處置，不默默略過。依業務樣本決定需補的原生能力，避免 bytes相同而語意已失。 | B／C／P／D／G／F共用分類；保留現行no-reparse與239字元驗證界限。必要特殊相依未處置則工作負載未完成，其他獨立集合可處理；未測能力不承諾支援。 |
+| D3-02：檔案權限／metadata | 一般檔案驗內容、必要時間／屬性、依核准帳號／SID映射的權限及實際執行帳號存取；owner／SACL依必要業務／資安要求處置。避免只驗hash或照抄舊本機SID。 | A／C／P／D／G／F有metadata需求／預覽／readback；不降低現行C工具DaclOwner／DaclOwnerSacl契約。非C須明示必要欄位；必要未支援項阻擋相依，不能將未驗owner／SACL報成已保存。 |
+| D3-03：舊版本接續 | 已開始的舊作業用原可信版本完成或受控回退；R3新流程重新盤點、核准及建立基線。舊證據保留可查，不在執行中轉換state、sealed plan或journal。 | A／S／C／G／U／F提示版本及重新開始指引；新舊不可同時修改同一作業工作區。舊版目的ownership須先完成對帳／回退或另建獨立核准範圍，不借新PairId解除衝突。 |
+| D3-04：材料與證據保留 | 未結案、有待處理項或仍在回退期限內，不自動刪除必要full base、delta鏈、原檔、backup／journal／結果；結案後依企業期限，清理預覽列相依再由使用者確認。避免局部重選缺原檔。 | A／C／G／D／E2／U／F追蹤材料／證據引用與容量，清理不得破壞續跑／回退；初始比較基準及必要稽核紀錄按原契約留存。無期限或責任核准則保留，不內建任意天數或自動清理。 |
+| D3-05：還原前重查 | 每次寫入前重查受影響目的、權限與軟體必要條件；安裝／改版／映射／相關內容變動使相關預覽／receipt失效。歷史snapshot保留，不僅以未逾時認定仍有效。 | A／E1／P／G／D／U／F按影響重算而非全部重做；離線觀測需可信引用與時效，執行端仍現場驗必要條件。快取／期限依查詢成本及企業政策定稿，未設定不默認無限有效。 |
+| D3-06：一致性窗口 | 可提前準備資料；final成功仍須同一受控停寫窗口下完成必要逐檔hash及C／非C核驗，停寫維持到切換。窗口不足改安排，不降成只比大小／時間。 | C／D／G／E2／F保留各writer／範圍／窗口／freeze引用及失效。不是跨機原子交易；部分成功與未完成保留，未達一致性不報final完成或啟用。實際窗口／停寫責任需pilot前取得。 |
+| D3-07：HTML環境與橋接 | HTML＋本機PowerShell／文字備援沿用；A先驗本機啟動／權限／長工作下進度與取消，再定listener／worker選型。依真實TS環境建立矩陣，不強制裝GUI或瀏覽器。 | A／U／F驗WinPS5.1、已宣告PS7及Desktop／Core備援、企業policy／loopback限制；管理端HTML不變遠端執行器。版本、瀏覽器及部署政策是待取得資料，不假定全部Server都有瀏覽器。 |
+| D3-08：企業驗收與責任 | 取得代表性兩端主機、資料／軟體規模、特殊樣本、新版媒體及業務情境後訂效能／容量目標；具名TS、應用、平台／產品及業務驗收責任。功能驗收與正式資格分開。 | A／B／D／E2／U／F保存前提、結果及未達條件；沒有樣本不宣稱企業效能，沒有外部資格不解除正式門檻。所有缺口仍在本輪，不以文件定案代替實機證據。 |
 
 **直接還原的規劃解讀：** 允許先處理不依賴尚未安裝軟體的檔案／資料與可執行設定；需要產品 API／runtime／角色的項目留待安裝後續跑。此解讀由「不要求還原後立即完全可用」推導，用以避免現行一個軟體缺口阻擋所有檔案；不是使用者已批准任意跳過核准、衝突或後續業務門檻。
 
@@ -97,6 +112,7 @@ AD DS／CA、Hyper-V、叢集、RDS、專用儲存或其他專業角色主機不
 | R3-16／P2：HTML可攜交付與權威邊界缺口 | `src/PackageTransport.ps1:1–4`payload包成員只有manifest／plan／artifacts／freeze／chunks；`src/DeliveryReceipts.ps1:35／44`有ReportReferences及受限成員；`src/EnvironmentConfirmation.ps1:386–452`另有DocumentId索引及多格式引用。`src/Reports.ps1:21／38`離線資料內嵌，不需fetch外部JSON。 | E2／U不能把HTML直接塞入sealed payload或只交入口HTML。文件另有完整成員／hash索引、相對連結、可離線資源；JSON引用／ReportReferences與匯入端一起改。操作runtime資源與產出文件不同權威；本機http頁不假設能任意打開磁碟檔案，原設定位置可複製並標示實際主機。 |
 | R3-17／P2：選取後容量及完整計數缺口 | `src/Restore.ps1:40–42`用整份manifest.Bytes及所有Include scope估算，以路徑根字母查容量；`src/Payload.ps1:26／32`明確239字元限制，`:37–42`估算index／margin。前版只要求總數一致，未定各集合分母及物理volume。 | C／G／D按本次有效集合與實體volume估算封裝／staging／保留／state／HTML附件，顯示真實有界預算與特殊路徑缺口。E2分別計檔案／目錄／bytes／物件，不把未知當0、不混計重複consumer；空集合為無操作，100%掃描／執行進度不代表內容全部已還原。 |
 | R3-18／P2：多操作者、秘密及證據失效的管理缺口 | `src/Review.ps1:14／21–24`用revision、Environment.UserName及History；`src/EnvironmentConfirmation.ps1:13–47`是安全投影，不輸出raw settings；`src/Recovery.ps1:7`明說journal不抵抗本機管理員改寫。前版HTML沒有角色與並行編輯／憑證輸入細節。 | S／U保存實際本機principal／主機與責任Owner分欄，兩頁CAS衝突不丟尚未提交輸入、不將任填Owner當企業授權。secret只走當次受控記憶體且不入HTML／localStorage／下載／log；失效及不完整結果可追查。受控外部信任／歸檔責任不因改網頁而消失。 |
+| R3-19／P1：IIS／排程全部設定與跨磁碟還原閉環 | `src/Inventory.ps1:35`匯出task XML及安全capture，`:59–61`採IIS site／pool／全域XML；`src/Discovery.ps1:78–97`僅形成路徑候選與部分相依。`src/IisAdapter.ps1:43`起重建site／pool，`src/Adapters.ps1:95／117`註冊停用task及驗四個執行section；`src/MigrationContracts.ps1:63`沒有通用IIS全域還原adapter。 | 既有XML／site／pool能力不等於全部IIS設定／完整排程相依可還原。B／S／G補設定層級／物件／檔案／帳號及required consumer關聯，C／D實際搬檔，G驗兩通道結果再判工作負載完整；非C目錄不排除，缺角色／模組／盤符／機密列待處理。全量原設定、安全保存、typed套用與readback、人工必要項逐項可追查，不直接替換新OS全域設定。 |
 
 R3-01／03 是需求缺口，R3-02 是已重現缺陷，R3-04／05 是需處理的契約風險；不能統稱程式 bug，也不能用既有回歸通過表示它們已解決。
 
@@ -145,6 +161,8 @@ R3-01／03 是需求缺口，R3-02 是已重現缺陷，R3-04／05 是需處理�
 程式採既有 workspace lock、ExpectedRevision 檢查及同目錄原子寫入；不可變 snapshot 先落盤並核驗，再單次更新 authority 引用。中斷產生未被引用的 snapshot 可保留供受控檢查，資料庫不能指向半寫檔；相依多檔修改沿用 transaction／RepairWorkspace。重啟、報告重產及 attempt 更換不丟基準／選擇／未完成工作，不重建 stable state。
 
 沿用 128 MiB 有界 JSON 與受控目錄保護：先估算資料量，超限明確停止，不能截斷清單。歷史採證據引用避免每次嵌入完整全量盤點；具體 snapshot 大小／保留策略需在規模驗收前確認。JSON 不保存密碼／私鑰／完整秘密設定，真實企業資料不入公開 repo。來源／目標錯配、hash／revision 失效或 schema 不相容時拒絕套用，新比較不可讓舊 reader 默默使用舊結果。
+
+保留策略按D3-04已定：基準／稽核引用持續保存，未結案／待處理／回退期限內必要材料不自動清理；結案後仍需企業期限與使用者確認。snapshot／full base／delta／backup的可清理相依與容量由A／G建立，實際期限及代表性大小屬待取得企業資料，不能用規模超限為由截斷或刪掉仍被引用的證據。
 
 ## 預設全選、使用者自訂與核准集合
 
@@ -255,6 +273,38 @@ expected缺口按獨立scope／相依組分流；實際執行失敗要記錄已�
 
 靜態解析不能證明任意腳本或程式所有動態依賴。結合自動探索、owner 補充、原機實際運作檢查與目標業務驗收才可關閉缺口；不能用「未找到」代替「不存在」。有必要檔案未處置、讀取失敗、路徑未解析或外部依賴未驗證時，不得顯示整台可切換。
 
+### IIS／排程設定與檔案成套還原（本次使用者定案）
+
+「同步還原」是同一工作負載的協調流程：保存與還原設定／物件，加上所有所選必要檔案及權限，跨C／非C回到同一結果；不表示跨主機／磁碟同時原子提交。預設納入所有已發現項目，尊重使用者取消；未選、OS已提供、衝突、待軟體或人工項都明示，不能把XML已匯出當作物件已還原，也不能把部分已完成當成整個網站／排程已完整還原。
+
+| 類別 | 必須保存／處理的設定與相依 | 還原與核驗契約 |
+|---|---|---|
+| IIS物件 | 全部site、application、各層virtual directory、pool；名稱／結構、applicationPool／physicalPath、bindings／HTTPS憑證引用、pool身分／runtime／32位元／回收／啟動政策等有效設定。 | 受審typed設定在target重建，原設定與目標映射分存；readback核對所有影響執行的來源明示值及繼承／預設值。沿用停用staging、目標本機site ID重配與既有物件衝突門檻，不自動覆寫既有site／pool。 |
+| IIS全域／階層設定 | applicationHost.config內全域／location／繼承／預設、各層web.config與configSource；驗證、授權、處理常式、模組、MIME、預設文件、重導、錯誤、記錄等實際使用section，含非C設定引用。 | 保存完整來源證據於受控材料，逐section列來源層級、有效值、必要角色／模組、typed套用或人工程序與readback。B／G補既有site／pool之外的必要設定消費端；不整份蓋回Server2016的全域檔、不匯入未知section／任意命令；未知或target schema不支援仍為待處置，不假稱已還原。 |
+| 全部排程項目 | 所有task folder與task，包括隱藏／停用／多action；完整來源XML、名稱／TaskPath、Actions、Triggers、Principals、Settings、必要RegistrationInfo／Data／extensions、安全描述及folder權限。 | 核准後依原階層重建task／folder，映射帳號／SID、保留觸發／時區／重試／漏跑政策及所有action；目標自動產生Date／URI等差異可規範化，原值仍留存。未驗section／action／COM handler須列缺口；註冊成功不足以判完整，readback與執行驗證分開。 |
+| 網站／排程檔案 | 所有實際physicalPath、WorkingDirectory、Execute／Arguments引用的腳本、發布內容、組件、設定、輸入／輸出／資料目錄及owner補登路徑；不能只搬啟動器或站台根。 | 按來源實體volume分C主包／非C小工具／UNC外部，跨目錄去重但保留consumer；每一所選必要項有內容／metadata／實際帳號存取證據。平台軟體本體仍人工準備，業務EXE／DLL不按副檔名排除。 |
+
+Windows內建排程同樣完整列出與比對；target OS已提供者須有觀測與明確Keep／OSProvided處置，不能默默刪列，也不把新版OS內建task直接換成舊版定義。使用者自訂task完整重建；已存在同名task、共享folder安全不符或IIS binding占用按既有物件契約列衝突／審核處置，不能用檔案「不合併」推論可覆寫任何物件。
+
+IIS角色／模組／runtime、task帳號／gMSA與必要secret／憑證／機器加密材料分別有準備證據；缺必要前提則延後受影響操作。private key、shared config加密金鑰、DPAPI與其他機器綁定值走既有安全外部程序／受驗憑證契約；原設定只在受控來源／payload存取，不把內容／密碼嵌入HTML或比較JSON。明列缺口不表示新增了特殊產品自動能力。
+
+**非C路徑同樣還原：** source `D:\Sites\Portal`、`E:\Uploads`、`D:\Jobs\Nightly`及其設定／輸入輸出均形成已選required集合，送D工具搬到target核准位置並可信匯入結果；不因主包只含C而轉成可忽略的Optional。來源C映射到目標D仍由C包還原到核准D位置，来源D映射到目標C仍走D工具；分流依來源volume，目標可為任意已核准實體磁碟。無目標盤符／容量／權限、外部檔案衝突或share證據不足時列待處理；不自動建磁碟／改磁碟代號，變更映射須重新預覽／核准，不能無聲改到C。
+
+**操作順序與責任：** HTML同一工作負載顯示「設定／物件」「C檔案」「非C／外部檔案」「帳號／軟體」「配置readback」「業務／啟用」各自狀態。先核准全量選取、分流及映射，再搬可執行檔案與準備前提；具備條件後先pool／folder、後site／task，維持網站／pool停止、task停用。必要D結果由D階段完成Manager權威匯入供G消費，E2只投影文件，不能等文件階段才建立核心相依證據。全部所選必要C／非C內容與設定驗證完成才標成套還原；啟用仍另經業務／final／切換核准，保留來源原啟停狀態供決策。
+
+**整合驗收（B／S／C／P／D／G／E2／U／F）：**
+
+| 情境 | 必須觀察的結果／反例 |
+|---|---|
+| IIS根在D、application在C、virtual directory／configSource在E | site／pool／階層有效設定及C／D／E內容皆有對應結果，bindings／憑證／權限readback；不能只驗站台根或site XML。 |
+| task的Execute在C、WorkingDirectory在D、Arguments引用E設定／資料 | 原task folder、全XML／權限與多action／trigger保留，三條檔案來源共同驗證；動態路徑缺口可補登而非假不存在。 |
+| 停止站台、停用／隱藏task、子folder、共享pool／檔案 | 全量預選、共用集合去重及跨頁取消一致，還原後保持停用，需明確核准才依來源／選擇啟用，不能還原即誤執行。 |
+| C完成、非C缺檔／錯hash／metadata／帳號不可存取 | 文件明示部分完成；該工作負載不能標成套完成／可啟用，其餘獨立集合仍可處理。 |
+| 缺IIS角色／模組、COM handler／secret未準備或target schema不同 | 可搬檔案與待設定分開，必要項不偽造成功；新版OS內建task有Keep／差異理由，未知section有人工待辦與來源證據。 |
+| target無D／E、原目錄已有文件或物件同名／binding占用 | 不默改盤符、覆寫或合併；完整無法放置／物件衝突清單，人工處置或核准映射後重查／續跑。 |
+| sourceC→targetD及sourceD→targetC | 分別走C封包及D工具，引用一致核准映射、驗實體volume與兩端權限，不把target盤符當來源政策。 |
+| 部分世代／deferred／final後重查及回退 | C／非C結果綁當輪manifest／選取／freeze，journal保留物件與檔案基線；不將舊D成功解除新final，也不回退刪外部／新交易資料。 |
+
 ## C 槽主包及環境設定
 
 1. 以來源主機 **C 槽的實體 volume 身分**判斷。`C:\Mount\` 若掛載其他磁碟，或 junction／symlink 指向外部，不能因字串以 C 開頭就進包；不默默跟隨、也不默默略過。系統盤不是 C 時仍不能自行改備份其他槽；需確認 C 是否存在及必要系統設定的採集界限，沒有 C 就不能使用此主包路徑。
@@ -262,7 +312,7 @@ expected缺口按獨立scope／相依組分流；實際執行失敗要記錄已�
 3. 網站與排程的業務內容可採核准目錄；環境軟體設定採精確檔案／明確核准設定目錄。列出實際幫忙搬的設定、目標位置、hash、ACL／SID、原值回復方式與驗證 consumer，不用「設定已搬」一行涵蓋所有狀況。DPAPI、加密設定節點、Credential Manager、憑證私鑰及機器綁定秘密要標示重建／安全外部處理，不能只複製 bytes 就判成功；文件只記引用及處置，不輸出秘密。
 4. Oracle 設定先解析有效來源與 consumer，涵蓋機器／使用者環境及多 Oracle Home；`TNS_ADMIN` 指向非 C／UNC 時必須轉列另一搬移路徑。wallet／私鑰遵守外部安全程序，不能不告知就排除。PATH、32／64 位元 provider 及目標生效值須另驗。
 5. 新規格加入來源政策及必要的 schema 版本；核准綁定實際檔案集合。新 full／initial／final 包、CLI、精靈、直接呼叫與 Manager 匯入均檢查，target 拒絕政策不符或未綁定核准的內容。目標路徑映射另行審核，不能從來源限定推論目標也必須 C。
-6. 舊包保留明確舊政策，依相容性設計允許受控舊流程或要求重新規劃；不得靜默改寫已核准 plan、丟棄非 C 檔案或假稱已轉新版。
+6. 舊包保留原政策／可信原版本，依D3-03完成舊作業或受控回退；R3重新盤點／核准／基線，不轉換執行中state或把舊包假稱C限定新版。舊ownership先對帳，不丟棄非C檔案，不靜默改寫已核准plan。
 
 交付沿用既有指定目錄、sealed Directory 或可選大小的分卷 ZIP，不再另設輸出框架。備份檔案集合與交付形式是兩件事；主包只含核准的 C 槽資料，其他槽走下述直接搬移。
 
@@ -303,7 +353,7 @@ expected缺口按獨立scope／相依組分流；實際執行失敗要記錄已�
 
 Manager 對必要非 C 相依接收綁定來源主機／根目錄、目的主機／根目錄及工作負載的驗證結果，使用者仍須核對實際證據；不得只勾「工具跑過」或捏造成功摘要解除切換門檻。不把小工具搬移成功當成網站／排程啟用核准。
 
-結果是具版本的typed JSON／JSONL加完整HTML，不另建mutable pair資料庫；含OperationId、兩端主機／volume／UNC身分、正規化根、清單hash／項目／bytes、選取／排除、逐檔結果／metadata、時間與錯誤。受控清單供斷線續跑，重新驗證現況不靠「上次已複製」旗標；容量不足、缺清單或來源漂移要明確保留可重試狀態。Manager以獨立可信摘要匯入，必要consumer另引用PairId／plan／範圍及當輪final SourceFreezeHash／停寫窗口；與C槽final在同一一致性窗口才可關閉該相依。readonly比對不寫目的亦不取得ownership，普通目錄share名稱不作volume證據。
+結果是具版本的typed JSON／JSONL加完整HTML，不另建mutable pair資料庫；含OperationId、兩端主機／volume／UNC身分、正規化根、清單hash／項目／bytes、選取／排除、逐檔結果／metadata、時間與錯誤。受控清單供斷線續跑，重新驗證現況不靠「上次已複製」旗標；容量不足、缺清單或來源漂移要明確保留可重試狀態。寫入另有durable intent／結果及ownership證據供受控續跑／回退，不能拿可編輯報告宣告持有目的；中斷未核驗項不偽造成功，回退前核對漂移及新資料，不刪外部內容。Manager以獨立可信摘要匯入，必要consumer另引用PairId／plan／範圍及當輪final SourceFreezeHash／停寫窗口；與C槽final在同一一致性窗口才可關閉該相依。readonly比對不寫目的亦不取得ownership，普通目錄share名稱不作volume證據。
 
 ## 軟體／版本及輸出確認文件
 
@@ -342,66 +392,69 @@ Manager 對必要非 C 相依接收綁定來源主機／根目錄、目的主機
 
 | Phase | 內容／規模 | 相依 | 完成證據 |
 |---|---|---|---|
-| R3-A | 輔助搬移／版本選擇／JSON／局部state／UI契約及schema；大 | 本次定案；局部實機／特殊能力需確認 | 新舊policy、版本／receipt失效、選取／核准分離、逐項世代／replay／狀態consumer、HTML並行／信任資源有契約。 |
-| R3-B | 完整網站／排程／檔案相依探索；大 | A | 多虛擬目錄、多 action／帳號、動態路徑、非 C／UNC 及讀取失敗皆出列；owner 可補相依且不重複丟 consumer。 |
-| R3-S | 預設全選、範圍／版本／映射、核准前範圍及保存；大 | A、B | 本次有效集合可批次確認、不被無關Pending擋住；跨頁／重選／重盤點／外部工作一致；R3-09／14及18編輯部分。 |
+| R3-A | 輔助搬移／JSON／局部state／UI／IIS排程與八項策略schema；大 | 本次定案；實機材料另取得 | R3-01–19及D3-01–08成對producer／consumer、版本／receipt、metadata／舊作業／保留／時效／驗收前提、長工作橋接有契約。 |
+| R3-B | 完整IIS設定／task／檔案與帳號相依探索；大 | A | 全量global／階層／site／pool、task XML／folder／安全、全部檔案候選及required consumer；特殊／動態／非C缺口皆出列。 |
+| R3-S | 全選、版本／映射、成套範圍／核准及保存；大 | A、B | 無關Pending不阻獨立集合；IIS／task全量預選與相依分流、OSProvided處置／重選一致；R3-09／14／18／19。 |
 | R3-E1 | JSON 比較資料庫、初始／現況採集、版本選擇差異及人工準備；大 | A、B、S | 重啟可讀；來源版差異與是否符合選用版分列；未知／多實例可確認，補裝後重算；處理 R3-01／04／05／08。 |
-| R3-C | C 槽限制與精確設定 payload；大 | A、B、S | 所選／核准集合接入 full／delta／CLI／匯入／還原；設定清單不帶安裝本體，跨磁碟掛載與舊包不假冒新政策。 |
+| R3-C | C來源限制／設定payload／metadata／材料引用；大 | A、B、S | 核准設定精確入full／delta，不帶安裝本體；來源C可映射target非C，保留base相依／容量，特殊項不略過；D3-01–04／06及R3-19檔案部分。 |
 | R3-P | 原設定路徑、無法放置清單、安裝漂移／位置；中 | A、B、S、E1、C | 不合併既有文件；逐檔列直接與scope衝突、人工整理後重查；修R3-02／03，保留外部資料及區分原檔／工作設定。 |
-| R3-G | 檢查／兩種順序、逐項基線／deferred／delta與修復；大 | A、S、E1、C、P | 真正條件分流，缺base補可信完整內容、replay／rollback／CLI新狀態、容量／版本失效一致；R3-07／11／12及17執行部分。 |
-| R3-D | 跳板機比對／搬移、可續跑清單與可信結果；大 | A、B、S、P | 非C選取／逐檔核驗、不合併／特殊權限、斷線續跑、兩端／volume／範圍／final證據與Manager匯入；R3-15。 |
-| R3-E2 | 全部使用者文件HTML／可攜索引、彙總與可信交接；大 | S、E1、C、P、G、D | 文件包／payload邊界、相對連結／完整列／計數／世代／C非C一致；R3-06／10文件、15／16／17彙總、18稽核部分。 |
+| R3-D | 非C搬移／metadata／可續跑清單及Manager權威匯入；大 | A、B、S、P | IIS／task的非C必需集合及核准target位置實際還原；逐檔／帳號／freeze驗真，結果先供G，不等E2；R3-15／19及D3-01／02／04／06。 |
+| R3-G | 逐項還原／IIS排程成套設定／delta與修復；大 | A、S、E1、C、P、D | 消費可信D及C結果，IIS全域／階層及task全XML／folder／安全typed還原readback；停用、分流／重查／基線／保留／CLI一致；R3-07／11／12／17／19。 |
+| R3-E2 | 全使用者HTML／可攜索引、成套結果與可信交接；大 | S、E1、C、P、G、D | IIS／task設定、C／非C、軟體／帳號、人工／業務狀態分欄；完整索引／計數／保留／驗收前提；R3-06／10／15–19及D3-01–08。 |
 | R3-U | 全功能HTML、本機啟動／非互動worker／文字備援；大 | A、S、E1、P、G、D、E2 | 全角色／action對照，共用核心；長作業中取消／進度、重連／多頁／secret／可及性／Core；R3-10操作及13／16／18。 |
-| R3-F | 整合／回歸及兩種順序隔離端到端；中 | 全部前段 | TS 以 Server 2016／全新 2025 跑來源版及選新版、全選／自訂、HTML／文字、C＋非 C、續跑／readback／回復；正式資格獨立。 |
+| R3-F | 成套還原／八策略／規模及隔離端到端驗收；大 | 全部前段 | 原8使用者情境及新8成套反例、D3策略、代表性2016／2025／兩邊產品／Desktop與Core備援、配置／帳號readback及回退；正式資格獨立。 |
 
-建議順序：A → B → S → E1 → C → P → G → D → E2 → U → F。U 的畫面流程已在本文定義，原生橋接小實驗在 A 先確認可行性，完整可操作接線在依賴完成後交付。D 消費 P 的衝突／路徑契約；schema／資料庫、選取 receipt 及 producer／consumer 每段須可獨立檢查，必要相依一併完成後才 commit／push。
+建議順序：A → B → S → E1 → C → P → D → G → E2 → U → F。D前移並成為G明確相依：先交付非C可信結果與Manager核心匯入，G才可對IIS／task完整集合判定；E2後續產生HTML投影，不倒置權威匯入。原生橋接小實驗在A，U完整接線在依賴完成後交付；不以11階段代號不變掩蓋G新增設定範圍及F規模增加。每段必要相依一併完成驗證後才commit／push。
 
 ### 每批輸入／輸出與下一個使用端
 
-- **A：** 輸入原範圍、全部定案與R3-01–18；輸出catalog／plan／operation state／journal新schema、選取／核准／逐項世代、版本receipt／失效、狀態返回碼、C非C結果／文件交付及runtime／release契約供全部批次。驗收舊reader／checkpoint受控相容、新事件replay、不改sealed plan、兩邊版本資格、未知／等待，以及長工作下listener仍可取消；實機／特殊策略不偷寫成已支援。
-- **B：** 輸入兩機採集與來源工作負載；輸出檔案／設定／軟體consumer、非C／UNC／特殊缺口、完整探索coverage及owner補登，供S／E1／C／P／G／D。驗全量網站／排程／服務、停用項、動態與未被引用但由使用者指定的業務路徑；unknown不當無關，選取保留不受自動探索缺漏掩蓋。
-- **S：** 輸入B清單、A契約及使用者自訂；輸出持久選取／版本／映射、相依影響、批次核准有效集合與sealed plan子集receipt供E1／C／P／G／D／E2／U。驗跨頁／零集合、未相關Pending不阻獨立scope、必要SID不假跳過、新／消失／重盤點、包後已核准內可重選／不增包外、取消已搬項不刪除及CAS多頁保留草稿。
-- **E1：** 輸入來源、target首次實際基準／目前snapshot及S選版；輸出JSON、兩種版本比較、人工清單及target期望receipt供G／E2／U。驗FirstObserved不偽造純OS、來源facts不可改、封包後選版／配對／provider變動的局部證據失效、atomic／lock／中斷／budget，結果重算且各格式同源。
-- **C：** 輸入來源政策、S核准集合及設定分類；輸出精確C payload／manifest／delta與可信完整base引用供P／G。驗各入口／舊包、去重／不重疊scope、取消不入包／不因delta刪目標、完整base加合法delta可還原此前未套項、未混非C／安裝本體，按實體volume／選取集合預檢容量。
-- **P：** 輸入原路徑保存／生效映射及目標實況；輸出原檔／工作設定索引、位置、hash／存取／ACL／ownership、逐檔無法放置與回復供 G／D／E2／U。驗收 R3-02、新版改目錄、同名及父scope衝突全部出列、未知讀取不偽造存在、人工整理後重查、外部不合併／不覆寫、原檔hash及rollback／delta。
-- **G：** 輸入E1／S receipt、plan／可信材料與P實況；輸出逐項applied base／結果／deferred／衝突、durable state／journal供E2／U／驗收。驗兩分支／新版、混合世代與缺base補完整資料、CLI／StageResult新狀態、late checkpoint replay、取消／重選不刪、局部回退、技術必要條件／容量／漂移、已分類獨立失敗與共用信任破壞的不同停止範圍。
-- **D：** 輸入非C根／兩端、S選取／P衝突及當輪final停寫；輸出受控清單、typed逐檔結果／HTML及可信Manager匯入供E2／U／F／consumer。驗錯機／volume／範圍／hash／freeze／讀不到非Missing、斷線／重啟／新清單續跑、不合併／完整性／metadata，無另一個mutable資料庫；不同輪成功不能解除本輪相依。
-- **E2：** 輸入全量／選取／核准、JSON／逐項世代／結果、可信非C／業務證據、手冊與稽核；輸出全人讀HTML文件完整索引、相容格式／ReportReferences／Fleet／LabReport供U／F／owner。驗不改sealed payload、跨機相對連結／離線file不fetchJSON、缺資源明示、超2,000完整列／計數分母／未知、全衝突與同內容未寫入、secret投影、Owner與actor分欄。
-- **U：** 輸入共用actions／preview／結果、E2索引及A並行／release契約；輸出全功能對照、離線啟動指引、本機UI／worker／session與文字備援供F／TS。驗首次TS能啟動、全角色／小工具／回復等真實接線、無隱藏stdin、長工作仍進度／取消、重連／故障／雙頁／CAS／secret／Origin／token／注入／可及性／Core、UI資源改缺拒絕，無第二執行引擎。
-- **F：** 輸入全部批次、代表性實機／規模、兩邊產品版本及新版媒體；輸出逐項原始需求／本次8個使用者情境、四視角及跨段完整性核對、定向／整合回歸與實機證據。驗HTML／文字、先補裝／先還原、封包後選版、原路徑衝突、局部base／delta／repair、C非C同輪、multi-tab／取消／離線交付／容量／回復。合成觀察不代替實機或新版產品資格。
+- **A：** 輸入全部定案、R3-01–19及D3-01–08；輸出catalog／plan／state／journal新schema、選取／核准／逐項世代、版本／時效receipt、C非C結果、IIS層級／task全XML處置、metadata／材料保留及UI／release契約供全部批次。驗舊reader拒絕／舊作業不轉換、replay、sealed plan不改、資格／未知／等待、長工作仍可取消；環境／樣本前提具名，不假稱特殊能力已支援。
+- **B：** 輸入兩機／來源工作負載與業務樣本；輸出IIS全部設定層級／site／pool、task全XML／folder／安全、檔案／軟體／帳號required consumer與C非C分流，供S／E1／C／P／D／G。驗global／繼承／configSource、停用／隱藏／多action／動態及owner補登路徑；unknown不當無關，OS內建不刪列，特殊語意不略過，敏感原設定只在受控材料。
+- **S：** 輸入B全量／A契約及自訂；輸出持久選取／版本／映射、IIS／task成套有效集合與C非Crequired／外部處置、sealed plan子集receipt供全部後段。驗跨頁／零集合、無關Pending不阻獨立scope、必要SID不跳過、OSProvided有證據、已核准內重選／不增包外、取消已搬不刪及CAS草稿；target非C不是排除理由。
+- **E1：** 輸入來源、target首次／目前snapshot、S選版與D3-05時效要求；輸出JSON比較、IIS角色／模組與task帳號準備待辦、target期望receipt供G／E2／U。驗FirstObserved不偽造純OS、來源facts不改、改版／配對／provider相關證據失效、離線時效／現場重查、atomic／lock／中斷／budget與各格式同源；未知版本不偽造數字。
+- **C：** 輸入來源C政策、核准IIS／task及設定集合、metadata／保留要求；輸出精確payload／manifest／delta與可信full base相依供P／G。驗來源C→target非C、全部設定精確材料、去重／scope／容量／停寫、舊包不轉新、不因取消或清理刪必要材料，完整base鏈可補此前未套項，未混來源非C／安裝本體；特殊項保留阻擋。
+- **P：** 輸入原路徑／生效映射、D3-02 metadata要求及target實況；輸出原檔／工作設定索引、內容／必要metadata／實際帳號存取、ownership及逐檔無法放置供D／G／E2／U。驗R3-02、新版位置、缺非C盤符、scope／同名衝突、Unknown、人工重查、不合併／覆寫、原hash及delta／回退；不降低既有C權限契約。
+- **D：** 輸入非C根／兩端、S的IIS／task必需集合／映射、P衝突／metadata及當輪停寫；輸出受控清單、typed逐檔結果／HTML與Manager權威匯入供G／E2／U／F。驗來源D→targetC／D、缺盤符／錯volume／scope／hash／freeze、實際帳號／必要metadata、斷線續跑／清單保留、不合併與特殊阻擋；不建第二資料庫，不同輪成功不解除本輪相依。
+- **G：** 輸入E1／S receipt、plan／可信C材料、D核心匯入及P現況；輸出逐項檔案／IIS全設定／task物件結果與基線／deferred／conflict、state／journal供E2／U／驗收。驗成套8情境、pool／folder順序、停用／source狀態、全XML／section／權限readback、C／D不同世代與缺base補完整、CLI／replay／repair／局部回退、寫前重查；保留／清理預覽不得刪必要材料，獨立失敗與共用信任破壞分流。
+- **E2：** 輸入權威全量／選取／結果／世代／D匯入、D3前提及業務證據；輸出全HTML完整索引、IIS／task設定／物件／C非C／帳號／人工／業務分欄與相容ReportReferences／Fleet／LabReport供U／F／owner。驗成套下鑽、不改sealed payload、可攜離線／缺資源／超2,000完整性／計數／未知／全衝突、保留與責任提示、安全投影；不能以文件勾選替代D核心匯入。
+- **U：** 輸入共用actions／preview／結果、E2索引及A橋接／release契約與D3環境矩陣；輸出全功能HTML／離線指引、本機worker／文字備援供F／TS。驗IIS／task全量選取、C非C接續／映射／成套結果、保留清理預覽、首次啟動、無stdin、長工作取消／重連／多頁／CAS／secret／Origin／token／注入／可及性及Core；UI資源改缺拒絕，無第二執行引擎。
+- **F：** 輸入全部批次、D3-08代表性實機／規模／責任人、兩邊版本及媒體；輸出原始需求、R3-01–19、D3-01–08、原8使用者與新8成套情境的完整性核對／定向回歸／實機結果。驗HTML／文字／Core備援、兩種順序、新版／非C及跨盤映射、IIS全域／階層／task完整定義／權限、同輪final、局部base／修復／保留／回退與實際規模。合成或文件PASS不代替企業／新版資格。
 
-- [ ] R3-A：定義全契約／逐項state世代／replay／版本receipt／返回碼／非C結果／HTML並行與相容性。
-- [ ] R3-B：完成網站／排程／支援服務的依賴清單與 owner 補查。
+- [ ] R3-A：R3-01–19／D3-01–08全契約、逐項state／receipt／replay／舊版本／保留／時效／UI。
+- [ ] R3-B：完整IIS層級／task全XML／安全與全部檔案required相依、特殊缺口及owner補查。
 - [ ] R3-S：全選／自訂／重選、相依影響與核准前有效集合、CAS；R3-09／14及18。
 - [ ] R3-C：落實 C 槽限制及設定精確集合的所有 producer／consumer。
-- [ ] R3-D：小工具／清單續跑／typed結果／同輪final證據與Manager匯入；R3-15。
+- [ ] R3-D：非C的IIS／task必需檔案／metadata／續跑／可信Manager匯入先供G；R3-15／19。
 - [ ] R3-E1：完成 JSON、基準／現況、來源／選用／目標版本、配對與人工清單；處理 R3-01／04／05／08。
 - [ ] R3-P：處理原路徑／漂移／逐檔無法放置，不合併既有文件；修 R3-02／03，含 delta／ownership／回退。
-- [ ] R3-G：兩種順序／逐項base／deferred／delta補完整／replay／返回碼／回退；R3-07／11／12／17。
+- [ ] R3-G：IIS／task全設定物件、C非C成套／兩順序／基線／replay／返回碼／保留／回退；R3-07／11／12／17／19。
 - [ ] R3-E2：全HTML文件／可攜完整索引／計數／稽核／相容格式／交接；R3-06／10／15–18文件部分。
 - [ ] R3-U：全HTML操作／啟動／worker／取消／非互動／多頁／secret／可及性；R3-10／13／16／18操作部分。
-- [ ] R3-F：完成整合、文件、適當回歸與實機證據；未取得外部資格仍保留阻擋。
+- [ ] R3-F：R3-01–19／D3-01–08及兩組8情境完整核對、整合／規模／實機；未取得外部資格仍保留阻擋。
 
 主代理驗收時依專案、程式、尖銳但合理的使用者與管理者四視角反查：不能只看新增 happy path。先用使用者從盤點到切換走完，再從整體檢查核准／套件／版本／相依／還原／回退是否一致；不為一次檔案搬移加常駐服務或泛用產品 adapter 框架。每段完整且驗證後，依全域規則 commit／push 本輪分支，確認遠端 SHA；不能把未驗證相依拆出去先推。
 
-## 剩餘待討論項目與本輪界限
+## 已定案策略、待取得資料與本輪界限
 
-本次輔助搬移、自由版本選擇、全選／自訂、原路徑保存、全部使用者功能／文件HTML、本機PowerShell／文字備援、C／非 C、不合併並列無法放置、非IIS不新增adapter已定案。強制同版本與主要Markdown入口已被取代，不自動轉換格式或承諾新版相容。資料還原與可選啟用／切換各有結果；輔助搬檔不必先完成整套切換才能取得HTML文件與還原結果。
+本次八項建議已依使用者指示採用，詳D3-01–08；IIS／排程全部設定、物件與所選C／非C相依同輪還原，詳R3-19。特殊能力須實證才支援，必要權限按核准映射驗，舊作業不在執行中轉版，必要材料不自動刪，寫入前重查，final停寫／逐檔hash不降級，先驗橋接與代表性環境再主張企業能力。這些策略不再保留為是否採用的選項。
 
-1. **原路徑衝突（已定案）：** 使用者決定不做合併，HTML文件明列因目的已有內容無法放置的原檔。P／D／G／E2／U共用原因、scope影響、來源證據及重查；不新增逐檔合併或外部覆寫按鈕，原路徑未可取仍列未完成。
-2. **版本與自有程式的證據：** 不再要求每項先確認同來源版本才能存回檔案。未知版本列名稱、原因與owner發布識別；OSProvided／ExternalSoftware／Unknown、版本解析及證據有效期在 A／E1依原值定義，產品執行按實際consumer驗證。這是避免假資料的實作契約，不再作是否允許新版的產品選項。
-3. **直接還原的真實能力：** 具備條件的資料／設定先處理，原生 API／runtime 不足的項目待處理；不能承諾缺 IIS 角色仍可建物件。R3-07 在本輪重構，無版本／新版亦不能偽造 PreparationReady。只是選擇不做某 workload 時，其未選操作不阻擋無關資料。
+自由版本／全選／HTML／原路徑／不合併／非IIS不新增adapter沿用；IIS設定與task定義可重建不表示軟體本體會自動安裝。不擴整機映像／專業角色主機，DPAPI／私鑰／未知section或action仍有安全處置與未完成狀態。來源非C與target非C都不能被默默排除，但主C封包與非C工具的來源分工不變。
 
-以下保留實機材料與局部metadata／特殊檔案策略需求，不能用HTML定案掩蓋尚未支援項；所有缺口仍在本輪，非IIS與合併已不再待定。
+### 實機驗收前仍須取得的環境資料
 
-### 初版仍待討論的實作策略
+| 待取得資料／責任 | 已定處理方式與不能假定的條件 | 使用端 |
+|---|---|---|
+| 特殊檔案樣本與必要性，應用／平台／資安owner | 提供ADS／EFS／連結／稀疏／壓縮／長路徑樣本；決定必要原生能力的具體方案前須核對，未受驗項列阻擋／人工，不承諾全支援。 | B／C／P／D／G／F |
+| metadata／帳號與企業保留要求，平台／資安owner | 確認必要owner／SACL、SID／帳號映射、可存取帳號、保留／回退期限及清理責任；不降低現行C權限、不臆造期限或刪被引用材料。 | A／S／C／P／D／G／E2／U／F |
+| 停寫窗口及全部writers，TS／應用owner | 提供可接受停機時間、停止／重查／交接責任；C／非C綁同一窗口，不足調整安排，不只比大小／時間或用舊D結果放行。 | C／D／G／F及既有切換consumer |
+| TS／兩端系統、PowerShell／瀏覽器與部署政策，平台owner | 提供Desktop／Core、實際瀏覽器／版本及loopback／部署限制；A先做橋接小實驗，沒有瀏覽器用既定文字備援，管理端HTML不遠端控制兩端。 | A／U／F |
+| 代表性資料／軟體／業務與實機資格，TS／產品／業務owner | 提供檔案數／bytes／最大檔／路徑／軟體及新版媒體、測試主機與案例、驗收責任；依實測訂預算／效能，未有外部資格不解除production門檻。 | A／B／D／E2／U／F |
 
-1. **非 C 範圍與特殊檔案：** 建議輸入任意根目錄就完整處理該集合，不預設漏 hidden／system；特殊語意先阻擋並清楚列出。若業務確有 ADS／EFS／連結需求，再決定本輪原生支援方式，不能在未支援時承諾零缺漏。
-2. **非 C 權限與 metadata：** 目的衝突已採不合併／人工處理；需實機確認 attributes／timestamps／ACL／owner／SACL與SID映射必要性。先沿用主工具既有審核權限契約，不能將非C資料hash成功說成權限完整；必要未支援項保留缺口，新增特殊能力才另討論。
-3. **非 IIS 網站（已定案）：** 完整盤點相依及保存所選檔案／設定，現有受驗 adapter以外的安裝／套用／啟用列人工處置；本輪不新增特定產品adapter。B／G／U／F不得泛稱Apache／nginx／Tomcat已有自動還原。
-4. **完整性證據：** 建議 final 停寫＋逐檔 hash 為必要條件；大資料量的驗證成本與停機窗口先量測，不為加速預設改成只比大小／時間。真實來源規模、使用者環境與特殊檔案樣本需在 pilot 前取得。
+以上是需要實際環境才能補齊的資料，並非將工作延到下一輪。未知版本仍列原值／原因與owner發布識別，證據期限／快取細節、typed IIS設定白名單與schema、task可規範化欄位、listener／worker選型在A及對應階段依定案核對，不把每個技術細節再當產品選項；若需新增特殊能力或改既定範圍，先提出具體證據與方案再討論。
 
-本次從使用者8個情境走查，再依程式、管理者及整體反查，保留R3-01–10、補R3-11–18。重點是核准前範圍、封包後選版、逐項世代／狀態consumer、長作業取消及C非C／HTML可攜交付；11個Phase的輸入／輸出／相依與驗收同步，A／D因實際閉環需求調整規模。未修runtime／tests；已定案的全選／新版／不合併／HTML／軟體人工安裝／非IIS界線保持，既有外部實機／資格不作完成。
+### 本次前後段一致性核對
+
+已保留R3-01–18，新增R3-19，D3-01–08逐項接入Phase範圍／IO／驗收；原8使用者情境保留，再增8個IIS／task成套反例。D先輸出權威可驗非C結果，G消費C／D後判成套還原，E2／U呈現同一結果，F驗實機與規模；11階段未勾完成，F規模增加，沒有把獨立檔案還原或具備條件的設定執行改成全機軟體gate。此次僅修改文件，未修runtime／tests，外部樣本／資格仍不能以採用建議代替。
 
 ### 從頭反查的跨段影響結論
 
@@ -410,11 +463,11 @@ Manager 對必要非 C 相依接收綁定來源主機／根目錄、目的主機
 | 盤點→選取→核准→封裝 | B全量與coverage，S意願及有效集合，A／ReviewComplete／plan核准，C精確manifest；外部Pending不阻獨立集合，共用／重疊檔案不互覆。 |
 | 選用版本→比較→準備→產品資格 | S選擇、E1原值及目標receipt、G局部期望／失效、A／F兩邊版本／provider資格；舊Requirements／舊資格不可冒充新版，未改來源內容不重封。 |
 | 部分還原→delta→repair→rollback | G逐項base／receipt，C完整材料／合法chain，journalreplay／OperationRequests／StageResult／Fleet共同消費；未選／待處理不晉升、缺base不從不存在target補檔。 |
-| C主包→非C工具→final→切換 | D兩端／volume／範圍／清單／freeze結果，E2可信匯入，G／consumer及既有CrossHost門檻；普通複製成功不等於同輪final或可用性。 |
+| IIS／task設定→C主包／非C工具→成套還原→final／切換 | B／S建立全部設定／required範圍，C／D各還原與核驗；D先可信Manager匯入，G消費逐項結果，E2只投影，既有CrossHost門檻仍綁同輪freeze；物件XML／普通複製成功不等於成套還原或可用性。 |
 | 本機HTML→worker→核心→取消／秘密 | A小實驗，U啟動／非互動／分離請求與長工作，Cancellation獨立marker／progress，核心lock／journal；不能HTTP同步忙到取消送不進，也不能把credential落盤到job。 |
 | JSON／結果→HTML索引→交付→管理者 | E2完整安全投影／計數／相對連結／成員hash，receipt／ReportReferences／LabReport／Fleet、U離線／session入口；文件包與sealed payload不同權威，缺資料不靠漂亮摘要過關。 |
-| runtime資源→指紋→release→舊資料 | A／U可執行UI資源，ToolFingerprint／SBOM／ToolRelease簽章，新schema／state相容與舊reader拒絕；靜態說明改動只改文件hash，不偽稱runtime失效。 |
+| runtime資源→指紋→release→舊資料 | A／U可執行資源與release／SBOM綁定，新schema舊reader拒絕；D3-03舊作業原版本／新流程重建、不轉執行中state。D3-04必要材料／證據不自動刪，靜態說明只改文件hash。 |
 
-結論：方向符合輔助使用者定位，但前版對整機核准／整體世代與局部執行之間尚有實作歧義。本次補足可驗證的行為契約，仍須各Phase真實接線與反例通過；不能只跑舊回歸就宣稱新流程正確，不能僅以文件措辭補強宣稱runtime缺口已修。
+結論：方向符合輔助定位；八項策略與IIS／task跨磁碟成套還原已進本輪契約。D→G→E2的權威資料順序、設定／檔案／metadata／帳號及材料保留均有producer／consumer與反例；仍須真實接線、定向反例、規模與實機通過，不以舊回歸或文件措辭宣稱新流程已修。
 
 上述產品決策已由使用者確認；文件檢查不表示程式已實作或網站／排程可直接正式切換，未確認的特殊能力與實機條件仍明列。現有外部驗收與正式資格仍未完成。

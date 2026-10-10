@@ -8,6 +8,8 @@
 
 2026-10-10四視角複審（基準97a98f8）：從8個使用者情境反查程式與管理流程，新增R3-11–18：逐項世代／delta／新狀態consumer、封包後選版／receipt、HTML啟動／並行取消、核准前有效集合、C非C可信結果、可攜完整文件、容量／計數及多操作者／secret。Windows PowerShell5.1及PowerShell7隔離fixture均觀察到：新DeferredSoftware／WaitForInstall狀態單獨輸入返回碼仍是0、ExpectedVersion改變RequirementId、未相關Pending仍產生ReviewComplete阻擋。這是現行consumer與新需求間的契約缺口，非已提供新功能的失敗；各Phase範圍／IO／驗收已補，但runtime／tests未改，新流程、瀏覽器及實機未驗收。
 
+2026-10-10 八項建議定案（基準e772b4e）：D3-01–08採用特殊偵測／metadata／舊作業不轉版／材料保留／寫前重查／停寫hash／HTML小實驗／企業驗收策略。新增R3-19要求IIS全部設定／task全定義與C非C所選相依成套還原；現行已有site／pool與停用task adapter及全域XML採集，不等於完整還原已完成。D前移交可信結果／Manager匯入供G，E2投影；原8使用者及新8成套反例進11階段。企業資料與特殊能力實證仍待取得，本次未改runtime／tests、未做新流程／瀏覽器／Server驗收。
+
 ## 已實作範圍
 
 | Phase | 現行實作與消費端 |
