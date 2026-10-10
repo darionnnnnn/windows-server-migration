@@ -1,6 +1,6 @@
 # 第 3 輪規劃：一般網站／排程主機 EOS 搬移
 
-日期：2026-10-10。狀態：**依使用者最新決策續訂規劃；本輪僅修改文件，以下 Phase 均未實作／驗收。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；本次續訂起點：`d674087`。已確定輔助搬移、版本選擇、原路徑保存、預設全選／自訂、所有使用者功能與文件以 HTML 為入口、本機 PowerShell／文字備援、C／非 C 分工、不合併既有文件並列無法放置清單、非 IIS 不新增 adapter。保留全新 Windows 基準、JSON 比較及直接還原／等待選擇；以下技術與實機條件仍明列，不從「繼續規劃」推論已授權實作或解除 production gate。
+日期：2026-10-10。狀態：**四視角複審後補強規劃；本輪僅修改文件，以下 Phase 均未實作／驗收。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；上次定案起點：`d674087`；本次複審基準：`97a98f8`。已確定輔助搬移、版本選擇、原路徑保存、預設全選／自訂、所有使用者功能與文件以 HTML 為入口、本機 PowerShell／文字備援、C／非 C 分工、不合併既有文件並列無法放置清單、非 IIS 不新增 adapter。保留全新 Windows 基準、JSON 比較及直接還原／等待選擇；以下技術與實機條件仍明列，不從審查／規劃推論已授權實作或解除 production gate。
 
 主入口見 [README](../README.md)；既有實作證據見 [第 2 輪驗證](archive/MIGRATION-2-VERIFICATION.md)，既有能力與限制見 [涵蓋範圍](ENTERPRISE-MIGRATION-COVERAGE.md)。本輪後續待辦集中於本文；既有外部驗收仍保留於 [實作紀錄](IMPLEMENTATION-0.1.md)。
 
@@ -39,6 +39,29 @@ Oracle Client 等網站／排程相依仍在盤點範圍。其軟體本體列 HT
 
 AD DS／CA、Hyper-V、叢集、RDS、專用儲存或其他專業角色主機不因同時存在網站／排程就成為本專案的整台搬移對象。混合角色主機須辨識隔離的網站／排程範圍與外部服務責任；無法分離必要相依時阻擋一般流程，不只排除軟體名稱後繼續切換。
 
+## 本次複審：先從使用者操作，再反查四個視角
+
+以下問題是以尖銳但合理的使用者情境提出的驗收反例，不是引用 Reddit 留言。先檢查是否能完成實際工作，再核對程式／資料／管理契約；不將「已有對應 Phase」當成細節已閉環。
+
+| 使用者情境／合理質疑 | 前版尚不夠明確之處 | 本次補強及驗收落點 |
+|---|---|---|
+| 首次 TS：「說是網頁操作，第一步卻要自己打指令；點執行還會跳出我看不到的提示？」 | 網頁入口、權限／工具啟動與可能的 Read-Host／credential／ShouldProcess 未接成完整旅程。 | 啟動前可離線看 HTML 指引；明確本機啟動／權限／瀏覽器檢查，所有必需輸入在執行前完成，背景操作不得等隱藏終端輸入。A／U／F。 |
+| 只搬檔的使用者：「全選還得把每個特殊產品逐列排除，否則連 C:\Jobs 都搬不了？」 | Selected 與 Include 已分離，但 ReviewComplete 仍全 catalog 要求 Pending 決策；只改 RestoreReady 會太晚。 | 支援本次有效集合的批次確認，外部／未選項保持清單；無關未決項不擋獨立可還原集合，必要相依照實揭露。S／A／G。 |
+| 使用新版的人：「封包後才決定新版，是否所有檔案都得重新打包？舊版證據又如何失效？」 | 版本選擇與 sealed plan 的 ExpectedVersion／RequirementId／receipt 相依未定清楚。 | 分離不可變來源證據與目標版本選擇，限定失效範圍；未改來源內容不無故重封，改設定／映射仍重新審核。A／E1／G。 |
+| 原路徑已有文件：「你說不能放，究竟哪個檔案、是同名還是整個資料夾擋住？原檔還在哪？」 | 已規劃逐檔／scope 原因，還要避免建議清空 Windows／產品共用目錄來解除限制。 | 顯示來源保留引用、直接衝突／scope阻擋／未知，非同名項也出列；保留目標與正常已受控delta，不自動合併或要求清空受保護目錄。P／D／E2。 |
+| 長時間工作：「網頁斷線或關閉後，工作還在嗎？取消只是轉圈，還是已經停止？」 | session／journal 已規劃，尚無長作業與進度／取消請求的並行服務契約。 | 請求已接受、工作進行、取消已請求、安全邊界停止分別呈現；重連接回原OperationId，不重送造成第二次執行。U／A／G。 |
+| 部分還原後：「昨天只選A，今天選B，但你只給增量；B從來沒搬過，要從哪補原檔？」 | 全機Generation與待處理項未建立每項基線；增量需要既有完整scope。 | 保存每項實際manifest／generation；缺基底要完整可信來源，不假設其他scope成功就可套delta。G／C／A／F。 |
+| 接班 TS：「我把HTML和ZIP帶到新電腦，連結還指向原管理端D槽；看『完成』到底是哪台、哪一輪？」 | 完整HTML雖列入規劃，但資料包白名單、可攜文件索引與相對連結未定。 | HTML文件獨立完整索引及hash引用，與payload包分工；相對連結可離線開啟，顯示主機／revision／觀測時間／有效性。E2／U。 |
+| 波次管理者：「一台的C搬了、D沒搬、軟體還缺；總覽的100%算什麼？另一個TS重查後我的確認是否過期？」 | 彙總有deferred但未明定分母、跨通道證據及多視窗編輯。 | 分開發現／選取／核准／檔案／物件／人工／可用性；同一範圍可下鑽完整待辦，跨C／非C結果及決策revision同源。E2／D／S／G。 |
+
+**使用者視角：** 核心入口合適，但不能將複雜工作隱藏成單一「全選／還原」按鈕。可選任務、實際範圍、保留／未放置、待安裝與續跑須能從同一HTML看懂；常見路徑未自動找到時，可透過網頁補登，不宣稱已發現清單等於整台所有內容。
+
+**程式視角：** 前版已找到producer缺口，但還需要從核准前、還原後到delta／repair／CLI返回值反查consumer。新增狀態／版本不能只改JSON與報告；舊斷言若要求整機已完成，需依受控有效集合改版，而非全面略過。
+
+**管理者視角：** 網頁上的Owner是責任宣告，不能當作已驗證企業授權身分；執行主機／Windows執行身分、操作者責任宣告、決策與證據追蹤需要分別留存。本機程序身分不代表已認證瀏覽器後的個人。未完成工作可以交接，不應因局部成功就丟掉責任／來源材料。
+
+**整體視角：** 輔助工具的方向適合既有scope／journal架構；主要風險是沿用整機核准及世代，再外掛局部選取。此次新增R3-11–18補這些跨段契約；所有定案仍保留，不引入合併、自動安裝或新產品adapter，11個Phase不因複審被縮減。以下新增觀察均為規劃缺口／整合風險，非第三輪已實作功能的bug。
+
 ## 現況與必須改變的契約
 
 | 現況證據 | 第 3 輪要求與影響 |
@@ -66,8 +89,18 @@ AD DS／CA、Hyper-V、叢集、RDS、專用儲存或其他專業角色主機不
 | R3-08／JSON 可沿用與相容影響 | `src/Core.ps1:135–145` 已以 pairs/<PairId>.json 為配對資料；`:18–32` 有同目錄暫存／原子替換；`:106–112` 有工作區鎖；舊 schema 消費端需明確拒絕新契約。 | 在現有 JSON 配對資料庫擴充比較區塊與必要 schema，沿用寫入／鎖／復原；不可建一套獨立可編輯資料庫再讓 catalog、plan、報告各自判斷。寫入預算、過期選擇、錯機及中斷需驗收。 |
 | R3-09／預設選取與核准契約衝突 | `src/Core.ps1:194` 新項目 Decision=Pending；`:198–203` 重盤點依變更保留或要求重審；`:208` 消失項 Present=false。`src/Review.ps1:9–18` 的 Include／Exclude 是受審決策，不支援產品有另外限制。 | 新增使用者選取意願及自訂契約，不能把預設全選直接寫成全部已核准。保存取消選取與處置；新項目預選但待確認，消失項留歷史；下游 scope／manifest／delta 只消費實際核准集合。 |
 | R3-10／操作及完整 HTML 文件缺口 | `src/Reports.ps1:1–40` HTML 是內嵌 JSON 的搜尋／分頁／列印快照，列印最多 2,000 筆；`Start-ServerMigration.ps1:35` 等以 Read-Host 操作，既有手冊以 Markdown 為入口。 | E2／U 補所有使用者功能、完整文件／衝突／手冊HTML入口與真實橋接。不能以列印截斷當完整交接；操作及snapshot標示，共用型別化 action／lock／核准／journal，文字備援同結果。 |
+| R3-11／P1：局部還原的世代與狀態consumer缺口 | `src/Restore.ps1:7–8` OperationState綁整份PlanHash／ManifestHash／Generation；`src/DeltaWorkflow.ps1:249` 從目標重建未變動chunks，`:282–289`要求adapter已staged，`:305–307`整體晉升世代；`src/JournalRecovery.ps1:83`以RestoreCompleted更新整體世代。`src/OperationRequests.ps1:20`起返回碼分類未包含新狀態；隔離fixture輸入DeferredSoftware／WaitForInstall單獨結果目前均得到0。 | A／G保存逐項已套用版本及選取receipt，未還原項不能借用其他項世代；無完整base的delta要取可信完整內容。replay／repair／rollback／StageResult／CLI同步新狀態，等待／deferred不得成功0或整體完成。此為新契約consumer缺口，不是現行已提供deferred功能的bug。 |
+| R3-12／P1：封包後版本選擇與不可變核准衝突 | `src/GeneralHostContracts.ps1:17／36`將ExpectedVersion／Context納入projection及RequirementId；`:116–118`拒絕舊投影／plan receipt。`src/MigrationContracts.ps1:142–143`GeneralHost進sealed plan。`src/Qualification.ps1:30–39`以ProductVersion及exact Oracle provider／consumer鍵對應資格。隔離fixture只改ExpectedVersion便生成不同RequirementId。 | 來源證據／原設定核准保留，目標選版與prepared provider另綁revision／receipt。不改sealed plan／不以舊receipt證明新版；A／E1／G分清重審邊界，資格tuple需能分清來源與實際目標產品版本／實例，不能把單一舊ProductVersion當兩邊或解除既有正式門檻。 |
+| R3-13／P1：可操作HTML的非互動及並行缺口 | `src/OperationRequests.ps1:5–18`直接執行本機allowlist；`src/Restore.ps1:88`長作業持有pair鎖。`src/Cancellation.ps1:52–70`有獨立取消marker鎖，`:87`起有進度檔，現行手冊要求另一個PowerShell送取消。 | U不能在處理HTTP請求的同一執行通道同步跑整個搬移後才接取消；共用核心另安排長工作，讀取一致進度／提交取消保持可回應。必需secret／SID／確認／原生前提先收集，非互動job不等Read-Host。listener小實驗須在A驗此風險，非只能開網頁。 |
+| R3-14／P1：核准前仍被無關項阻擋 | `src/Review.ps1:47`每個Pending列均為ReviewComplete；`:51`要求Mandatory依賴Include，`src/MigrationContracts.ps1:129–130`核准前檢整份issues。隔離fixture納入A後，不相關B仍產生Decision required。 | S／A同步本次核准有效集合、全量可見／外部工作與必要依賴。不只改RestoreReady；不要求把所有unknown／特殊產品逐一假Exclude才能先搬獨立檔案，也不對缺真正SID／機密等相依的檔案假放行。 |
+| R3-15／P1：C／非C跨通道結果與續跑缺口 | `src/RemoteStorageContracts.ps1`是專用遠端scope，尚非D小工具；`src/Cutover.ps1:80–83`的外部證據綁Pair／兩機／Plan／Manifest，`src/CrossHostGates.ps1:19–26`有final group／freeze綁定。前版D只列人讀／結構化結果，尚未定Manager如何驗信任與同輪final。 | D／E2產生有版本的結果／來源清單引用、兩端身分／volume／根／hash、operation／範圍／錯誤／freeze引用，按可信摘要匯入Manager，再投影相關consumer。續跑使用受控清單重新核驗，不新增另一個可編輯資料庫，不把不同輪D成功用於本輪切換。 |
+| R3-16／P2：HTML可攜交付與權威邊界缺口 | `src/PackageTransport.ps1:1–4`payload包成員只有manifest／plan／artifacts／freeze／chunks；`src/DeliveryReceipts.ps1:35／44`有ReportReferences及受限成員；`src/EnvironmentConfirmation.ps1:386–452`另有DocumentId索引及多格式引用。`src/Reports.ps1:21／38`離線資料內嵌，不需fetch外部JSON。 | E2／U不能把HTML直接塞入sealed payload或只交入口HTML。文件另有完整成員／hash索引、相對連結、可離線資源；JSON引用／ReportReferences與匯入端一起改。操作runtime資源與產出文件不同權威；本機http頁不假設能任意打開磁碟檔案，原設定位置可複製並標示實際主機。 |
+| R3-17／P2：選取後容量及完整計數缺口 | `src/Restore.ps1:40–42`用整份manifest.Bytes及所有Include scope估算，以路徑根字母查容量；`src/Payload.ps1:26／32`明確239字元限制，`:37–42`估算index／margin。前版只要求總數一致，未定各集合分母及物理volume。 | C／G／D按本次有效集合與實體volume估算封裝／staging／保留／state／HTML附件，顯示真實有界預算與特殊路徑缺口。E2分別計檔案／目錄／bytes／物件，不把未知當0、不混計重複consumer；空集合為無操作，100%掃描／執行進度不代表內容全部已還原。 |
+| R3-18／P2：多操作者、秘密及證據失效的管理缺口 | `src/Review.ps1:14／21–24`用revision、Environment.UserName及History；`src/EnvironmentConfirmation.ps1:13–47`是安全投影，不輸出raw settings；`src/Recovery.ps1:7`明說journal不抵抗本機管理員改寫。前版HTML沒有角色與並行編輯／憑證輸入細節。 | S／U保存實際本機principal／主機與責任Owner分欄，兩頁CAS衝突不丟尚未提交輸入、不將任填Owner當企業授權。secret只走當次受控記憶體且不入HTML／localStorage／下載／log；失效及不完整結果可追查。受控外部信任／歸檔責任不因改網頁而消失。 |
 
 R3-01／03 是需求缺口，R3-02 是已重現缺陷，R3-04／05 是需處理的契約風險；不能統稱程式 bug，也不能用既有回歸通過表示它們已解決。
+
+本次既有consumer隔離fixture在Windows PowerShell 5.1及PowerShell 7均重現R3-11的新狀態返回0、R3-12版號改變RequirementId、R3-14無關Pending阻擋三個consumer觀察。fixture在專案外獨立目錄、消費既有不可變runtime快照，不修改src／tests／個人prototype；這些觀察不能當作新契約已驗收。其餘新增項為直接程式核對及跨段設計分析，尚無實機／瀏覽器證據。
 
 ## TS 操作、差異文件與人工準備
 
@@ -101,13 +134,13 @@ R3-01／03 是需求缺口，R3-02 是已重現缺陷，R3-04／05 是需處理�
 |---|---|
 | 配對與政策 | PairId、兩機 fingerprint、schema／tool 版本、資料庫 revision、WindowsInitial／SourceVersionDefault／UserChosenVersion 政策；Manager／Target 共用。 |
 | 來源要求 | 權威來源軟體 snapshot 引用／hash／revision、全部非 Windows 軟體與 consumer、名稱、來源版本原值／類型、架構、scope／SID、位置、coverage。來源更新不能改寫舊證據。 |
-| TargetBaseline | 首次全新 OS 採集及時間、目標 OS／build／架構、已發現初始元件／軟體及 coverage；永久留存，後續補裝不覆寫成「初始狀態」。 |
+| TargetBaseline | 首次採集及時間、OS／build／架構／installation type、實際初始軟體及coverage；另記使用者宣告是否僅初始Windows。若補裝後才首次執行，標FirstObserved而非偽造純Windows基準，仍可比較。永久留存，重灌／換機須新身分及重新綁定。 |
 | TargetCurrent | 每次還原前及補裝後的目標軟體 snapshot 引用／hash／revision／時間／coverage；離線由目標產生、Manager 匯入驗證，還原端持有相同證據／receipt。 |
 | Comparison | 來源／目標證據版本、產品／實例配對及理由、SameVersion／Missing／VersionMismatch／Unknown／Ambiguous／TargetOnly，另記架構／位置／帳號差異及人工清單。從 snapshot 重算，不靠使用者改狀態。 |
 | SoftwareChoices／ManualActions | 來源參考版本、使用者選用版本／理由、目標觀測版本、待安裝／不符選用版本／待確認／待設定／待驗證、owner、consumer、處置順序及結果證據；版本選擇不改寫觀測，不代表已相容。 |
 | RestoreSelections／Customizations | 穩定 ItemId／來源 revision、選取意願、類別及逐項範圍、檔案排除、原路徑保存／生效映射、帳號與設定處置、明確取消原因及預覽引用；與受審 Decision 及實際 execution status 分開。 |
 | RestoreDecisionHistory | WaitForInstall 或 RestoreNow、操作者／時間、當次差異與接受的未準備項、PairId／plan／manifest／generation、目標 snapshot／comparison revision 及有效範圍；新選擇保留舊紀錄。 |
-| 結果引用 | 既有 target journal／state 的已還原／待軟體／失敗／核驗結果引用與 hash；資料庫用於比對／審核，實際 operation state 仍由既有 journal 管理，不雙寫同一執行事實。 |
+| 結果引用 | journal／state每項已套用manifest／generation／hash、選取receipt／OperationId、核驗／待軟體／衝突／未選結果引用；可用材料與已套用基線分開。實際state仍由journal管理，不雙寫；非C結果另綁兩端／範圍／來源清單／final freeze並可信匯入。 |
 
 程式採既有 workspace lock、ExpectedRevision 檢查及同目錄原子寫入；不可變 snapshot 先落盤並核驗，再單次更新 authority 引用。中斷產生未被引用的 snapshot 可保留供受控檢查，資料庫不能指向半寫檔；相依多檔修改沿用 transaction／RepairWorkspace。重啟、報告重產及 attempt 更換不丟基準／選擇／未完成工作，不重建 stable state。
 
@@ -126,7 +159,11 @@ R3-01／03 是需求缺口，R3-02 是已重現缺陷，R3-04／05 是需處理�
 | 帳號、權限與設定 | 提供既有 SID／帳號映射、已支援 typed 設定的 Create／Keep／External／UpdateReviewed、是否暫緩與責任人；未知設定列人工流程。密碼／私鑰仍使用外部材料，不提供任意 shell／registry 匯入按鈕。 |
 | 輸出及執行時機 | 沿用可選 WorkRoot／輸出目錄、Directory／分卷 ZIP 大小；本次預覽列全量範圍，可選等待／直接還原／只預覽，不自動啟用業務。 |
 
-重新盤點按穩定來源識別保留選取、取消、自訂及版本決策；新項目預選但標未確認，內容／相依變更要求重審，消失項保留歷史並移出本次有效集合。同名／改路徑的配對歧義要求確認，不能無聲套用舊選擇。僅管理目標的還原子集可透過綁定 sealed plan 的 receipt 縮小，不能增加包外內容；修改來源範圍／設定須更新計畫、核准及所需封裝。全取消為零項目預覽／無操作，不宣稱主機已搬完。
+重新盤點按穩定來源識別保留選取、取消、自訂及版本決策；新項目預選但未確認，內容／相依變更要求重審，消失項留歷史並移出有效集合。同名／改路徑配對歧義要求確認。目標receipt的範圍始終是sealed plan已核准內容的子集；可於這個已核准集合內重新選回項目，並非只能比上次選取越縮越小。不得新增包外內容；修改來源範圍／設定／映射須重審及所需封裝。全取消為無操作，不生成偽造成功的空搬移計畫。
+
+本次核准須能確認獨立可執行集合及其真正前提，並附全量發現／外部／未選清單；Pending的未相關產品不擋本次獨立檔案，但所選操作必要的帳號／SID／機密／角色仍照實檢查。支援批次預覽／一次確認，不要求每個未支援列逐次假Exclude；未確認工作留owner／待辦，不視為已核准或已完成。與執行無關的責任待辦和相關必要相依分開，A／S同步ReviewComplete及sealed plan消費端。
+
+已還原後取消選取只調整後續操作意願，保留原result／ownership與現有檔案，不自動刪除或回退；重新選回先核驗原hash／世代及漂移。編輯撤銷、取消作業、安全停止、實際回退四個入口命名與預覽分開，不讓「取消選取」成為刪資料的暗示。核准檔案有多個consumer時以實體集合去重；重疊來源／目的與分流未處理清楚前不產生相互覆蓋的scope。
 
 選取意願、受審處置、核准計畫與實際執行結果是四個不同概念。互動介面提供批次預覽及明確確認，讓 TS 不需逐行寫 JSON；不支援操作轉外部工作而非偽造 Include。驗收跨頁全選／全取消、篩選後選取、共用檔案、取消必要相依、重盤點保留、過期請求、非 C／unsupported 預選、delta 排除及零集合；所有入口與五格式消費相同有效集合。
 
@@ -155,7 +192,15 @@ HTML、文字選單與 CLI 共用型別化操作、同一預覽／CAS／核准�
 
 功能對照表須覆蓋既有角色、選單與非互動 action；正常使用從 HTML 能走完已支援流程，不能留只有文字／CLI 才能做的必經步驟。文字是無瀏覽器／政策阻擋時的備援，不另作使用者文件的主要入口。開發者 README／PLAN／AGENTS 維持 repository Markdown 來源；使用者手冊及結果依此產出 HTML，這輪規劃不將整個 repository 改檔或新增未接線頁面。
 
+**完整啟動及背景工作：** 發行物含離線HTML啟動／信任核驗指引，清楚列第一次本機啟動與權限步驟，不宣稱靜態HTML本身可啟動管理員程式。工具啟動後可開本機操作入口；若瀏覽器未安裝／政策不允許，說明文字備援及原文件在哪。A先驗最小橋接於長作業時仍能接進度／取消，U再做全功能；長工作使用共用核心與pair鎖，HTTP只提交具名工作、取得OperationId及讀一致checkpoint／進度，不能等待整個搬移回傳才允許下個請求。
+
+啟動／提交前先在表單收集已驗證的所有必要參數、credential與明確確認。背景工作不能彈出Read-Host／不可見ShouldProcess提示；原生必要互動未有受控非互動方式的操作要事前顯示不可執行／人工待辦。取消走已綁定OperationId的獨立marker，不等待被長工作占用的pair鎖。返回「取消已請求」不等於「已停止」；原子交換完成到安全邊界才呈現Stopped／Cancelled。關頁可重連，結束PowerShell是中斷並需journal修復，重啟session不沿用舊token。
+
+多視窗／操作者均讀同一revision；CAS失敗要指出變動並保留尚未提交的非秘密輸入供重新預覽，不把過期表單再送。記錄伺服端取得的本機Windows執行principal／主機、操作者責任宣告、責任Owner、OperationId及決策前後hash／時間；執行principal不代表已認證瀏覽器後的個人，Owner欄不是企業RBAC／簽章身分證明。角色先按操作主機與既有授權區分可執行／唯讀項，不加一套網頁帳號系統。credential不入URL／HTMLsnapshot／localStorage／job落盤資料／下載／診斷log，重啟後需重新提供；報告保持既有安全投影，與含原設定秘密的受控payload分開。
+
 **驗收：** 真實瀏覽器操作到 JSON／journal，逐項既有功能對照沒有漏入口；HTML／文字相同選擇產生同計畫與結果。測跨頁全選／取消、連點、重啟／重連、作業中編輯、過期session、錯機／revision、外部Origin／缺token、注入名稱、敏感資料、Core備援；完整 HTML 文件離線閱讀／連結不破損，snapshot不提供假執行按鈕。
+
+另測長作業占鎖時仍可讀進度／送取消、worker意外退出、native操作在無stdin時無隱藏等待、缺參數提交前提示、取消已收但尚待邊界、多視窗revision衝突不丟草稿、記錄實際執行principal而非採信表單且人員宣告不冒充認證身分、secret未被任何session／輸出／job序列化持久保存。首次TS按HTML指引啟動，不需自行猜CLI參數；既有不適用角色的功能仍可查說明與原因。
 
 ## 還原前分支、待處理與續跑
 
@@ -173,9 +218,19 @@ HTML、文字選單與 CLI 共用型別化操作、同一預覽／CAS／核准�
 
 RestoreDecision 綁定既有已核准 plan／manifest／generation 與精確目標 snapshot、差異 projection 及可延後項；決策在來源包已封存後透過獨立受控 receipt 傳入，不能改包內 plan 導致重新封包或偽造 source 核准。執行前重新檢查目標：若軟體或相關檔案狀態變了，舊 preview／選擇失效，產生新結果供確認；重跑不能沿用另一主機、另代包或不同未準備清單的選擇。判定 fresh 採集／快取時效的具體策略待 A 定稿。
 
+**封包後選用版本：** source的ProviderSoftwareId／版號／原設定證據始終不可改；target選用版本及準備／consumer期望以新版schema的獨立決策契約綁定sealed plan、scope、comparison revision與實際provider實例。原版receipt不能證明新版；改選版使受影響準備／consumer證據失效，未變的檔案保存證據保留。source scope／設定內容／生效映射等未變時不無故重封；若改動已核准設定／來源範圍，按原流程重審與ownership對帳，不偷偷改Requirements再沿用舊planHash。新選版不借用舊版的產品資格矩陣。
+
+**局部基線與增量：** state／journal新增逐項AppliedManifestHash／AppliedGeneration／content／metadata hash及執行範圍receipt；精確欄位在A定稿。已收到且驗真的材料、各項已套用基線與整個計畫完成狀態分開；不能以一項成功晉升所有待處理項的世代。未選／DeferredSoftware／BlockedConflict／External／Failed皆不能偽造Succeeded或ownership。
+
+delta只消費同項真正已套用且未漂移的base；項目此前未還原／缺base時，從保留的可信完整包／base payload及合法delta chain取得所需完整內容，核驗與目前manifest吻合後才還原，或明確請求缺少材料並保留待處理。不能從不存在的target補unchanged chunks，也不能以只帶改動的delta聲稱已包含所有檔案。整包仍驗完整性與信任，target選取不免除驗包；receipt不改sealed plan。已還原後改選／補裝／final／rollback／repair均依逐項基線，不刪外部資料，不把取消當成功。
+
+expected缺口按獨立scope／相依組分流；實際執行失敗要記錄已做效果、未做與待修復項。已分類且確認無不明副作用的失敗不阻擋其他獨立可執行集合；錯機／改包／journal不一致、未完成原子交易或來源一致性破壞等影響共用信任／state時停止相關作業並提示repair，不以「盡可能」盲目繼續。journal replay／StageResult／Fleet／LabReport及CLI返回碼須共同理解新狀態；等待／deferred回2，未知operation狀態不默認完整成功，不能只改producer。
+
 等待／deferred 的返回值與 state 必須使用明確非完成結果；規劃沿用 CLI 2 表示尚待處理，0 只表示該次請求的已執行範圍完成，不能宣稱整台可用。有效等待不標成 crash 或資料還原失敗。full／initial／final、restore order、journal repair、rollback、Fleet 與 LabReport 都要保留 deferred；final 後仍有必要軟體／設定／業務缺口不能啟用或切換。軟體安裝前後皆讀原路徑核驗，避免先還原後安裝覆寫舊文件。
 
 **驗收：** 全新 OS 缺軟體 → 等待 → 人工安裝所選來源版或新版 → 重查 → 還原；以及缺軟體 → 直接還原 → 檔案成功／產品操作 deferred → 重啟 → 手動安裝 → 重查／漂移處置 → 續跑／readback。另驗來源版不同但符合選用版、不符選用版、未知、取消／未選相依不阻擋無關檔案、無確認不寫入、錯機／舊 revision、安裝改檔、delta deferred／刪除／重跑及回退。未改來源 scope／排除／設定的目標補裝不要求無故重封來源包。
+
+另驗A已套g1／B未套／g2只含改動 → B重新選回，保留完整材料可正確還原，缺材料明確待處理；A待g2、B仍g1不冒充同世代。封包後選新版使相關準備receipt失效，檔案保存不無故重封；改ConfigFiles／映射則重審。journal已記錄、checkpoint尚未更新的新狀態replay、不重複套用、局部回退、CLI只含等待／deferred返回2、異常中斷與可辨識獨立失敗各有反例。
 
 ## 工作負載與檔案完整性
 
@@ -222,6 +277,7 @@ RestoreDecision 綁定既有已核准 plan／manifest／generation 與精確目�
 - 檔案保存／hash 正確、實際執行帳號可存取與 consumer 能使用分別驗證。直接還原可以先驗檔案，不要求軟體當場可執行；加密設定等仍需既有外部重建程序。
 - **不合併既有文件。** 目的端已有非工具持有內容時，保留目標、列無法放置清單與人工整理／再次預覽入口；不能新增「備份後覆寫」或逐檔自動合併功能。新／受控目的可照既有核准契約還原；共享目錄無法由現行 scope 契約安全放置時，列所有受影響原檔，不假裝只有同名檔被阻擋。
 - **HTML 無法放置文件清單：** 每個原檔列來源原路徑、預定目的、已有目的內容／hash或無法讀取原因、直接衝突／父目錄或scope阻擋、關聯工作負載、未放置原因、目前原檔保留位置／來源包引用、owner及手動處置／重試。預覽及執行後各出完整清單，過期狀況標記並可重新檢查；無法讀取目的不能冒充「同名文件已存在」。
+- 目的同名且內容相同仍需核驗hash、必要metadata與帳號存取；可顯示「目標已有相同內容，未寫入」，不可無證據宣稱工具還原成功或取得ownership。同內容不自動解除整個非工具scope衝突，不放寬不合併定案。人工處置指引不要求清空Windows／產品共用目錄；不能安全放置者持續列明原因與原檔保存引用。
 - initial／final、來源刪除、續跑及回退均不得刪掉目標非工具持有資料。先還原後安裝產生新檔／改檔須核驗漂移，先安裝後還原預覽產品所建目錄衝突；不能整目錄換回舊快照或蓋過同名設定。使用者人工整理後再預覽，工具不替其搬移／合併／覆寫既有文件；已受控且未漂移資料的正常delta／回復仍依原核准契約。
 - junction／symlink 會衝突於目前 no-reparse、物理路徑隔離及 C 槽政策，因此本輪不把自動建立連結當作既定解法；若確有需求，須另討論指向、ACL、移除／回退、封裝遞迴及 consumer 支援，未核驗時不提供保證。
 - 受保護安裝目錄、不同 profile／SID、缺少原磁碟、保留路徑已被占用及必要設定不受工具支援均須明確列缺口與處置；使用者要求原路徑可用的項目不能默默改映射。安裝完成後及切換前各驗一次實際位置／權限與引用，不能只在安裝前驗空目錄。
@@ -247,6 +303,8 @@ RestoreDecision 綁定既有已核准 plan／manifest／generation 與精確目�
 
 Manager 對必要非 C 相依接收綁定來源主機／根目錄、目的主機／根目錄及工作負載的驗證結果，使用者仍須核對實際證據；不得只勾「工具跑過」或捏造成功摘要解除切換門檻。不把小工具搬移成功當成網站／排程啟用核准。
 
+結果是具版本的typed JSON／JSONL加完整HTML，不另建mutable pair資料庫；含OperationId、兩端主機／volume／UNC身分、正規化根、清單hash／項目／bytes、選取／排除、逐檔結果／metadata、時間與錯誤。受控清單供斷線續跑，重新驗證現況不靠「上次已複製」旗標；容量不足、缺清單或來源漂移要明確保留可重試狀態。Manager以獨立可信摘要匯入，必要consumer另引用PairId／plan／範圍及當輪final SourceFreezeHash／停寫窗口；與C槽final在同一一致性窗口才可關閉該相依。readonly比對不寫目的亦不取得ownership，普通目錄share名稱不作volume證據。
+
 ## 軟體／版本及輸出確認文件
 
 每台完整 HTML 文件保留所有已發現的機器／使用者安裝、可攜工具、runtime、driver、專業軟體及業務程式。版本查詢使用卸載 `DisplayVersion`、檔案 FileVersion／ProductVersion、module／assembly／manifest等可讀證據，保留原值、來源、架構、安裝位置、scope／SID及consumer。同名不同位置／使用者不誤合併。
@@ -270,50 +328,58 @@ Manager 對必要非 C 相依接收綁定來源主機／根目錄、目的主機
 
 大量資料可搜尋／分頁及分檔索引，但全部原始列與缺口仍可從 HTML 找到；不能用目前最多 2,000 筆列印視為完整文件。提供明確完整下載／分頁列印入口，部分列印標示範圍，計數與明細一致。JSON作權威／machine資料，既有MD／TXT／CSV作相容輸出並同源，不是正常流程的必讀文件；repository開發文件保留Markdown，不將格式遷移混入這輪規劃實作。
 
+**HTML交付邊界：** payload sealed包白名單保持嚴格；文件以獨立完整目錄／索引交付，不直接往已sealed ZIP加HTML。索引列全部頁面／資料／必要資源、DocumentId／Pair／revision／hash及ReportReferences，與相容JSON／receipt／匯入端一起改。連結使用受控相對路徑，跨機移動後仍可讀；離線file模式將資料內嵌或分HTML頁，不依賴瀏覽器允許fetch本機JSON。缺分頁／改hash／超預算／資源未交付均顯示文件不完整，不只交漂亮入口頁。
+
+網頁使用者不必讀內部欄位名才能判斷主機／本次範圍／新舊觀測、已完成／待人工／失敗與下一步；進階頁才呈現revision／hash。原路徑提供可複製的正確絕對路徑、實際主機及可驗引用，不承諾HTTP頁能直接開任意file URI或執行來源程式。報告允許內部路徑／帳號等必要metadata，但原設定內容／secret不嵌入任何頁面／下載資料；受控原檔獲取走原payload權限與人工程序。
+
+**計數與容量：** 發現／目前存在／選取／核准／本次可執行／已核驗／衝突／待軟體／外部／失敗／未處理分列；同一列各維度不互斥，不將相加當總數。檔案、空目錄、bytes與系統物件分別計；共享檔案按實體集合去重但保留全部consumer。分母是明示的本次集合，零集合為無操作、Unknown為未知，完成100%掃描或收到ZIP不表示還原成功。摘要可限頁，但完整缺漏與無法放置項都可下鑽。
+
+容量預檢按所選集合及實體volume處理package／incoming／staging／backup保留／journal／HTML索引，保守估算不承諾壓縮率；目標有mount／SUBST／多代號時不能只看drive-letter相加。沿用有界JSON／索引／路徑／transport限制，超限在寫入前揭露可處理範圍與所需外部方式，不截斷成成功；未達代表性規模證據不宣稱企業效能。E2／U／F另驗鍵盤操作、清楚label／狀態、不只靠顏色、長名稱／中文字元、進度不卡搜尋與大清單虛擬／分頁讀取。
+
 ## 分批規劃、輸入／輸出與驗收（全部待實作）
 
 沿用 E1（JSON 比較／人工準備）、E2（全使用者文件HTML／交接）、P（原設定路徑／不合併／無法放置）、G（兩種順序／續跑），新增 S（全選／自訂）及 U（全部功能HTML／文字備援）。版本自由選擇取代強制同版本，HTML取代使用者主要Markdown入口；先前逐檔合併建議未採用，不新增通用或逐檔合併。前後段契約／驗收一起更新，不先公開未接線還原按鈕。代號均為第三輪，不沿用舊完成狀態。
 
 | Phase | 內容／規模 | 相依 | 完成證據 |
 |---|---|---|---|
-| R3-A | 輔助搬移／版本選擇／JSON／選取／本機 UI 契約與 schema；中 | 本次定案；局部待討論項目 | 新舊 policy、來源／選用／目標版本、選取／核准／狀態分離、舊資料及橋接可用性有契約。 |
+| R3-A | 輔助搬移／版本選擇／JSON／局部state／UI契約及schema；大 | 本次定案；局部實機／特殊能力需確認 | 新舊policy、版本／receipt失效、選取／核准分離、逐項世代／replay／狀態consumer、HTML並行／信任資源有契約。 |
 | R3-B | 完整網站／排程／檔案相依探索；大 | A | 多虛擬目錄、多 action／帳號、動態路徑、非 C／UNC 及讀取失敗皆出列；owner 可補相依且不重複丟 consumer。 |
-| R3-S | 預設全選、範圍／版本／映射與選取保存；大 | A、B | 自訂真正影響核准集合／receipt；跨頁、取消相依、重盤點及不支援出列一致；處理 R3-09。 |
+| R3-S | 預設全選、範圍／版本／映射、核准前範圍及保存；大 | A、B | 本次有效集合可批次確認、不被無關Pending擋住；跨頁／重選／重盤點／外部工作一致；R3-09／14及18編輯部分。 |
 | R3-E1 | JSON 比較資料庫、初始／現況採集、版本選擇差異及人工準備；大 | A、B、S | 重啟可讀；來源版差異與是否符合選用版分列；未知／多實例可確認，補裝後重算；處理 R3-01／04／05／08。 |
 | R3-C | C 槽限制與精確設定 payload；大 | A、B、S | 所選／核准集合接入 full／delta／CLI／匯入／還原；設定清單不帶安裝本體，跨磁碟掛載與舊包不假冒新政策。 |
 | R3-P | 原設定路徑、無法放置清單、安裝漂移／位置；中 | A、B、S、E1、C | 不合併既有文件；逐檔列直接與scope衝突、人工整理後重查；修R3-02／03，保留外部資料及區分原檔／工作設定。 |
-| R3-G | 還原前檢查、WaitForInstall／RestoreNow、逐項 deferred／續跑；大 | A、S、E1、C、P | 版本差異不擋所有檔案；真正必要條件分流，兩種順序、重啟／補裝／delta／CLI／request／精靈閉環；處理 R3-07。 |
-| R3-D | 跳板機比對搬移小工具；中 | A、B、S、P | 非 C 範圍可選；逐檔 hash、來源變動、衝突、斷線／重跑、特殊檔案／權限；真實 SMB 兩端核驗。 |
-| R3-E2 | 全部使用者文件HTML／離線索引、Fleet／LabReport；大 | S、E1、C、P、G、D | 完整網頁手冊、清單／衝突／設定／結果／交接同源，列不截斷／連結可離線；其他格式相容，處理 R3-06／10文件部分。 |
-| R3-U | 全部使用者功能HTML＋本機 PowerShell／文字備援；大 | A、S、E1、P、G、D、E2 | 全既有角色／選單／action功能對照接線，含非C／repair／回復／可選切換，共用核心；session／重送／鎖／Core，處理 R3-10操作部分。 |
+| R3-G | 檢查／兩種順序、逐項基線／deferred／delta與修復；大 | A、S、E1、C、P | 真正條件分流，缺base補可信完整內容、replay／rollback／CLI新狀態、容量／版本失效一致；R3-07／11／12及17執行部分。 |
+| R3-D | 跳板機比對／搬移、可續跑清單與可信結果；大 | A、B、S、P | 非C選取／逐檔核驗、不合併／特殊權限、斷線續跑、兩端／volume／範圍／final證據與Manager匯入；R3-15。 |
+| R3-E2 | 全部使用者文件HTML／可攜索引、彙總與可信交接；大 | S、E1、C、P、G、D | 文件包／payload邊界、相對連結／完整列／計數／世代／C非C一致；R3-06／10文件、15／16／17彙總、18稽核部分。 |
+| R3-U | 全功能HTML、本機啟動／非互動worker／文字備援；大 | A、S、E1、P、G、D、E2 | 全角色／action對照，共用核心；長作業中取消／進度、重連／多頁／secret／可及性／Core；R3-10操作及13／16／18。 |
 | R3-F | 整合／回歸及兩種順序隔離端到端；中 | 全部前段 | TS 以 Server 2016／全新 2025 跑來源版及選新版、全選／自訂、HTML／文字、C＋非 C、續跑／readback／回復；正式資格獨立。 |
 
 建議順序：A → B → S → E1 → C → P → G → D → E2 → U → F。U 的畫面流程已在本文定義，原生橋接小實驗在 A 先確認可行性，完整可操作接線在依賴完成後交付。D 消費 P 的衝突／路徑契約；schema／資料庫、選取 receipt 及 producer／consumer 每段須可獨立檢查，必要相依一併完成後才 commit／push。
 
 ### 每批輸入／輸出與下一個使用端
 
-- **A：** 輸入原範圍、本次輔助工具／HTML／版本／全選定案與 R3-01–10；輸出 schema／policy、選取與核准分離、JSON／receipt、逐項門檻、舊資料策略及操作UI資源的runtime／release綁定供全部批次。驗收舊 reader拒絕、不改sealed plan、版本／unknown／等待／直接還原、本機listener可行性；pending不偷寫成既定功能。
-- **B：** 輸入兩機採集與來源工作負載；輸出檔案／設定／軟體 consumer 關聯、非 C／UNC／特殊缺口，供 E1、C、P、G、D。驗收全量網站／排程／服務、動態路徑與 owner 補查；unknown consumer 不自行當成無關。
-- **S：** 輸入 B 的全量清單、A 的選取契約及使用者自訂；輸出持久選取／版本／映射、相依影響、受審集合與精確子集 receipt，供 E1／C／P／G／D／E2／U。驗收跨頁全選與零集合、取消共用相依、新／消失項、重盤點、預選不等於核准、包後只縮小及過期請求。
-- **E1：** 輸入可信來源、全新 target 基準／最新 snapshot、S 版本選擇；輸出 JSON、兩種版本比較、人工清單及預覽供 G／E2／U。驗收基準不覆寫、選新版不報必須降版／不冒充相容、配對歧義、atomic／lock／中斷／budget／重啟；結果可重算且五格式同源。
-- **C：** 輸入來源政策、S 的 owner核准集合及設定分類；輸出精確 C payload／manifest／delta，供 P／G。驗收各入口、舊包相容、取消項不入包／不因delta意外刪目標、未混非 C／安裝本體、核准集合與 manifest 一致。
+- **A：** 輸入原範圍、全部定案與R3-01–18；輸出catalog／plan／operation state／journal新schema、選取／核准／逐項世代、版本receipt／失效、狀態返回碼、C非C結果／文件交付及runtime／release契約供全部批次。驗收舊reader／checkpoint受控相容、新事件replay、不改sealed plan、兩邊版本資格、未知／等待，以及長工作下listener仍可取消；實機／特殊策略不偷寫成已支援。
+- **B：** 輸入兩機採集與來源工作負載；輸出檔案／設定／軟體consumer、非C／UNC／特殊缺口、完整探索coverage及owner補登，供S／E1／C／P／G／D。驗全量網站／排程／服務、停用項、動態與未被引用但由使用者指定的業務路徑；unknown不當無關，選取保留不受自動探索缺漏掩蓋。
+- **S：** 輸入B清單、A契約及使用者自訂；輸出持久選取／版本／映射、相依影響、批次核准有效集合與sealed plan子集receipt供E1／C／P／G／D／E2／U。驗跨頁／零集合、未相關Pending不阻獨立scope、必要SID不假跳過、新／消失／重盤點、包後已核准內可重選／不增包外、取消已搬項不刪除及CAS多頁保留草稿。
+- **E1：** 輸入來源、target首次實際基準／目前snapshot及S選版；輸出JSON、兩種版本比較、人工清單及target期望receipt供G／E2／U。驗FirstObserved不偽造純OS、來源facts不可改、封包後選版／配對／provider變動的局部證據失效、atomic／lock／中斷／budget，結果重算且各格式同源。
+- **C：** 輸入來源政策、S核准集合及設定分類；輸出精確C payload／manifest／delta與可信完整base引用供P／G。驗各入口／舊包、去重／不重疊scope、取消不入包／不因delta刪目標、完整base加合法delta可還原此前未套項、未混非C／安裝本體，按實體volume／選取集合預檢容量。
 - **P：** 輸入原路徑保存／生效映射及目標實況；輸出原檔／工作設定索引、位置、hash／存取／ACL／ownership、逐檔無法放置與回復供 G／D／E2／U。驗收 R3-02、新版改目錄、同名及父scope衝突全部出列、未知讀取不偽造存在、人工整理後重查、外部不合併／不覆寫、原檔hash及rollback／delta。
-- **G：** 輸入 E1 比較、已核准 plan／包、P 路徑狀況及使用者明確選擇；輸出可信 decision receipt、逐項執行／待軟體、durable state／journal 及續跑結果，供驗收、Fleet／LabReport／E2。驗收真正入口兩分支、不以 Missing 假證據放行、不跳過技術必要條件、fresh drift 使舊決策失效；full／delta／重跑／cancel／repair／rollback均適用。
-- **D：** 輸入非 C 根與兩端、S 選取及 P 確認／衝突規則；輸出逐檔核驗與結構化結果供 E2／U／F／consumer。檔案複製不要求目標已安裝軟體，後續業務按選用版本及實際驗證判定；驗收完整性／SMB／特殊檔案／重跑反例。
-- **E2：** 輸入全量／選取／核准、JSON／restore／deferred／衝突、非 C 與業務證據及既有使用者手冊；輸出全部人讀HTML文件及離線索引、相容格式、Fleet／LabReport／交付引用供 U／F／owner。驗收無法放置明細及全部列可查、離線資源／連結、超過2,000筆完整性、計數與狀態同源；版本選擇不是成功證據。
-- **U：** 輸入共用 actions／preview／結果、E2文件索引及 A listener／release契約；輸出全部功能HTML對照表、操作頁、本機session啟停與等價文字備援供 F／TS。驗收全部正常流程不漏HTML入口，含小工具／進階審核／回復／可選切換；真實操作到JSON／journal、跨頁／重送／中斷／過期／注入／Origin／token／Core，以及UI執行資源遭改／缺少時拒絕，不留第二執行引擎。
-- **F：** 輸入全部批次、代表性實機、來源版及使用者選用新版媒體；輸出完整性核對、定向／整合回歸及實機證據供實作紀錄／外部資格。驗收全部原始需求、全選與自訂、HTML／文字、全新 OS 兩種順序、新版舊設定原路徑、非 C／回復；合成 PASS 不代替實機。
+- **G：** 輸入E1／S receipt、plan／可信材料與P實況；輸出逐項applied base／結果／deferred／衝突、durable state／journal供E2／U／驗收。驗兩分支／新版、混合世代與缺base補完整資料、CLI／StageResult新狀態、late checkpoint replay、取消／重選不刪、局部回退、技術必要條件／容量／漂移、已分類獨立失敗與共用信任破壞的不同停止範圍。
+- **D：** 輸入非C根／兩端、S選取／P衝突及當輪final停寫；輸出受控清單、typed逐檔結果／HTML及可信Manager匯入供E2／U／F／consumer。驗錯機／volume／範圍／hash／freeze／讀不到非Missing、斷線／重啟／新清單續跑、不合併／完整性／metadata，無另一個mutable資料庫；不同輪成功不能解除本輪相依。
+- **E2：** 輸入全量／選取／核准、JSON／逐項世代／結果、可信非C／業務證據、手冊與稽核；輸出全人讀HTML文件完整索引、相容格式／ReportReferences／Fleet／LabReport供U／F／owner。驗不改sealed payload、跨機相對連結／離線file不fetchJSON、缺資源明示、超2,000完整列／計數分母／未知、全衝突與同內容未寫入、secret投影、Owner與actor分欄。
+- **U：** 輸入共用actions／preview／結果、E2索引及A並行／release契約；輸出全功能對照、離線啟動指引、本機UI／worker／session與文字備援供F／TS。驗首次TS能啟動、全角色／小工具／回復等真實接線、無隱藏stdin、長工作仍進度／取消、重連／故障／雙頁／CAS／secret／Origin／token／注入／可及性／Core、UI資源改缺拒絕，無第二執行引擎。
+- **F：** 輸入全部批次、代表性實機／規模、兩邊產品版本及新版媒體；輸出逐項原始需求／本次8個使用者情境、四視角及跨段完整性核對、定向／整合回歸與實機證據。驗HTML／文字、先補裝／先還原、封包後選版、原路徑衝突、局部base／delta／repair、C非C同輪、multi-tab／取消／離線交付／容量／回復。合成觀察不代替實機或新版產品資格。
 
-- [ ] R3-A：定義輔助搬移／版本選擇／全選／JSON／兩分支／來源政策／UI及相容性；局部策略待定。
+- [ ] R3-A：定義全契約／逐項state世代／replay／版本receipt／返回碼／非C結果／HTML並行與相容性。
 - [ ] R3-B：完成網站／排程／支援服務的依賴清單與 owner 補查。
-- [ ] R3-S：完成預設全選、自訂／保存、相依影響、有效核准集合與子集；處理 R3-09。
+- [ ] R3-S：全選／自訂／重選、相依影響與核准前有效集合、CAS；R3-09／14及18。
 - [ ] R3-C：落實 C 槽限制及設定精確集合的所有 producer／consumer。
-- [ ] R3-D：完成小工具與來源集合完整性驗證。
+- [ ] R3-D：小工具／清單續跑／typed結果／同輪final證據與Manager匯入；R3-15。
 - [ ] R3-E1：完成 JSON、基準／現況、來源／選用／目標版本、配對與人工清單；處理 R3-01／04／05／08。
 - [ ] R3-P：處理原路徑／漂移／逐檔無法放置，不合併既有文件；修 R3-02／03，含 delta／ownership／回退。
-- [ ] R3-G：完成還原前檢查、兩種選擇、逐項 deferred／續跑及所有入口／門檻；處理 R3-07。
-- [ ] R3-E2：全部使用者文件HTML／完整離線索引、相容格式／Fleet／LabReport與交接；處理 R3-06／10文件部分。
-- [ ] R3-U：全部使用者功能HTML＋本機PowerShell／文字備援、共用流程實際接線；處理 R3-10操作部分。
+- [ ] R3-G：兩種順序／逐項base／deferred／delta補完整／replay／返回碼／回退；R3-07／11／12／17。
+- [ ] R3-E2：全HTML文件／可攜完整索引／計數／稽核／相容格式／交接；R3-06／10／15–18文件部分。
+- [ ] R3-U：全HTML操作／啟動／worker／取消／非互動／多頁／secret／可及性；R3-10／13／16／18操作部分。
 - [ ] R3-F：完成整合、文件、適當回歸與實機證據；未取得外部資格仍保留阻擋。
 
 主代理驗收時依專案、程式、尖銳但合理的使用者與管理者四視角反查：不能只看新增 happy path。先用使用者從盤點到切換走完，再從整體檢查核准／套件／版本／相依／還原／回退是否一致；不為一次檔案搬移加常駐服務或泛用產品 adapter 框架。每段完整且驗證後，依全域規則 commit／push 本輪分支，確認遠端 SHA；不能把未驗證相依拆出去先推。
@@ -335,6 +401,20 @@ Manager 對必要非 C 相依接收綁定來源主機／根目錄、目的主機
 3. **非 IIS 網站（已定案）：** 完整盤點相依及保存所選檔案／設定，現有受驗 adapter以外的安裝／套用／啟用列人工處置；本輪不新增特定產品adapter。B／G／U／F不得泛稱Apache／nginx／Tomcat已有自動還原。
 4. **完整性證據：** 建議 final 停寫＋逐檔 hash 為必要條件；大資料量的驗證成本與停機窗口先量測，不為加速預設改成只比大小／時間。真實來源規模、使用者環境與特殊檔案樣本需在 pilot 前取得。
 
-本次同步README／現況說明，保留R3-01–08、新增R3-09／10；未修runtime／tests。已逐項反查輔助全量、選新版原設定、全選／自訂、全部功能／文件HTML、不合併／無法放置、非IIS策略及原TS／JSON／C／非C需求均有批次、輸出及consumer。A／E1／P／G／D／E2／U／F同步新版與HTML政策，無硬性同版本或合併要求；選取不當核准，deferred／外部不作成功，實機條件不算已完成。
+本次從使用者8個情境走查，再依程式、管理者及整體反查，保留R3-01–10、補R3-11–18。重點是核准前範圍、封包後選版、逐項世代／狀態consumer、長作業取消及C非C／HTML可攜交付；11個Phase的輸入／輸出／相依與驗收同步，A／D因實際閉環需求調整規模。未修runtime／tests；已定案的全選／新版／不合併／HTML／軟體人工安裝／非IIS界線保持，既有外部實機／資格不作完成。
+
+### 從頭反查的跨段影響結論
+
+| 交接鏈 | 必須成對改動的producer／consumer及反例 |
+|---|---|
+| 盤點→選取→核准→封裝 | B全量與coverage，S意願及有效集合，A／ReviewComplete／plan核准，C精確manifest；外部Pending不阻獨立集合，共用／重疊檔案不互覆。 |
+| 選用版本→比較→準備→產品資格 | S選擇、E1原值及目標receipt、G局部期望／失效、A／F兩邊版本／provider資格；舊Requirements／舊資格不可冒充新版，未改來源內容不重封。 |
+| 部分還原→delta→repair→rollback | G逐項base／receipt，C完整材料／合法chain，journalreplay／OperationRequests／StageResult／Fleet共同消費；未選／待處理不晉升、缺base不從不存在target補檔。 |
+| C主包→非C工具→final→切換 | D兩端／volume／範圍／清單／freeze結果，E2可信匯入，G／consumer及既有CrossHost門檻；普通複製成功不等於同輪final或可用性。 |
+| 本機HTML→worker→核心→取消／秘密 | A小實驗，U啟動／非互動／分離請求與長工作，Cancellation獨立marker／progress，核心lock／journal；不能HTTP同步忙到取消送不進，也不能把credential落盤到job。 |
+| JSON／結果→HTML索引→交付→管理者 | E2完整安全投影／計數／相對連結／成員hash，receipt／ReportReferences／LabReport／Fleet、U離線／session入口；文件包與sealed payload不同權威，缺資料不靠漂亮摘要過關。 |
+| runtime資源→指紋→release→舊資料 | A／U可執行UI資源，ToolFingerprint／SBOM／ToolRelease簽章，新schema／state相容與舊reader拒絕；靜態說明改動只改文件hash，不偽稱runtime失效。 |
+
+結論：方向符合輔助使用者定位，但前版對整機核准／整體世代與局部執行之間尚有實作歧義。本次補足可驗證的行為契約，仍須各Phase真實接線與反例通過；不能只跑舊回歸就宣稱新流程正確，不能僅以文件措辭補強宣稱runtime缺口已修。
 
 上述產品決策已由使用者確認；文件檢查不表示程式已實作或網站／排程可直接正式切換，未確認的特殊能力與實機條件仍明列。現有外部驗收與正式資格仍未完成。

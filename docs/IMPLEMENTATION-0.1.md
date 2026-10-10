@@ -6,6 +6,8 @@
 
 2026-10-10 第三輪續訂：輔助搬移、預設全選／自訂、允許新版仍保存原設定舊路徑；全部使用者功能／文件HTML＋本機PowerShell／文字備援已定案。目的已有內容不合併，以HTML逐檔列無法放置／scope影響／人工重試；非IIS不新增adapter。新版與HTML入口取代先前強制同版／主要Markdown入口，保留全新Windows／JSON／兩種順序。現行TargetDiff未真正比較，缺軟體擋整次full／delta，外部目的仍阻擋；Decision=Pending非預選模型，HTML只有離線報告，未有全部文件／操作入口。Mapping／MigrationSpec.TargetPath文件缺陷已用隔離fixture重現。R3-01–10及S／U等全批次未實作／修正，存檔或版本選擇不是業務可用。
 
+2026-10-10四視角複審（基準97a98f8）：從8個使用者情境反查程式與管理流程，新增R3-11–18：逐項世代／delta／新狀態consumer、封包後選版／receipt、HTML啟動／並行取消、核准前有效集合、C非C可信結果、可攜完整文件、容量／計數及多操作者／secret。Windows PowerShell5.1及PowerShell7隔離fixture均觀察到：新DeferredSoftware／WaitForInstall狀態單獨輸入返回碼仍是0、ExpectedVersion改變RequirementId、未相關Pending仍產生ReviewComplete阻擋。這是現行consumer與新需求間的契約缺口，非已提供新功能的失敗；各Phase範圍／IO／驗收已補，但runtime／tests未改，新流程、瀏覽器及實機未驗收。
+
 ## 已實作範圍
 
 | Phase | 現行實作與消費端 |
