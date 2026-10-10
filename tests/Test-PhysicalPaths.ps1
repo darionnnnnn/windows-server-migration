@@ -9,6 +9,11 @@ try{
     & $module {
         param($Root,$Drive)
         $physical=Get-WsmPhysicalPath $Root;$alias=Get-WsmPhysicalPath ($Drive+'\');if($physical -ine $alias){throw 'SUBST physical identity not resolved'}
+        $aliasSpec=[pscustomobject]@{Adapter='FileScope';SourcePath=($Drive+'\');TransferChannel='NonC'}
+        if(Test-WsmPathOverlap $physical (Get-WsmPhysicalPath 'C:\')){
+            $aliasRejected=$false;try{Assert-WsmAssistiveSourceScope $aliasSpec -Native | Out-Null}catch{if($_.Exception.Message -notmatch 'physical C-volume classification'){throw};$aliasRejected=$true}
+            if(-not $aliasRejected){throw 'A real SUBST alias onto C was incorrectly accepted by the NonC channel.'}
+        }else{if((Assert-WsmAssistiveSourceScope $aliasSpec -Native).Channel -cne 'NonC'){throw 'Distinct native volume lost its NonC classification.'}}
         $plan=[pscustomobject]@{Items=@([pscustomobject]@{Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='FileScope';SourcePath=$Root;TargetPath=(Join-Path $Root 'business')}})}
         $blocked=$false;try{Assert-WsmSourceWorkspaceSeparation $plan ($Drive+'\state')}catch{$blocked=$true};if(-not $blocked){throw 'Source state alias collision allowed'}
         $plan.Items+=@([pscustomobject]@{Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='FileScope';SourcePath=(Join-Path $Root 'other');TargetPath=($Drive+'\business\nested')}})

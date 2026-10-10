@@ -5,7 +5,7 @@ function Assert-WsmAssistiveSourceScope {
     if($path.StartsWith('\\')){throw 'External storage requires a dedicated approved provider workflow.'}
     $physical='';$cPhysical=''
     $isC=$path.StartsWith('C:\',[StringComparison]::OrdinalIgnoreCase)
-    if($Native){$physical=Get-WsmPhysicalPath $path;$cPhysical=Get-WsmPhysicalPath 'C:\';if($isC -and -not (Test-WsmPathOverlap $physical $cPhysical)){throw 'Source C path resolves outside the approved physical C volume.'}}
+    if($Native){$physical=Get-WsmPhysicalPath $path;$cPhysical=Get-WsmPhysicalPath 'C:\';if($isC -ne [bool](Test-WsmPathOverlap $physical $cPhysical)){throw 'Source drive alias disagrees with its physical C-volume classification; review the original native drive path before packaging or transfer.'}}
     $channel=if($isC){'C'}else{'NonC'}
     if(-not $Spec.PSObject.Properties['TransferChannel'] -or $Spec.TransferChannel -cne $channel){throw ('Reviewed channel does not match the source physical volume: '+$channel)}
     [pscustomobject]@{Channel=$channel;PhysicalPath=$physical;SourceCPhysicalRoot=$cPhysical;Policy=$Policy;NativeVerified=[bool]$Native}
@@ -28,6 +28,7 @@ function Assert-WsmAssistiveCollectionProofs($Manifest,$Plan) {
         if(-not $scopes.ContainsKey($proof.ItemId) -or $seen.ContainsKey($proof.ItemId) -or $proof.NativeVerified -isnot [bool] -or -not $proof.NativeVerified -or $proof.SourceFingerprint -cne $Plan.Source.Fingerprint -or $proof.Channel -cne $scopes[$proof.ItemId].MigrationSpec.TransferChannel){throw 'Source collection proof has invalid item, channel or host binding.'}
         if(-not $proof.PhysicalPath.StartsWith('\Device\',[StringComparison]::OrdinalIgnoreCase) -or -not $proof.SourceCPhysicalRoot.StartsWith('\Device\',[StringComparison]::OrdinalIgnoreCase)){throw 'Source physical volume evidence is absent.'}
         if($proof.Channel -ceq 'C' -and -not (Test-WsmPathOverlap $proof.PhysicalPath $proof.SourceCPhysicalRoot)){throw 'Main payload was collected outside the physical source C volume.'}
+        if($proof.Channel -ceq 'NonC' -and (Test-WsmPathOverlap $proof.PhysicalPath $proof.SourceCPhysicalRoot)){throw 'NonC source collection proof resolves onto the physical source C volume.'}
         $seen[$proof.ItemId]=$true
     }
     if($seen.Count -ne $scopes.Count){throw 'Source collection proof does not cover all reviewed local scopes.'}

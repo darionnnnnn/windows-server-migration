@@ -636,3 +636,7 @@ Probe段落固定快照驗證：wsm-r3-probe-40ffc4daddf0493487aa8e6c37a85d43，
 ### R3 最終功能補齊段落 — 2026-10-11
 
 固定快照 final-affd1914 的修改相依已定向驗證：IIS coverage 37、OSProvided 33、Core文字表單17、ReviewForms33、Reports39、Comparison30、Contracts28及全部R3原生核心測試雙引擎PASS。UI producer hash修正另以 final-ui-f6bf95c 快照 Node16/16、Edge mocked API反例、HtmlConsole／EntryPoint／Qualification／MigrationPipeline／OperationRequests雙引擎10次PASS；中文TextConsole補BOM後ScriptEncoding雙引擎186檔PASS。Server runner回退fixture基準時序修正以 rollback固定快照雙引擎12項PASS，保留父ACL傳播漂移拒絕。全量104支回歸仍在執行；目錄套用後末段檔案讀回與D importer複合驗證另段補驗，未用本段局部PASS宣布F結束。
+
+### R3 來源實體磁碟分流修正 — 2026-10-11
+
+最後反查發現非 C 的 DOS 磁碟別名可能實際指向 C。來源原生範圍驗證現在拒絕盤符分類與實體 C 身分不一致，要求以原始磁碟路徑重新審閱；sealed collection proof 的 NonC 通道也不得指向 C，避免繞過主包來源政策。目標盤符映射仍獨立核准。僅疊加本段三檔至 HEAD 的不可變 source-commit-79acde 快照：AssistiveFiles 29 項及真實 SUBST PhysicalPaths 在 WinPS 5.1／PS7 共四次 PASS；未使用虛構 D 磁碟冒充原生非 C 證據。其餘最終修正與 F 全量驗證仍繼續。

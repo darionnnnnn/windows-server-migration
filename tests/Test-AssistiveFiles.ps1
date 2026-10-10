@@ -33,6 +33,26 @@ try{
         $spec.ConfigFiles=@();Reject {Get-WsmScopeEntries $spec $output} 'Empty ExactFiles silently captured a full installation folder.'
         $spec.ContentSelection='WholeScope';$whole=@(Get-WsmScopeEntries $spec $output)
         Check (@($whole|Where-Object {-not $_.Directory}).Count -eq 3) 'Explicit business WholeScope lost files based on their extension.'
+        # A forged NonC proof must not smuggle a physical C scope into the D channel.
+        $proofId=('c'*64);$proofSource=(Get-WsmMachineIdentity).Fingerprint
+        $proofItem=[pscustomobject]@{ItemId=$proofId;Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='FileScope';TransferChannel='NonC'}}
+        $proofPlan=[pscustomobject]@{Assistive=[pscustomobject]@{};Source=[pscustomobject]@{Fingerprint=$proofSource};Items=@($proofItem)}
+        $cNative=Get-WsmPhysicalPath 'C:\';$sourceNative=Get-WsmPhysicalPath $source
+        $proofManifest=[pscustomobject]@{SourceCollectionProofs=@([pscustomobject]@{ItemId=$proofId;Channel='NonC';PhysicalPath=$sourceNative;SourceCPhysicalRoot=$cNative;SourceFingerprint=$proofSource;NativeVerified=$true})}
+        Reject {Assert-WsmAssistiveCollectionProofs $proofManifest $proofPlan} 'Physical C evidence was accepted as a NonC source collection proof.'
+        $proofManifest.SourceCollectionProofs[0].PhysicalPath='\Device\WsmFixtureOtherVolume\source'
+        Assert-WsmAssistiveCollectionProofs $proofManifest $proofPlan
+        Check $true 'A distinct-volume NonC proof could not be consumed.'
+        # Mock only the drive resolver to exercise the native alias-boundary decision;
+        # actual physical-path API behavior has its separate PhysicalPaths fixture.
+        $nativeResolver=(Get-Command Get-WsmPhysicalPath).ScriptBlock
+        try{
+            Set-Item Function:\Get-WsmPhysicalPath -Value {param($Path)if($Path -ieq 'C:\'){'\Device\WsmFixtureC'}elseif($Path -like 'Q:\*'){'\Device\WsmFixtureC\alias-source'}else{'\Device\WsmFixtureOtherVolume\source'}}
+            $aliasSpec=[pscustomobject]@{Adapter='FileScope';SourcePath='Q:\alias-source';TransferChannel='NonC'}
+            Reject {Assert-WsmAssistiveSourceScope $aliasSpec -Native} 'A non-C drive alias to physical C was incorrectly classified NonC.'
+            $otherSpec=[pscustomobject]@{Adapter='FileScope';SourcePath='D:\source';TransferChannel='NonC'}
+            Check ((Assert-WsmAssistiveSourceScope $otherSpec -Native).Channel -ceq 'NonC') 'A genuinely distinct physical volume was rejected.'
+        }finally{Set-Item Function:\Get-WsmPhysicalPath -Value $nativeResolver}
         $link=Join-Path $source 'settings\linked.json'
         New-Item -ItemType HardLink -Path $link -Target $config | Out-Null
         Reject {Assert-WsmAssistiveFileTopology $config} 'Primary member of a hard-link set was not detected.'
