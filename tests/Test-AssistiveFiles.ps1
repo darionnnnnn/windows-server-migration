@@ -37,6 +37,16 @@ try{
         New-Item -ItemType HardLink -Path $link -Target $config | Out-Null
         Reject {Assert-WsmAssistiveFileTopology $config} 'Primary member of a hard-link set was not detected.'
         Reject {Get-WsmScopeEntries $spec $output} 'WholeScope silently flattened hard-link topology.'
+        $adsSource=Join-Path $source 'settings\ads-source.txt';[IO.File]::WriteAllText($adsSource,'default stream');Set-Content -LiteralPath $adsSource -Stream 'wsm-review-fixture' -Value 'alternate stream' -NoNewline
+        $sourceStreams=@(Get-Item -LiteralPath $adsSource -Stream * -ErrorAction Stop)
+        Check (@($sourceStreams|Where-Object Stream -CEQ 'wsm-review-fixture').Count -eq 1) 'The physical ADS fixture was not created on this filesystem.'
+        Reject {Assert-WsmAssistiveFileTopology $adsSource} 'Source topology accepted a physical alternate data stream.'
+        $adsSpec=[pscustomobject]@{Adapter='FileScope';SourcePath=$source;TargetPath='D:\RestoredSettings';ExcludedRelativePaths=@();Consistency='OwnerFreeze';Metadata='DaclOwner';ConflictPolicy='Block';Owner='fixture';Evidence='fixture approval';TransferChannel='C';ContentSelection='ExactFiles';ConfigFiles=@([pscustomobject]@{RelativePath='settings\ads-source.txt';SHA256=(Get-FileHash -LiteralPath $adsSource).Hash.ToLowerInvariant();Owner='fixture';Evidence='exact file approval'})}
+        Reject {Get-WsmScopeEntries $adsSpec $output} 'Exact C configuration capture accepted a source file with an alternate data stream.'
+        $adsTarget=Join-Path $output 'ads-target.txt';[IO.File]::WriteAllText($adsTarget,'current target stream');Set-Content -LiteralPath $adsTarget -Stream 'wsm-review-fixture' -Value 'alternate target stream' -NoNewline
+        $targetStreams=@(Get-Item -LiteralPath $adsTarget -Stream * -ErrorAction Stop)
+        Check (@($targetStreams|Where-Object Stream -CEQ 'wsm-review-fixture').Count -eq 1) 'The physical target ADS fixture was not created on this filesystem.'
+        Reject {Assert-WsmAssistiveFileTopology $adsTarget} 'Current target topology accepted a physical alternate data stream.'
         # Isolate package and Server privilege authentication; exercise the public
         # placement consumer against real files. This is not Server qualification.
         $placement=Join-Path $root 'placement';[void][IO.Directory]::CreateDirectory($placement)
@@ -55,6 +65,10 @@ try{
         Check (($preview.Rows|Where-Object RelativePath -CEQ 'existing.config').PlacementStatus -ceq 'BlockedConflict') 'Matching external file was overwritten or granted ownership.'
         Check (($preview.Rows|Where-Object RelativePath -CEQ 'new.config').PlacementStatus -ceq 'CanPlace') 'New file in existing directory was incorrectly blocked.'
         Check ($preview.Blocked -eq 1) 'Conflict count does not describe per-file conflicts.'
+        Set-Content -LiteralPath $existing -Stream 'wsm-placement-review-fixture' -Value 'alternate stream' -NoNewline
+        $adsPlacement=Get-WsmFilePlacementPreview -ManifestPath (Join-Path $placement 'manifest.json') -ExpectedHash ('b'*64)
+        $adsPlacementRow=@($adsPlacement.Rows|Where-Object RelativePath -CEQ 'existing.config')[0]
+        Check ($adsPlacementRow.PlacementStatus -eq 'BlockedConflict' -and $adsPlacementRow.Reason -match 'special file topology|alternate data streams') 'Current ADS destination topology was not surfaced as a manual placement conflict.'
         Check (@($preview.Rows|Where-Object {$_.EffectivePath -or $_.EffectivePathStatus -cne 'NotObserved'}).Count -eq 0) 'Preservation was falsely reported as an effective configuration path.'
         Check (@($preview.Rows|Where-Object {$_.OriginalPathStatus -cne 'Missing' -or -not $_.OriginalPathChangedByApprovedMapping}).Count -eq 0) 'Original-path observations or explicit mapping are lost.'
         Write-Host ('PASS: '+$script:checks+' physical C / exact configuration / topology / native placement checks.')

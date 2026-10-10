@@ -63,7 +63,7 @@ function Add-WsmManualItem {
         $i=Get-WsmReviewDefaults $i
         foreach ($kv in @{ Decision='Pending'; Reason=''; ReviewedBy=''; ReviewedUtc=''; Present=$true }.GetEnumerator()) { $i | Add-Member NoteProperty $kv.Key $kv.Value }
         $i.ManualEntry=$true; $i.Owner=$Owner; $i.Evidence=$Evidence
-        $c.Items=@($c.Items)+@($i);if($c.SchemaVersion -eq 3){$c.Assistive.Selections.Items=@($c.Assistive.Selections.Items)+@([pscustomobject]@{ItemId=$i.ItemId;SourceRevision=[int]$c.InventoryRevision;Selected=$true;Reason='New manual discovery defaults selected; approval remains separate.';UpdatedUtc=(Get-WsmUtc)});$c.Assistive.Selections.Revision++;Clear-WsmAssistiveComparison $c}; $c.DecisionRevision++; $c.Approval=$null
+        $c.Items=@($c.Items)+@($i);$c.DecisionRevision++;$c.Approval=$null;if($c.SchemaVersion -eq 3){$c.Assistive.Selections.Items=@($c.Assistive.Selections.Items)+@([pscustomobject]@{ItemId=$i.ItemId;SourceRevision=[int]$c.InventoryRevision;Selected=$true;Reason='New manual discovery defaults selected; approval remains separate.';UpdatedUtc=(Get-WsmUtc)});$c.Assistive.Selections.Revision++;Clear-WsmAssistiveComparison $c}
         $c.History=@($c.History)+@([pscustomobject]@{ Revision=$c.DecisionRevision; Action='ManualItem'; ItemId=$i.ItemId; Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c; $i
     }

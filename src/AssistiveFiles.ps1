@@ -39,6 +39,13 @@ function Assert-WsmAssistiveFileTopology([string]$Path) {
     foreach($flag in @([IO.FileAttributes]::Encrypted,[IO.FileAttributes]::SparseFile,[IO.FileAttributes]::Compressed)){
         if(($attributes -band $flag) -ne 0){throw ('Special file metadata requires a dedicated qualified workflow: '+$flag)}
     }
+    # File.Copy and the regular-file SHA256 used by the NonC channel do not
+    # express whether named NTFS data streams were carried. Detect them before
+    # accepting either a source or a current destination topology, and fail
+    # closed if this host/provider cannot enumerate streams.
+    try{$streams=@(Get-Item -LiteralPath $Path -Stream * -ErrorAction Stop)}catch{throw 'Alternate data stream topology could not be verified; preserve the path and review it manually.'}
+    $namedStreams=@($streams | Where-Object {$_ -and $_.PSObject.Properties['Stream'] -and -not [string]::IsNullOrWhiteSpace([string]$_.Stream) -and [string]$_.Stream -ine ':$DATA'})
+    if($namedStreams.Count){throw 'Alternate data streams require a dedicated qualified workflow; preserve the path and review it manually.'}
     if(-not ('WsmFileTopology' -as [type])){
         Add-Type -TypeDefinition @'
 using System;
@@ -125,11 +132,16 @@ function Get-WsmFilePlacementPreview {
             try{
                 Assert-WsmNoReparse $destination
                 if([IO.File]::Exists($destination) -or [IO.Directory]::Exists($destination)){
-                    $status='BlockedConflict';$reason='Destination exists; external data is not merged or overwritten.'
-                    if($row.Directory -and [IO.Directory]::Exists($destination)){$status='DirectoryAlreadyExists';$reason='Existing directory is retained. New nonconflicting files may be placed individually; no directory ownership is claimed.'}
-                    if(-not $row.Directory -and [IO.File]::Exists($destination)){$observed=(Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant();if($observed -ieq $row.Data.Hash){$reason='Same bytes already exist; this does not grant tool ownership.'}}
+                    $topologyVerified=$true
+                    try{Assert-WsmAssistiveFileTopology $destination}catch{$topologyVerified=$false}
+                    if(-not $topologyVerified){$status='BlockedConflict';$reason='Destination has special file topology such as alternate data streams; preserve it for manual review.'}
+                    else{
+                        $status='BlockedConflict';$reason='Destination exists; external data is not merged or overwritten.'
+                        if($row.Directory -and [IO.Directory]::Exists($destination)){$status='DirectoryAlreadyExists';$reason='Existing directory is retained. New nonconflicting files may be placed individually; no directory ownership is claimed.'}
+                        if(-not $row.Directory -and [IO.File]::Exists($destination)){$observed=(Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant();if($observed -ieq $row.Data.Hash){$reason='Same bytes already exist; this does not grant tool ownership.'}}
+                    }
                     $key=$item.ItemId+'|'+$relative
-                    if(-not $row.Directory -and $ownership.ContainsKey($key)){
+                    if($topologyVerified -and -not $row.Directory -and $ownership.ContainsKey($key)){
                         if($observed -ieq $ownership[$key].SHA256){$status='VerifiedOwned';$reason='Current bytes match journal ownership. Restore must preserve a verified backup before changing them.'}
                         else{$status='OwnedFileDrift';$reason='Journal-owned file changed outside its recorded generation; preserve and reconcile it.'}
                     }

@@ -1,5 +1,6 @@
-function Clear-WsmAssistiveComparison($Catalog) {
+﻿function Clear-WsmAssistiveComparison($Catalog) {
     if ($Catalog.PSObject.Properties['Assistive']) {
+        if(-not $Catalog.Approval -and $Catalog.Assistive.PSObject.Properties['TargetSelections']){$Catalog.Assistive.PSObject.Properties.Remove('TargetSelections')}
         $Catalog.Assistive.Comparison=$null
         $Catalog.Assistive.Revision++
         $Catalog.Assistive.UpdatedUtc=Get-WsmUtc
@@ -159,7 +160,10 @@ function Update-WsmAssistiveTargetSnapshot {
         if($null -eq $catalog.Assistive.TargetBaseline){$reference | Add-Member NoteProperty BaselineKind 'FirstObserved';$catalog.Assistive.TargetBaseline=$reference}
         $catalog.Assistive.TargetCurrent=$reference
         Clear-WsmAssistiveComparison $catalog
-        $catalog.DecisionRevision++;$catalog.Approval=$null
+        # Chosen target versions are external decisions once source scope is sealed.
+        # Preserve the immutable source plan; invalidate its target comparison only.
+        $sealed=($catalog.Approval -and $catalog.Approval.PSObject.Properties['Kind'] -and $catalog.Approval.Kind -ceq 'MigrationPlan')
+        if(-not $sealed){$catalog.DecisionRevision++;$catalog.Approval=$null}
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $catalog
         Assert-WsmAssistiveContract $catalog Catalog | Out-Null
         $catalog
@@ -265,7 +269,8 @@ function Set-WsmAssistiveSoftwareVersion {
         $choice=[pscustomobject][ordered]@{SoftwareId=$SoftwareId;SourceVersion=$sourceVersion;ChosenVersion=$ChosenVersion;Reason=$Reason;UpdatedUtc=(Get-WsmUtc)}
         $catalog.Assistive.SoftwareChoices=@($choices)+@($choice)
         Clear-WsmAssistiveComparison $catalog
-        $catalog.DecisionRevision++;$catalog.Approval=$null
+        $sealed=($catalog.Approval -and $catalog.Approval.PSObject.Properties['Kind'] -and $catalog.Approval.Kind -ceq 'MigrationPlan')
+        if(-not $sealed){$catalog.DecisionRevision++;$catalog.Approval=$null}
         $catalog.History=@($catalog.History)+@([pscustomobject]@{Revision=$catalog.DecisionRevision;Action='AssistiveSoftwareVersion';SoftwareId=$SoftwareId;SourceVersion=$sourceVersion;ChosenVersion=$ChosenVersion;Reason=$Reason;Utc=(Get-WsmUtc)})
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $catalog
         Assert-WsmAssistiveContract $catalog Catalog | Out-Null

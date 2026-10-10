@@ -41,6 +41,30 @@ $checks=0
     $catalog.GeneralHost.Requirements=@($prepRequirement,$requirement)
     $prepReceipt=[pscustomobject]@{SchemaVersion=1;ReceiptId=('8'*64);PairId=$pairId;SourceFingerprint=$source.Fingerprint;TargetFingerprint=('9'*64);InventoryHash=$catalog.InventoryHash;ToolFingerprint=(Get-WsmToolFingerprint);Context=$prepContext;RequirementIds=@($prepRequirement.RequirementId);RequirementProjectionHash=(Get-WsmGeneralHostProjectionHash $catalog @($item.ItemId) @($prepRequirement.RequirementId) PreparationReady);Phase='PreparationReady';EvidenceKind='OwnerReadback';EvidencePathHash=('6'*64);Owner='runtime-owner';ObservedUtc=[DateTime]::UtcNow.AddMinutes(-1).ToString('o');ExpiresUtc=[DateTime]::UtcNow.AddHours(2).ToString('o')}
     $catalog.GeneralHost.EvidenceReceipts=@($prepReceipt)
+    # Target choices change phase expectation, never the sealed source facts.
+    $versionPlan=ConvertFrom-WsmJson ($catalog | ConvertTo-Json -Depth 100)
+    $versionPlan | Add-Member NoteProperty Assistive ([pscustomobject]@{SourceSnapshotHash=('f'*64)}) -Force
+    $versionPlan.GeneralHost.Requirements=@($prepRequirement | ConvertTo-Json -Depth 30 | ConvertFrom-Json @fixtureReadOptions)
+    $versionPlan.GeneralHost.EvidenceReceipts=@($prepReceipt)
+    $sourceBytes=$versionPlan | ConvertTo-Json -Depth 100 -Compress
+    $versionComparison=[pscustomobject]@{Revision=1;SelectionRevision=1;SourceSnapshotHash=('f'*64);TargetSnapshotHash=('7'*64);Rows=@([pscustomobject]@{SoftwareId=$softwareId;SourceVersion='4.2';ChosenVersion='5.0';ObservedTargetVersion='5.0';TargetSoftwareId='target-software';Status='ChosenVersionObserved'})}
+    $versionReceipt=[pscustomobject]@{Comparison=$versionComparison;ComparisonHash=(Get-WsmHashText ($versionComparison | ConvertTo-Json -Depth 100 -Compress));ComparisonRevision=1;SelectionRevision=1;TargetSnapshotHash=('7'*64)}
+    $versionPackage=[pscustomobject]@{Plan=$versionPlan;Manifest=[pscustomobject]@{Target=[pscustomobject]@{Fingerprint=('9'*64)};PlanHash=('3'*64)};SHA256=('4'*64)}
+    $versionDecision=[pscustomobject]@{Receipt=$versionReceipt;ReceiptHash=('5'*64);SelectedItemIds=@($item.ItemId)}
+    $targetPlan=Get-WsmAssistiveTargetPlan $versionPackage $versionDecision
+    $targetRequirement=$targetPlan.GeneralHost.Requirements[0]
+    Assert-Check (($versionPlan | ConvertTo-Json -Depth 100 -Compress) -ceq $sourceBytes) 'Chosen target software mutated sealed source facts.'
+    Assert-Check ($targetRequirement.ExpectedVersion -ceq '5.0' -and $targetRequirement.RequirementId -cne $prepRequirement.RequirementId) 'Chosen target version did not produce a distinct phase expectation.'
+    Assert-Rejected {Assert-WsmGeneralHostReceipt $prepReceipt $targetPlan -TargetFingerprint ('9'*64)} 'Old source-version phase receipt satisfied a newer target choice.'
+    $newReceipt=ConvertFrom-WsmJson ($prepReceipt | ConvertTo-Json -Depth 40)
+    $newReceipt.Context=$targetRequirement.Context;$newReceipt.RequirementIds=@($targetRequirement.RequirementId);$newReceipt.RequirementProjectionHash=Get-WsmGeneralHostProjectionHash $targetPlan @($item.ItemId) @($targetRequirement.RequirementId) PreparationReady
+    Assert-WsmGeneralHostReceipt $newReceipt $targetPlan -TargetFingerprint ('9'*64) | Out-Null
+    $targetPlan.GeneralHost.EvidenceReceipts=@($newReceipt)
+    Assert-Check (@(Get-WsmGeneralHostIssues $targetPlan PreparationReady ('9'*64)).Count -eq 0) 'Fresh chosen-version phase receipt did not satisfy the preparation consumer.'
+    $changedDecision=ConvertFrom-WsmJson ($versionDecision | ConvertTo-Json -Depth 100);$changedDecision.ReceiptHash=('6'*64)
+    $changedPlan=Get-WsmAssistiveTargetPlan $versionPackage $changedDecision
+    Assert-Rejected {Assert-WsmGeneralHostReceipt $newReceipt $changedPlan -TargetFingerprint ('9'*64)} 'Phase receipt survived a changed target decision binding.'
+    Assert-Rejected {Get-WsmAssistiveStateGeneralHostIssues $versionPackage ([pscustomobject]@{}) CutoverReady} 'Missing durable target-decision references bypassed later phase gates.'
     Assert-Rejected {Assert-WsmPreparationEvidence ([pscustomobject]@{RestartStatus='NotTested'})} 'Unverified preparation checklist was accepted.'
     $missingSoftware=$catalog | ConvertTo-Json -Depth 40 | ConvertFrom-Json @fixtureReadOptions;$missingSoftware.GeneralHost.SoftwareCatalog=$null;$missingSoftware.GeneralHost.SoftwareCatalogHash='';$missingIssues=@(Get-WsmGeneralHostIssues $missingSoftware ReviewComplete);Assert-Check (@($missingIssues | Where-Object Issue -Like '*SoftwareCatalog*').Count -eq 1) 'GeneralHost review without a source SoftwareCatalog was not blocked.'
     $contextOrder=[pscustomobject][ordered]@{ConsumerItemIds=@($item.ItemId);Architecture='x64';Version='4.2';Provider='FixtureRuntime'};$sameIdentity=$requirement | ConvertTo-Json -Depth 20 | ConvertFrom-Json @fixtureReadOptions;$sameIdentity.Context=$contextOrder;Assert-Check ((Get-WsmGeneralHostRequirementId $sameIdentity) -ceq $requirement.RequirementId) 'Requirement identity changed with equivalent Context property ordering.'

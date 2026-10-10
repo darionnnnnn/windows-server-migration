@@ -38,6 +38,14 @@ try {
     Check ($run.Result.Rows[0].Bytes -eq (New-Object IO.FileInfo($source)).Length) 'Transfer did not record exact byte count.'
     $resume=Invoke-WsmAssistiveNonCTransferCore -TransferPlanPath $valid.Path -ExpectedPlanHash $valid.Hash -JournalPath (Join-Path $root 'journal.json') -ResultPath (Join-Path $root 'result-resume.json')
     Check (@('Applied','DeferredManual') -contains $resume.Result.Rows[0].Status -and $resume.Result.Rows[0].OwnedByTransfer -and (Get-WsmAssistiveNonCHash $resume.Result.Rows[0].TargetPath) -ceq (Get-WsmAssistiveNonCHash $source)) 'Resume did not preserve and recheck only journal-owned verified bytes.'
+    $adsTargetPath=[string]$resume.Result.Rows[0].TargetPath;Set-Content -LiteralPath $adsTargetPath -Stream 'wsm-nonc-review-fixture' -Value 'preserve this stream' -NoNewline
+    $adsTargetRun=Invoke-WsmAssistiveNonCTransferCore -TransferPlanPath $valid.Path -ExpectedPlanHash $valid.Hash -JournalPath (Join-Path $root 'journal.json') -ResultPath (Join-Path $root 'result-ads-target.json')
+    Check ($adsTargetRun.Result.Rows[0].Status -eq 'DeferredManual' -and $adsTargetRun.Result.Rows[0].Reason -match 'Alternate data stream topology') 'NonC transfer resumed into a target with a physical ADS, or failed to expose manual review.'
+    Check (@(Get-Item -LiteralPath $adsTargetPath -Stream * -ErrorAction Stop|Where-Object Stream -CEQ 'wsm-nonc-review-fixture').Count -eq 1) 'NonC transfer changed or removed the target alternate data stream.'
+    $adsSource=Join-Path $sourceRoot 'source-with-ads.txt';[IO.File]::WriteAllText($adsSource,'default stream',[Text.Encoding]::UTF8);Set-Content -LiteralPath $adsSource -Stream 'wsm-nonc-review-fixture' -Value 'source alternate stream' -NoNewline
+    $adsSourcePlan=NewFixturePlan $adsSource (Join-Path $targetRoot 'source-with-ads.txt') $sourceRoot $targetRoot $pairId $itemId (Join-Path $root 'source-ads-plan.json')
+    $adsSourceRun=Invoke-WsmAssistiveNonCTransferCore -TransferPlanPath $adsSourcePlan.Path -ExpectedPlanHash $adsSourcePlan.Hash -JournalPath (Join-Path $root 'source-ads-journal.json') -ResultPath (Join-Path $root 'source-ads-result.json')
+    Check ($adsSourceRun.Result.Rows[0].Status -eq 'DeferredManual' -and $adsSourceRun.Result.Rows[0].Reason -match 'Alternate data stream topology' -and -not [IO.File]::Exists((Join-Path $targetRoot 'source-with-ads.txt'))) 'NonC transfer copied a source with ADS instead of failing closed for manual review.'
     $conflict=Join-Path $conflictRoot 'site-content.txt';[IO.File]::WriteAllText($conflict,'external file')
     $conflictPlan=NewFixturePlan $source $conflict $sourceRoot $conflictRoot $pairId $itemId (Join-Path $root 'conflict-plan.json')
     $conflictRun=Invoke-WsmAssistiveNonCTransferCore -TransferPlanPath $conflictPlan.Path -ExpectedPlanHash $conflictPlan.Hash -JournalPath (Join-Path $root 'conflict-journal.json') -ResultPath (Join-Path $root 'conflict-result.json')

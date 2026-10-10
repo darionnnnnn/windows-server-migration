@@ -534,3 +534,11 @@ The development builder renders complete top-level user manuals and README to po
 ### R3-E2 portable JSON reference documents — 2026-10-10
 
 Support matrix and release SBOM JSON references now resolve to complete safely encoded HTML pages in the offline document center. This closes the broken raw-JSON link in the HTML-only operator documentation chain. Main agent independently ran Test-HtmlDocumentation: 13 checks each on Windows PowerShell 5.1 and PowerShell 7, including physical source hash metadata, JSON injection encoding and locked archive exclusion. Final current-document generation remains part of U/E2 closeout.
+
+### R3-G / S / E1 / E2 native consumer closure — 2026-10-10
+
+- 主代理整合 AssistiveRestore、TargetPreparation、SettingsForms、Reports 與既有 delta／state／journal／Cutover／Recovery consumer；Luna high 實作逐項還原、原生 metadata／ownership 回復、typed 審閱表單，主代理以不可變 Git index 快照獨立重跑並追查接線。
+- 目標 receipt 保存精確 snapshot／receipt 路徑及 hash、來源／選用／觀測版本；執行及切換重查。部分還原可行，但完整切換仍需 sealed 核准集合、同輪 C／可信 D 結果、StagedDependencyVerified／FinalAccepted／CutoverReady。首次啟用不要求尚未產生的 BusinessFinal。
+- 不覆寫外部檔案；只回復工具持有的逐檔 prior。C／非 C readback 重查 bytes、ACL／owner／time、拓樸與 ADS；拒絕後仍列精確原位置、目的位置及人工處置。RequirementReview 保留完整 server-side 巢狀 Context／SourceProof，操作表單只填決策／責任欄位，並驗 hash／CAS。
+- 驗證：14 支原生／整合測試在 WinPS 5.1、PS7 共 28 次執行全部通過（Contracts、Comparison、Restore、StageResults、Rollback、ReviewForms、SettingsForms、TargetPreparation、Reports、GeneralHostGates、ExternalReadinessEvidence、DeltaWorkflow、Qualification、MigrationPipeline）。最後路徑報告修正另以兩引擎重驗 StageResults 40、Reports 39、NativeReadback 10；Files 25／NonC 32 的實體 ADS 反例亦已雙引擎通過。
+- 這是小範圍檔案、native consumer 及隔離契約證據，未宣稱 IIS／排程服務實機、企業 SMB／PKI／Oracle 或正式資格通過。HTML runtime／全功能瀏覽器整合仍在下一個依賴完整段落驗證，11 Phase 尚未據此全部勾選。

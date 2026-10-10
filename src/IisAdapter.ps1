@@ -71,6 +71,30 @@ function Set-WsmIisConfigChanges($Document,$Changes) {
     $Document
 }
 
+function Get-WsmIisReviewedActivationXml($Spec,[switch]$RestoreStaged) {
+    if($Spec.Adapter -notin @('IISSection','IISLocation')){throw 'Reviewed field activation is limited to typed IIS section/location adapters.'}
+    [void](Assert-WsmAssistiveReviewedActivation $Spec)
+    $activation=$Spec.ReviewedActivation;$attribute=([string]$activation.FieldPointer -split '/@')[-1]
+    $document=Read-WsmXml ([string]$Spec.Desired.Xml);$resolved=Get-WsmIisPointerNode $document ([string]$activation.FieldPointer);$nodeAttribute=$resolved.Node.Attributes[$attribute]
+    if(-not $nodeAttribute){throw 'Reviewed IIS activation attribute disappeared from target XML.'}
+    $finalValue=[string]$activation.FinalValue;if($RestoreStaged){$finalValue=[string]$activation.StagedValue}
+    $nodeAttribute.Value=$finalValue
+    $document.OuterXml
+}
+function Invoke-WsmIisConfigActivation($Spec,[bool]$Enable) {
+    $state=Get-WsmIisConfigState $Spec;if(-not $state.Exists){throw 'Selected IIS section/location is unavailable for activation.'}
+    $stagedXml=[string]$Spec.Desired.Xml;$finalXml=Get-WsmIisReviewedActivationXml $Spec
+    $expectedXml=$stagedXml;if($Enable -and [string]$Spec.ReviewedActivation.FinalState -ceq 'Enabled'){$expectedXml=$finalXml}
+    $actual=Read-WsmXml ([string]$state.Xml);$expected=Read-WsmXml $expectedXml
+    if((ConvertTo-WsmXmlComparable $actual.DocumentElement) -ceq (ConvertTo-WsmXmlComparable $expected.DocumentElement)){return [pscustomobject]@{PriorXml=$state.Xml;DesiredXml=$expectedXml;Readback=$state;AlreadyApplied=$true}}
+    if((ConvertTo-WsmXmlComparable $actual.DocumentElement) -cne (ConvertTo-WsmXmlComparable (Read-WsmXml $stagedXml).DocumentElement) -and (ConvertTo-WsmXmlComparable $actual.DocumentElement) -cne (ConvertTo-WsmXmlComparable (Read-WsmXml $finalXml).DocumentElement)){throw 'IIS section/location drifted from both exact staged and reviewed final XML; activation refused.'}
+    $manager=New-WsmIisManager
+    try{$config=$manager.GetApplicationHostConfiguration();if($Spec.Adapter -eq 'IISLocation'){$section=$config.GetSection([string]$Spec.Desired.SectionPath,[string]$Spec.Desired.LocationPath)}else{$section=$config.GetSection([string]$Spec.Desired.SectionPath)};$section.SectionInformation.SetRawXml($expectedXml);$manager.CommitChanges()}finally{$manager.Dispose()}
+    $readback=Get-WsmIisConfigState $Spec;$actualReadback=Read-WsmXml ([string]$readback.Xml)
+    if(-not $readback.Exists -or (ConvertTo-WsmXmlComparable $actualReadback.DocumentElement) -cne (ConvertTo-WsmXmlComparable (Read-WsmXml $expectedXml).DocumentElement)){throw 'IIS section/location activation did not pass exact native XML readback.'}
+    [pscustomobject]@{PriorXml=$state.Xml;DesiredXml=$expectedXml;Readback=$readback;AlreadyApplied=$false}
+}
+
 function Invoke-WsmIisConfigRestore($Spec) {
     $before=Get-WsmIisConfigState $Spec
     if(-not $before.Exists){throw 'Selected IIS configuration section is unavailable on the target.'}

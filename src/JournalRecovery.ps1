@@ -28,6 +28,18 @@ function Restore-WsmJournalCheckpoint($Paths,$State) {
     $copy=ConvertFrom-WsmJson ($State | ConvertTo-Json -Depth 40)
     Read-WsmJournalEvents $Paths | ForEach-Object {$event=$_.Row;$eventHash=$_.Hash;if($event.Sequence -gt $copy.Sequence){$d=$event.Detail;$id=$event.ItemId
         switch -Exact ($event.Action){
+            'AssistiveRestoreStarted' {$copy.Stage='Running';$copy | Add-Member NoteProperty RestoreAttempt $d -Force}
+            'AssistiveDeltaFallbackDeferred' {$fallbacks=@();if($copy.PSObject.Properties['AssistiveDeltaFallbacks']){$fallbacks=@($copy.AssistiveDeltaFallbacks)};$copy | Add-Member NoteProperty AssistiveDeltaFallbacks (@($fallbacks)+@($d)) -Force}
+            'AssistiveAdapterIntent' {$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)+@($d)}
+            {$_ -in @('AssistiveFileIntent','AssistiveFilePrepared')} {$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)+@($d)}
+            'AssistiveFileBackupRetained' {$pending=@($copy.PendingOperations | Where-Object ItemId -CEQ $id);if($pending.Count -ne 1 -or $pending[0].Phase -cne 'AssistiveFileReplace'){throw 'Assistive backup material journal row has no matching file intent.'};$pending[0].Backup=[string]$d.Backup;$pending[0] | Add-Member NoteProperty BackupMaterialId ([string]$d.MaterialId) -Force}
+            'AssistiveFileCompleted' {$pending=@($copy.PendingOperations | Where-Object ItemId -CEQ $id);$record=@($copy.Items | Where-Object ItemId -CEQ $id);if($record.Count -eq 0){$record=[pscustomobject]@{ItemId=$id;Status='Partial';CreatedByTool=$true;AppliedManifestHash='';AppliedGeneration=0;OwnedFiles=@();OwnedDirectories=@();Target=''}}else{$record=$record[0]};$files=@($record.OwnedFiles | Where-Object RelativePath -CNE ([string]$d.Record.RelativePath));$files+=,$d.Record;$record.OwnedFiles=$files;$record.Status='Partial';$record.AppliedManifestHash='';$record.Error='One file transaction completed; the full scope still requires reconciliation.';$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id)+@($record);$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)}
+            'AssistiveFileRecovered' {if($d.Record){$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id)+@($d.Record)};$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)}
+            'AssistiveAdapterRecovered' {$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id)+@($d);$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)}
+            'AssistiveAdapterAbandoned' {$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id);$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id)}
+            {$_ -in @('AssistiveItemCompleted','AssistiveItemFailed')} {$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id)+@($d);$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id);if($d.Status -eq 'Failed'){$copy.Stage='Partial'}}
+            'AssistiveItemNeedsRepair' {$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id)+@([pscustomobject]@{ItemId=$id;Status='Failed';CreatedByTool=$true;AppliedManifestHash='';AppliedGeneration=0;Error='An Assistive item operation needs explicit recovery.'})}
+            'AssistiveRestoreCompleted' {$copy.Stage=$d.Status;$copy.Generation=$d.Generation;$copy.ManifestHash=$d.ManifestHash}
             'AdapterIntent' {$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)+@($d)}
             'TaskFolderCreateIntent' {
                 $pending=@($copy.PendingOperations | Where-Object ItemId -CEQ $id)
@@ -93,7 +105,7 @@ function Restore-WsmJournalCheckpoint($Paths,$State) {
             'RollbackCompleted' {foreach($item in $copy.Items){if($item.ItemId -ceq $id){$item.Status='RolledBack'}};$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)}
             'RollbackFinished' {$copy.Stage='RolledBack'}
             'BuildAbandoned' {$op=@($copy.PendingOperations | Where-Object ItemId -CEQ $id);$copy.Items=@($copy.Items | Where-Object ItemId -CNE $id);if($op.Count -and $op[0].PSObject.Properties['PreviousRecord'] -and $op[0].PreviousRecord){$copy.Items+=@($op[0].PreviousRecord)};$copy.PendingOperations=@($copy.PendingOperations | Where-Object ItemId -CNE $id)}
-            {$_ -in @('ItemStarted','ItemActivated','ValidationCompleted','RollbackStarted')} { }
+            {$_ -in @('AssistiveItemStarted','ItemStarted','ItemActivated','ValidationCompleted','RollbackStarted')} { }
             default {throw ('Unknown recovery event: '+$event.Action)}
         }
         $copy.Sequence=$event.Sequence;$copy.JournalHash=$eventHash
