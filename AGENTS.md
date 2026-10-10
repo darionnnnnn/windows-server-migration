@@ -1,6 +1,6 @@
 # Windows Server Migration 專案入口
 
-- 流程：完整；本輪先討論 [MIGRATION-3-PLAN.md](docs/MIGRATION-3-PLAN.md)，全部 R3 Phase 待實作，不從規劃指示推論已授權開發。現行能力與外部待驗收見 [IMPLEMENTATION-0.1.md](docs/IMPLEMENTATION-0.1.md)；歷史規劃／複審／逐 Phase 證據見 [封存索引](docs/archive/README.md)，按需讀取，不作當期待辦。
+- 流程：完整；2026-10-10使用者已授權第三輪全部實作及逐段驗證／commit／push；依 [MIGRATION-3-PLAN.md](docs/MIGRATION-3-PLAN.md) 持續完整性核對，不將局部完成當整輪完成。現行能力與外部待驗收見 [IMPLEMENTATION-0.1.md](docs/IMPLEMENTATION-0.1.md)；歷史規劃／複審／逐 Phase 證據見 [封存索引](docs/archive/README.md)，按需讀取，不作當期待辦。
 - 現況：0.3 第2輪 A0/A1、B1/B2、C、D/D2、E1–E3 程式及契約閉環已實作；兩引擎回歸與 GitHub CI 通過。外部 Server／Oracle／企業 PKI／業務／規模驗收及可核實的不同模型體檢未完成，ProductionVerified=false。
 - 使用範圍：一般內部網站／Windows排程及支援服務主機，主要 Server 2016 → 2025；不做資料庫、load balancer等專業服務主機搬移。R3是輔助使用者盡可能還原內容，企業TS可操作／交接、兩機差異及新版軟體下原設定舊路徑可取。全部已發現項目預選／可自訂，選取與核准分離，不支援項出列處置。所有使用者功能／文件以HTML入口＋本機PowerShell呈現，文字備援，共用核心／無遠端或常駐服務，JSON內部資料庫；開發README／PLAN／AGENTS仍為Markdown來源。使用者可選新版，取代強制同版本；來源／選用／觀測版本分開，不承諾自動轉格式／新版相容。全新Windows基準、還原前重查、直接還原／等補裝、逐項deferred／續跑仍適用；純檔案不被全域軟體gate阻擋，真正條件及業務驗證保留。不協助合併既有文件，HTML逐檔列無法放置／scope影響／原檔來源／人工重試，不新增外部覆寫按鈕；受控delta／回復仍遵原契約。非IIS完整盤點／檔案設定保存／人工處置，不新增產品adapter。R3-01–25及S／U等全批次本輪處理、尚未實作。主C／非C跳板機、完整相依及未知版本名稱保留；軟體本體人工安裝、不擴整機備份。
 - 操作与契約：[README.md](README.md)、[GENERAL-HOST-WORKFLOW.md](docs/GENERAL-HOST-WORKFLOW.md)、[OPERATIONS.md](docs/OPERATIONS.md)。新規劃待辦集中於R3 PLAN；既有外部驗收待辦仍在 [IMPLEMENTATION-0.1.md](docs/IMPLEMENTATION-0.1.md)；完整軟體確認模板不是實際 Server 清單。
@@ -14,4 +14,4 @@
 - 實際來源／目標主機須另有指派；隔離主機可用角色6／CLI LabReport回傳JSON與TXT。fixture、命令成功或報告摘要不能代替原生readback及業務接受。
 - 專案現況文件及當期PLAN留在docs；已結束輪次的規劃、一次性複審與驗證歷程以git mv封存至docs/archive並維護索引／引用。公開repository不納入真實盤點、機密、憑證私鑰或根目錄個人prototype `Get-ServerMigrationInventory.ps1`，不讀取或修改該prototype。
 - GitHub每段完成後驗證、commit/push并核對遠端SHA。2026-10-10使用者授權本輪收尾整合至dev及刪除codex/implementation；不改main、不force push，保留他人未提交工作。
-- 本輪收尾使用主代理直接審查；使用者指定的opus low不在可用subagent清單中，不靜默替換模型。模型身分不明時不宣稱符合不同模型獨立體檢。
+- 本輪實作委派依使用者最新指示僅用gpt-6-luna，主模型按風險評估high／medium／low；主代理獨立查實際產物／consumer／驗收，單一檔案只由一名writer編輯。HTML採ui-ux-pro-max skill。模型身分不明時不宣稱符合不同模型獨立體檢。
