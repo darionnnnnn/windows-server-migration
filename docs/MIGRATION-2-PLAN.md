@@ -402,3 +402,6 @@ A0–D2 與 E1–E3 的程式／schema／producer-consumer 已逐項比對並補
 #### 2026-10-10 收尾與整合授權
 
 已依本輪起點至HEAD核對A0/A1、B1/B2、C、D/D2、E1–E3及R2-01–28，沒有新增可重現程式缺陷；程式和測試146個hash與最後受驗版本相符。入口及當期待辦去除重複歷史，最終四job成功與修正摘要統一於 [MIGRATION-2-VERIFICATION.md](MIGRATION-2-VERIFICATION.md)。使用者授權整合至dev并刪除codex/implementation；main保持原狀，production保持關閉。opus low無可用執行端，本次未用subagent；可核實不同模型體檢及外部正式資格仍未完成，不能由分支整合推定驗收。skill評估無新增通用缺口，不改共用skill。
+
+
+Dev integration completed 2026-10-10: all four CI jobs passed for 0a2ac7f; local and remote codex/implementation were removed after verifying full ancestry. Main unchanged. Final CI and cleanup details: [MIGRATION-2-VERIFICATION.md](MIGRATION-2-VERIFICATION.md). External and different-model qualifications remain pending.
