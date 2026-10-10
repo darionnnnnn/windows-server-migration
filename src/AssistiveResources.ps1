@@ -135,6 +135,27 @@ function Register-WsmAssistiveMaterialReference {
     }
 }
 
+function Register-WsmAssistiveMaterialBatch {
+    # One graph transaction avoids quadratic registry rewrites for large packages.
+    param([string]$Workspace,[string]$PairId,[int]$Generation,[object[]]$Materials,[string[]]$ConsumerRefs)
+    Assert-WsmId $PairId;if($Generation -lt 0 -or -not $ConsumerRefs.Count){throw 'Material batch requires a generation and live consumers.'}
+    Invoke-WsmLocked $Workspace {
+        $registry=Get-WsmAssistiveResourceRegistry $Workspace;$index=@{}
+        foreach($existing in $registry.Materials){$index[[string]$existing.MaterialId]=$existing}
+        $ids=New-Object 'System.Collections.Generic.List[string]'
+        foreach($material in $Materials){
+            $full=[IO.Path]::GetFullPath([string]$material.Path);Assert-WsmNoReparse $full;Assert-WsmTrustedFile $full ([string]$material.SHA256)
+            if(-not [string]$material.Kind){throw 'Material kind is required.'}
+            $hash=([string]$material.SHA256).ToLowerInvariant();$id=Get-WsmHashText ($PairId+'|'+$Generation+'|'+$full.ToLowerInvariant()+'|'+$hash)
+            $refs=@($ConsumerRefs);if($index.ContainsKey($id)){$refs+=@($index[$id].ConsumerRefs)}
+            $index[$id]=[pscustomobject][ordered]@{MaterialId=$id;PairId=$PairId;Generation=$Generation;Path=$full;SHA256=$hash;Kind=[string]$material.Kind;ConsumerRefs=@($refs|Sort-Object -Unique);Closed=$false;RetentionUntilUtc='';RegisteredUtc=(Get-WsmUtc)}
+            $ids.Add($id)
+        }
+        $registry.Materials=@($index.Values);Write-WsmAssistiveResourceRegistry $Workspace $registry
+        [pscustomobject]@{MaterialIds=@($ids.ToArray()|Sort-Object -Unique);RegistryRevision=$registry.Revision}
+    }
+}
+
 function Set-WsmAssistiveMaterialClosed {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$MaterialId,[Parameter(Mandatory)][int]$ExpectedRevision,[Parameter(Mandatory)][string]$RetentionUntilUtc,[string[]]$ConsumerRefs=@())

@@ -1,4 +1,4 @@
-# 第 3 輪規劃：一般網站／排程主機 EOS 搬移
+﻿# 第 3 輪規劃：一般網站／排程主機 EOS 搬移
 
 日期：2026-10-10。狀態：**實作中：2026-10-10使用者已授權第三輪全部實作，HTML採ui-ux-pro-max；逐段核對／驗證／commit／push，所有Phase須有實際證據才能勾完成。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；上次定案起點：`d674087`；四視角複審基準：`97a98f8`；本次定案基準：`e772b4e`；本次再審基準：`884d65e`。輔助搬移、版本選擇、原路徑保存、預設全選／自訂、HTML／本機 PowerShell／文字備援、C／非 C 分工、不合併、非 IIS 不新增 adapter均沿用。IIS／排程的全部設定、物件及所選相依檔案須成套處理，非 C 路徑同樣還原；特殊能力與實機條件仍明列，不從規劃授權推論已授權實作或解除 production gate。
 
@@ -517,3 +517,8 @@ Manager 對必要非 C 相依接收綁定來源主機／根目錄、目的主機
 結論：整體方向符合輔助定位；八項策略、IIS／task跨磁碟成套還原及六個邊界反例已對齊規劃。主要補強是資料搬移到實際consumer的映射、共享資源／清理的共同保護，以及切換／最終業務順序，不能只加UI或報告。未發現需推翻既定範圍的新產品決策；typed欄位與OS提供者實證、排他機制、中斷修復及實機資格仍須按階段取得，不宣稱已可正確運作或已完成獨立不同模型體檢。
 
 上述產品決策已由使用者確認；文件檢查不表示程式已實作或網站／排程可直接正式切換，未確認的特殊能力與實機條件仍明列。現有外部驗收與正式資格仍未完成。
+
+
+### R3-C source retention producer — 2026-10-10
+
+Source package capture now registers immutable plan/base/control/chunk materials under the actual source state registry and keeps an active material job through capture. Success and failure release the active job only; unclosed material references remain protected. Capacity uses GetDiskFreeSpaceEx on the actual local output volume (UNC capacity remains rejected). Main agent implemented; Luna independently reviewed producer/consumer seams. Immutable Git-index snapshot r3-source-index-final passed Test-AssistivePackaging (8 checks) and Test-AssistiveResources (18 checks) in Windows PowerShell 5.1 and PowerShell 7. Native Server authentication/capture remains fixture-isolated, with environment probes required. This segment does not mark the whole C/G/U/F phases complete.

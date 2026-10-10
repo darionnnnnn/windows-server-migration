@@ -1,4 +1,4 @@
-function Get-WsmFileMetadata([string]$Path,[string]$Mode) {
+﻿function Get-WsmFileMetadata([string]$Path,[string]$Mode) {
     Assert-WsmNoReparse $Path
     $attributes=[IO.File]::GetAttributes($Path)
     if(($attributes -band [IO.FileAttributes]::Encrypted) -ne 0){throw ('EFS requires dedicated key-aware procedure: '+$Path)}
@@ -32,9 +32,7 @@ function Get-WsmScopeEntries($Spec,[string]$PackageRoot,$CancellationToken=$null
     $stack=New-Object 'System.Collections.Generic.Stack[string]'; $stack.Push($root)
     while($stack.Count){Assert-WsmCancellationBoundary $CancellationToken 'ScopeTraversal';$path=$stack.Pop(); $relative=$path.Substring($root.Length).TrimStart('\'); $exclude=$false; foreach($p in $Spec.ExcludedRelativePaths){if($relative -ieq $p -or $relative.StartsWith($p.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){$exclude=$true;break}}; if($exclude){continue}; Assert-WsmRelativePath $relative -AllowRoot;if($path.Length -gt 239){throw 'FileScope exceeds the verified 239-character path limit; no payload is sealed.'}; Assert-WsmNoReparse $path;if($Spec.PSObject.Properties['TransferChannel']){Assert-WsmAssistiveFileTopology $path}; $directory=[IO.Directory]::Exists($path); [pscustomobject]@{SourcePath=$path; RelativePath=$relative; Directory=$directory}; if($directory){foreach($child in [IO.Directory]::EnumerateFileSystemEntries($path)){$stack.Push($child)}}}
 }
-function Get-WsmAvailableBytes([string]$Path) {
-    $root=[IO.Path]::GetPathRoot([IO.Path]::GetFullPath($Path)); if($root.StartsWith('\\')){throw 'UNC capacity must be established by an explicit storage-specific procedure; use a local package workspace.'}; (New-Object IO.DriveInfo($root)).AvailableFreeSpace
-}
+function Get-WsmAvailableBytes([string]$Path) { Get-WsmAssistiveAvailableBytes $Path }
 function Get-WsmPackageEstimate {
     param([string]$PlanPath,[string]$ExpectedHash,[string]$OutputDirectory,$CancellationToken=$null)
     $p=Read-WsmMigrationPlan $PlanPath $ExpectedHash; $bytes=[long]0; $count=[long]0; $largest=[long]0
@@ -56,10 +54,11 @@ function Read-WsmArtifactLines([string]$Path,[string]$ExpectedHash,$Cancellation
 }
 function Export-WsmMigrationPackage {
     [CmdletBinding()]param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,[string]$FreezeExternalEvidencePath,[string]$FreezeExternalEvidenceHash,$CancellationToken=$null)
-    try{Export-WsmMigrationPackageCore @PSBoundParameters}catch [OperationCanceledException]{
+    $job=$null;$result=$null;$succeeded=$false
+    try{$job=Start-WsmAssistiveSourcePackageJob $PlanPath $ExpectedHash $SourceStateDirectory $BaseManifestPath $BaseManifestHash;$result=Export-WsmMigrationPackageCore @PSBoundParameters;$succeeded=$true;$result}catch [OperationCanceledException]{
         if($CancellationToken){$token=ConvertTo-WsmCancellationTokenObject $CancellationToken;$record=[pscustomobject]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='CancellationResult';PairId=$token.PairId;PlanHash=$token.PlanHash;OperationId=$token.OperationId;Status='Cancelled';Boundary=[string]$_.Exception.Data['CancellationBoundary'];Utc=(Get-WsmUtc);EffectsRetained=$true;NextAction='Inspect unsealed package and retained chunks; retry with a new operation token after review';ProductionVerified=$false};$root=Join-Path $token.StateDirectory $token.PairId;Assert-WsmNoReparse $root;Write-WsmJson (Join-Path $root ('cancel-result-'+$token.OperationId+'.json')) $record}
         throw
-    }
+    }finally{Complete-WsmAssistiveSourcePackageJob $job $result $succeeded}
 }
 function Export-WsmMigrationPackageCore {
     [CmdletBinding()] param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,[string]$FreezeExternalEvidencePath,[string]$FreezeExternalEvidenceHash,$CancellationToken=$null)
