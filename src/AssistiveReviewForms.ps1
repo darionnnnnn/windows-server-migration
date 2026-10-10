@@ -46,6 +46,7 @@ function Get-WsmAssistiveSpecReview {
     $context=Get-WsmAssistiveReviewItem $Workspace $PairId $ItemId;$spec=$context.Spec;$item=$context.Item;$catalog=$context.Catalog
     $typed=[ordered]@{}
     foreach($name in @('SourcePath','TargetPath','TransferChannel','ContentSelection','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy','ConfigFiles','ConfigOverrides','DesiredFinalState','BusinessChecks','Product','Procedure','Artifacts','CatchUpPolicy','SharedResourceImpacts')){if($spec.PSObject.Properties[$name]){$typed[$name]=ConvertTo-WsmAssistiveSafeValue $spec.$name $name}}
+    if($spec.Adapter -ceq 'FileScope'){$typed.AclControlPolicy='Exact';if($spec.PSObject.Properties['AclControlPolicy']){$typed.AclControlPolicy=[string]$spec.AclControlPolicy}}
     if($spec.PSObject.Properties['Desired']){$desired=[ordered]@{};foreach($property in $spec.Desired.PSObject.Properties){if($property.Name -ceq 'Changes'){$desired.Changes=@(Get-WsmAssistiveSafeIisChanges $property.Value)}elseif($property.Name -notmatch '(?i)(xml|secret|password|credential|token|privatekey|sddl|arguments|script|command)'){$desired[$property.Name]=ConvertTo-WsmAssistiveSafeValue $property.Value $property.Name}};$typed.Desired=[pscustomobject]$desired}
     $missing=New-Object 'System.Collections.Generic.List[string]'
     foreach($field in @('Owner','Evidence')){if([string]::IsNullOrWhiteSpace([string]$spec.$field)){$missing.Add($field)}}
@@ -161,9 +162,10 @@ function Submit-WsmAssistiveSpecReview {
     $sourceChannel='';if($spec.PSObject.Properties['TransferChannel']){$sourceChannel=[string]$spec.TransferChannel}
     if($catalog.DecisionRevision -ne $ExpectedDecisionRevision -or $catalog.Assistive.Revision -ne $ExpectedAssistiveRevision -or $catalog.Assistive.Selections.Revision -ne $ExpectedSelectionRevision){throw 'Review changed; refresh the form before saving.'}
     if(-not $context.Selection.Selected){throw 'Assistive specifications can only be assigned to currently selected items.'}
-    $allowed=@('TargetPath','TransferChannel','ContentSelection','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy','ConfigFiles','ConfigOverrides','DesiredFinalState','BusinessChecks','Product','Procedure','Artifacts','CatchUpPolicy','WorkloadFieldReviews','IisBindings','IisApplicationPools','IisPoolSettings','IisConfigChanges','DesiredChanges','ActivationPolicyFieldPointer','SharedResourceReviewReasons','ActivationOwner','ActivationReason','PrincipalUser')
+    $allowed=@('TargetPath','TransferChannel','ContentSelection','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy','AclControlPolicy','ConfigFiles','ConfigOverrides','DesiredFinalState','BusinessChecks','Product','Procedure','Artifacts','CatchUpPolicy','WorkloadFieldReviews','IisBindings','IisApplicationPools','IisPoolSettings','IisConfigChanges','DesiredChanges','ActivationPolicyFieldPointer','SharedResourceReviewReasons','ActivationOwner','ActivationReason','PrincipalUser')
     if($Fields.Contains('IisConfigChanges') -and $Fields.Contains('DesiredChanges')){throw 'Supply one exact IIS Changes array, not both aliases.'}
     foreach($key in $Fields.Keys){if($allowed -cnotcontains [string]$key){throw ('Unknown typed review field: '+[string]$key)}}
+    if($Fields.Contains('AclControlPolicy') -and ($spec.Adapter -cne 'FileScope' -or $Fields['AclControlPolicy'] -isnot [string] -or [string]$Fields['AclControlPolicy'] -cnotin @('Exact','AllowAutoInheritedUpgrade'))){throw 'ACL control policy is limited to FileScope and must be explicitly reviewed as Exact or AllowAutoInheritedUpgrade.'}
     foreach($key in $Fields.Keys){$value=$Fields[$key];switch -CaseSensitive ([string]$key){
         'WorkloadFieldReviews' { }
         'IisBindings' { }

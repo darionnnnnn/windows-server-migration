@@ -1,10 +1,10 @@
 # 0.4 實作狀態與外部驗證
 
-更新：2026-10-10。本文件只維護當前狀態；原始需求、歷史決策及固定快照證據見 [歷史索引](archive/README.md)。已完成程式 TODO 已移除；尚無外部資格的項目保留，不宣稱正式生產完成。
+更新：2026-10-11。本文件只維護當前狀態；原始需求、歷史決策及固定快照證據見 [歷史索引](archive/README.md)。已完成程式 TODO 已移除；尚無外部資格的項目保留，不宣稱正式生產完成。
 
 ## 第三輪 0.4 開發與驗證
 
-第三輪依 MIGRATION-3-PLAN.md 逐段實作／固定快照驗證／commit 與 push。Schema 3 輔助 catalog/plan/receipt 與 JSON 比較、來源 C 精確封裝、非 C 跳板搬移及共用目標 reservation、材料引用與作業保護已接入；逐項還原、IIS/task 停用 staging、部分世代/delta、修復及 HTML 操作／文件正做完整性核對。第三輪全部完成狀態以 PLAN 最後的 producer→consumer→驗收證據為準，舊第 2 輪表格不充當第三輪驗收。
+第三輪依 MIGRATION-3-PLAN.md 逐段實作／固定快照驗證／commit 與 push。Schema 3 輔助 catalog/plan/receipt 與 JSON 比較、來源 C 精確封裝、非 C 跳板搬移及共用目標 reservation、材料引用與作業保護已接入；逐項還原、IIS/task 停用 staging、部分世代/delta、修復及 HTML 操作／文件已完成原始子項與真實使用端完整性核對。最後補齊 NonC 與主流程同一原生身分、整棵目錄時間／權限讀回、Manager 匯入保留核准，以及 restore／rollback 在父設定完成後的最終 metadata 與精確 prior 重播；HTML 型別化表單也提供受審查的 FileScope ACL 政策。本機 WinPS5.1／PS7 廣域快照各105 PASS；最後修改另有雙引擎受影響回歸與真實小範圍原生反例驗證，遠端完整 CI 與最後表單／文件驗證按版本列於 PLAN。第三輪全部完成狀態以 PLAN 最後的 producer→consumer→驗收證據為準，舊第 2 輪表格不充當第三輪驗收。
 
 主模型另發現並補強必要 metadata 的實際 readback、單一檔案範圍，以及可攜文件下載的原始 XML／secret 隔離。HTML 使用獨立 PowerShell worker，同一核心／CAS／journal，沒有 Node 執行依賴。Node/Edge 僅作開發測試；瀏覽器 fixture 與真實 loopback 傳輸分別記錄，本機 HTTP 中間層改寫不能算為工具端測試通過。
 

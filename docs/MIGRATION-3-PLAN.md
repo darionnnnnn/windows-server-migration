@@ -1,6 +1,6 @@
 # 第 3 輪規劃：一般網站／排程主機 EOS 搬移
 
-日期：2026-10-10。狀態：**實作已補齊，最終遠端驗證中：2026-10-10使用者已授權第三輪全部實作，HTML採ui-ux-pro-max；逐段核對／驗證／commit／push，所有Phase須有實際證據才能勾完成。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；上次定案起點：`d674087`；四視角複審基準：`97a98f8`；本次定案基準：`e772b4e`；本次再審基準：`884d65e`。輔助搬移、版本選擇、原路徑保存、預設全選／自訂、HTML／本機 PowerShell／文字備援、C／非 C 分工、不合併、非 IIS 不新增 adapter均沿用。IIS／排程的全部設定、物件及所選相依檔案須成套處理，非 C 路徑同樣還原；特殊能力與實機條件仍明列，不從規劃授權推論已授權實作或解除 production gate。
+日期：2026-10-10。狀態：**實作及本輪本機驗證／探測交付完成，正式資格與可核實換模型體檢待補：2026-10-10使用者已授權第三輪全部實作，HTML採ui-ux-pro-max；逐段核對／驗證／commit／push，所有Phase須有實際證據才能勾完成。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；上次定案起點：`d674087`；四視角複審基準：`97a98f8`；本次定案基準：`e772b4e`；本次再審基準：`884d65e`。輔助搬移、版本選擇、原路徑保存、預設全選／自訂、HTML／本機 PowerShell／文字備援、C／非 C 分工、不合併、非 IIS 不新增 adapter均沿用。IIS／排程的全部設定、物件及所選相依檔案須成套處理，非 C 路徑同樣還原；特殊能力與實機條件仍明列，不從規劃授權推論已授權實作或解除 production gate。
 
 主入口見 [README](../README.md)；既有實作證據見 [第 2 輪驗證](archive/MIGRATION-2-VERIFICATION.md)，既有能力與限制見 [涵蓋範圍](ENTERPRISE-MIGRATION-COVERAGE.md)。本輪後續待辦集中於本文；既有外部驗收仍保留於 [實作紀錄](IMPLEMENTATION-0.1.md)。
 
@@ -9,7 +9,7 @@
 - 授權：第三輪全部已定案功能實作；HTML樣式使用ui-ux-pro-max；分段驗證後commit／push目前dev，停止前先核對全部子項與真實consumer，缺項繼續補齊。
 - 分工：主代理契約／跨段整合及獨立驗收；GPT-6 Luna high負責契約基礎與工作負載盤點，medium負責原生HTML資產。單一檔案一名writer；後續每個交付記實作者、證據與未驗限制。
 - 基準：df21f02可復原；src／tests／入口以Git基準隔離快照保存於專案外，忽略docs/archive及個人prototype。新資料ToolVersion=0.4.0／Catalog與MigrationPlan schema3，sealed來源plan與target決策receipt分開，舊執行中state不轉版。
-- 目前：A／B／S／E1／C／P／D／G／E2／U 的已交付子段及遠端提交見文末證據；IIS 設定涵蓋、OSProvided 可攜證據、文字型別操作及最後原生 NonC／Recovery 缺陷已補齊，F 本機广域／受影響回歸已通過，最新遠端 CI 核對中。完成全部修正及相依驗證前不勾整段；既有企業／Server／產品實機資格不以 fixture 替代。
+- 目前：A／B／S／E1／C／P／D／G／E2／U 的已交付子段及遠端提交見文末證據；IIS 設定涵蓋、OSProvided 可攜證據、文字型別操作及最後原生 NonC／Recovery 缺陷已補齊，F 本機廣域／受影響回歸已通過，最後 HTML ACL 政策入口也已補齊。各階段依使用者接受的小範圍／隔離測試及探測交付核對完成；既有企業／Server／產品實機資格不以 fixture 替代。最新完成證據見文末，早期段落的「待整合」保留為歷史進度。
 
 - 2026-10-10 使用者確認沒有來源／目的 Server 可直接全驗；本輪使用小範圍可行性測試及隔離回歸，所有可執行測試須通過。無法在本機驗證的原生功能提供環境探測入口與可匯入結果，待使用者補回證據；未探測或未驗證不得標為通過或正式資格。
 - A1 契約基礎完成：0.4.0／schema 3、顯式啟用、預設選取與 CAS、盤點保存與重盤點、sealed subset／外部目的端決策 receipt、非成功返回碼。正式模組 WinPS 5.1／PS7 契約及既有語意回歸；收據實際還原消費、材料清理與橋接仍屬後續段落，R3-A 尚未整段完成。
@@ -466,17 +466,17 @@ Manager 對必要非 C 相依接收綁定來源主機／根目錄、目的主機
 - **U：** 輸入共用actions／preview／結果、E2索引及A橋接／release契約與D3環境矩陣；輸出全功能HTML／離線指引、本機worker／文字備援供F／TS。驗IIS／task全量選取、C非C接續／映射／成套結果、保留清理預覽、首次啟動、無stdin、長工作取消／重連／多頁／CAS／secret／Origin／token／注入／可及性及Core；UI資源改缺拒絕，無第二執行引擎。 六個邊界反例可操作／下鑽與重查；R3-20–25。
 - **F：** 輸入全部批次、D3-08代表性實機／規模／責任人、兩邊版本及媒體；輸出原始需求、R3-01–25、D3-01–08、原8使用者與新8成套情境的完整性核對／定向回歸／實機結果。驗HTML／文字／Core備援、兩種順序、新版／非C及跨盤映射、IIS全域／階層／task完整定義／權限、同輪final、局部base／修復／保留／回退與實際規模。合成或文件PASS不代替企業／新版資格。 新增六個邊界反例與三項draft隔離觀察的實作驗收；R3-20–25。
 
-- [ ] R3-A：R3-01–25／D3-01–08全契約、逐項state／receipt／replay／舊版本／保留／時效／UI。 新增映射引用／共享資源與材料保護、零C分類及啟用順序契約；R3-20–25。
-- [ ] R3-B：完整IIS層級／task全XML／安全與全部檔案required相依、特殊缺口及owner補查。 新增typed引用／來源runtime與共享consumer、OSProvided辨識；R3-20／21／23／24。
-- [ ] R3-S：全選／自訂／重選、相依影響與核准前有效集合、CAS；R3-09／14及18。 新增映射影響／共享資源核准、零C與來源啟停期望；R3-20–24。
-- [ ] R3-C：落實 C 槽限制及設定精確集合的所有 producer／consumer。 零C控制材料與共同引用保護；R3-22／25。
-- [ ] R3-D：非C的IIS／task必需檔案／metadata／續跑／可信Manager匯入先供G；R3-15／19。 共同目的排他／reservation、非C-only與材料保護；R3-21／22／25。
-- [ ] R3-E1：完成 JSON、基準／現況、來源／選用／目標版本、配對與人工清單；處理 R3-01／04／05／08。 OSProvided提供者／修改差異及不確定性接準備比較；R3-24。
-- [ ] R3-P：處理原路徑／漂移／逐檔無法放置，不合併既有文件；修 R3-02／03，含 delta／ownership／回退。 映射到生效引用、C／D統一目的身分／共享影響；R3-20／21。
-- [ ] R3-G：IIS／task全設定物件、C非C成套／兩順序／基線／replay／返回碼／保留／回退；R3-07／11／12／17／19。 typed映射readback、共享全域prior／undo、啟用順序及清理並行；R3-20–25。
-- [ ] R3-E2：全HTML文件／可攜完整索引／計數／稽核／相容格式／交接；R3-06／10／15–19文件部分。 生效引用／連帶影響、零C、啟用後業務及清理拒絕同源；R3-20–25。
-- [ ] R3-U：全HTML操作／啟動／worker／取消／非互動／多頁／secret／可及性；R3-10／13／16／18操作部分。 六個邊界反例可操作／下鑽與重查；R3-20–25。
-- [ ] R3-F：R3-01–25／D3-01–08及兩組8情境完整核對、整合／規模／實機；未取得外部資格仍保留阻擋。 新增六個邊界反例與三項draft隔離觀察的實作驗收；R3-20–25。
+- [x] R3-A：R3-01–25／D3-01–08全契約、逐項state／receipt／replay／舊版本／保留／時效／UI。 新增映射引用／共享資源與材料保護、零C分類及啟用順序契約；R3-20–25。
+- [x] R3-B：完整IIS層級／task全XML／安全與全部檔案required相依、特殊缺口及owner補查。 新增typed引用／來源runtime與共享consumer、OSProvided辨識；R3-20／21／23／24。
+- [x] R3-S：全選／自訂／重選、相依影響與核准前有效集合、CAS；R3-09／14及18。 新增映射影響／共享資源核准、零C與來源啟停期望；R3-20–24。
+- [x] R3-C：落實 C 槽限制及設定精確集合的所有 producer／consumer。 零C控制材料與共同引用保護；R3-22／25。
+- [x] R3-D：非C的IIS／task必需檔案／metadata／續跑／可信Manager匯入先供G；R3-15／19。 共同目的排他／reservation、非C-only與材料保護；R3-21／22／25。
+- [x] R3-E1：完成 JSON、基準／現況、來源／選用／目標版本、配對與人工清單；處理 R3-01／04／05／08。 OSProvided提供者／修改差異及不確定性接準備比較；R3-24。
+- [x] R3-P：處理原路徑／漂移／逐檔無法放置，不合併既有文件；修 R3-02／03，含 delta／ownership／回退。 映射到生效引用、C／D統一目的身分／共享影響；R3-20／21。
+- [x] R3-G：IIS／task全設定物件、C非C成套／兩順序／基線／replay／返回碼／保留／回退；R3-07／11／12／17／19。 typed映射readback、共享全域prior／undo、啟用順序及清理並行；R3-20–25。
+- [x] R3-E2：全HTML文件／可攜完整索引／計數／稽核／相容格式／交接；R3-06／10／15–19文件部分。 生效引用／連帶影響、零C、啟用後業務及清理拒絕同源；R3-20–25。
+- [x] R3-U：全HTML操作／啟動／worker／取消／非互動／多頁／secret／可及性；R3-10／13／16／18操作部分。 六個邊界反例可操作／下鑽與重查；R3-20–25。
+- [x] R3-F：本輪實作、R3-01–25／D3-01–08及兩組8情境／六個邊界的接線核對、小範圍／隔離回歸與環境探測交付完成。依2026-10-10使用者明確接受的驗收方式，原始規模／實機／企業正式資格及可核實不同模型體檢仍未完成，見下方外部驗收清單；不因勾選解除阻擋。
 
 主代理驗收時依專案、程式、尖銳但合理的使用者與管理者四視角反查：不能只看新增 happy path。先用使用者從盤點到切換走完，再從整體檢查核准／套件／版本／相依／還原／回退是否一致；不為一次檔案搬移加常駐服務或泛用產品 adapter 框架。每段完整且驗證後，依全域規則 commit／push 本輪分支，確認遠端 SHA；不能把未驗證相依拆出去先推。
 
@@ -664,3 +664,31 @@ Set-WsmFileMetadata 將 ACL／attributes 寫入放在精確時間戳還原之前
 遠端 `f063a17` 的完整 R3 收集結果只有 Rollback／NativeReadback 失敗，Directory 的 10 個正負原生案例與其餘 consumer 通過；其餘第2輪／fixture／delta工作維持通過（WinPS 第2輪仍執行中）。兩個 synthetic ownership 測試先前直接取 runner TEMP 的原始 ACL 作已持有基線，卻在後續呼叫 metadata writer；這與正式 producer 在套用且原生讀回成功後保存 actual owned hash 不一致。fixture 現用原有 writer 建第一個 actual canonical 狀態，第二次以同一未改基線套用，必須完整 native hash 一致後才記錄 prior／owned metadata；後续 bytes、timestamp、hardlink／ADS、世代及缺失基線拒絕全部保留。所有 synthetic prior A 均同樣準備，mixed A/B 必須實際不同且精確命中 final prior file 漂移錯誤，不用其他錯誤冒充反例。
 
 Luna high 各自實作兩個 fixture；主代理查 diff 後分別獨立在 WinPS5.1／PS7 通過 NativeReadback 11、Rollback 16（共4 script runs），每次核對前後檔案 hash。沒有改 runtime、忽略控制 flags 或用 time-only fallback 替代 writer；受保護 user-only fixture 需 SeSecurityPrivilege 的失敗嘗試不納入證據。下輪 CI 仍須以原生診斷確認環境差異，尚不把推論當已證實根因。
+### 第三輪實作完整性結案 — 2026-10-11
+
+本輪原始需求矩陣25項、D3補強8項、8個使用者／8個成套工作負載及6個邊界劇本，已按本文 producer→consumer→驗收表與實際程式逐子句反查。A／B／S／E1／C／P／D／G／E2／U 的實作相依已補齊；F 勾選只表示使用者接受的本機小範圍與隔離驗證、完整性核對及探測交付，不表示取得原規劃的實機／規模正式資格。沒有將本輪程式缺項移往後續待辦，沒有新增合併、安裝或非 IIS 產品專用 adapter。
+
+最後操作缺口是核心的 ACL 政策沒有出現在 HTML 型別化審閱。FileScope 現投影預設 Exact，HTML／文字共用 schema 只提供 Exact／AllowAutoInheritedUpgrade，含適用範圍與重新核准說明；UI 安全白名單保留預填值，提交端拒絕錯誤值及其他 adapter。保存後規格與重新投影一致，DecisionRevision 前進、核准失效、舊 revision 拒絕。政策仍只容許經審查的 AI 旗標增加，owner／group／ACE／P／AR 保持精確；沒有放寬 Restore／Recovery 原生讀回。Luna high 實作，主代理查 diff、固定快照並獨立驗證。
+
+驗證證據按程式版本分開保留：廣域105支×WinPS5.1／PS7共210次PASS是前一固定快照；最終 Recovery 的38／28／8次、NonC 的32次與最新原生 proof 的8次補足後續 runtime 差異，不能只以早期210次宣稱最終版本通過。最後表單快照 `wsm-r3-final-forms-10bd2a6e4a324824bfd8ac71a999ca1d` 再執行 ReviewForms／ReviewIntegrity／Contracts／Restore／DirectoryReadback／WorkloadIntegration／StageResults／HtmlConsole／TextConsole／OperationRequests／Qualification／ScriptEncoding 共12支×2引擎，Node UI另驗16項；相關結果與最終文件／發行包驗證另記下段。本機 HTTP ModifiedTransport 觀察與 mock API 證據分开，沒有冒稱完整瀏覽器→Server實機驗收。
+
+遠端CI的原生 ACL 診斷證實 runner 暫存權限由空控制 flags 變為 AI；verified ownership fixture 的 writer→首次讀回→同基線第二次完整 hash 核對已修正環境前提。正式 metadata／漂移拒絕未更改。完整 CI 基準與最後表單提交的遠端檢查連結見本節後續證據，切換與 formal qualification 仍獨立。
+
+模型紀錄：使用者指定委派只用 gpt-6-luna，由主代理按風險選 high／medium，最後 ACL 表單與原生 fixture 使用 high；主代理亦親自修正／整合。已有 Luna 審查及主代理獨立驗證，但目前無法從可信設定確認體檢模型不同於所有實作模型，因此可核實換模型體檢為 NotTested，不將提高 effort 或普通代理審查冒稱正式換模型簽核。
+
+外部驗收保留（已有程式／探測交付，待使用者補結果）：
+
+- [ ] 來源／目標 Windows Server 版本與角色、Desktop／Core、瀏覽器及 loopback／企業政策；透過 HTML EnvironmentProbe／HttpIntegrityProbe 收集並匯入觀察。
+- [ ] 真實 IIS／Task Scheduler API、IIS 全域／階層及特殊 section/module、task folder/security、服務帳號／domain／SACL／秘密材料與原生執行。
+- [ ] 真實非 C 實體磁碟及 SMB peer、來源停寫責任與一致性窗口；隔離 collection proof 不充當跨 Server 證據。
+- [ ] EFS／特殊檔案與實際權限存取、physical 4GiB 邊界／企業容量與效能樣本。
+- [ ] 使用者選用新版軟體、人工匯入設定、業務驗收與具名責任、企業 PKI／正式資格。
+- [ ] 由可信設定可核實、符合 project-closeout 條件的不同模型體檢；交接已備妥，不推定模型身分。
+
+上述全部維持 NotTested，ProductionVerified=false；probe成功只代表該次觀察，不代表還原、啟用或業務已通過。原始各項企業驗收契約保留，不刪除以營造完成率。
+
+主代理最後表單受影響驗證：WinPS5.1／PS7各12支、合計24次PASS；每組Node UI16項及JS語法PASS，src/tests快照hash前後一致，與實際工作區逐檔核對無差異。日誌分別為專案外 `work/final-forms-powershell-20261011-023341/summary.json` 與 `work/final-forms-pwsh-20261011-023344/summary.json`。ReviewForms41、Directory10、WorkloadIntegration45及原有CAS／sealed consumer／native漂移條件全部保留。
+
+完整遠端基準 `aeaeee3439f989a0a696600bad892b849565a6bc` 的 [CI 38075326191](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38075326191) 六個工作全部成功，含 fixtures、delta、第2輪兩引擎、第3輪兩引擎及Node UI。最後表單／文件段另以當輪dev提交的Checks核對，不能拿舊CI冒稱新增表單已在遠端測過。最終文件另由HtmlDocumentation、Qualification、Encoding雙引擎及實際ZIP相對連結／bytes投影檢查；發行包仍未企業簽章、未取得production資格。
+
+最終文件交付核驗：HtmlDocumentation（13 checks）、Qualification 與 ScriptEncoding 在 WinPS5.1／PS7 共6次PASS；ScriptEncoding涵蓋188個runtime/test/入口。實際ToolRelease ZIP核對15個HTML頁面、80個包內相對連結、108個程式／文件檔案前後hash一致及archive未收錄，ToolFingerprint=902fa7a5b0396ae19136b1d66b5adba9b2b62b7922d8e6fd92b7ef1269298c8f，Signed=false／ProductionVerified=false。最終ZIP bytes hash由專案外delivery-proof日誌保存，不在包內寫入自身hash形成循環。

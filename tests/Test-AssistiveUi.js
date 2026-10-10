@@ -227,12 +227,12 @@ test('file view accepts producer readback and conflict hash field names', () => 
 test('spec review projection is allowlisted and strips secret and raw workload fields', () => {
   const ui = makeApp(async () => ({ ok: true, status: 200, json: async () => ({}) }));
   const fields = ui.safeTypedFields({ TypedFields: {
-    TargetPath: 'E:\\Sites\\Portal', Product: 'Portal', WorkloadFieldReviews: [{ FieldPointer: 'IIS/site/Fixture/application[0]/virtualDirectory[0]/@physicalPath', Value: 'E:\\Sites\\Portal', Command: 'must not appear' }],
+    TargetPath: 'E:\\Sites\\Portal', Product: 'Portal', AclControlPolicy: 'AllowAutoInheritedUpgrade', WorkloadFieldReviews: [{ FieldPointer: 'IIS/site/Fixture/application[0]/virtualDirectory[0]/@physicalPath', Value: 'E:\\Sites\\Portal', Command: 'must not appear' }],
     IisBindings: [{ Index: 0, Protocol: 'custom+http', SslFlags: '', SslFlagsPresent: false }],
     Desired: { Enabled: true, Command: 'never show this', Xml: '<task>never show</task>' },
     Password: 'never show this', UnknownField: 'not typed'
   } });
-  assert.deepEqual(JSON.parse(JSON.stringify(fields)), { TargetPath: 'E:\\Sites\\Portal', Product: 'Portal', WorkloadFieldReviews: [{ FieldPointer: 'IIS/site/Fixture/application[0]/virtualDirectory[0]/@physicalPath', Value: 'E:\\Sites\\Portal' }], IisBindings: [{ Index: 0, Protocol: 'custom+http', SslFlags: '', SslFlagsPresent: false }] });
+  assert.deepEqual(JSON.parse(JSON.stringify(fields)), { TargetPath: 'E:\\Sites\\Portal', Product: 'Portal', AclControlPolicy: 'AllowAutoInheritedUpgrade', WorkloadFieldReviews: [{ FieldPointer: 'IIS/site/Fixture/application[0]/virtualDirectory[0]/@physicalPath', Value: 'E:\\Sites\\Portal' }], IisBindings: [{ Index: 0, Protocol: 'custom+http', SslFlags: '', SslFlagsPresent: false }] });
   assert.match(appSource, /review\.WorkloadPathReferences/);
   assert.match(appSource, /appendWorkloadPathReview/);
   assert.match(appSource, /safe source path|安全來源路徑/);
@@ -241,6 +241,9 @@ test('spec review projection is allowlisted and strips secret and raw workload f
   assert.match(htmlSource, /spec-review-pointers/);
   assert.match(appSource, /未包含原始 XML 或 secrets/);
   assert.match(appSource, /ExpectedDecisionRevision/);
+  assert.match(appSource, /AclControlPolicy/);
+  assert.match(htmlConsoleSource, /AclControlPolicy=@\{type='enum';options=@\('Exact','AllowAutoInheritedUpgrade'\);description=/);
+  assert.doesNotMatch(htmlConsoleSource, /AclControlPolicy=@\{type='enum';options=@\([^}]*'AllowAutoInheritedUpgrade'[^}]*'AllowAutoInheritedUpgrade'/);
   assert.doesNotMatch(appSource, /Fields:\s*\{\s*TypedFields/);
 });
 
