@@ -10,6 +10,8 @@
 
 2026-10-10 八項建議定案（基準e772b4e）：D3-01–08採用特殊偵測／metadata／舊作業不轉版／材料保留／寫前重查／停寫hash／HTML小實驗／企業驗收策略。新增R3-19要求IIS全部設定／task全定義與C非C所選相依成套還原；現行已有site／pool與停用task adapter及全域XML採集，不等於完整還原已完成。D前移交可信結果／Manager匯入供G，E2投影；原8使用者及新8成套反例進11階段。企業資料與特殊能力實證仍待取得，本次未改runtime／tests、未做新流程／瀏覽器／Server驗收。
 
+2026-10-10 再審（基準884d65e）：新增R3-20–25與6個邊界反例，補typed路徑到IIS／task consumer、共享設定／跨通道目的與全域prior回退、零C與零操作、啟用後BusinessFinal及來源啟停、OSProvided證據、材料清理引用／並行。Windows PowerShell5.1／PowerShell7保留快照隔離fixture均觀察FileScope目標E:\New而IIS／task仍引用D:\Old、IIS serverAutoStart=false仍draft Enabled；未審草稿不等於實機被啟用或已核准錯誤還原。R3全部25項／D3八策略／8+8+6反例接11 Phase，沒有runtime／tests修改，新流程與Server資格仍待實作驗收。
+
 ## 已實作範圍
 
 | Phase | 現行實作與消費端 |
