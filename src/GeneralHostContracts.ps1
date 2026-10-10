@@ -144,6 +144,9 @@ function Get-WsmGeneralHostIssues($Catalog,[ValidateSet('ReviewComplete','Prepar
     $WhatIfPreference=$false
     $g=Get-WsmGeneralHostContract $Catalog
     $issues=New-Object 'System.Collections.Generic.List[object]'
+    foreach($proofIssue in @(Get-WsmAssistiveOsProvidedIssues -CatalogOrPlan $Catalog -TargetFingerprint $TargetFingerprint -VerifyNativeTarget:($Phase -cne 'ReviewComplete'))){
+        $issues.Add([pscustomobject]@{RequirementId='';ConsumerItemId=$proofIssue.ItemId;Gate=$Phase;Issue=$proofIssue.Issue})
+    }
     if(-not $g.SoftwareCatalog){$issues.Add([pscustomobject]@{RequirementId='';ConsumerItemId='';Gate=$Phase;Issue='Complete source SoftwareCatalog and coverage are required.'});return $issues.ToArray()}
     try{Assert-WsmGeneralHostSoftwareCatalog $g.SoftwareCatalog $Catalog | Out-Null}catch{$issues.Add([pscustomobject]@{RequirementId='';ConsumerItemId='';Gate=$Phase;Issue='SoftwareCatalog source binding or schema is invalid.'});return $issues.ToArray()}
     foreach($softwareDecision in @($g.SoftwareDecisions | Where-Object {$_.Disposition -cin @('Reinstall','Portable','KeepCompatible')})){

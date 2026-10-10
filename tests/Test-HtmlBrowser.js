@@ -39,10 +39,13 @@ const server = http.createServer((request, response) => {
       itemId: `fixture-${index}`, name: `Fixture ${index} <img src=x onerror=alert(1)>`, category: 'Runtime',
       selected: true, selectable: true, approvalStatus: 'Pending', executionStatus: 'NotObserved', reason: '', impact: 'Fixture only'
     }));
-    const fieldsSchema = { title: 'Fields', properties: { TargetPath: { type: 'path' }, Product: { type: 'string' }, BusinessChecks: { type: 'stringArray' }, IisBindings: { type: 'objectArray', schema: { title: 'IIS 繫結', properties: { Index: { type: 'integer' }, Protocol: { type: 'string' }, BindingInformation: { type: 'string' }, CertificateHash: { type: 'string' }, CertificateStoreName: { type: 'string', allowEmpty: true }, SslFlags: { type: 'string' } } } }, IisApplicationPools: { type: 'objectArray', schema: { title: '應用程式集區', properties: { Index: { type: 'integer' }, ApplicationPath: { type: 'string' }, PoolName: { type: 'string' } } } }, IisPoolSettings: { type: 'map' } } };
+    const fieldsSchema = { title: 'Fields', properties: { TargetPath: { type: 'path' }, Product: { type: 'string' }, BusinessChecks: { type: 'stringArray' }, WorkloadFieldReviews: { type: 'objectArray', schema: { title: '工作負載欄位審閱', properties: { FieldPointer: { type: 'string', required: true }, Value: { type: 'string', required: true, allowEmpty: true } } } }, IisBindings: { type: 'objectArray', schema: { title: 'IIS 繫結', properties: { Index: { type: 'integer' }, Protocol: { type: 'string' }, BindingInformation: { type: 'string' }, CertificateHash: { type: 'string' }, CertificateStoreName: { type: 'string', allowEmpty: true }, SslFlags: { type: 'string', allowEmpty: true }, SslFlagsPresent: { type: 'boolean', required: true } } } }, IisApplicationPools: { type: 'objectArray', schema: { title: '應用程式集區', properties: { Index: { type: 'integer' }, ApplicationPath: { type: 'string' }, PoolName: { type: 'string' } } } }, IisPoolSettings: { type: 'map' } } };
     const actions = actionNames.map(action => ({ action, label: action, parameters: [] }));
     const actionFixture = action => actions.find(entry => entry.action === action);
-    for (const action of ['WindowsSettingsPreviewExport', 'WindowsSettingsSubmit', 'DispositionSubmit', 'RequirementSubmit', 'RequirementReview', 'RequirementDecisionSubmit', 'PreparationPreview', 'PreparationEvidence']) if (!actionFixture(action)) actions.push({ action, label: action, parameters: [] });
+    for (const action of ['OsProvidedCapture', 'OsProvidedBaseline', 'OsProvidedReview', 'OsProvidedSubmit', 'WindowsSettingsPreviewExport', 'WindowsSettingsSubmit', 'DispositionSubmit', 'RequirementSubmit', 'RequirementReview', 'RequirementDecisionSubmit', 'PreparationPreview', 'PreparationEvidence']) if (!actionFixture(action)) actions.push({ action, label: action, parameters: [] });
+    actionFixture('OsProvidedCapture').parameters = [{ name: 'DecisionRevision', label: '核心決策 revision', type: 'integer', required: true, readOnly: true, value: 7, description: '由核心綁定' }];
+    actionFixture('OsProvidedBaseline').parameters = [{ name: 'ExpectedDecisionRevision', label: '核心預期決策 revision', type: 'integer', required: true, readOnly: true, value: 7, description: '由核心綁定' }];
+    actionFixture('OsProvidedSubmit').parameters = [{ name: 'ExpectedDecisionRevision', label: '核心預期決策 revision', type: 'integer', required: true, readOnly: true, value: 7, description: '由核心綁定' }];
     actionFixture('Dependencies').parameters = [{ name: 'Dependencies', type: 'objectArray', schema: { title: 'Dependency', properties: { Name: { type: 'string' }, Path: { type: 'path' } } } }];
     actionFixture('Fleet').parameters = [];
     if (!actionFixture('HttpIntegrityProbe')) actions.push({ action: 'HttpIntegrityProbe', label: 'HttpIntegrityProbe', parameters: [] });
@@ -91,9 +94,10 @@ const server = http.createServer((request, response) => {
       if (pathname === '/api/spec-review' && request.method() === 'GET') return json({
         ItemId: parsed.searchParams.get('itemId'), Adapter: 'FileScope', DecisionRevision: 7, AssistiveRevision: 4, SelectionRevision: 3,
         Owner: 'Fixture owner', Evidence: 'Reviewed evidence', DesiredFinalState: 'Enabled',
-        TypedFields: { TargetPath: 'E:\\Sites\\Portal', Product: 'Portal', IisBindings: [{ Index: 0, Protocol: 'https', BindingInformation: '*:443:fixture.example', CertificateHash: 'ABC123', CertificateStoreName: '', SslFlags: '1', Password: 'do not render', Command: 'DO-NOT-RENDER', Xml: '<secret>DO-NOT-RENDER</secret>' }], IisApplicationPools: [{ Index: 0, ApplicationPath: '/', PoolName: 'FixturePool', Arguments: 'DO-NOT-RENDER' }], IisPoolSettings: { managedRuntimeVersion: 'v4.0', startMode: 'OnDemand', privateKey: 'DO-NOT-RENDER' }, Arguments: 'must not appear', Xml: '<secret>must not appear</secret>' },
-        MissingTypedFields: ['BusinessChecks'], OpaqueReviewRequired: [{ FieldPointer: 'Task/Actions/Action[0]/Arguments', ReferenceKind: 'Arguments', Status: 'ReviewRequired', Reason: 'Owner review required' }],
+        TypedFields: { TargetPath: 'E:\\Sites\\Portal', Product: 'Portal', WorkloadFieldReviews: [{ FieldPointer: 'IIS/site/FixtureSite/application[0]/virtualDirectory[0]/@physicalPath', Value: 'E:\\Sites\\Portal' }], IisBindings: [{ Index: 0, Protocol: 'custom+http', BindingInformation: '*:443:fixture.example', CertificateHash: 'ABC123', CertificateStoreName: '', SslFlags: '', SslFlagsPresent: false, Password: 'do not render', Command: 'DO-NOT-RENDER', Xml: '<secret>DO-NOT-RENDER</secret>' }], IisApplicationPools: [{ Index: 0, ApplicationPath: '/', PoolName: 'FixturePool', Arguments: 'DO-NOT-RENDER' }], IisPoolSettings: { managedRuntimeVersion: 'v4.0', startMode: 'OnDemand', privateKey: 'DO-NOT-RENDER' }, Arguments: 'must not appear', Xml: '<secret>must not appear</secret>' },
+        MissingTypedFields: ['BusinessChecks', 'ManualBindingProtocolReview[0]'], OpaqueReviewRequired: [{ FieldPointer: 'Task/Actions/Action[0]/Arguments', ReferenceKind: 'Arguments', Status: 'ReviewRequired', Reason: 'Owner review required' }],
         WorkloadActions: [{ Index: 0 }, { Index: 1 }], IisBindings: [], IisApplications: [], SharedResourceReviewReasons: [],
+        WorkloadPathReferences: [{ FieldPointer: 'IIS/site/FixtureSite/application[0]/virtualDirectory[0]/@physicalPath', ReferenceKind: 'IISPhysicalPath', SourcePath: 'C:\\Sites\\Portal', DraftTargetPath: 'E:\\Sites\\Portal', Channel: 'SuggestedNonC', ParseConfidence: 'Typed', Opaque: false, ReviewRequired: false }, { FieldPointer: 'Task/Actions/Action[0]/Arguments', ReferenceKind: 'TaskArguments', SourcePath: '', DraftTargetPath: '', Opaque: true, ReviewRequired: true, Reason: 'Opaque arguments withheld' }],
         SourceXmlSHA256: 'source-hash', TargetXmlSHA256: 'target-hash', RawXmlIncluded: false, SecretsIncluded: false
       });
       if (pathname === '/api/view' && request.method() === 'POST') return json({ preview: { revision, previewKind: 'ResourcePreview', canExecute: true, items: [], issues: [] } });
@@ -124,6 +128,17 @@ const server = http.createServer((request, response) => {
     });
 
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    for (const [name, expected] of Object.entries({ OsProvidedCapture: '擷取 OS 提供排程工作證據', OsProvidedBaseline: '建立 OS 提供排程工作可信基準', OsProvidedReview: '比對 OS 提供排程工作證據', OsProvidedSubmit: '提交 OS 提供排程工作審閱' })) {
+      assert.equal(await page.evaluate(action => window.WsmConsole.actionLabel(action), name), expected);
+    }
+    assert.equal(await page.evaluate(() => window.WsmConsole.actionGroup('OsProvidedCapture')), 'Source');
+    assert.equal(await page.evaluate(() => window.WsmConsole.actionGroup('OsProvidedReview')), 'Manager');
+    assert.match(await page.evaluate(() => window.WsmConsole.actionGuidance('OsProvidedSubmit').output), /不代表 vendor verification/);
+    await page.evaluate(() => window.WsmConsole.navigate('operations'));
+    await page.locator('#action-picker').selectOption('OsProvidedSubmit');
+    assert.equal(await page.locator('#param-0').inputValue(), '7');
+    assert.equal(await page.locator('#param-0').getAttribute('readonly'), '');
+    assert.match(await page.locator('#action-description').textContent(), /角色只是操作上下文/);
     await page.waitForFunction(() => window.WsmConsole && window.WsmConsole.state.session && window.WsmConsole.state.token);
     await page.locator('[data-view="inventory"]').first().click();
     await page.waitForFunction(() => window.WsmConsole.state.inventory.length === 125);
@@ -138,6 +153,10 @@ const server = http.createServer((request, response) => {
     assert.match(await page.locator('#spec-review-counts').textContent(), /排程動作：2/);
     assert.doesNotMatch(await page.locator('#spec-review-panel').textContent(), /must not appear|<secret>/);
     assert.match(await page.locator('#spec-review-panel').textContent(), /\*:443:fixture\.example/);
+    assert.match(await page.locator('#spec-review-panel').textContent(), /custom\+http/);
+    assert.match(await page.locator('#spec-review-panel').textContent(), /ManualBindingProtocolReview\[0\]/);
+    assert.match(await page.locator('#spec-review-panel').textContent(), /C:\\Sites\\Portal/);
+    assert.match(await page.locator('#spec-review-panel').textContent(), /E:\\Sites\\Portal/);
     assert.match(await page.locator('#spec-review-panel').textContent(), /FixturePool/);
     assert.match(await page.locator('#spec-review-panel').textContent(), /憑證存放區/);
     assert.doesNotMatch(await page.locator('#spec-review-panel').textContent(), /DO-NOT-RENDER/);
@@ -148,6 +167,9 @@ const server = http.createServer((request, response) => {
     assert.equal(await page.locator('[data-parameter="TargetPath"]').inputValue(), 'E:\\Sites\\Portal');
     assert.equal(await page.locator('[data-parameter="Product"]').inputValue(), 'Portal');
     assert.deepEqual(await page.locator('#parameter-fields [data-parameter="BindingInformation"]').evaluateAll(nodes => nodes.map(node => node.value)), ['*:443:fixture.example']);
+    assert.deepEqual(await page.locator('#parameter-fields [data-parameter="Protocol"]').evaluateAll(nodes => nodes.map(node => node.value)), ['custom+http']);
+    assert.deepEqual(await page.locator('#parameter-fields [data-parameter="SslFlagsPresent"]').evaluateAll(nodes => nodes.map(node => node.value)), ['false']);
+    assert.equal(await page.locator('#parameter-fields [data-parameter="Value"]').first().inputValue(), 'E:\\Sites\\Portal');
     assert.deepEqual(await page.locator('#parameter-fields [data-parameter="PoolName"]').evaluateAll(nodes => nodes.map(node => node.value)), ['FixturePool']);
 
     await page.locator('[data-view="inventory"]').first().click();
@@ -206,14 +228,14 @@ const server = http.createServer((request, response) => {
     assert.equal(await page.locator('#confirm-line').isVisible(), false);
     assert.equal(await page.locator('#parameter-fields input').count(), 0);
 
-    await page.evaluate(() => window.WsmConsole.renderFiles({ rows: [{ originalPath: 'C:\\Source\\settings.ini', preservedPath: 'D:\\Preserved\\settings.ini', effectivePath: null, sourceHash: 'source-hash', readbackHash: 'readback-hash', conflictHash: null }] }));
+    await page.evaluate(() => window.WsmConsole.renderFiles({ rows: [{ originalPath: 'C:\\Source\\settings.ini', preservedPath: 'D:\\Preserved\\settings.ini', effectivePath: null, sourceHash: 'source-hash', observedHash: 'producer-readback-hash', existingTargetHash: 'producer-conflict-hash' }] }));
     const fileCells = await page.locator('#file-rows tr').first().locator('td').allTextContents();
     assert.match(fileCells[0], /C:\\Source/);
     assert.match(fileCells[1], /D:\\Preserved/);
     assert.equal(fileCells[2].trim(), '未知（未觀測）');
     assert.match(fileCells[3], /來源 SHA-256：source-hash/);
-    assert.match(fileCells[3], /讀回 SHA-256：readback-hash/);
-    assert.match(fileCells[3], /衝突 SHA-256：未知（未觀測）/);
+    assert.match(fileCells[3], /讀回 SHA-256：producer-readback-hash/);
+    assert.match(fileCells[3], /衝突 SHA-256：producer-conflict-hash/);
 
     await page.locator('[data-view="jobs"]').first().click();
     await page.waitForFunction(() => location.hash === '#jobs');

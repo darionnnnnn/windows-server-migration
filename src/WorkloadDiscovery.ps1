@@ -62,8 +62,9 @@ function Get-WsmWorkloadPathReferences($Item) {
     $xmlText=[string](Get-WsmWorkloadSettingValue $Item.Settings 'Xml')
     if(-not $xmlText){return @()}
     try{$doc=Read-WsmXml $xmlText}catch{return @([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer='';ReferenceKind='XmlPath';RawValue='';ResolvedPath='';Channel='Unknown';ParseConfidence='Unknown';Opaque=$true;ReviewRequired=$true;Reason='XML parse failed; preserve raw XML and review manually.'})}
-    if($Item.Kind -in @('IISSite','IISGlobalConfig','IISSectionConfig','IISLocationConfig')){
-        foreach($node in @($doc.SelectNodes("//*[@configSource]"))){$path=[string]$node.GetAttribute('configSource');$safe=Get-WsmSafeWorkloadPathProjection $path;$pointer='IIS/'+[string]$Item.NaturalKey+'/'+$node.LocalName+'/@configSource';$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer=$pointer;ReferenceKind='IISConfigSource';RawValue=$(if($safe){$path}else{'[configSource withheld for safe projection]'});ResolvedPath=$(if($safe){$path}else{''});Channel=$(if($safe){Get-WsmWorkloadPathChannel $path}else{'Unknown'});ParseConfidence=$(if($safe){'Typed'}else{'Unknown'});Opaque=(-not $safe);Required=[bool]$safe;ReviewRequired=(-not $safe);Reason=$(if($safe){''}else{'configSource value requires manual review from protected source XML.'})})}
+    if($Item.Kind -in @('IISSite','IISGlobalConfig','IISSectionConfig','IISLocationConfig','IISWebConfig')){
+        $nodes=@($doc.SelectNodes("//*[@configSource]"));$sourceRows=@();if($Item.Settings.PSObject.Properties['ConfigSource'] -and $Item.Settings.ConfigSource){$sourceRows=@($Item.Settings.ConfigSource)}elseif($Item.Settings.PSObject.Properties['ConfigSources']){$sourceRows=@($Item.Settings.ConfigSources)}
+        foreach($node in $nodes){$path=[string]$node.GetAttribute('configSource');$row=@($sourceRows|Where-Object RelativePath -CEQ $path|Select-Object -First 1);$resolved='';$safe=$false;$reason='configSource has no validated resolved-file evidence.';if($row.Count -and $row[0].Status -ceq 'Captured' -and $row[0].ResolvedPath){$resolved=[string]$row[0].ResolvedPath;$safe=Get-WsmSafeWorkloadPathProjection $resolved;$reason=''};$pointer='IIS/'+[string]$Item.NaturalKey+'/'+$node.LocalName+'/@configSource';$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer=$pointer;ReferenceKind='IISConfigSource';RawValue=$(if($safe){$resolved}else{'[configSource withheld for safe projection]'});ResolvedPath=$(if($safe){$resolved}else{''});Channel=$(if($safe){Get-WsmWorkloadPathChannel $resolved}else{'Unknown'});ParseConfidence=$(if($safe){'ValidatedConfigSource'}else{'Unknown'});Opaque=(-not $safe);Required=[bool]$safe;ReviewRequired=(-not $safe);Reason=$(if($safe){''}else{$reason})})}
     }
     if($Item.Kind -eq 'IISSite'){
         $siteName=[string]$Item.NaturalKey
@@ -95,15 +96,130 @@ function Get-WsmWorkloadPathReferences($Item) {
     @($references.ToArray())
 }
 
+function Get-WsmIisSectionDefinitionIndex($Document) {
+    $index=@{}
+    $configSections=$Document.SelectSingleNode('/configuration/configSections')
+    if(-not $configSections){return $index}
+    $walk=$null;$walk={param($Parent,[string]$Prefix)
+        foreach($node in @($Parent.ChildNodes | Where-Object NodeType -eq ([Xml.XmlNodeType]::Element))){
+            if($node.LocalName -ceq 'sectionGroup'){$name=[string]$node.GetAttribute('name');if($name){$next=$name;if($Prefix){$next=$Prefix+'/'+$name};& $walk $node $next}}
+            elseif($node.LocalName -ceq 'section'){$name=[string]$node.GetAttribute('name');if($name){$path=$name;if($Prefix){$path=$Prefix+'/'+$name};$index[$path]=[pscustomobject][ordered]@{SectionPath=$path;AllowDefinition=[string]$node.GetAttribute('allowDefinition');OverrideModeDefault=[string]$node.GetAttribute('overrideModeDefault');RequirePermission=[string]$node.GetAttribute('requirePermission');DeclarationXml=$node.OuterXml}}}
+        }
+    }
+    & $walk $configSections ''
+    $index
+}
+
+function Get-WsmIisConfigSourceEvidence($Node,[string]$ConfigurationPath) {
+    if(-not $Node.Attributes['configSource']){return [pscustomobject][ordered]@{Status='NotPresent';RelativePath='';ResolvedPath='';SHA256='';ProtectedXml='';Reason=''}}
+    $relative=[string]$Node.GetAttribute('configSource');$reason='';$resolved='';$hash='';$xml='';$status='ManualReviewRequired'
+    try{
+        if([string]::IsNullOrWhiteSpace($relative) -or [IO.Path]::IsPathRooted($relative) -or $relative -match '^(?:\\|//)' -or $relative -match '(^|[\\/])\.\.(?:[\\/]|$)'){throw 'configSource must be a relative in-directory path.'}
+        $base=[IO.Path]::GetFullPath([IO.Path]::GetDirectoryName($ConfigurationPath));$resolved=[IO.Path]::GetFullPath((Join-Path $base $relative));$prefix=$base.TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar
+        if(-not $resolved.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'configSource resolves outside the protected IIS configuration directory.'}
+        if(-not [IO.File]::Exists($resolved)){throw 'configSource file is missing or inaccessible.'}
+        Assert-WsmNoReparse $base;Assert-WsmNoReparse $resolved;$info=New-Object IO.FileInfo($resolved);if($info.Length -gt 4194304){throw 'configSource file exceeds the 4 MiB protected-evidence read budget.'}
+        $bytes=[IO.File]::ReadAllBytes($resolved);if($bytes.Length -gt 4194304){throw 'configSource file exceeded the 4 MiB protected-evidence read budget during read.'};$hash=(Get-WsmHashBytes $bytes);$xml=[Text.Encoding]::UTF8.GetString($bytes);[void](Read-WsmXml $xml);$status='Captured'
+    }catch{$reason=[string]$_.Exception.Message;$status='ManualReviewRequired'}
+    [pscustomobject][ordered]@{Status=$status;RelativePath=$relative;ResolvedPath=$resolved;SHA256=$hash;ProtectedXml=$xml;Reason=$reason}
+}
+
+function Resolve-WsmIisConfigSourceCandidates([string]$HostId,[object[]]$Items,[object[]]$Candidates) {
+    $result=New-Object 'System.Collections.Generic.List[object]';foreach($candidate in @($Candidates)){$result.Add($candidate)}
+    foreach($owner in @($Items)){
+        $sources=New-Object 'System.Collections.Generic.List[object]'
+        if($owner.Settings.PSObject.Properties['ConfigSource'] -and $owner.Settings.ConfigSource){$sources.Add($owner.Settings.ConfigSource)}
+        if($owner.Settings.PSObject.Properties['ConfigSources']){foreach($sourceRow in @($owner.Settings.ConfigSources)){$sources.Add($sourceRow)}}
+        foreach($sourceRow in $sources){if($sourceRow.Status -cne 'Captured' -or -not $sourceRow.ResolvedPath){continue}
+            $relative=[string]$sourceRow.RelativePath;$resolved=[string]$sourceRow.ResolvedPath
+            $remove=@($result|Where-Object {$_.Settings.OriginalPath -ceq $relative});foreach($candidate in $remove){[void]$result.Remove($candidate)}
+            $candidate=@($result|Where-Object {$_.Settings.OriginalPath -ceq $resolved}|Select-Object -First 1)
+            if(-not $candidate.Count){$key=$resolved.ToLowerInvariant();$candidate=@(New-WsmItem $HostId Storage PathCandidate $resolved ('configsource-candidate:'+ $key) @{OriginalPath=$resolved;ResolvedCandidate=$resolved;RequiresScopeApproval=$true;Reason='Exact configSource file resolved relative to its protected parent configuration; content remains owner-reviewed.'} @() Success);$result.Add($candidate[0])}
+            $owner.Dependencies=@(@($owner.Dependencies|Where-Object {$_.Evidence -cne 'Parsed configuration path; owner confirmation required'})+@([pscustomobject]@{ItemId=[string]$candidate[0].ItemId;Type='Mandatory';Evidence='Validated protected configSource file link';Confidence='Validated'}))
+        }
+    }
+    @($result.ToArray())
+}
+
+function Get-WsmIisWebConfigInventoryItems([string]$HostId,[object[]]$SiteItems,[int]$MaxDirectories=4096,[int]$MaxFiles=8192,[long]$MaxBytes=67108864,[int]$MaxFileBytes=4194304) {
+    # Capture only web.config files below physical roots explicitly present in
+    # captured IIS XML. Reparse points are skipped and every limit is explicit.
+    $items=New-Object 'System.Collections.Generic.List[object]';$seen=@{};$directories=0;$files=0;[long]$bytesRead=0
+    foreach($site in @($SiteItems)){
+        $siteId=[string]$site.ItemId;$siteName=[string]$site.NaturalKey
+        try{$xml=Read-WsmXml ([string]$site.Settings.Xml)}catch{$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config roots unreadable for '+$siteName) ('webconfig-observation|'+$siteId+'|xml') ([pscustomobject][ordered]@{Status='SourceSiteXmlInvalid';PhysicalRoot='';PotentialConsumerItemIds=@($siteId);Reason='Captured IIS site XML could not be parsed; web.config coverage is incomplete.';RawEvidenceProtected=$true}) @() Partial));continue}
+        $roots=@($xml.SelectNodes("//*[local-name()='virtualDirectory'][@physicalPath]")|ForEach-Object {[string]$_.GetAttribute('physicalPath')}|Select-Object -Unique)
+        if(-not $roots.Count){$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config root unknown for '+$siteName) ('webconfig-observation|'+$siteId+'|root') ([pscustomobject][ordered]@{Status='NoPhysicalRoot';PhysicalRoot='';PotentialConsumerItemIds=@($siteId);Reason='No captured IIS physicalPath identifies a bounded web.config search root.';RawEvidenceProtected=$true}) @() Partial));continue}
+        foreach($rawRoot in $roots){
+            $root=[Environment]::ExpandEnvironmentVariables($rawRoot)
+            if($root -match '%[^%]+%' -or $root -notmatch '^(?:[A-Za-z]:\\|\\\\[^\\]+\\[^\\]+\\)'){$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config root requires resolution for '+$siteName) ('webconfig-observation|'+$siteId+'|'+(Get-WsmHashText $rawRoot)) ([pscustomobject][ordered]@{Status='UnresolvedPhysicalRoot';PhysicalRoot=$rawRoot;PotentialConsumerItemIds=@($siteId);Reason='Physical root is environment-dependent, relative, or outside safe absolute-path projection.';RawEvidenceProtected=$true}) @() Partial));continue}
+            try{$root=ConvertTo-WsmCanonicalPath $root}catch{$root=''}
+            if(-not $root -or -not [IO.Directory]::Exists($root)){$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config root unavailable for '+$siteName) ('webconfig-observation|'+$siteId+'|'+(Get-WsmHashText $rawRoot)) ([pscustomobject][ordered]@{Status='RootUnavailable';PhysicalRoot=$root;PotentialConsumerItemIds=@($siteId);Reason='Captured IIS physical root is missing or inaccessible; web.config could not be enumerated.';RawEvidenceProtected=$true}) @() Partial));continue}
+            $stack=New-Object 'System.Collections.Generic.Stack[string]';$stack.Push($root);$rootFound=$false;$reparseSkipped=$false;$scanIncomplete=$false
+            while($stack.Count -gt 0){
+                if($directories -ge $MaxDirectories){$scanIncomplete=$true;$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config directory budget exceeded for '+$siteName) ('webconfig-observation|'+$siteId+'|budget-dir') ([pscustomobject][ordered]@{Status='DirectoryBudgetExceeded';PhysicalRoot=$root;PotentialConsumerItemIds=@($siteId);Reason=('Enumeration stopped at configured directory limit '+$MaxDirectories+'.');RawEvidenceProtected=$true}) @() Partial));break}
+                $directory=$stack.Pop();$directories++
+                try{$dirInfo=New-Object IO.DirectoryInfo($directory);if(($dirInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){$reparseSkipped=$true;$scanIncomplete=$true;$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config reparse root skipped '+$directory) ('webconfig-observation|'+$siteId+'|reparse|'+(Get-WsmHashText $directory)) ([pscustomobject][ordered]@{Status='ReparsePointSkipped';PhysicalRoot=$root;Path=$directory;PotentialConsumerItemIds=@($siteId);Reason='IIS physical root is a reparse point; its contents were not followed.';RawEvidenceProtected=$true}) @() Partial));continue};$directoryLimitHit=$false;$directoryEnumerator=$dirInfo.EnumerateDirectories().GetEnumerator();while($directoryEnumerator.MoveNext()){$child=$directoryEnumerator.Current;if(($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){$reparseSkipped=$true;$scanIncomplete=$true;$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config reparse subtree skipped '+$child.FullName) ('webconfig-observation|'+$siteId+'|reparse|'+(Get-WsmHashText $child.FullName)) ([pscustomobject][ordered]@{Status='ReparsePointSkipped';PhysicalRoot=$root;Path=$child.FullName;PotentialConsumerItemIds=@($siteId);Reason='Nested IIS physical subtree is a reparse point; its contents were not followed.';RawEvidenceProtected=$true}) @() Partial));continue};if(($directories+$stack.Count) -ge $MaxDirectories){$directoryLimitHit=$true;break};$stack.Push($child.FullName)};if($directoryLimitHit){$scanIncomplete=$true;$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config directory budget exceeded for '+$siteName) ('webconfig-observation|'+$siteId+'|budget-dir') ([pscustomobject][ordered]@{Status='DirectoryBudgetExceeded';PhysicalRoot=$root;PotentialConsumerItemIds=@($siteId);Reason=('Child enumeration stopped at configured directory limit '+$MaxDirectories+'.');RawEvidenceProtected=$true}) @() Partial));break};$filePath=Join-Path $directory 'web.config';if(-not [IO.File]::Exists($filePath)){continue};$rootFound=$true
+                    if($files -ge $MaxFiles){$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config file budget exceeded for '+$siteName) ('webconfig-observation|'+$siteId+'|budget-file') ([pscustomobject][ordered]@{Status='FileBudgetExceeded';PhysicalRoot=$root;PotentialConsumerItemIds=@($siteId);Reason=('Enumeration stopped at configured file limit '+$MaxFiles+'.');RawEvidenceProtected=$true}) @() Partial));break}
+                    $canonical=ConvertTo-WsmCanonicalPath $filePath;Assert-WsmNoReparse $canonical;$key=$canonical.ToLowerInvariant();if($seen.ContainsKey($key)){$seen[$key].Settings.PotentialConsumerItemIds=@(@($seen[$key].Settings.PotentialConsumerItemIds)+@($siteId)|Select-Object -Unique);continue}
+                    $files++;$fileInfo=New-Object IO.FileInfo($canonical);if($fileInfo.Length -gt $MaxFileBytes -or ($bytesRead+$fileInfo.Length) -gt $MaxBytes){$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config byte budget exceeded at '+$canonical) ('webconfig-observation|'+(Get-WsmHashText $key)) ([pscustomobject][ordered]@{Status=$(if($fileInfo.Length -gt $MaxFileBytes){'FileSizeBudgetExceeded'}else{'TotalByteBudgetExceeded'});PhysicalRoot=$root;Path=$canonical;PotentialConsumerItemIds=@($siteId);Reason='Protected web.config capture exceeded its explicit read budget; bytes were not read.';RawEvidenceProtected=$true}) @() Partial));continue}
+                    try{$rawBytes=[IO.File]::ReadAllBytes($canonical);$bytesRead+=$rawBytes.Length;$hash=Get-WsmHashBytes $rawBytes;$xmlText=[Text.Encoding]::UTF8.GetString($rawBytes);$xmlStatus='Captured';$xmlReason='';try{$doc=Read-WsmXml $xmlText}catch{$doc=$null;$xmlStatus='MalformedXml';$xmlReason='Raw bytes/hash retained; XML parsing failed and manual review is required.'};$configSources=New-Object 'System.Collections.Generic.List[object]';if($doc){foreach($node in @($doc.SelectNodes('//*[@configSource]'))){$configSources.Add((Get-WsmIisConfigSourceEvidence $node $canonical))}};$settings=[pscustomobject][ordered]@{Xml=$xmlText;RawBytesBase64=[Convert]::ToBase64String($rawBytes);SHA256=$hash;Path=$canonical;PhysicalRoot=$root;SourceSiteName=$siteName;PotentialConsumerItemIds=@($siteId);CaptureStatus=$xmlStatus;CaptureReason=$xmlReason;ConfigSources=@($configSources.ToArray());RawEvidenceProtected=$true;CoverageDisposition='ManualReviewRequired';CoverageReason='web.config inheritance, applicability and target baseline require explicit owner review.'};$captured=New-WsmItem $HostId Web IISWebConfig ('web.config '+$canonical) ('webconfig|'+$key) $settings @() $(if($xmlStatus -eq 'Captured'){'Success'}else{'Partial'});$items.Add($captured);$seen[$key]=$captured
+                    }catch{$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config read failed '+$canonical) ('webconfig-observation|'+(Get-WsmHashText $key)) ([pscustomobject][ordered]@{Status='ReadFailed';PhysicalRoot=$root;Path=$canonical;PotentialConsumerItemIds=@($siteId);Reason='web.config could not be read; coverage is incomplete.';ErrorType=$_.Exception.GetType().FullName;RawEvidenceProtected=$true}) @() PermissionDenied))}
+                }catch{$scanIncomplete=$true;$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config directory enumeration failed '+$directory) ('webconfig-observation|'+(Get-WsmHashText $directory)) ([pscustomobject][ordered]@{Status='DirectoryReadFailed';PhysicalRoot=$root;Path=$directory;PotentialConsumerItemIds=@($siteId);Reason='Captured IIS physical subtree could not be enumerated.';ErrorType=$_.Exception.GetType().FullName;RawEvidenceProtected=$true}) @() Partial))}
+            }
+            if(-not $rootFound -and -not $scanIncomplete -and -not $reparseSkipped){$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('no web.config observed under '+$root) ('webconfig-observation|'+$siteId+'|'+(Get-WsmHashText $root)) ([pscustomobject][ordered]@{Status='NoWebConfigObserved';PhysicalRoot=$root;PotentialConsumerItemIds=@($siteId);Reason='No web.config observed within the completely enumerated root.';RawEvidenceProtected=$true}) @() Success))}
+        }
+    }
+    @($items.ToArray())
+}
+
+function Get-WsmIisConfigurationInventoryItems([string]$HostId,$Document,[string]$ConfigurationPath) {
+    $items=New-Object 'System.Collections.Generic.List[object]';$definitions=Get-WsmIisSectionDefinitionIndex $Document
+    $configurationHash=Get-WsmHashText ([string]$Document.OuterXml);$globalSettings=[pscustomobject][ordered]@{Xml=[string]$Document.OuterXml;ConfigurationFile=$ConfigurationPath;ConfigurationHash=$configurationHash;RawEvidenceProtected=$true;SectionDefinitionCount=$definitions.Count;Completeness='ReviewRequired'};$global=New-WsmItem $HostId Web IISGlobalConfig 'IIS global configuration' 'applicationHost.config' $globalSettings;$items.Add($global)
+    $makeSection=$null;$makeSection={param($Node,[string]$SectionPath,[string]$LocationPath,[string]$Kind,[string]$Identity)
+        $definition=$null;$known=$definitions.ContainsKey($SectionPath);if($known){$definition=$definitions[$SectionPath]}
+        $configSource=Get-WsmIisConfigSourceEvidence $Node $ConfigurationPath
+        $xpath='';if($LocationPath){$xpath='/configuration/location[@path='+$LocationPath+']/'+$SectionPath.Replace('/','/')}else{$xpath='/configuration/'+$SectionPath}
+        $provenance='DeclaredSection';$coverage='TypedReviewCandidate';$reason='Exact section declaration and source XML were identified; this is not a resolved effective configuration or target baseline.'
+        if(-not $known){$provenance='UndeclaredSection';$coverage='ManualReviewRequired';$reason='No exact configSections declaration proves this section identity; do not apply automatically.'}
+        if($configSource.Status -ne 'NotPresent'){$coverage='ManualReviewRequired';$reason='configSource linkage must be reviewed as separate protected evidence; it is not silently dereferenced or restored.'}
+        $featureState=@();foreach($attributeName in @('enabled','autoStart','serverAutoStart','startMode')){if($Node.Attributes[$attributeName]){$featureState+=@([pscustomobject][ordered]@{Name=$attributeName;Value=[string]$Node.GetAttribute($attributeName);Semantics='SectionFeatureOnly';SiteStartupMeaning='Unknown'})}}
+        $settings=[ordered]@{Xml=[string]$Node.OuterXml;SourceXml=[string]$Node.OuterXml;ConfigurationFile=$ConfigurationPath;ConfigurationHash=$configurationHash;SectionPath=$SectionPath;LocationPath=$LocationPath;ParentGlobalConfigItemId=[string]$global.ItemId;DefinitionKnown=[bool]$known;DefinitionEvidence=$definition;ActualXPath=$xpath;ConfigSource=$configSource;ConfigurationFeatureState=@($featureState);RawEvidenceProtected=$true;CoverageDisposition=$coverage;CoverageReason=$reason;RequiredConsumerItemIds=@();EffectiveValueProven=$false;TargetBaselineProven=$false}
+        $items.Add((New-WsmItem $HostId Web $Kind $Identity $Identity ([pscustomobject]$settings)))
+    }
+    $walk=$null;$walk={param($Node,[string]$Prefix,[string]$LocationPath,[string]$Kind)
+        foreach($child in @($Node.ChildNodes | Where-Object NodeType -eq ([Xml.XmlNodeType]::Element))){
+            $path=$child.LocalName;if($Prefix){$path=$Prefix+'/'+$child.LocalName}
+            if($definitions.ContainsKey($path)){$identity=if($LocationPath){'location|'+$LocationPath+'|'+$path}else{'global|'+$path};& $makeSection $child $path $LocationPath $Kind $identity}
+            elseif($definitions.Keys | Where-Object {$_.StartsWith($path+'/',[StringComparison]::OrdinalIgnoreCase)}){& $walk $child $path $LocationPath $Kind}
+            elseif($Node.LocalName -ceq 'configuration' -or $Prefix){$identity=if($LocationPath){'location|'+$LocationPath+'|unknown|'+$path}else{'global|unknown|'+$path};& $makeSection $child $path $LocationPath $Kind $identity}
+        }
+    }
+    $root=$Document.DocumentElement
+    foreach($node in @($root.ChildNodes | Where-Object {$_.NodeType -eq [Xml.XmlNodeType]::Element -and $_.LocalName -cne 'configSections' -and $_.LocalName -cne 'location'})){
+        $path=[string]$node.LocalName
+        if($definitions.ContainsKey($path)){& $makeSection $node $path '' 'IISSectionConfig' ('global|'+$path)}
+        elseif(@($definitions.Keys | Where-Object {$_.StartsWith($path+'/',[StringComparison]::OrdinalIgnoreCase)}).Count){& $walk $node $path '' 'IISSectionConfig'}
+        else{& $makeSection $node $path '' 'IISSectionConfig' ('global|unknown|'+$path)}
+    }
+    foreach($location in @($Document.SelectNodes('/configuration/location'))){
+        $locationPath=[string]$location.GetAttribute('path');$locationId='location|'+$locationPath
+        $parentSettings=[pscustomobject][ordered]@{Xml=[string]$location.OuterXml;ConfigurationFile=$ConfigurationPath;ConfigurationHash=$configurationHash;LocationPath=$locationPath;ParentGlobalConfigItemId=[string]$global.ItemId;RawEvidenceProtected=$true;CoverageDisposition='ReviewRequired';CoverageReason='Location inheritance and effective precedence have not been proved.'}
+        $items.Add((New-WsmItem $HostId Web IISLocationConfig ('IIS location '+$locationPath) $locationId $parentSettings))
+        & $walk $location '' $locationPath 'IISLocationConfig'
+    }
+    @($items.ToArray())
+}
+
 function Get-WsmWorkloadDiscovery($Inventory) {
-    $references=New-Object 'System.Collections.Generic.List[object]';$coverage=New-Object 'System.Collections.Generic.List[object]';$resources=New-Object 'System.Collections.Generic.List[object]';$runtimeRows=New-Object 'System.Collections.Generic.List[object]';$provenanceRows=New-Object 'System.Collections.Generic.List[object]'
+    $references=New-Object 'System.Collections.Generic.List[object]';$coverage=New-Object 'System.Collections.Generic.List[object]';$configurationCoverage=New-Object 'System.Collections.Generic.List[object]';$resources=New-Object 'System.Collections.Generic.List[object]';$runtimeRows=New-Object 'System.Collections.Generic.List[object]';$provenanceRows=New-Object 'System.Collections.Generic.List[object]'
     $items=@($Inventory.Items);$candidateByPath=@{};$poolByName=@{};$taskFolderByPath=@{};foreach($item in $items){if($item.Kind -eq 'PathCandidate'){$path=[string](Get-WsmWorkloadSettingValue $item.Settings 'OriginalPath');if($path){$candidateByPath[$path.ToLowerInvariant()]=$item}};if($item.Kind -eq 'IISPool'){$poolByName[[string]$item.NaturalKey]=$item};if($item.Kind -eq 'TaskFolder'){$taskFolderByPath[[string]$item.NaturalKey]=$item}}
     foreach($item in $items){
-        if($item.Kind -in @('IISSite','ScheduledTask')){
+        if($item.Kind -in @('IISSite','ScheduledTask','IISSectionConfig','IISLocationConfig','IISWebConfig')){
             foreach($reference in @(Get-WsmWorkloadPathReferences $item)){
                 $candidate=$null;$key=([string]$reference.ResolvedPath).ToLowerInvariant();if($key -and $candidateByPath.ContainsKey($key)){$candidate=$candidateByPath[$key]}
                 $reference | Add-Member NoteProperty ResourceItemId $(if($candidate){[string]$candidate.ItemId}else{''}) -Force
-                $reference | Add-Member NoteProperty Required ([bool](-not $reference.Opaque -and $reference.ParseConfidence -eq 'Typed')) -Force
+                $reference | Add-Member NoteProperty Required ([bool](-not $reference.Opaque -and $reference.ParseConfidence -in @('Typed','ValidatedConfigSource'))) -Force
                 $references.Add($reference)
             }
             if($item.Kind -eq 'IISSite'){
@@ -142,9 +258,72 @@ function Get-WsmWorkloadDiscovery($Inventory) {
         $consumers=@($group.Group | ForEach-Object ConsumerItemId | Select-Object -Unique);$resource=$items | Where-Object ItemId -CEQ $group.Name | Select-Object -First 1
         $resources.Add([pscustomobject][ordered]@{ResourceItemId=$group.Name;ResourceKind=$(if($resource){[string]$resource.Kind}else{'Unknown'});ConsumerItemIds=$consumers;ConsumerCount=$consumers.Count;References=@($group.Group | ForEach-Object ReferenceId);SelectedConsumerImpact='Requires catalog decision review'})
     }
-    $workloadItems=@($items | Where-Object { $_.Kind -in @('IISSite','IISPool','IISGlobalConfig','IISSectionConfig','IISLocationConfig','ScheduledTask','TaskFolder') -or ($_.Category -in @('Web','Tasks') -and $_.Kind -in @('DiscoveryGap','CollectorFailure','UnsupportedCollector')) })
-    foreach($item in $workloadItems){if($item.Status -in @('Failed','PermissionDenied','Unsupported','Partial') -or $item.Kind -in @('IISGlobalConfig','IISSectionConfig','IISLocationConfig','TaskFolder','DiscoveryGap','CollectorFailure','UnsupportedCollector')){$coverage.Add([pscustomobject][ordered]@{ItemId=[string]$item.ItemId;Category=[string]$item.Category;Kind=[string]$item.Kind;Status=[string]$item.Status;Completeness='ReviewRequired';Reason='Raw evidence retained; confirm access, inheritance, provider and completeness.'})}}
-    [pscustomobject][ordered]@{SchemaVersion=1;Kind='WorkloadDiscovery';SourceHostId=[string]$Inventory.Source.HostId;InventoryRevision=[int]$Inventory.Revision;References=@($references.ToArray());SharedResources=@($resources.ToArray());RuntimeObservations=@($runtimeRows.ToArray());ProducerProvenance=@($provenanceRows.ToArray());Coverage=@($coverage.ToArray());Complete=$false;CompletenessReason='Discovery evidence is not proof of full dependency coverage; dynamic, protected, inherited and unsupported configuration requires owner review.'}
+    $workloadItems=@($items | Where-Object { $_.Kind -in @('IISSite','IISPool','IISGlobalConfig','IISSectionConfig','IISLocationConfig','IISWebConfig','IISWebConfigObservation','ScheduledTask','TaskFolder') -or ($_.Category -in @('Web','Tasks') -and $_.Kind -in @('DiscoveryGap','CollectorFailure','UnsupportedCollector')) })
+    $potentialIisConsumers=@($items | Where-Object Kind -CEQ 'IISSite' | ForEach-Object ItemId | Sort-Object -Unique)
+    foreach($item in $workloadItems){
+        if($item.Kind -in @('IISGlobalConfig','IISSectionConfig','IISLocationConfig','IISWebConfig','IISWebConfigObservation')){
+            $sectionPath='';$locationPath='';$configSourceStatus='Unknown';if($item.Settings.PSObject.Properties['SectionPath']){$sectionPath=[string]$item.Settings.SectionPath};if($item.Settings.PSObject.Properties['LocationPath']){$locationPath=[string]$item.Settings.LocationPath};if($item.Settings.PSObject.Properties['ConfigSource']){$configSourceStatus=[string]$item.Settings.ConfigSource.Status}
+            $reason='Exact IIS section identity is retained; inherited/effective target value and required site consumers are not proven by source XML alone.';if($item.Kind -eq 'IISGlobalConfig'){$reason='Complete applicationHost.config is retained as protected evidence; section-level ownership, inheritance/effective values and required consumers need review.'}
+            $affected=@($potentialIisConsumers);if($item.Settings.PSObject.Properties['PotentialConsumerItemIds']){$affected=@($item.Settings.PotentialConsumerItemIds)}
+            $configurationCoverage.Add([pscustomobject][ordered]@{ItemId=[string]$item.ItemId;ParentGlobalConfigItemId=$(if($item.Settings.PSObject.Properties['ParentGlobalConfigItemId']){[string]$item.Settings.ParentGlobalConfigItemId}else{[string]$item.ItemId});SectionPath=$sectionPath;LocationPath=$locationPath;ConfigSourceStatus=$configSourceStatus;PotentialConsumerItemIds=[string[]]$affected;RequiredConsumerItemIds=[string[]]@();RequiredConsumerStatus='ConservativePotential';EffectiveValueProven=$false;TargetBaselineProven=$false;Disposition='ReviewRequired';Reason=($reason+' Inheritance/applicability and required consumers remain unproved until an owner reviews the protected evidence.')})
+        }
+        if($item.Status -in @('Failed','PermissionDenied','Unsupported','Partial') -or $item.Kind -in @('IISGlobalConfig','IISSectionConfig','IISLocationConfig','IISWebConfig','IISWebConfigObservation','TaskFolder','DiscoveryGap','CollectorFailure','UnsupportedCollector')){$coverage.Add([pscustomobject][ordered]@{ItemId=[string]$item.ItemId;Category=[string]$item.Category;Kind=[string]$item.Kind;Status=[string]$item.Status;Completeness='ReviewRequired';Reason=$(if($item.Settings.PSObject.Properties['CoverageReason']){[string]$item.Settings.CoverageReason}elseif($item.Settings.PSObject.Properties['Reason']){[string]$item.Settings.Reason}else{'Raw evidence retained; confirm access, inheritance, provider and completeness.'})})}
+    }
+    [pscustomobject][ordered]@{SchemaVersion=1;Kind='WorkloadDiscovery';SourceHostId=[string]$Inventory.Source.HostId;InventoryRevision=[int]$Inventory.Revision;References=@($references.ToArray());SharedResources=@($resources.ToArray());RuntimeObservations=@($runtimeRows.ToArray());ProducerProvenance=@($provenanceRows.ToArray());ConfigurationCoverage=@($configurationCoverage.ToArray());Coverage=@($coverage.ToArray());Complete=$false;CompletenessReason='Discovery evidence is not proof of full dependency coverage; dynamic, protected, inherited and unsupported configuration requires owner review.'}
+}
+
+function Get-WsmIisConfigurationCoverageIssues($Catalog,$Items) {
+    # Source applicationHost.config cannot prove effective inheritance or whether
+    # a declared section affects one particular site.  Treat all captured IIS
+    # configuration rows as possible dependencies of each currently selected
+    # site, then allow only an explicit owner-reviewed include/exclusion to close
+    # each row.  The issue is scoped to IIS consumers, never independent files.
+    $catalogItems=@();if($Catalog -and $Catalog.PSObject.Properties['Items']){$catalogItems=@($Catalog.Items)}
+    if($null -eq $Items){$Items=$catalogItems};$candidateItems=@($Items)
+    $selectedIndex=@{}
+    if($Catalog -and $Catalog.PSObject.Properties['Assistive'] -and $Catalog.Assistive -and $Catalog.Assistive.PSObject.Properties['Selections'] -and $Catalog.Assistive.Selections){
+        foreach($selection in @($Catalog.Assistive.Selections.Items)){
+            if($selection.Selected){$source=@($catalogItems | Where-Object ItemId -CEQ ([string]$selection.ItemId) | Select-Object -First 1);if($source.Count -and $source[0].Decision -ceq 'Include'){$selectedIndex[[string]$selection.ItemId]=$true}}
+        }
+    }else{
+        foreach($item in $candidateItems){if($item.Kind -ceq 'IISSite' -and $item.Decision -ceq 'Include'){$selectedIndex[[string]$item.ItemId]=$true}}
+    }
+    $candidateIndex=@{};foreach($item in $candidateItems){$candidateIndex[[string]$item.ItemId]=$item}
+    $issues=New-Object 'System.Collections.Generic.List[object]'
+    $selectedSites=@($catalogItems | Where-Object {$_.Kind -ceq 'IISSite' -and $selectedIndex.ContainsKey([string]$_.ItemId) -and $candidateIndex.ContainsKey([string]$_.ItemId)})
+    if(-not $selectedSites.Count){return @()}
+    $coverage=@();if($Catalog -and $Catalog.PSObject.Properties['WorkloadDiscovery'] -and $Catalog.WorkloadDiscovery -and $Catalog.WorkloadDiscovery.PSObject.Properties['ConfigurationCoverage']){$coverage=@($Catalog.WorkloadDiscovery.ConfigurationCoverage)}
+    $configurationItems=@($catalogItems | Where-Object {$_.Kind -in @('IISGlobalConfig','IISSectionConfig','IISLocationConfig','IISWebConfig','IISWebConfigObservation')})
+    foreach($site in $selectedSites){
+        $siteId=[string]$site.ItemId
+        if(-not $coverage.Count -or -not $configurationItems.Count){$issues.Add([pscustomobject][ordered]@{ItemId=$siteId;Gate='ConfigurationCoverage';Issue='IIS configuration coverage evidence is missing; selected site cannot be reviewed against source global, section and location configuration.'});continue}
+        foreach($configItem in $configurationItems){
+            $itemRows=@($coverage | Where-Object {$_.ItemId -ceq [string]$configItem.ItemId})
+            if($itemRows.Count -ne 1){$issues.Add([pscustomobject][ordered]@{ItemId=$siteId;Gate='ConfigurationCoverage';Issue=('Potential IIS configuration dependency '+[string]$configItem.ItemId+' has missing or ambiguous consumer-coverage evidence.')});continue}
+            $row=$itemRows[0];$hasScopedConsumers=($row.PSObject.Properties['PotentialConsumerItemIds'] -and @($row.PotentialConsumerItemIds).Count -gt 0)
+            if($hasScopedConsumers -and $row.PotentialConsumerItemIds -notcontains $siteId){continue}
+            if(-not $row.PSObject.Properties['PotentialConsumerItemIds']){$issues.Add([pscustomobject][ordered]@{ItemId=$siteId;Gate='ConfigurationCoverage';Issue=('Potential IIS configuration dependency '+[string]$configItem.ItemId+' has unknown consumer coverage.')});continue}
+            $owner='';$evidence='';$procedure='';$artifacts=@()
+            if($configItem.PSObject.Properties['Owner']){$owner=[string]$configItem.Owner};if($configItem.PSObject.Properties['Evidence']){$evidence=[string]$configItem.Evidence}
+            if($configItem.PSObject.Properties['GeneralHostOverride'] -and $configItem.GeneralHostOverride){if(-not $owner -and $configItem.GeneralHostOverride.PSObject.Properties['Owner']){$owner=[string]$configItem.GeneralHostOverride.Owner};if(-not $evidence -and $configItem.GeneralHostOverride.PSObject.Properties['Evidence']){$evidence=[string]$configItem.GeneralHostOverride.Evidence}}
+            if($configItem.Decision -ceq 'Include' -and $configItem.PSObject.Properties['MigrationSpec'] -and $configItem.MigrationSpec){$spec=$configItem.MigrationSpec;if($spec.PSObject.Properties['Owner']){$owner=[string]$spec.Owner};if($spec.PSObject.Properties['Evidence']){$evidence=[string]$spec.Evidence};if($spec.PSObject.Properties['Procedure']){$procedure=[string]$spec.Procedure};if($spec.PSObject.Properties['Artifacts']){$artifacts=@($spec.Artifacts)}}
+            $closed=$false
+            if($configItem.Decision -ceq 'Exclude'){
+                # A reason by itself is not enough to suppress a possible shared
+                # configuration dependency; retain owner and evidence provenance.
+                $reviewedBy='';$reviewedUtc='';if($configItem.PSObject.Properties['ReviewedBy']){$reviewedBy=[string]$configItem.ReviewedBy};if($configItem.PSObject.Properties['ReviewedUtc']){$reviewedUtc=[string]$configItem.ReviewedUtc}
+                $closed=([string]$configItem.Reason -and $reviewedBy -and $reviewedUtc -and $owner -and $evidence)
+            }elseif($configItem.Decision -ceq 'Include' -and $configItem.PSObject.Properties['MigrationSpec'] -and $configItem.MigrationSpec){
+                $closed=([bool]$owner -and [bool]$evidence)
+                if($configItem.MigrationSpec.Adapter -ceq 'ManualWorkflow'){$closed=$closed -and [bool]$procedure -and $artifacts.Count -gt 0}
+            }
+            if(-not $closed){
+                $identity=[string]$row[0].SectionPath;if($row[0].LocationPath){$identity+=' at location '+[string]$row[0].LocationPath};if(-not $identity){$identity='applicationHost.config (global)'}
+                $issues.Add([pscustomobject][ordered]@{ItemId=$siteId;Gate='ConfigurationCoverage';Issue=('Selected IIS site may depend on '+$identity+' (configuration item '+[string]$configItem.ItemId+'); require an owner-reviewed configuration disposition or an evidenced owner exclusion before approval.')})
+            }
+        }
+    }
+    @($issues.ToArray())
 }
 
 function Resolve-WsmWorkloadReferenceMapping($Catalog,$Reference) {

@@ -13,13 +13,23 @@
     },
     {
       "scope": "Windows Server 2016 to Windows Server 2025",
-      "dimensions": ["exact build", "edition", "InstallationType", "architecture", "adapter fingerprint", "source and target PowerShellVersion/Edition/ProcessArchitecture/LanguageMode/CLRVersion/NETFrameworkRelease"],
+      "dimensions": [
+        "exact build",
+        "edition",
+        "InstallationType",
+        "architecture",
+        "adapter fingerprint",
+        "source and target PowerShellVersion/Edition/ProcessArchitecture/LanguageMode/CLRVersion/NETFrameworkRelease"
+      ],
       "status": "No real host qualification evidence supplied",
       "qualificationRequired": true
     },
     {
       "scope": "Oracle Client and application consumers",
-      "dimensions": ["provider product/version/architecture/Oracle Home/context", "consumer product/version/architecture/runtime context"],
+      "dimensions": [
+        "provider product/version/architecture/Oracle Home/context",
+        "consumer product/version/architecture/runtime context"
+      ],
       "status": "No real provider/consumer qualification or database business proof supplied",
       "qualificationRequired": true
     },
@@ -31,6 +41,17 @@
     {
       "scope": "Production activation and retirement",
       "status": "Disabled; requires separate enterprise change approval and real business/restore evidence",
+      "qualificationRequired": true
+    },
+    {
+      "scope": "HTML console / Server Core typed text menu",
+      "runtime": "Loopback TcpListener with native PowerShell command metadata; local browser",
+      "status": "Isolated parser, authorization, typed forms, durable jobs and browser rendering tests; local HTTP transport is ModifiedTransport and native Server remains NotTested",
+      "qualificationRequired": true
+    },
+    {
+      "scope": "IIS configuration coverage and OSProvided tasks",
+      "status": "Protected complete discovery and owner-reviewed dispositions; typed supported sections or manual procedures; exact OS task baseline evidence; native Server qualification NotTested",
       "qualificationRequired": true
     }
   ],

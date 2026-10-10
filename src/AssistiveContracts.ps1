@@ -76,7 +76,7 @@ function Assert-WsmAssistiveContract($Data,[ValidateSet('Catalog','MigrationPlan
         foreach($field in @('ContractVersion','PairId','SourceSnapshotHash','SourcePolicy','SourceSelectionsVersion','ApprovedItemIds','MaterialReferences','DiscoveryAuthority')){if(-not $a.PSObject.Properties[$field]){throw (New-WsmContractError ('MigrationPlan Assistive missing '+$field+'.'))}}
         if($a.ContractVersion -ne 1 -or $a.PairId -cne $Data.PairId -or $a.SourceSnapshotHash -ine $Data.InventoryHash -or $a.SourcePolicy -cne 'SourceCOnly' -or ($a.SourceSelectionsVersion -isnot [int] -and $a.SourceSelectionsVersion -isnot [long]) -or $a.SourceSelectionsVersion -lt 1 -or $a.ApprovedItemIds -isnot [array] -or $a.MaterialReferences -isnot [array]){throw (New-WsmContractError 'Invalid sealed MigrationPlan Assistive policy.')}
         $authority=$a.DiscoveryAuthority
-        Assert-WsmFields $authority @('SourceSnapshotReference','InventoryRevision','SelectionRevision','Dispositions') @('SourceSnapshotReference','InventoryRevision','SelectionRevision','Dispositions')
+        Assert-WsmFields $authority @('SourceSnapshotReference','InventoryRevision','SelectionRevision','Dispositions','OsProvidedItems') @('SourceSnapshotReference','InventoryRevision','SelectionRevision','Dispositions')
         Assert-WsmAssistiveReference $authority.SourceSnapshotReference 'Sealed discovery authority'
         if($authority.SourceSnapshotReference.SHA256 -ine $a.SourceSnapshotHash -or ($authority.InventoryRevision -isnot [int] -and $authority.InventoryRevision -isnot [long]) -or $authority.InventoryRevision -ne $Data.InventoryRevision -or ($authority.SelectionRevision -isnot [int] -and $authority.SelectionRevision -isnot [long]) -or $authority.SelectionRevision -ne $a.SourceSelectionsVersion -or $authority.Dispositions -isnot [array]){throw (New-WsmContractError 'Sealed discovery authority reference/revision binding is invalid.')}
         $planIds=@{};foreach($item in @($Data.Items)){$planIds[[string]$item.ItemId]=$true}
@@ -90,6 +90,15 @@ function Assert-WsmAssistiveContract($Data,[ValidateSet('Catalog','MigrationPlan
         }
         if($expected.Count -ne $seen.Count){throw (New-WsmContractError 'Approved items do not exactly match the selected Include discovery dispositions.')}
         foreach($id in $expected.Keys){if(-not $seen.ContainsKey([string]$id)){throw (New-WsmContractError 'Approved items do not exactly match the selected Include discovery dispositions.')}}
+        if($authority.PSObject.Properties['OsProvidedItems']){
+            if($authority.OsProvidedItems -isnot [array]){throw (New-WsmContractError 'Sealed OSProvided evidence items must be an array.')}
+            $proofIds=@{}
+            foreach($proofItem in @($authority.OsProvidedItems)){
+                $disposition=@($authority.Dispositions | Where-Object ItemId -CEQ $proofItem.ItemId)
+                if($proofIds.ContainsKey([string]$proofItem.ItemId) -or $disposition.Count -ne 1 -or -not $disposition[0].Selected -or $disposition[0].Decision -cne 'Exclude' -or $proofItem.Decision -cne 'Exclude' -or $proofItem.Kind -cne 'ScheduledTask' -or -not $proofItem.PSObject.Properties['GeneralHostOverride'] -or -not $proofItem.GeneralHostOverride.PSObject.Properties['OsProvidedReview'] -or -not $proofItem.GeneralHostOverride.PSObject.Properties['OsProvidedSealedEvidence']){throw (New-WsmContractError 'Sealed OSProvided item must preserve a unique selected excluded task disposition, protected review reference and portable source-at-seal evidence.')}
+                $proofIds[[string]$proofItem.ItemId]=$true
+            }
+        }
         if($planIds.Count -ne $seen.Count){throw (New-WsmContractError 'Schema 3 plan may contain only selected approved Include items.')}
         foreach($reference in @($a.MaterialReferences)){Assert-WsmAssistiveReference $reference 'Material'}
         return $true
@@ -121,6 +130,18 @@ function New-WsmAssistiveMigrationPlanContract {
     $Plan.SchemaVersion=3;$Plan.ToolVersion='0.4.0'
     $dispositions=@(foreach($item in @($Catalog.Items)){$selection=@($Catalog.Assistive.Selections.Items | Where-Object ItemId -CEQ $item.ItemId);if($selection.Count -ne 1){throw 'Every sealed discovery disposition requires one source selection.'};[pscustomobject][ordered]@{ItemId=[string]$item.ItemId;Selected=[bool]$selection[0].Selected;Decision=[string]$item.Decision;Reason=[string]$item.Reason}})
     $authority=[pscustomobject][ordered]@{SourceSnapshotReference=$Catalog.Assistive.SourceSnapshot;InventoryRevision=[int]$Catalog.InventoryRevision;SelectionRevision=[int]$Catalog.Assistive.Selections.Revision;Dispositions=$dispositions}
+    $osProvidedItems=@($Catalog.Items | Where-Object {
+        $proofCandidate=$_
+        $proofCandidate.Decision -ceq 'Exclude' -and $proofCandidate.PSObject.Properties['GeneralHostOverride'] -and $proofCandidate.GeneralHostOverride.PSObject.Properties['OsProvidedReview'] -and @($Catalog.Assistive.Selections.Items | Where-Object {$_.ItemId -ceq $proofCandidate.ItemId -and $_.Selected}).Count -gt 0
+    })
+    if($osProvidedItems.Count){
+        $sealedProofContainer=ConvertFrom-WsmJson (ConvertTo-Json -InputObject ([pscustomobject]@{Items=$osProvidedItems}) -Depth 100 -Compress)
+        $sealedProofItems=[object[]]@($sealedProofContainer.Items)
+        foreach($sealedProofItem in $sealedProofItems){
+            $sealedProofItem.GeneralHostOverride | Add-Member NoteProperty OsProvidedSealedEvidence (New-WsmAssistiveOsProvidedSealedEvidence $Catalog $sealedProofItem) -Force
+        }
+        $authority | Add-Member NoteProperty OsProvidedItems $sealedProofItems
+    }
     $Plan | Add-Member NoteProperty Assistive ([pscustomobject][ordered]@{ContractVersion=1;PairId=[string]$Catalog.PairId;SourceSnapshotHash=[string]$Catalog.Assistive.SourceSnapshot.SHA256;SourcePolicy='SourceCOnly';SourceSelectionsVersion=[int]$Catalog.Assistive.Selections.Revision;ApprovedItemIds=$selected;MaterialReferences=@($Catalog.Assistive.MaterialReferences);DiscoveryAuthority=$authority}) -Force
     Assert-WsmAssistiveContract $Plan MigrationPlan | Out-Null
     $Plan
@@ -203,6 +224,7 @@ function Set-WsmAssistiveSelections {
         $known=@{};foreach($selection in @($current.Items)){$known[[string]$selection.ItemId]=$selection}
         $unique=@{};foreach($id in $ItemIds){if(-not $known.ContainsKey([string]$id) -or $unique.ContainsKey([string]$id)){throw 'Selection request contains an unknown or duplicate ItemId.'};$unique[[string]$id]=$true}
         foreach($id in $unique.Keys){if($sealed -and $Selected){$source=@($catalog.Assistive.Selections.Items | Where-Object ItemId -CEQ $id);$item=@($catalog.Items | Where-Object ItemId -CEQ $id);if($source.Count -ne 1 -or -not $source[0].Selected -or $item.Count -ne 1 -or $item[0].Decision -cne 'Include'){throw 'Target selection exceeds the sealed source scope; source review and approval are required.'}};$known[$id].Selected=$Selected;$known[$id].Reason=$Reason;$known[$id].UpdatedUtc=Get-WsmUtc}
+        $catalog.History=@($catalog.History)+@([pscustomobject]@{Action='AssistiveSelections';AssistiveRevision=($catalog.Assistive.Revision+1);ItemIds=@($ItemIds);Selected=$Selected;Reason=$Reason;Actor=(Get-WsmExecutionActor);Utc=(Get-WsmUtc)})
         if($sealed){$current.Revision++;$catalog.Assistive | Add-Member NoteProperty TargetSelections $current -Force;Clear-WsmAssistiveComparison $catalog;Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $catalog;Assert-WsmAssistiveContract $catalog Catalog | Out-Null;return $catalog}
         $catalog.Assistive.Selections.Items=@($catalog.Assistive.Selections.Items)
         $catalog.Assistive.Selections.Revision++;Clear-WsmAssistiveComparison $catalog

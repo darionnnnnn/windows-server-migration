@@ -563,3 +563,76 @@ Support matrix and release SBOM JSON references now resolve to complete safely e
 CI 反查：U commit 的 GitHub Server runner 因 Probe 契約測試隱含完整盤點而超過30分鐘，該次取消不計PASS。EnvironmentProbe 改為預設能力探測，完整盤點需 CaptureInventory／DeepDiscovery 明確選用；模擬Server預設不呼叫、明確選用才呼叫的兩引擎反例已通過，仍須固定快照與遠端CI確認。
 
 Probe段落固定快照驗證：wsm-r3-probe-40ffc4daddf0493487aa8e6c37a85d43，兩引擎 Test-AssistiveProbe 全部通過。此段僅能力探測預設／完整盤點明確選用及反例，不含稍後IIS／OSProvided／UI最終實作。
+
+### 最終逐條實作矩陣（2026-10-11；結果以末段驗證紀錄為準）
+
+以下核對實際 producer → consumer，不用測試檔名代替接線。測試為本機小範圍／隔離證據；未取得 Server、SMB、企業帳號、業務或瀏覽器傳輸實證的部分維持 NotTested。所有原始條款保留，這張矩陣不縮減原驗收範圍。任意 IIS section／有效繼承、opaque Arguments／COM action 或新版格式不作自動轉換；保護原證據、列責任／人工程序，必要項未完成仍阻相應工作負載。
+
+| 條款 | 實際資料流與核對的行為 | 可執行驗證落點 |
+|---|---|---|
+| R3-01 | SoftwareInventory、TargetSnapshot → AssistiveComparison → Reports／TargetPreparation；來源、選用、觀測版與缺口分開，不將 Observed 當相容。 | AssistiveComparison、AssistiveTargetPreparation |
+| R3-02 | MigrationSpec.TargetPath → EnvironmentConfirmation／逐檔結果；Mapping 僅建議，來源保留／核准／生效位置分列。 | AssistiveReviewIntegrity、AssistiveReports |
+| R3-03 | FilePlacementPreview → AssistiveRestore／Rollback；外部同名檔阻擋，其他合法檔可處理，僅逐檔工具持有 prior 可回復。 | AssistiveFiles、AssistiveRestore、AssistiveRollback |
+| R3-04 | 原 SoftwareId 保留；產品／實例鍵 → comparison；SID不同另列帳號待辦，多實例不自動配對。 | AssistiveComparison、AssistiveReviewIntegrity |
+| R3-05 | 目標選版與必要 consumer requirements → 局部 preview／GeneralHost gates；未知或新版不阻無關檔案，亦不冒充準備完成。 | AssistiveRestore、GeneralHostGates、Qualification |
+| R3-06 | src/ui bytes → ToolFingerprint／ToolRelease；文件另有 manifest，StageResult／LabReport／Fleet 消費新版權威投影。 | HtmlConsole、MigrationPipeline、AssistiveStageResults、LabReportConsumer、FleetExecutionBindings |
+| R3-07 | AssistiveRestore 分流 → journal／StageResult／返回碼；等待、人工、衝突與 deferred 保留，部分成功不報全機成功。 | AssistiveRestore、AssistiveStageResults、AssistiveContracts |
+| R3-08 | 同一 pair catalog JSON／可信 snapshot → comparison CAS／receipt；鎖、原子檔案及版本/hash檢查，共用既有資料庫。 | AssistiveContracts、AssistiveComparison |
+| R3-09 | 全發現列預選 → 選取意願 → 明確 Include/Exclude → sealed 子集；取消／重選不擴來源核准、不刪已搬資料。 | AssistiveContracts、AssistiveComparison |
+| R3-10 | OperationActions → HTML型別表單／Core文字備援 → 同一核心；完整離線HTML中心／報告不受列印2,000列界限取代。 | HtmlConsole、TextConsole、HtmlDocumentation、AssistiveReports |
+| R3-11 | 每項 AppliedManifestHash／Generation → delta／repair／journal replay／StageResult；未套項需完整可信 base，不借其他項世代。 | AssistiveRestore、DeltaWorkflow、AssistiveStageResults、Journal/Recovery測試族 |
+| R3-12 | 不可變 source plan＋target 選版／比較receipt → restore／qualification；資格含來源與目標版本，舊receipt不能證明新版。 | AssistiveComparison、AssistiveTargetPreparation、Qualification |
+| R3-13 | allowlist request → bounded worker／job → core lock／journal；取消獨立 marker，重連原OperationId，secret不落job。 | HtmlConsole、OperationRequests、CancellationWorkflow；實際loopback另探測 |
+| R3-14 | ReviewComplete 本次有效集合 → ApproveMigrationPlan；無關Pending保留清單，真必需相依仍阻擋。 | AssistiveComparison、AssistiveOsProvided |
+| R3-15 | NonC plan／transfer原生結果 → trusted Manager import → G completion；two-host／volume／scope／hash／freeze／generation不可借舊結果。 | AssistiveNonC、AssistiveRestore、AssistiveStageResults |
+| R3-16 | AssistiveReports → metadata-only證據索引／相對連結／DocumentManifest → report validator；文件非payload或還原權威，秘密原證據留保護workspace。 | AssistiveReports、HtmlDocumentation |
+| R3-17 | 選取scope＋physical volume → capacity／C-D清單 → 發現、選取、核准、檔案、目錄、bytes、物件及人工分母；未知不記0或100%。 | AssistivePackaging、AssistiveNonC、AssistiveReports |
+| R3-18 | 原生 actor＋Owner聲明／CAS → typed submit／job／History；native principal非browser人員認證，安全projection不輸出XML/SDDL/秘密。 | AssistiveReviewIntegrity、AssistiveReviewForms、AssistiveSettingsForms、HtmlConsole、AssistiveReports |
+| R3-19 | Inventory/WorkloadDiscovery 的全IIS/task證據、web.config/configSource、相依 → coverage審閱／typed或ManualWorkflow → C/D資料＋staged物件/readback；未知/缺模組/安全能力不假成功。 | IisConfigurationCoverage、WorkloadDiscovery、InventoryFixture、IisContracts、TaskSecurityWorkflow、AssistiveRestore |
+| R3-20 | 原絕對引用＋reviewed typed mapping → Desired XML → IIS physicalPath／task Execute、WorkingDirectory → native readback；原bytes保留，opaque不全域取代。 | WorkloadDiscovery、AssistiveSettingsForms、AssistiveReviewForms、AssistiveRestore |
+| R3-21 | 所有consumer＋physical target identity → 共用reservation → C/D及typed物件prior／desired／readback／undo；漂移、不同來源、別Pair重疊拒絕。 | AssistiveResources、AssistiveNonC、AssistiveTargetPreparation、AssistiveRollback |
+| R3-22 | 有效物件與C資料分開 → 零C可信控制材料／D／G；沒有C不等於NoOp，不加假檔、不把D塞C包。 | AssistivePackaging、AssistiveNonC、AssistiveReports |
+| R3-23 | Source Runtime與AutoStart/Enabled分開 → 明確target啟動決策 → 停用staging／final → CutoverReady/核准 → Activated → BusinessFinal；避免循環gate。 | AssistiveSettingsForms、AssistiveRestore、CutoverActivationWorkflow |
+| R3-24 | OS capture＋獨立pristine來源/目標基準/provenance → Owner review/receipt → selected excluded sealed快照 → 新主機native XML/security重查；Microsoft前綴不作證明。 | AssistiveOsProvided（真正plan producer及review consumer） |
+| R3-25 | 跨consumer材料graph＋active jobs → CleanupPreview → 鎖內重查revision/hash/引用/期限；缺證據、預覽過期、仍有引用均保留。 | AssistiveResources、AssistiveTargetPreparation、AssistivePackaging、AssistiveNonC |
+
+| 定案 | 核對的producer／consumer與反例 | 邊界 |
+|---|---|---|
+| D3-01 | source/target topology → C/D placement與readback；實體ADS／hardlink拒絕且明列人工。 | EFS、其他特殊語意及SMB環境由probe補驗，不宣稱支援。 |
+| D3-02 | mapped SID／DACL/owner/time要求 → native metadata readback／rollback；SACL與實際帳號存取分開。 | 企業domain/SACL/服務帳號實際存取NotTested。 |
+| D3-03 | ToolFingerprint/schema → plan import／執行；旧attempt保留原版本，新流程重新盤點核准，外部／舊ownership不借新Pair覆寫。 | 舊環境並行writer與對帳須操作者按HTML指引完成，不能自動轉舊state。 |
+| D3-04 | material references／active jobs → retain/cleanup；無期限、未結案、共享base與回退引用不刪。 | retention責任與期限須企業補入，不虛構天數。 |
+| D3-05 | current snapshot／preview／receipt hash → 寫入前native target證據；改軟體、映射或相關資料使相應確認失效。 | probe不是還原核准；歷史快照保留。 |
+| D3-06 | 同輪freeze、逐檔hash、C/D結果 → staged/final/Cutover gates。 | 實際所有writers、停寫責任及窗口NotTested，非跨機原子交易。 |
+| D3-07 | local HTML/session/token/worker → typed核心；Core同metadata文字備援，HTTP integrity probe揭露ModifiedTransport。 | browser mock與native parser證據分開，部署政策由企業補驗。 |
+| D3-08 |具名責任／各階段證據 → Qualification/Production gate；未有主機/樣本/業務則NotTested。 | 使用者接受本輪small isolated＋probe，不虛報企業資格。 |
+
+| 原始案例 | 完整性核對的操作／結果 |
+|---|---|
+| 使用者1 首次TS | HTML離線guide→本機啟動→typed預填/預覽→worker；無瀏覽器使用Core型別選單，正常路徑不手製JSON。 |
+| 使用者2 只搬檔 | 全選可改→不相關Pending仍列清單→有效集合核准→獨立檔案可搬。 |
+| 使用者3 封包後選新版 | 選版→CAS比較→新target receipt→consumer重查；來源plan/材料不改。 |
+| 使用者4 原路徑衝突 | placement/Files/HTML結果→來源保留/實際目的/衝突hash/人工原因；不合併、不清空產品目錄。 |
+| 使用者5 斷線/取消 | Accepted/Running/CancelRequested/Stopped分開→原job重連，失效session不重送第二次。 |
+| 使用者6 部分後delta | 每項base/generation→缺base完整材料→repair/rollback；deferred不晉升。 |
+| 使用者7 HTML交接 | 独立DocumentManifest/hash→離線相對索引→主機/revision/觀測與有效性；XML/秘密不下載。 |
+| 使用者8 管理者 | 分集合/通道/物件/人工計數→下鑽→多頁CAS失效保留草稿；不冒稱100%可用。 |
+| 成套1 IIS D＋app C＋vdir/configSource E | 完整typed path證據→C/D scope→mapped Desired／configSource精確檔案及人工coverage；有效繼承未證明不假成功。 |
+| 成套2 task command C＋workdir D＋arguments E | 每action Execute/WorkingDirectory型別映射；Arguments/動態/COM明列原證據與人工，不只搬啟動器。 |
+| 成套3 hidden/disabled/task folder/shared pool | 完整XML/folder/security→共享consumer審閱→停用staging→另核准啟用。 |
+| 成套4 C成功D失敗 | trusted D匯入/current native readback→必要相依未全數完成不放行；hash/ACL/access失敗分欄。 |
+| 成套5 role/module/COM/secret/schema缺少 | preparation＋Missing/Opaque/ManualWorkflow→責任及處置；不能以註冊成功代替readback/執行。 |
+| 成套6 缺磁碟或衝突 | physical proof/placement→拒絕未知磁碟/既有外部物件；重映射需明確審閱後重新預覽。 |
+| 成套7 C→target非C／非C→targetC | 來源實體volume決定通道，target依核准位置；兩通道共用實體目的保護。 |
+| 成套8 部分/final/重查/回退 | item generation/完整base→同輪freeze→staged/readback→activation→BusinessFinal；僅工具持有prior回復。 |
+| 邊界20 映射真正consumer | typed Desired/readback核對目標值，原bytes分存；opaque仍人工。 |
+| 邊界21 共享/排他 | 未選consumer仍揭露；C/D共同physical reservation，無法證明則拒絕。 |
+| 邊界22 零C | 控制材料/設定/D仍為操作，僅全有效集合零才NoOp。 |
+| 邊界23 啟用/業務 | 原停用不預設啟用；BusinessFinal在Activated後，失敗保留未接受與回退證據。 |
+| 邊界24 OSProvided | independent baseline＋兩端完整XML/security/provenance；同名/前綴不足，target漂移拒絕。 |
+| 邊界25 清理/續跑競爭 | preview revision＋活躍job/共享材料引用在鎖內重查，未知保留。 |
+
+上述16＋6案例是逐子句的操作接線與隔離反例覆蓋核對，未冒稱22個完整Server端到端案例均已執行。可測整合缺口繼續補驗；外部證據由環境探測與企業業務驗收補齊。
+### R3 最終功能補齊段落 — 2026-10-11
+
+固定快照 final-affd1914 的修改相依已定向驗證：IIS coverage 37、OSProvided 33、Core文字表單17、ReviewForms33、Reports39、Comparison30、Contracts28及全部R3原生核心測試雙引擎PASS。UI producer hash修正另以 final-ui-f6bf95c 快照 Node16/16、Edge mocked API反例、HtmlConsole／EntryPoint／Qualification／MigrationPipeline／OperationRequests雙引擎10次PASS；中文TextConsole補BOM後ScriptEncoding雙引擎186檔PASS。Server runner回退fixture基準時序修正以 rollback固定快照雙引擎12項PASS，保留父ACL傳播漂移拒絕。全量104支回歸仍在執行；目錄套用後末段檔案讀回與D importer複合驗證另段補驗，未用本段局部PASS宣布F結束。

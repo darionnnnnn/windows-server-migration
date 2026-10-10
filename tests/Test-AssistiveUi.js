@@ -105,6 +105,10 @@ test('every backend operation has a Chinese label and a source, manager or targe
     assert.ok(['Source', 'Manager', 'Target'].includes(ui.actionGroup(action)));
   });
   assert.equal(ui.actionGroup('SourceInventory'), 'Source');
+  assert.equal(ui.actionGroup('OsProvidedCapture'), 'Source');
+  assert.equal(ui.actionGroup('OsProvidedBaseline'), 'Manager');
+  assert.equal(ui.actionGroup('OsProvidedReview'), 'Manager');
+  assert.equal(ui.actionGroup('OsProvidedSubmit'), 'Manager');
   assert.equal(ui.actionGroup('SpecReview'), 'Manager');
   assert.equal(ui.actionGroup('TargetSnapshot'), 'Target');
   assert.equal(ui.actionGroup('PreparationPreview'), 'Target');
@@ -118,6 +122,14 @@ test('every backend operation has a Chinese label and a source, manager or targe
   assert.equal(ui.actionLabel('RequirementSubmit'), '提交一般主機需求審閱（進階）');
   assert.equal(ui.actionLabel('PreparationPreview'), '預覽目標準備需求');
   assert.equal(ui.actionLabel('PreparationEvidence'), '匯出準備佐證');
+  for (const [action, label] of Object.entries({ OsProvidedCapture: '擷取 OS 提供排程工作證據', OsProvidedBaseline: '建立 OS 提供排程工作可信基準', OsProvidedReview: '比對 OS 提供排程工作證據', OsProvidedSubmit: '提交 OS 提供排程工作審閱' })) {
+    assert.equal(ui.actionLabel(action), label);
+    const guide = ui.actionGuidance(action, { readOnly: action === 'OsProvidedReview' });
+    assert.match(guide.purpose, /目的：/);
+    assert.match(guide.precondition, /前提：/);
+    assert.match(guide.output, /輸出與下步：/);
+  }
+  assert.match(ui.actionGuidance('OsProvidedSubmit').output, /不代表 vendor verification/);
   assert.equal(ui.parameterLabel('CommandManifestPath'), '命令清單路徑');
   assert.equal(ui.parameterLabel('ManifestPath'), '文件清單路徑');
   assert.match(ui.parameterLabel('UnknownFutureHash'), /進階欄位/);
@@ -207,15 +219,25 @@ test('server values are rendered via textContent and long jobs reconnect/cancel 
   assert.match(appSource, /contextId: state\.session\.contextId/);
 });
 
+test('file view accepts producer readback and conflict hash field names', () => {
+  assert.match(appSource, /r\.observedHash \?\? r\.ObservedHash \?\? r\.readbackHash \?\? r\.ReadbackHash/);
+  assert.match(appSource, /r\.existingTargetHash \?\? r\.ExistingTargetHash \?\? r\.conflictHash \?\? r\.ConflictHash/);
+});
+
 test('spec review projection is allowlisted and strips secret and raw workload fields', () => {
   const ui = makeApp(async () => ({ ok: true, status: 200, json: async () => ({}) }));
   const fields = ui.safeTypedFields({ TypedFields: {
-    TargetPath: 'E:\\Sites\\Portal', Product: 'Portal',
+    TargetPath: 'E:\\Sites\\Portal', Product: 'Portal', WorkloadFieldReviews: [{ FieldPointer: 'IIS/site/Fixture/application[0]/virtualDirectory[0]/@physicalPath', Value: 'E:\\Sites\\Portal', Command: 'must not appear' }],
+    IisBindings: [{ Index: 0, Protocol: 'custom+http', SslFlags: '', SslFlagsPresent: false }],
     Desired: { Enabled: true, Command: 'never show this', Xml: '<task>never show</task>' },
     Password: 'never show this', UnknownField: 'not typed'
   } });
-  assert.deepEqual(JSON.parse(JSON.stringify(fields)), { TargetPath: 'E:\\Sites\\Portal', Product: 'Portal' });
+  assert.deepEqual(JSON.parse(JSON.stringify(fields)), { TargetPath: 'E:\\Sites\\Portal', Product: 'Portal', WorkloadFieldReviews: [{ FieldPointer: 'IIS/site/Fixture/application[0]/virtualDirectory[0]/@physicalPath', Value: 'E:\\Sites\\Portal' }], IisBindings: [{ Index: 0, Protocol: 'custom+http', SslFlags: '', SslFlagsPresent: false }] });
   assert.match(appSource, /review\.WorkloadPathReferences/);
+  assert.match(appSource, /appendWorkloadPathReview/);
+  assert.match(appSource, /safe source path|安全來源路徑/);
+  assert.match(appSource, /SslFlagsPresent/);
+  assert.match(appSource, /DifferentIdentityRequiresReview/);
   assert.match(htmlSource, /spec-review-pointers/);
   assert.match(appSource, /未包含原始 XML 或 secrets/);
   assert.match(appSource, /ExpectedDecisionRevision/);

@@ -44,7 +44,7 @@ function Set-WsmHtmlRestoreChoice {
         if($catalog.Assistive.Revision -ne $ExpectedRevision){throw 'Review changed.'}
         if($projection.SourceSnapshotHash -ine $catalog.Assistive.SourceSnapshot.SHA256 -or -not $catalog.Assistive.TargetCurrent -or $projection.TargetSnapshotHash -ine $catalog.Assistive.TargetCurrent.SHA256 -or $projection.SelectionRevision -ne $catalog.Assistive.Selections.Revision){throw 'Review changed. Refresh target comparison.'}
         if(-not $catalog.Assistive.Comparison){$catalog.Assistive.Comparison=$projection;$catalog.Assistive.ComparisonRevisionCounter=$projection.Revision}
-        $record=[pscustomobject]@{Choice=$Choice;ComparisonRevision=$catalog.Assistive.Comparison.Revision;SourceSnapshotHash=$catalog.Assistive.SourceSnapshot.SHA256;TargetSnapshotHash=$catalog.Assistive.TargetCurrent.SHA256;SelectionRevision=$catalog.Assistive.Selections.Revision;Owner=[Environment]::UserName;CreatedUtc=(Get-WsmUtc);ExecutionAuthorized=$false}
+        $record=[pscustomobject]@{Choice=$Choice;ComparisonRevision=$catalog.Assistive.Comparison.Revision;SourceSnapshotHash=$catalog.Assistive.SourceSnapshot.SHA256;TargetSnapshotHash=$catalog.Assistive.TargetCurrent.SHA256;SelectionRevision=$catalog.Assistive.Selections.Revision;Owner=[Environment]::UserName;Actor=(Get-WsmExecutionActor);CreatedUtc=(Get-WsmUtc);ExecutionAuthorized=$false}
         $catalog.Assistive.RestoreDecisionHistory=@($catalog.Assistive.RestoreDecisionHistory)+@($record)
         $catalog.Assistive.Revision++;$catalog.Assistive.UpdatedUtc=Get-WsmUtc
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $catalog
@@ -79,13 +79,13 @@ function Get-WsmHtmlObjectSchema([string]$Name) {
     $schemas.SourcePeerShareProofReferences=@{Path=@{type='path';required=$true};SHA256=@{type='string';required=$true};PeerFingerprint=@{type='string';required=$true}}
     $schemas.Entries=@{ItemId=@{type='string';required=$true};SourcePath=@{type='path';required=$true};TargetPath=@{type='path';required=$true};Channel=@{type='enum';options=@('C','NonC');required=$true};ConsumerRefs=@{type='stringArray';required=$true};AccountMap=@{type='map';required=$true}}
     $configFile=@{properties=@{RelativePath=@{type='path';required=$true};SHA256=@{type='string';required=$true};Owner=@{type='string';required=$true};Evidence=@{type='string';required=$true}}}
-    $reviewValue=@{properties=@{FieldPointer=@{type='string';required=$true};Value=@{type='string';required=$true;allowEmpty=$true;sensitive=$true}}}
-    $bindings=@{properties=@{Index=@{type='integer';required=$true};Protocol=@{type='enum';options=@('http','https');required=$true};BindingInformation=@{type='string';required=$true};CertificateHash=@{type='string';required=$true;allowEmpty=$true};CertificateStoreName=@{type='string';required=$true;allowEmpty=$true};SslFlags=@{type='integer';required=$true}}}
+    $reviewValue=@{properties=@{FieldPointer=@{type='string';required=$true};Value=@{type='string';required=$true;allowEmpty=$true}}}
+    $bindings=@{properties=@{Index=@{type='integer';required=$true};Protocol=@{type='string';required=$true};BindingInformation=@{type='string';required=$true};CertificateHash=@{type='string';required=$true;allowEmpty=$true};CertificateStoreName=@{type='string';required=$true;allowEmpty=$true};SslFlags=@{type='string';required=$true;allowEmpty=$true};SslFlagsPresent=@{type='boolean';required=$true}}}
     $apps=@{properties=@{Index=@{type='integer';required=$true};ApplicationPath=@{type='path';required=$true};PoolName=@{type='string';required=$true}}}
     $schemas.Fields=@{TargetPath=@{type='path'};TransferChannel=@{type='enum';options=@('C','NonC','External')};ContentSelection=@{type='enum';options=@('ExactFiles','WholeScope')};ExcludedRelativePaths=@{type='stringArray'};Consistency=@{type='enum';options=@('OwnerFreeze','Immutable')};Metadata=@{type='enum';options=@('DaclOwner','DaclOwnerSacl')};ConflictPolicy=@{type='enum';options=@('Block')};ConfigFiles=@{type='objectArray';schema=$configFile};DesiredFinalState=@{type='enum';options=@('Disabled','Enabled')};BusinessChecks=@{type='stringArray'};Product=@{type='string'};Procedure=@{type='string'};Artifacts=@{type='stringArray'};CatchUpPolicy=@{type='enum';options=@('PreserveSourceSettings','SkipMissedRuns','DedicatedManualCatchUp')};WorkloadFieldReviews=@{type='objectArray';schema=$reviewValue};IisBindings=@{type='objectArray';schema=$bindings};IisApplicationPools=@{type='objectArray';schema=$apps};IisPoolSettings=@{type='map'};ActivationOwner=@{type='string'};ActivationReason=@{type='string'};PrincipalUser=@{type='string'}}
     $schemas.Fields.SharedResourceReviewReasons=@{type='objectArray';schema=@{properties=@{ResourceItemId=@{type='string';required=$true};ConsumerItemIds=@{type='stringArray';required=$true};Owner=@{type='string';required=$true};Reason=@{type='string';required=$true}}}}
     $schemas.Fields.ActivationPolicyFieldPointer=@{type='string'}
-    $schemas.RequirementDecisions=@{properties=@{RequirementId=@{type='string';required=$true};Decision=@{type='enum';options=@('Pending','Required','NotNeeded');required=$true};Owner=@{type='string';required=$true};DecisionReason=@{type='string';required=$true};DecisionEvidence=@{type='string';required=$true}}}
+    $schemas.RequirementDecisions=[ordered]@{RequirementId=@{type='string';required=$true};Decision=@{type='enum';options=@('Pending','Required','NotNeeded');required=$true};Owner=@{type='string';required=$true};DecisionReason=@{type='string';required=$true};DecisionEvidence=@{type='string';required=$true}}
     $schemas.Fields.IisConfigChanges=@{type='objectArray';schema=@{properties=@{FieldPointer=@{type='string';required=$true};Operation=@{type='enum';required=$true;options=@('SetAttribute','AddElement','RemoveElement')};ElementName=@{type='string';required=$true};KeyAttributes=@{type='objectArray';schema=@{properties=@{Name=@{type='string';required=$true};Value=@{type='string';required=$true;sensitive=$true;allowEmpty=$true}}}};AttributeName=@{type='string';required=$true;allowEmpty=$true};BeforeValue=@{type='string';required=$true;sensitive=$true;allowEmpty=$true};AfterValue=@{type='string';required=$true;sensitive=$true;allowEmpty=$true}}}}
     $schemas.WindowsSettingDecisions=@{SettingId=@{type='string';required=$true};Action=@{type='enum';required=$true;options=@('KeepTarget','External','ReviewedMigration')};Owner=@{type='string'};Reason=@{type='string'};Evidence=@{type='string'}}
     $schemas.DispositionDecisions=@{ItemId=@{type='string'};SoftwareId=@{type='string'};ScopeDisposition=@{type='enum';required=$true;options=@('Migrate','Prepare','External','NotNeeded','Reinstall','Portable','KeepCompatible')};Owner=@{type='string';required=$true};Reason=@{type='string';required=$true};Evidence=@{type='string';required=$true}}
@@ -158,8 +158,8 @@ function ConvertTo-WsmHtmlPreview($Result,[string]$Action,[int]$Revision,[string
 }
 
 function Get-WsmHtmlResultProjection($Output) {
-    $fields=@('Status','Stage','Path','SHA256','Hash','ReportPath','HtmlPath','ManifestPath','ManifestHash','Archive','ArchiveSHA256','RunId','PairId','Generation','Revision','ObservedChecks','PendingChecks','SpecPath','SpecHash','ReceiptPath','ReceiptHash','DecisionRevision','AssistiveRevision','SelectionRevision','TargetPhysicalId','RegistryRevision','ResourceKey','DocumentManifestPath','DocumentManifestHash','DocumentId','BundlePath','MemberCount','Valid','ProbeStatus','IndexPath','Kind','ExpectedRevision','PreviewPath','PreviewFileHash','PreviewHash','ReviewWindowsSettings','RowCount','SourceInventoryPath','SourceInventoryHash','TargetInventoryPath','TargetInventoryHash','GeneratedDecisionsPath','GeneratedDecisionsHash','GeneratedRequirementsPath','GeneratedRequirementsHash','FailureCode','ReviewHash')
-    @(foreach($row in @($Output)){$safe=[ordered]@{};foreach($field in $fields){if($row -and $row.PSObject.Properties[$field]){$value=$row.$field;if($value -is [string] -or $value -is [ValueType]){$safe[$field]=$value}}};if($row -and $row.PSObject.Properties['Kind'] -and $row.Kind -cin @('AssistiveWindowsSettingsPreviewOutput','AssistivePreparationPreview','AssistiveRequirementReview')){
+    $fields=@('Status','Stage','Path','SHA256','Hash','ReportPath','HtmlPath','ManifestPath','ManifestHash','Archive','ArchiveSHA256','RunId','PairId','Generation','Revision','ObservedChecks','PendingChecks','SpecPath','SpecHash','ReceiptPath','ReceiptHash','DecisionRevision','AssistiveRevision','SelectionRevision','TargetPhysicalId','RegistryRevision','ResourceKey','DocumentManifestPath','DocumentManifestHash','DocumentId','BundlePath','MemberCount','Valid','ProbeStatus','IndexPath','Kind','ExpectedRevision','PreviewPath','PreviewFileHash','PreviewHash','ReviewWindowsSettings','RowCount','SourceInventoryPath','SourceInventoryHash','TargetInventoryPath','TargetInventoryHash','GeneratedDecisionsPath','GeneratedDecisionsHash','GeneratedRequirementsPath','GeneratedRequirementsHash','FailureCode','ReviewHash','Role','HostFingerprint','TaskPath','TaskName','TaskXmlSHA256','TaskSecuritySHA256','CapturedUtc','RawDefinitionReturned','RawDefinitionsReturned','RawDefinitionsIncluded','ProductionVerified','VendorVerified','ReadinessProof','BusinessAcceptance','ProviderId','Owner','SourceOS','TargetOS','TargetFingerprint','TargetSnapshotHash','TargetSnapshotUtc','SourceTaskXmlSHA256','SourceTaskSecuritySHA256','TargetTaskXmlSHA256','TargetTaskSecuritySHA256','SourceProviderProvenanceReference','TargetProviderProvenanceReference','TrustedBaselinePath','TrustedBaselineHash','TrustedBaselineOwner','SourceBaselineMatched','TargetBaselineMatched','DefinitionsDiffer','OSProvidedEligible','ValuesWithheld','EvidencePath','EvidenceHash','Disposition')
+    @(foreach($row in @($Output)){$safe=[ordered]@{};foreach($field in $fields){if($row -and $row.PSObject.Properties[$field]){$value=$row.$field;if($value -is [string] -or $value -is [ValueType]){$safe[$field]=$value}}};if($row -and $row.PSObject.Properties['ManualReasons']){$safe.ManualReasons=@($row.ManualReasons | Where-Object {$_ -is [string]})};if($row -and $row.PSObject.Properties['Kind'] -and $row.Kind -cin @('AssistiveWindowsSettingsPreviewOutput','AssistivePreparationPreview','AssistiveRequirementReview')){
             $rowFields=if($row.Kind -ceq 'AssistiveWindowsSettingsPreviewOutput'){@('SettingId','SourceItemId','Category','Kind','SettingName','SourceValueHash','TargetValueHash','TargetDiff','ControlSource','SupportedActions','DefaultAction','RequiredConsumerItemIds')}else{@('RequirementId','Type','ProviderItemId','ExternalId','ProviderSoftwareId','ExpectedVersion','Architecture','RequiredPhase','Decision','Certainty','ConsumerItemIds','ContextHash')}
             $safe.Rows=@(foreach($entry in @($row.Rows)){$record=[ordered]@{};foreach($field in $rowFields){if($entry.PSObject.Properties[$field]){$value=$entry.$field;if($value -is [string] -or $value -is [ValueType]){$record[$field]=$value}elseif($value -is [array]){$record[$field]=@($value | Where-Object {$_ -is [string]})}}};[pscustomobject]$record})
         };if($safe.Count){[pscustomobject]$safe}})
@@ -203,7 +203,27 @@ function New-WsmHtmlCancellation($Command,$Arguments,[string]$OperationId) {
 
 function Get-WsmHtmlView {
     param([string]$Workspace,[string]$PairId,[string]$View,[string]$Role)
-    if($View -ceq 'actions'){return [pscustomobject]@{actions=@(Get-WsmHtmlActionMetadata $Role)}}
+    if($View -ceq 'actions'){
+        $actions=@(Get-WsmHtmlActionMetadata $Role)
+        if($PairId){
+            $decisionRevision=[int](Get-WsmCatalog $Workspace $PairId).DecisionRevision
+            foreach($action in $actions){
+                $parameterName=switch($action.action){
+                    'OsProvidedCapture' {'DecisionRevision'}
+                    'OsProvidedBaseline' {'ExpectedDecisionRevision'}
+                    'OsProvidedSubmit' {'ExpectedDecisionRevision'}
+                    default {$null}
+                }
+                if($parameterName){
+                    $action | Add-Member NoteProperty nativeRevisionBinding 'DecisionRevision' -Force
+                    $action | Add-Member NoteProperty nativeRevision $decisionRevision -Force
+                    $parameter=@($action.parameters | Where-Object name -CEQ $parameterName | Select-Object -First 1)
+                    if($parameter.Count){$parameter[0] | Add-Member NoteProperty readOnly $true -Force;$parameter[0] | Add-Member NoteProperty value $decisionRevision -Force;$parameter[0].description='由本機核心提供並於預覽與提交時再次核對；請勿以其他 revision 取代。'}
+                }
+            }
+        }
+        return [pscustomobject]@{actions=$actions}
+    }
     if(-not $PairId){return [pscustomobject]@{items=@();metrics=@{discovered=0;selected=0;approved=0;executable=0;pendingOrFailed=0};workloadStatus='NotStarted'}}
     $catalog=Get-WsmCatalog $Workspace $PairId
     $stage=Get-WsmAssistiveReportStageResults $catalog
@@ -216,7 +236,7 @@ function Get-WsmHtmlView {
         software {
                         if(Get-Command Get-WsmAssistiveComparison -ErrorAction SilentlyContinue){
                 $comparison=Get-WsmAssistiveComparison $Workspace $PairId
-                [pscustomobject]@{rows=@(foreach($row in $comparison.Rows){[pscustomobject]@{softwareId=$row.SoftwareId;name=$row.Name;sourceVersion=$row.SourceVersion;chosenVersion=$row.ChosenVersion;observedVersion=$row.ObservedTargetVersion;status=$row.Status;manualAction=$row.Reason;versionChoices=@([pscustomobject]@{label=$row.SourceVersion;value=$row.SourceVersion});versionSelectionAction='SetSoftwareVersion'}});manualPreparation=$comparison.ManualPreparation;comparisonRevision=$comparison.Revision}
+                [pscustomobject]@{rows=@(foreach($row in $comparison.Rows){[pscustomobject]@{softwareId=$row.SoftwareId;name=$row.Name;sourceVersion=$row.SourceVersion;chosenVersion=$row.ChosenVersion;observedVersion=$row.ObservedTargetVersion;status=$row.Status;manualAction=$row.Reason;sourceAccountContext=(Get-WsmConfirmationValue $row 'SourceAccountContext');sourceSID=(Get-WsmConfirmationValue $row 'SourceSID');targetAccountContext=(Get-WsmConfirmationValue $row 'TargetAccountContext');targetSID=(Get-WsmConfirmationValue $row 'TargetSID');accountScopeStatus=(Get-WsmConfirmationValue $row 'AccountScopeStatus');versionChoices=@([pscustomobject]@{label=$row.SourceVersion;value=$row.SourceVersion});versionSelectionAction='SetSoftwareVersion'}});manualPreparation=$comparison.ManualPreparation;comparisonRevision=$comparison.Revision}
             }else{[pscustomobject]@{rows=@()}}
         }
         files {
@@ -379,6 +399,19 @@ function Start-WsmHtmlConsole {
                         else{
                             $command=Get-Command $map[$body.action] -CommandType Function
                             foreach($binding in @(@('Workspace',$Workspace),@('PairId',$PairId))){if($command.Parameters.ContainsKey($binding[0]) -and -not $body.args.PSObject.Properties[$binding[0]]){$body.args | Add-Member NoteProperty $binding[0] $binding[1]}}
+                            $nativeRevisionParameter=switch([string]$body.action){
+                                'OsProvidedCapture' {'DecisionRevision'}
+                                'OsProvidedBaseline' {'ExpectedDecisionRevision'}
+                                'OsProvidedSubmit' {'ExpectedDecisionRevision'}
+                                default {$null}
+                            }
+                            if($nativeRevisionParameter){
+                                if(-not $PairId){throw 'OSProvided actions require a current pair and native catalog revision.'}
+                                $nativeDecisionRevision=[int](Get-WsmCatalog $Workspace $PairId).DecisionRevision
+                                $provided=$body.args.PSObject.Properties[$nativeRevisionParameter]
+                                if($provided){$parsedRevision=0;if(-not [int]::TryParse([string]$provided.Value,[ref]$parsedRevision) -or $parsedRevision -ne $nativeDecisionRevision){$status=409;throw 'Review changed: native decision revision no longer matches the reviewed operation.'}}
+                                else{$body.args | Add-Member NoteProperty $nativeRevisionParameter $nativeDecisionRevision}
+                            }
                             if($command.Parameters.ContainsKey('ExpectedRevision') -and -not $body.args.PSObject.Properties['ExpectedRevision']){
                                 if($command.Name -in @('Reserve-WsmAssistiveResource','Set-WsmAssistiveResourceEvidence','Release-WsmAssistiveResource','Set-WsmAssistiveMaterialClosed','Invoke-WsmAssistiveCleanup')){throw 'Resource registry revision from the reviewed preview is required.'}
                                 $nativeRevision=$revision
@@ -407,13 +440,13 @@ function Start-WsmHtmlConsole {
                                 }
                                 elseif($jobs.ContainsKey($body.operationId)){throw 'Operation ID already used.'} elseif(@($jobs.Values | Where-Object {$_.Record.status -in @('Running','CancelRequested')}).Count -ge 8){$status=409;$response=@{message='The local worker limit is reached; wait for an active job to finish before retrying.'}}
                                 elseif($body.action -in @('SaveSelection','SetRestoreChoice','SetSoftwareVersion')){
-                                    $record=[pscustomobject]@{jobId=$body.operationId;action=$body.action;idempotencyKey=[string]$body.idempotencyKey;RequestHash=$hash;status='Running';StartedUtc=(Get-WsmUtc);CompletedUtc=$null;canCancel=$false}
+                                    $record=[pscustomobject]@{jobId=$body.operationId;action=$body.action;idempotencyKey=[string]$body.idempotencyKey;RequestHash=$hash;Actor=(Get-WsmExecutionActor);status='Running';StartedUtc=(Get-WsmUtc);CompletedUtc=$null;canCancel=$false}
                                     $recordPath=Join-Path $consoleRoot ($body.operationId+'.json');Write-WsmJson $recordPath $record;$jobs[$body.operationId]=@{Record=$record;Path=$recordPath;Handle=$null;PowerShell=$null;CancellationToken=$null};$keys[$body.idempotencyKey]=@{Hash=$hash;Id=$body.operationId}
                                     try{$arguments.ExpectedRevision=$revision;$result=& $command @arguments;$record.status='Succeeded';$record.CompletedUtc=Get-WsmUtc;Write-WsmJson $recordPath $record;$response=@{revision=(Get-WsmHtmlRevision $Workspace $PairId);status='Saved'}}
                                     catch{$record.status='Failed';$record.CompletedUtc=Get-WsmUtc;Write-WsmJson $recordPath $record;throw}
                                 }
                                 else{
-                                    $record=[pscustomobject]@{jobId=$body.operationId;action=$body.action;idempotencyKey=[string]$body.idempotencyKey;RequestHash=$hash;status='Running';StartedUtc=(Get-WsmUtc);CompletedUtc=$null;canCancel=$false}
+                                    $record=[pscustomobject]@{jobId=$body.operationId;action=$body.action;idempotencyKey=[string]$body.idempotencyKey;RequestHash=$hash;Actor=(Get-WsmExecutionActor);status='Running';StartedUtc=(Get-WsmUtc);CompletedUtc=$null;canCancel=$false}
                                     $recordPath=Join-Path $consoleRoot ($body.operationId+'.json')
                                     $cancellation=New-WsmHtmlCancellation $command $arguments $body.operationId
                                     if($command.Parameters.ContainsKey('CancellationToken') -and @($command.Parameters['CancellationToken'].Attributes | Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.Mandatory}).Count -and -not $cancellation){throw 'This operation requires a hash-bound safe cancellation context before submission.'}

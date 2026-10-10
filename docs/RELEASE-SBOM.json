@@ -53,6 +53,21 @@
       "bundled": false,
       "supplier": "Microsoft",
       "scope": "ZIP package and release handling"
+    },
+    {
+      "type": "library",
+      "name": ".NET TcpListener / cryptography / filesystem APIs",
+      "version": "Host supplied",
+      "bundled": false,
+      "supplier": "Microsoft",
+      "scope": "Native local execution; exact host CLR/runtime captured in release and environment probes"
+    },
+    {
+      "type": "file",
+      "name": "Offline HTML/CSS/JavaScript console and portable documents",
+      "version": "0.4.0",
+      "bundled": true,
+      "scope": "Local assets only; per-file SHA256 in release.json; Node.js is a development test dependency, not an operator runtime"
     }
   ],
   "thirdPartyBundledComponents": [],

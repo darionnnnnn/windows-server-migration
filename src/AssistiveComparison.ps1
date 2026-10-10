@@ -14,6 +14,7 @@ function Get-WsmAssistiveSelectionIndex($Catalog) {
 }
 
 function Get-WsmAssistiveWorkloadReviewIssues($Catalog,$Items) {
+    Get-WsmIisConfigurationCoverageIssues $Catalog $Items
     $issues=New-Object 'System.Collections.Generic.List[object]'
     $included=@{};foreach($item in $Items){$included[[string]$item.ItemId]=$item}
     if(-not $Catalog.PSObject.Properties['WorkloadDiscovery']){return}
@@ -62,6 +63,11 @@ function Get-WsmAssistiveReviewIssues($Catalog) {
         if(-not $selectionIndex.ContainsKey([string]$item.ItemId)){throw (New-WsmContractError 'Assistive selection is missing for a catalog item.')}
         $selection=$selectionIndex[[string]$item.ItemId]
         if(-not $selection.Selected){continue}
+        $proofTargetHash='';$proofTargetFingerprint=''
+        if($Catalog.Assistive.TargetCurrent){$proofTargetHash=[string]$Catalog.Assistive.TargetCurrent.SHA256;if($Catalog.Assistive.TargetCurrent.PSObject.Properties['Fingerprint']){$proofTargetFingerprint=[string]$Catalog.Assistive.TargetCurrent.Fingerprint}}
+        foreach($proofIssue in @(Get-WsmAssistiveOsProvidedIssues -CatalogOrPlan $Catalog -ItemId $item.ItemId -TargetFingerprint $proofTargetFingerprint -TargetSnapshotHash $proofTargetHash)){
+            [pscustomobject]@{ItemId=$item.ItemId;Gate='ReviewComplete';Issue=$proofIssue.Issue}
+        }
         if($item.Decision -ceq 'Pending'){
             [pscustomobject]@{ItemId=$item.ItemId;Gate='ReviewComplete';Issue='Selected item needs an explicit Include or Exclude decision.'}
             continue

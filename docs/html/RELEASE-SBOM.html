@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-path" content="docs/RELEASE-SBOM.json"><meta name="source-sha256" content="f86167499a8f7477de10314a8cc8be345de2cf4d893a9b0ab310031097bf76f0"><title>RELEASE-SBOM</title><link rel="stylesheet" href="manual.css"></head><body><main><nav><a href="index.html">文件中心</a> · <a href="../ASSISTIVE-OPERATIONS.html">第三輪操作手冊</a></nav><p class="notice">離線文件快照；此頁不會執行搬移。實際結果及環境探測與正式資格分別確認。</p><h1>RELEASE-SBOM</h1><pre><code>{
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-path" content="docs/RELEASE-SBOM.json"><meta name="source-sha256" content="d31e602d504e509a62d928c07e2fcd81cdae382a32c6244ffe781d1e24d64bca"><title>RELEASE-SBOM</title><link rel="stylesheet" href="manual.css"></head><body><main><nav><a href="index.html">文件中心</a> · <a href="../ASSISTIVE-OPERATIONS.html">第三輪操作手冊</a></nav><p class="notice">離線文件快照；此頁不會執行搬移。實際結果及環境探測與正式資格分別確認。</p><h1>RELEASE-SBOM</h1><pre><code>{
   &quot;bomFormat&quot;: &quot;ProjectSBOM-1&quot;,
   &quot;specVersion&quot;: &quot;1.0&quot;,
   &quot;version&quot;: 1,
@@ -53,6 +53,21 @@
       &quot;bundled&quot;: false,
       &quot;supplier&quot;: &quot;Microsoft&quot;,
       &quot;scope&quot;: &quot;ZIP package and release handling&quot;
+    },
+    {
+      &quot;type&quot;: &quot;library&quot;,
+      &quot;name&quot;: &quot;.NET TcpListener / cryptography / filesystem APIs&quot;,
+      &quot;version&quot;: &quot;Host supplied&quot;,
+      &quot;bundled&quot;: false,
+      &quot;supplier&quot;: &quot;Microsoft&quot;,
+      &quot;scope&quot;: &quot;Native local execution; exact host CLR/runtime captured in release and environment probes&quot;
+    },
+    {
+      &quot;type&quot;: &quot;file&quot;,
+      &quot;name&quot;: &quot;Offline HTML/CSS/JavaScript console and portable documents&quot;,
+      &quot;version&quot;: &quot;0.4.0&quot;,
+      &quot;bundled&quot;: true,
+      &quot;scope&quot;: &quot;Local assets only; per-file SHA256 in release.json; Node.js is a development test dependency, not an operator runtime&quot;
     }
   ],
   &quot;thirdPartyBundledComponents&quot;: [],
