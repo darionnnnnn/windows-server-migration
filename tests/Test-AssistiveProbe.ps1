@@ -16,7 +16,26 @@ try{
         $workspace=Join-Path $root 'manager';Initialize-WsmWorkspace $workspace | Out-Null
         $catalog=Import-WsmInventory $workspace $inventoryPath (Get-FileHash $inventoryPath).Hash 'target'
         $catalog=Enable-WsmAssistiveMode $workspace $catalog.PairId $catalog.DecisionRevision
+        $script:probeFixturePreflight=Get-WsmPreflight
+        $script:probeFixtureInventoryPath=$inventoryPath
+        $script:probeFixtureCaptureCalls=0
+        function Get-WsmPreflight {
+            $platform=$script:probeFixturePreflight.PSObject.Copy()
+            $platform.IsServer=$true;$platform.Administrator=$true;$platform.Is64Bit=$true
+            $platform
+        }
+        function Export-WsmInventory($OutputDirectory,[switch]$IncludeSoftwareCatalog,[switch]$DeepDiscovery){
+            $script:probeFixtureCaptureCalls++
+            [void][IO.Directory]::CreateDirectory($OutputDirectory)
+            $path=Join-Path $OutputDirectory 'fixture-native.json'
+            [IO.File]::Copy($script:probeFixtureInventoryPath,$path,$false)
+            [pscustomobject]@{Path=$path;SHA256=(Get-FileHash -LiteralPath $path).Hash}
+        }
         $result=Export-WsmAssistiveEnvironmentProbe -OutputDirectory (Join-Path $root 'probes') -Role Source -PairId $catalog.PairId
+        if($script:probeFixtureCaptureCalls -ne 0){throw 'Capability-only probe implicitly ran whole-Server inventory on an elevated Server fixture.'}
+        $capture=Export-WsmAssistiveEnvironmentProbe -OutputDirectory (Join-Path $root 'capture-probes') -Role Source -PairId $catalog.PairId -CaptureInventory
+        $captured=Read-WsmTrustedJson $capture.Path $capture.SHA256
+        if($script:probeFixtureCaptureCalls -ne 1 -or @($captured.Checks|Where-Object {$_.CheckId -ceq 'InventoryCapture' -and $_.Status -ceq 'PASS'}).Count -ne 1 -or -not [IO.File]::Exists((Join-Path ([IO.Path]::GetDirectoryName($capture.Path)) $captured.InventoryReference))){throw 'Explicit inventory opt-in did not preserve the producer bytes and capture observation.'}
         $probe=Read-WsmTrustedJson $result.Path $result.SHA256
         if($probe.Mode -cne 'ReadOnly' -or $probe.ProductionQualified -or $probe.BusinessValidated){throw 'Probe falsely promoted observation to qualification.'}
         if(@($probe.Checks|Where-Object {$_.CheckId -eq 'NativeTaskReadback' -and $_.Status -eq 'NotTested'}).Count -ne 1){throw 'Missing explicit native task validation requirement.'}

@@ -1,5 +1,5 @@
 function Export-WsmAssistiveEnvironmentProbe {
-    [CmdletBinding()]param([string]$OutputDirectory,[ValidateSet('Source','Target','Manager')][string]$Role,[string]$PairId,[string]$PlanHash,[switch]$DeepDiscovery)
+    [CmdletBinding()]param([string]$OutputDirectory,[ValidateSet('Source','Target','Manager')][string]$Role,[string]$PairId,[string]$PlanHash,[switch]$DeepDiscovery,[switch]$CaptureInventory)
     Assert-WsmNoReparse $OutputDirectory
     if(-not [IO.Directory]::Exists($OutputDirectory)){[void][IO.Directory]::CreateDirectory($OutputDirectory);Protect-WsmDirectory $OutputDirectory}
     $runId=[Guid]::NewGuid().ToString();$root=Join-Path $OutputDirectory $runId
@@ -13,7 +13,7 @@ function Export-WsmAssistiveEnvironmentProbe {
         try{[pscustomobject]@{Root=$drive.Root;PhysicalIdentity=(Get-WsmPhysicalPath $drive.Root);AvailableBytes=(Get-WsmAvailableBytes $drive.Root);Status='PASS'}}catch{[pscustomobject]@{Root=$drive.Root;PhysicalIdentity='';AvailableBytes=$null;Status='NotTested'}}
     })
     $inventoryReference=$null;$inventoryHash='';$workload=$null
-    if($platform -and $platform.IsServer -and $platform.Administrator -and $platform.Is64Bit -and $Role -ne 'Manager'){
+    if(($CaptureInventory -or $DeepDiscovery) -and $platform -and $platform.IsServer -and $platform.Administrator -and $platform.Is64Bit -and $Role -ne 'Manager'){
         try{
             $inventoryResult=Export-WsmInventory -OutputDirectory (Join-Path $root 'protected-inventory') -IncludeSoftwareCatalog -DeepDiscovery:$DeepDiscovery
             $inventory=Read-WsmTrustedJson $inventoryResult.Path $inventoryResult.SHA256
@@ -22,7 +22,7 @@ function Export-WsmAssistiveEnvironmentProbe {
             foreach($item in $inventory.Items){if($item.Status -ne 'Success'){$checks.Add([pscustomobject]@{CheckId=('Inventory.'+$item.ItemId);Status='NotTested';Evidence=('Collector status '+$item.Status+'; protected inventory contains the original evidence.')})}}
             $checks.Add([pscustomobject]@{CheckId='InventoryCapture';Status='PASS';Evidence='Full native inventory bytes retained and hashed. Coverage gaps remain explicit.'})
         }catch{$checks.Add([pscustomobject]@{CheckId='InventoryCapture';Status='NotTested';Evidence='Inventory capture failed. Run elevated on the correct Server with role modules available.'})}
-    }else{$checks.Add([pscustomobject]@{CheckId='InventoryCapture';Status='NotTested';Evidence='Source/Target capture requires elevated 64-bit Windows Server; Manager only probes its local capabilities.'})}
+    }else{$checks.Add([pscustomobject]@{CheckId='InventoryCapture';Status='NotTested';Evidence='Capability-only probe does not implicitly enumerate the whole Server. Select CaptureInventory or DeepDiscovery on an elevated 64-bit Source/Target Server to capture native inventory; Manager only probes local capabilities.'})}
     $requirements=@(
         @{Id='NativeIisReadback';How='On an isolated Target, restore a reviewed two-application/two-vdir site and pool, compare full typed settings and paths, then perform approved activation and business validation.'},
         @{Id='NativeTaskReadback';How='On an isolated Target, restore full task XML with two Exec actions, non-Exec actions, hidden settings, principals and complete folder/task security; compare readback while disabled.'},

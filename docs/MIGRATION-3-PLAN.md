@@ -559,3 +559,7 @@ Support matrix and release SBOM JSON references now resolve to complete safely e
 ### R3 決策與帳號審閱驗證段落 — 2026-10-11
 
 跨主機帳號差異、實際 TargetPath 投影及原生 execution actor 的完整相依改動已獨立驗證。不可變快照 review-648bb0fb 的 Integrity、Comparison、EnvironmentConfirmation（2501列）、Contracts、AdvancedReview、BulkMigrationSpecs、WindowsSettingsReview、GeneralHostGates、FleetExecutionBindings、TargetPreparation 在 WinPS 5.1 與 PS7 共20次全部通過；其餘最終 IIS／OSProvided／UI 修改仍待下一段固定快照驗證。
+
+CI 反查：U commit 的 GitHub Server runner 因 Probe 契約測試隱含完整盤點而超過30分鐘，該次取消不計PASS。EnvironmentProbe 改為預設能力探測，完整盤點需 CaptureInventory／DeepDiscovery 明確選用；模擬Server預設不呼叫、明確選用才呼叫的兩引擎反例已通過，仍須固定快照與遠端CI確認。
+
+Probe段落固定快照驗證：wsm-r3-probe-40ffc4daddf0493487aa8e6c37a85d43，兩引擎 Test-AssistiveProbe 全部通過。此段僅能力探測預設／完整盤點明確選用及反例，不含稍後IIS／OSProvided／UI最終實作。
