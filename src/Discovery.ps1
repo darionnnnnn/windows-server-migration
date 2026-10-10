@@ -84,9 +84,11 @@ function Get-WsmPathCandidates([string]$HostId,[object[]]$Items) {
             try {
                 $doc=Read-WsmXml $i.Settings.Xml
                 foreach ($node in $doc.SelectNodes('//virtualDirectory[@physicalPath]')) { $paths.Add($node.GetAttribute('physicalPath')) }
+                foreach ($node in $doc.SelectNodes('//*[@configSource]')) { $paths.Add($node.GetAttribute('configSource')) }
                 foreach ($node in $doc.SelectNodes('//application[@applicationPool]')) { $pool=$node.GetAttribute('applicationPool'); $depId=Get-WsmHashText ($HostId+'|Web|IISPool|'+$pool.ToLowerInvariant()); $i.Dependencies=@($i.Dependencies)+@([pscustomobject]@{ ItemId=$depId; Type='Mandatory'; Evidence='IIS applicationPool'; Confidence='Declared' }) }
             } catch { $i.Status='Partial' }
         }
+        if($i.Kind -in @('IISSectionConfig','IISLocationConfig')){try{$doc=Read-WsmXml $i.Settings.Xml;foreach($node in $doc.SelectNodes('//*[@configSource]')){$paths.Add($node.GetAttribute('configSource'))}}catch{$i.Status='Partial'}}
         if ($i.Kind -eq 'Share') { $paths.Add([string]$i.Settings.Definition.Path) }
         foreach ($path in $paths) {
             if (-not $path) { continue }

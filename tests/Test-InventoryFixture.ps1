@@ -47,7 +47,18 @@ $state2=Get-Content (Join-Path $root 'source-state.json') -Raw -Encoding UTF8 | 
 if ($state1.HostId -cne $state2.HostId -or $state2.Revision -ne 2) { throw 'Retry changed source identity or reused evidence.' }
 $inv=Get-Content $result.Path -Raw -Encoding UTF8 | ConvertFrom-Json
 if (@($inv.Items | Where-Object Kind -EQ PathCandidate).Count -ne 2 -or $inv.CategorySummary.Count -ne 12) { throw 'Path candidates or parent classification summary missing.' }
-if (@($inv.Items | Where-Object Kind -EQ ScheduledTask).Count -ne 1 -or @($inv.Items | Where-Object { $_.Category -eq 'Tasks' -and $_.Status -eq 'Failed' }).Count -ne 1) { throw 'Partial collector lost successful child or hid failure.' }
+if (@($inv.Items | Where-Object Kind -EQ ScheduledTask).Count -ne 1) { throw 'Partial collector lost the successful scheduled-task child.' }
+$taskCollectorFailure=@($inv.Items | Where-Object { $_.Category -eq 'Tasks' -and $_.Kind -eq 'CollectorFailure' -and $_.Status -eq 'Failed' -and $_.NaturalKey -eq 'probe:Tasks' })
+if($taskCollectorFailure.Count -ne 1 -or $taskCollectorFailure[0].Settings.ErrorType -cne 'System.Management.Automation.RuntimeException'){throw 'Partial collector hid the original scheduled-task enumeration failure.'}
+$capturedTask=@($inv.Items | Where-Object Kind -EQ ScheduledTask)[0]
+if($capturedTask.Settings.Hidden -cne 'Unknown' -or $capturedTask.Settings.ObservedRuntime.State -cne 'Ready' -or $capturedTask.Settings.ObservedRuntime.PSObject.Properties['LastTaskResult']){throw 'Task optional properties or runtime state were inferred from an unavailable field.'}
+[void][IO.Directory]::CreateDirectory((Join-Path $root 'task-folder-fixture'))
+& $module {function script:Get-ScheduledTask { param($ErrorAction) [pscustomobject]@{ TaskName='fixture'; TaskPath='\'; State='Ready' } }}
+$folderResult=Export-WsmInventory (Join-Path $root 'task-folder-fixture')
+$folderInventory=Get-Content $folderResult.Path -Raw -Encoding UTF8 | ConvertFrom-Json
+if(@($folderInventory.Items | Where-Object Kind -EQ ScheduledTask).Count -ne 1){throw 'Task folder probe failure hid a successful scheduled-task child.'}
+$folderProbeEvidence=@($folderInventory.Items | Where-Object {$_.Category -eq 'Tasks' -and ($_.Kind -eq 'TaskFolder' -or ($_.Kind -eq 'CollectorFailure' -and $_.NaturalKey -eq 'task-folder-enumeration'))})
+if($folderProbeEvidence.Count -lt 1){throw 'Task folder inventory neither captured folder security nor retained its platform/access gap.'}
 if (@($inv.Items | Where-Object Kind -EQ DiscoveryGap).Count -ne 12) { throw 'Discovery scope gaps omitted.' }
 $firewalls=@($inv.Items | Where-Object Kind -EQ FirewallRule)
 if($firewalls.Count -ne 3){throw 'Traced firewall rules were lost during native inventory export.'}
