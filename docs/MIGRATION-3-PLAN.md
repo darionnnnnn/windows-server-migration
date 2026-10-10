@@ -1,4 +1,4 @@
-﻿# 第 3 輪規劃：一般網站／排程主機 EOS 搬移
+# 第 3 輪規劃：一般網站／排程主機 EOS 搬移
 
 日期：2026-10-10。狀態：**實作中：2026-10-10使用者已授權第三輪全部實作，HTML採ui-ux-pro-max；逐段核對／驗證／commit／push，所有Phase須有實際證據才能勾完成。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；上次定案起點：`d674087`；四視角複審基準：`97a98f8`；本次定案基準：`e772b4e`；本次再審基準：`884d65e`。輔助搬移、版本選擇、原路徑保存、預設全選／自訂、HTML／本機 PowerShell／文字備援、C／非 C 分工、不合併、非 IIS 不新增 adapter均沿用。IIS／排程的全部設定、物件及所選相依檔案須成套處理，非 C 路徑同樣還原；特殊能力與實機條件仍明列，不從規劃授權推論已授權實作或解除 production gate。
 
@@ -584,7 +584,7 @@ Probe段落固定快照驗證：wsm-r3-probe-40ffc4daddf0493487aa8e6c37a85d43，
 | R3-12 | 不可變 source plan＋target 選版／比較receipt → restore／qualification；資格含來源與目標版本，舊receipt不能證明新版。 | AssistiveComparison、AssistiveTargetPreparation、Qualification |
 | R3-13 | allowlist request → bounded worker／job → core lock／journal；取消獨立 marker，重連原OperationId，secret不落job。 | HtmlConsole、OperationRequests、CancellationWorkflow；實際loopback另探測 |
 | R3-14 | ReviewComplete 本次有效集合 → ApproveMigrationPlan；無關Pending保留清單，真必需相依仍阻擋。 | AssistiveComparison、AssistiveOsProvided |
-| R3-15 | NonC plan／transfer原生結果 → trusted Manager import → G completion；two-host／volume／scope／hash／freeze／generation不可借舊結果。 | AssistiveNonC、AssistiveRestore、AssistiveStageResults |
+| R3-15 | NonC plan／transfer原生結果 → trusted Manager import → G completion；two-host／volume／scope／hash／freeze／generation不可借舊結果。 | AssistiveNonC、AssistiveWorkloadIntegration（真實Manager／receipt／G consumer）、AssistiveRestore、AssistiveStageResults |
 | R3-16 | AssistiveReports → metadata-only證據索引／相對連結／DocumentManifest → report validator；文件非payload或還原權威，秘密原證據留保護workspace。 | AssistiveReports、HtmlDocumentation |
 | R3-17 | 選取scope＋physical volume → capacity／C-D清單 → 發現、選取、核准、檔案、目錄、bytes、物件及人工分母；未知不記0或100%。 | AssistivePackaging、AssistiveNonC、AssistiveReports |
 | R3-18 | 原生 actor＋Owner聲明／CAS → typed submit／job／History；native principal非browser人員認證，安全projection不輸出XML/SDDL/秘密。 | AssistiveReviewIntegrity、AssistiveReviewForms、AssistiveSettingsForms、HtmlConsole、AssistiveReports |
@@ -647,3 +647,12 @@ Probe段落固定快照驗證：wsm-r3-probe-40ffc4daddf0493487aa8e6c37a85d43，
 Set-WsmFileMetadata 將 ACL／attributes 寫入放在精確時間戳還原之前；保留所有原生讀回條件，Server CI 時間戳差異未放寬。回退 fixture 加 UTC／ticks／deltaTicks 診斷（不輸出 SDDL）。PreflightCancellation 的全域 TEMP 誤判改為每次測試專屬目錄，真正取消／bytes／journal／cleanup 條件保留。
 
 主代理固定快照驗證：metadata-final 的19支測試×2引擎38次PASS；final-undo 的原生／回復／delta／pipeline等14支各兩引擎PASS（runner更正不存在的Journal測試為實際TaskFolderJournal）；最新undo-replay快照的Rollback16、DirectoryReadback8、RecoveryContracts與MigrationPipeline兩引擎8次PASS，以及去除prior重播分支的原生負面反例確認。新增DirectoryReadback納入CI，R3兩引擎不因另一組失敗被取消。非C完整目錄原生時間戳、Manager匯入後receipt／stage閉環及F整輪結果另段繼續，未標整輪完成。
+### R3 非 C 原生 producer／consumer 缺陷補齊 — 2026-10-11
+
+- 主代理反查確認 Inventory／TargetIdentity 的 `MachineGuid|UUID` 指紋與 NonC 原生證明原有 `UUID|Name|Domain` 算法不同；原生 transfer 在正常 sealed plan 下會被身分閘門拒絕。Luna high 統一使用既有 `Get-WsmMachineIdentity`，保留 UUID 可用性與 sealed／peer 精確比對，不自動接受舊 proof；移除測試身分橋接，加入真實本機身分相等、target proof 與舊算法 proof 被真實 core 拒絕的反例。
+- 完整原生目錄測試重現：先還原父目錄 metadata，再建立子檔會改變父目錄 LastWriteTime；舊結果即使逐列 Applied，G 最終讀回仍拒絕。僅對本次建立、journal 持有且非時間 metadata 仍正確的目錄，在搬完後恢復時間並用原生 VerifyOnly 重查；resume 保留建立者旗標，外部既有目錄不改、不合併。結果與 journal 在資源證據／封存前更新。
+- 主代理修正 trusted Manager import：正常 manifest 未有 SourceInventoryHash 時只驗存在欄位；現行 revision／核准必須匹配 sealed plan。匯入 target observation 僅增加 Assistive.Revision，保留 DecisionRevision／Approval，讓真實 ImportStageResult／TargetReceipt 可接續；改核准、舊 CAS、改結果 bytes 及重播均有負面驗證。
+- `Test-AssistiveWorkloadIntegration` 串起真實 catalog／plan／package 驗證、NonC core、原生檔案／目錄 metadata、Manager durable import、G completion、StageResult 匯入及 TargetReceipt export。來源 physical-volume／freeze 部分是隔離證明，不冒稱實際 D 槽跨主機；Windows Server／SMB／IIS/task 原生服務仍 NotTested。實作者兩引擎 45 checks 通過；主代理獨立固定快照 consumer 回歸執行中，原始 PLAN 11 階段未先勾完成。
+- 主代理獨立驗收完成：固定快照 `wsm-r3-nonc-final-fddbceaa8bda42feae62a888dc085354` 的 16 支 consumer 測試兩引擎共 32 PASS；WinPS 最初由 WinPS runner 接到原生 IIS 權限 stderr 導致 runner 中止，改用 PS7 runner 保留 child exit code 後，其剩餘 8 支全部 PASS，未放寬 probe 原生資格。最新 fixture 再由 `wsm-r3-latest-proof` 快照核對 45 Workload／9 DirectoryReadback／16 Rollback／Encoding，兩引擎共 8 PASS。只移除 NonC 最終目錄時間核對的反例快照，在真實整棵目錄測試被「final directory metadata evidence 不符實際時間」拒絕；同一正式 runtime 的正例通過。
+- 最終廣域回歸 `wsm-r3-final-runtime-9e64176f6ead4ea28f46aee1af2a3b06` 的 105 支測試各引擎全 PASS（共 210），Environment fixture=101，DeltaContracts=5,004。該快照早於最後 Recovery／NonC 修正；Recovery 最終 prior/readback／精確重播已有另記 dual 28＋8 checks-scripts 驗證，NonC 以本段 32＋8 PASS 補驗，不冒稱全部結果來自同一 runtime。4GiB 實際大檔資格另列 NotTested，不在 small suite 計數。
+- 遠端 `5460419` R3 CI 兩引擎在 mixed ACL 讀回 fixture 缺檔時失敗，未有 restore row 診斷。fixture 改用明確受保護 current-user／SYSTEM／Administrators 權限，保留刻意的父 ACL 漂移與精確 native assertion，並先輸出 restore result／metadata 錯誤；本機 dual 9 PASS。此 commit 遠端重新驗證仍必須通過，不能用本機綠燈代替 CI 結果。
