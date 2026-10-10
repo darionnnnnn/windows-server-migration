@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>主機搬移工作台｜離線操作指引</title><link rel="stylesheet" href="console.css"></head>
+<body>
+  <a class="skip-link" href="#main">跳至主要內容</a>
+  <header class="topbar"><a class="brand" href="guide.html"><span class="brand-mark" aria-hidden="true">W</span><span>操作指引 <small>Windows Server Migration</small></span></a><span class="session-line">可離線閱讀的啟動與交接說明</span><a class="quiet-button" href="index.html">返回操作工作台</a></header>
+  <main id="main" class="guide-main" tabindex="-1">
+    <p class="eyebrow">本機執行 · 受控範圍 · 可追查交接</p><h1>企業主機搬移操作指引</h1><p class="lede">這份頁面可離線閱讀。只有連到當次本機工具工作階段的操作工作台會提交操作；本指引不執行任何命令。</p>
+    <section class="panel guide-section"><p class="eyebrow">開始前</p><h2>確認執行位置與權限</h2><ol><li>在指定的來源、管理或目標主機上，依本次核准的部署程序啟動 Windows Server Migration PowerShell 入口。</li><li>使用工作所需的 Windows 執行身分與固定 WorkRoot；瀏覽器操作只連到該次程序提供的本機 loopback 頁面。</li><li>確認頁面顯示正確的主機、角色、PairId／波次與工作區。若主機或角色不符，停止操作並通知工作負責人。</li><li>若主機沒有瀏覽器或企業政策禁止 loopback，使用同一入口提供的文字選單與受控離線交換程序；不要另裝瀏覽器或開啟防火牆。</li></ol></section>
+    <section class="panel guide-section"><p class="eyebrow">啟動與文字備援</p><h2>從核准的 PowerShell 入口啟動</h2><p>在已核准的發行資料夾開啟 Windows PowerShell 5.1 或更新版本，使用固定的受控工作區與本次配對；不要在不明來源資料夾或遠端瀏覽器執行。</p><pre class="guide-command"><code>Set-Location 'D:\Approved\WindowsServerMigration'
+.\Start-ServerMigration.ps1 -Action Html -Role Manager -Workspace 'D:\WSM-WorkRoot' -PairId '&lt;本次 PairId&gt;'</code></pre><p>啟動後只使用工具列出的本機網址，並核對頁面上的主機、角色、PairId 與工作區。若瀏覽器未自動開啟，可在同一台主機的受支援瀏覽器輸入該網址；不要將網址轉寄、公開或從另一台電腦連入。</p><p>Windows Server Core、沒有瀏覽器或政策禁止 loopback 時，在同一核准資料夾執行入口文字選單：</p><pre class="guide-command"><code>Set-Location 'D:\Approved\WindowsServerMigration'
+.\Start-ServerMigration.ps1 -Action Menu -Workspace 'D:\WSM-WorkRoot'</code></pre><p>選單提供盤點、審核、報告及遷移階段入口。可信檔案匯入仍須使用獨立取得的 SHA-256；不支援或需型別化參數的操作使用受控文字選單／操作請求程序，不得把 PowerShell 命令貼入 HTML 欄位。Core 備援是本機文字互動流程，需有互動式 PowerShell 輸入；非互動 worker 不會呼叫提示輸入。</p></section>
+    <section class="panel guide-section"><p class="eyebrow">工作順序</p><h2>盤點、確認與交接</h2><ol><li>載入來源／目標現況及完整已發現清單。查看權限缺口、未知項目、外部責任與人工待辦。</li><li>按類別、項目及檔案範圍調整選取。預設選取只表達意願；逐項核准、相依影響與本次可執行狀態另行呈現。</li><li>比較來源版本、使用者選用版本及目標觀測版本。需要安裝的軟體由負責人手動準備，再重新檢查目標。</li><li>檢視原檔保存路徑與產品實際生效路徑。逐檔處理目的衝突、scope 阻擋、C／非 C 分流、typed 設定與未解析引用。</li><li>在操作中心填完所有必要欄位，先產生預覽，再核對受影響項目、待處理狀態與 revision，最後明確確認提交。</li><li>在作業與交接頁查看 OperationId、進度、安全邊界、失敗及取消狀態。網頁關閉不會取消工作；可用同一工作識別碼重新連線。</li></ol></section>
+    <section class="panel guide-section"><p class="eyebrow">準備選擇</p><h2>直接還原或等待手動補裝</h2><p>「直接還原」會先預覽本次可執行的檔案與設定；需要產品 runtime 或 API 的項目保持待處理，不會被算作成功。「等待手動補裝」只保存選擇與待辦，不會安裝軟體，也不會開始還原。軟體安裝後須重新盤點、比較並確認變動。</p></section>
+    <section class="panel guide-section"><p class="eyebrow">操作安全</p><h2>輸入與秘密資料</h2><ul><li>只使用畫面提供的具名操作與型別化欄位。一般 TS 流程不要求手動編輯 JSON、PowerShell 命令或任意路徑下載。</li><li>密碼欄位只在目前頁面的記憶體中暫留；它不會寫入 per-action 草稿、網址、工作清單、報告或瀏覽器儲存。預覽會排除秘密欄位；提交時才傳給當次受控的本機程序，之後需重新輸入。</li><li>工作階段 token 只對當次本機頁面有效；重新啟動程序後請開新頁面，不沿用舊分頁或快照。</li><li>多個視窗發生 revision 衝突時，非秘密草稿會保留；密碼欄位仍只留在目前頁面的輸入框。重新載入最新狀態、再預覽並核對後才提交。</li><li>取消表示送出取消要求，不代表作業已停止。只有工具確認該工作有安全取消邊界時才顯示取消控制；等到畫面記錄實際停止狀態後再安排後續。</li></ul></section>
+    <section class="panel guide-section"><p class="eyebrow">工作負載狀態</p><h2>還原完成不等於切換完成</h2><p>設定／物件、C 檔案、非 C 檔案、配置 readback、隔離 staged 測試、切換核准、啟用與 BusinessFinal 分別追蹤。來源原始啟動政策保留；來源停用的網站或排程不會因為被選取而自動啟用。軟體已安裝、檔案已搬移與業務驗收各自記錄。</p></section>
+    <section class="panel guide-section"><p class="eyebrow">無法操作時</p><h2>連線、權限與恢復</h2><ul><li>工作階段失效或服務停止：回到本機 PowerShell 入口，依權限及 journal 狀態檢查程序後重新啟動；新 session 會使用新 token。</li><li>角色唯讀或權限不足：確認目前角色與 Windows 執行身分，安排具權限操作者處理；責任宣告不是登入認證。</li><li>工作失敗、中斷或結果不一致：保留 WorkRoot 與既有證據，先執行受控 repair／對帳指引，再決定續跑、回退或交接。</li><li>不要刪除未結案、等待處理、delta base、journal、回復或其他 Pair 正在引用的材料。清理前須重新檢查預覽與所有引用。</li></ul></section>
+    <footer class="page-footer"><span>離線操作指引</span><span>請以本次工作包的版本、責任人及核准資料為準</span><a href="index.html">開啟本機操作工作台</a></footer>
+  </main>
+</body>
+</html>

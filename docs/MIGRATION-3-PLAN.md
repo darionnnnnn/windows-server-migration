@@ -542,3 +542,10 @@ Support matrix and release SBOM JSON references now resolve to complete safely e
 - 不覆寫外部檔案；只回復工具持有的逐檔 prior。C／非 C readback 重查 bytes、ACL／owner／time、拓樸與 ADS；拒絕後仍列精確原位置、目的位置及人工處置。RequirementReview 保留完整 server-side 巢狀 Context／SourceProof，操作表單只填決策／責任欄位，並驗 hash／CAS。
 - 驗證：14 支原生／整合測試在 WinPS 5.1、PS7 共 28 次執行全部通過（Contracts、Comparison、Restore、StageResults、Rollback、ReviewForms、SettingsForms、TargetPreparation、Reports、GeneralHostGates、ExternalReadinessEvidence、DeltaWorkflow、Qualification、MigrationPipeline）。最後路徑報告修正另以兩引擎重驗 StageResults 40、Reports 39、NativeReadback 10；Files 25／NonC 32 的實體 ADS 反例亦已雙引擎通過。
 - 這是小範圍檔案、native consumer 及隔離契約證據，未宣稱 IIS／排程服務實機、企業 SMB／PKI／Oracle 或正式資格通過。HTML runtime／全功能瀏覽器整合仍在下一個依賴完整段落驗證，11 Phase 尚未據此全部勾選。
+### R3-U HTML runtime and release segment — 2026-10-10
+
+- 本機 TcpListener 明確綁 127.0.0.1／臨時埠，Host／Origin／memory token、1MiB 請求上限與聚合讀取期限；具名 worker 共用核心／CAS／journal，8 個 worker 上限，取消 marker 與耐久 idempotency／重啟 Interrupted。操作 JS／CSS／HTML 全部納入 runtime fingerprint、發行成員及完整性驗證；Node 只作開發測試。
+- 全功能型別化 HTML 選單、相依／Windows 設定／IIS／排程審閱、可信結果開啟與離線中文操作手冊已接入。手冊產生器含 README、所有頂層現況手冊及 JSON support／SBOM 的 HTML／索引，排除 archive。
+- 不可變快照：HtmlConsole 23、HttpProbe 16、HtmlDocumentation 13，以及 Qualification／EntryPoint／OperationRequests／ScriptEncoding／ReviewForms／SettingsForms 共 9 支在兩引擎 18 次執行全部通過；Node DOM 15/15，Edge mocked API fixture 的 125 列、XSS、320px、鍵盤與審閱預填通過。
+- 本機傳輸中間層會改寫 HTML／CSP，實際 loopback 為 ModifiedTransport／NotTested；原生 parser/writer 與 mocked browser 證據分開，未把它報成實際端到端通過。提供只讀 HttpIntegrityProbe 讓使用者補實機結果。
+- 最後逐條核對又確認 IIS global 分節處置、OSProvided 證據、Core 型別化文字備援及跨主機帳號／原路徑／持久 actor 缺口；仍在本輪補齊，不以本段 PASS 勾全部 Phase。

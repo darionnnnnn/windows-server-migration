@@ -1,0 +1,64 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-path" content="docs/RELEASE-SBOM.json"><meta name="source-sha256" content="f86167499a8f7477de10314a8cc8be345de2cf4d893a9b0ab310031097bf76f0"><title>RELEASE-SBOM</title><link rel="stylesheet" href="manual.css"></head><body><main><nav><a href="index.html">文件中心</a> · <a href="../ASSISTIVE-OPERATIONS.html">第三輪操作手冊</a></nav><p class="notice">離線文件快照；此頁不會執行搬移。實際結果及環境探測與正式資格分別確認。</p><h1>RELEASE-SBOM</h1><pre><code>{
+  &quot;bomFormat&quot;: &quot;ProjectSBOM-1&quot;,
+  &quot;specVersion&quot;: &quot;1.0&quot;,
+  &quot;version&quot;: 1,
+  &quot;metadata&quot;: {
+    &quot;component&quot;: {
+      &quot;type&quot;: &quot;application&quot;,
+      &quot;name&quot;: &quot;Windows Server Migration&quot;,
+      &quot;version&quot;: &quot;0.4.0&quot;,
+      &quot;supplier&quot;: &quot;Project maintainers&quot;,
+      &quot;scope&quot;: &quot;local offline migration tool; production qualification blocked&quot;,
+      &quot;license&quot;: &quot;NOASSERTION; no repository license declared&quot;
+    }
+  },
+  &quot;components&quot;: [
+    {
+      &quot;type&quot;: &quot;application&quot;,
+      &quot;name&quot;: &quot;Windows Server Migration&quot;,
+      &quot;version&quot;: &quot;0.4.0&quot;,
+      &quot;bundled&quot;: true,
+      &quot;purl&quot;: &quot;pkg:generic/windows-server-migration@0.4.0&quot;,
+      &quot;hashes&quot;: &quot;Per-file SHA256 values are in release.json&quot;,
+      &quot;license&quot;: &quot;NOASSERTION; no repository license declared&quot;
+    },
+    {
+      &quot;type&quot;: &quot;platform&quot;,
+      &quot;name&quot;: &quot;Windows PowerShell&quot;,
+      &quot;version&quot;: &quot;5.1 x64&quot;,
+      &quot;bundled&quot;: false,
+      &quot;supplier&quot;: &quot;Microsoft&quot;,
+      &quot;scope&quot;: &quot;Required host runtime; FullLanguage required&quot;
+    },
+    {
+      &quot;type&quot;: &quot;platform&quot;,
+      &quot;name&quot;: &quot;.NET Framework&quot;,
+      &quot;version&quot;: &quot;OS-provided&quot;,
+      &quot;bundled&quot;: false,
+      &quot;supplier&quot;: &quot;Microsoft&quot;,
+      &quot;scope&quot;: &quot;Used through Windows PowerShell and OS APIs; exact servicing level is host-specific&quot;
+    },
+    {
+      &quot;type&quot;: &quot;library&quot;,
+      &quot;name&quot;: &quot;System.Security.Cryptography.Pkcs&quot;,
+      &quot;version&quot;: &quot;OS/runtime-provided&quot;,
+      &quot;bundled&quot;: false,
+      &quot;supplier&quot;: &quot;Microsoft&quot;,
+      &quot;scope&quot;: &quot;Detached CMS verification for qualification and release trust&quot;
+    },
+    {
+      &quot;type&quot;: &quot;library&quot;,
+      &quot;name&quot;: &quot;System.IO.Compression&quot;,
+      &quot;version&quot;: &quot;OS/runtime-provided&quot;,
+      &quot;bundled&quot;: false,
+      &quot;supplier&quot;: &quot;Microsoft&quot;,
+      &quot;scope&quot;: &quot;ZIP package and release handling&quot;
+    }
+  ],
+  &quot;thirdPartyBundledComponents&quot;: [],
+  &quot;limitations&quot;: [
+    &quot;This inventory is a repository-level component list, not a vulnerability scan or supplier attestation.&quot;,
+    &quot;Host roles, modules, certificates, revocation responders, and Oracle client software are not bundled.&quot;,
+    &quot;A release manifest hash establishes byte integrity only; enterprise trust and production support require independent approvals.&quot;
+  ]
+}</code></pre></main></body></html>

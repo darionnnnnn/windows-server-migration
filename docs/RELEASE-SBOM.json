@@ -1,4 +1,4 @@
-﻿{
+{
   "bomFormat": "ProjectSBOM-1",
   "specVersion": "1.0",
   "version": 1,
@@ -6,7 +6,7 @@
     "component": {
       "type": "application",
       "name": "Windows Server Migration",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "supplier": "Project maintainers",
       "scope": "local offline migration tool; production qualification blocked",
       "license": "NOASSERTION; no repository license declared"
@@ -16,9 +16,9 @@
     {
       "type": "application",
       "name": "Windows Server Migration",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "bundled": true,
-      "purl": "pkg:generic/windows-server-migration@0.3.0",
+      "purl": "pkg:generic/windows-server-migration@0.4.0",
       "hashes": "Per-file SHA256 values are in release.json",
       "license": "NOASSERTION; no repository license declared"
     },

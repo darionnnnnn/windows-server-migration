@@ -193,3 +193,29 @@ jobs:
             & $engine -NoProfile -File (Join-Path tests $test)
             if ($LASTEXITCODE -ne 0) { throw ('Failed: ' + $test) }
           }
+  migration-round-three:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        engine: [powershell, pwsh]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assistive producer and consumer contracts
+        shell: pwsh
+        run: |
+          $engine = '${{ matrix.engine }}'
+          foreach ($test in @('Test-AssistiveContracts.ps1','Test-AssistiveComparison.ps1','Test-AssistiveFiles.ps1','Test-AssistivePackaging.ps1','Test-AssistiveNonC.ps1','Test-AssistiveResources.ps1','Test-AssistiveProbe.ps1','Test-AssistiveRestore.ps1','Test-AssistiveRollback.ps1','Test-AssistiveStageResults.ps1','Test-AssistiveNativeReadback.ps1','Test-AssistiveTargetPreparation.ps1','Test-AssistiveReviewForms.ps1','Test-AssistiveSettingsForms.ps1','Test-AssistiveReports.ps1','Test-AssistiveHttpProbe.ps1','Test-HtmlDocumentation.ps1','Test-HtmlConsole.ps1','Test-GeneralHostGates.ps1','Test-Qualification.ps1')) {
+            & $engine -NoProfile -NonInteractive -File (Join-Path tests $test)
+            if ($LASTEXITCODE -ne 0) { throw ('Failed: ' + $test) }
+          }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Offline HTML interaction contracts
+        shell: pwsh
+        run: |
+          node --check src/ui/console.js
+          if ($LASTEXITCODE -ne 0) { throw 'Console syntax failed.' }
+          node tests/Test-AssistiveUi.js
+          if ($LASTEXITCODE -ne 0) { throw 'HTML interaction contracts failed.' }

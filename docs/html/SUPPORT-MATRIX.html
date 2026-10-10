@@ -1,0 +1,44 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-path" content="docs/SUPPORT-MATRIX.json"><meta name="source-sha256" content="e5ad535fee62ffbe99012d889a44562d2caa617fb9c9883ee8d0643074f69f9c"><title>SUPPORT-MATRIX</title><link rel="stylesheet" href="manual.css"></head><body><main><nav><a href="index.html">文件中心</a> · <a href="../ASSISTIVE-OPERATIONS.html">第三輪操作手冊</a></nav><p class="notice">離線文件快照；此頁不會執行搬移。實際結果及環境探測與正式資格分別確認。</p><h1>SUPPORT-MATRIX</h1><pre><code>{
+  &quot;schemaVersion&quot;: 1,
+  &quot;kind&quot;: &quot;SupportMatrix&quot;,
+  &quot;status&quot;: &quot;BlockedNotTested&quot;,
+  &quot;productionExecutionEnabled&quot;: false,
+  &quot;toolVersion&quot;: &quot;0.4.0&quot;,
+  &quot;entries&quot;: [
+    {
+      &quot;scope&quot;: &quot;Windows PowerShell&quot;,
+      &quot;runtime&quot;: &quot;Windows PowerShell 5.1 x64 FullLanguage&quot;,
+      &quot;status&quot;: &quot;Local contract tests; Crypt32 cache-only verifier implemented and negative leaf test passed; no enterprise PKI positive-chain result&quot;,
+      &quot;qualificationRequired&quot;: true
+    },
+    {
+      &quot;scope&quot;: &quot;Windows Server 2016 to Windows Server 2025&quot;,
+      &quot;dimensions&quot;: [&quot;exact build&quot;, &quot;edition&quot;, &quot;InstallationType&quot;, &quot;architecture&quot;, &quot;adapter fingerprint&quot;, &quot;source and target PowerShellVersion/Edition/ProcessArchitecture/LanguageMode/CLRVersion/NETFrameworkRelease&quot;],
+      &quot;status&quot;: &quot;No real host qualification evidence supplied&quot;,
+      &quot;qualificationRequired&quot;: true
+    },
+    {
+      &quot;scope&quot;: &quot;Oracle Client and application consumers&quot;,
+      &quot;dimensions&quot;: [&quot;provider product/version/architecture/Oracle Home/context&quot;, &quot;consumer product/version/architecture/runtime context&quot;],
+      &quot;status&quot;: &quot;No real provider/consumer qualification or database business proof supplied&quot;,
+      &quot;qualificationRequired&quot;: true
+    },
+    {
+      &quot;scope&quot;: &quot;Server roles, runtimes, drivers, agents, and special products&quot;,
+      &quot;status&quot;: &quot;Target preparation is manual; unsupported automatic installation; exact owner/vendor procedure required&quot;,
+      &quot;qualificationRequired&quot;: true
+    },
+    {
+      &quot;scope&quot;: &quot;Production activation and retirement&quot;,
+      &quot;status&quot;: &quot;Disabled; requires separate enterprise change approval and real business/restore evidence&quot;,
+      &quot;qualificationRequired&quot;: true
+    }
+  ],
+  &quot;knownLimitations&quot;: [
+    &quot;Fixture and local PowerShell tests do not qualify real Server, Oracle, business consumer, scale, maintenance window, or enterprise policy behavior.&quot;,
+    &quot;Unknown tuples do not inherit a nearby qualification.&quot;,
+    &quot;Qualification records, owner names, references, and hashes do not independently establish trust.&quot;,
+    &quot;ZIP release packages are not encrypted.&quot;
+  ]
+}
+</code></pre></main></body></html>

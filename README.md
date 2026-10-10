@@ -22,21 +22,21 @@ PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目
 
 **還原前先檢查新主機，讓使用者選擇「確認缺口後直接還原」或「等待手動安裝選用的軟體，再檢查及還原」。** 直接還原先處理具備條件的所選資料／設定，需要產品 API／runtime 的操作保留待處理；操作結果與未完成清單持久保存，安裝後可重查及續跑。還原完成不代表環境或業務立即可用。
 
-以上是第 3 輪目標，**尚未實作**：現行 0.3 的 HTML 是離線報告，尚無操作執行端、完整 HTML 文件入口、預設全選與兩機比較資料庫；缺少必要軟體仍會阻擋整次還原。FileScope 支援核准路徑映射，但目的端既有內容仍受 scope 衝突門檻限制，第三輪要補逐檔無法放置清單及可處理範圍。詳細契約與批次集中在 [第 3 輪規劃](docs/MIGRATION-3-PLAN.md)，本輪只改規劃文件。最新版本選擇取代強制同版本，HTML 文件入口取代先前以 `.md` 作使用者主要確認入口的規劃。
+目前為 0.4 第三輪開發分支：已接上 schema 3 輔助契約、JSON 比較、來源 C 封裝／非 C 跳板搬移、逐項還原／修復、HTML 表單及可攜文件。每段以固定快照驗證及推送；本輪完整性與驗收證據見 [第三輪規劃](docs/MIGRATION-3-PLAN.md)。實機 Server／SMB／IIS／排程／業務與企業簽章資格仍為 NotTested。
 
-四視角複審再補強：本次可還原集合須在核准前就能與無關未決項分開；部分還原／重選與增量依逐項實際基線續跑，等待／待軟體不回報成功；封包後選新版需更新相關目標證據，保留未變來源內容。HTML須有完整啟動指引、長作業期間可送取消／讀進度，以及可攜的完整文件索引；C／非C結果、計數與責任可相互追查。規劃已列原8個使用者情境、新8個IIS／task成套情境及R3-01–25，全部仍待實作與實機驗收。
+第三輪依逐項實際基線續跑；等待、缺軟體、衝突與人工項不回報成功。封包後改選新版或目標子集只使相關目標比較及 receipt 失效，來源封存內容保持不變。
 
-八項建議已採用為 D3-01–08：特殊項偵測／受影響範圍阻擋、必要metadata與帳號映射、舊作業原版本接續／新流程重建、必要續跑／回退材料不自動刪、寫入前重查、final停寫／hash不降級、先驗HTML橋接及代表性企業驗收。企業期限、維護窗口、環境矩陣及樣本仍須取得，不代表能力已實作或正式資格已取得。
+D3-01–08 保留特殊項揭露、必要 metadata／帳號映射、舊作業以原版本接續、材料保護、寫入前重查與同輪 final 停寫／hash 契約。沒有實機可用的項目以只讀環境探測取得觀察；探測成功不等於還原、業務或正式資格通過。
 
-2026-10-10 再審新增六個邊界補強（R3-20–25）：自訂目的映射須接到IIS／task實際引用；共享設定與C／D目的有共同影響預覽／排他／精確回退；純非C工作負載不當成無操作；停用配置與staged測試、核准啟用、啟用後最終業務驗收順序明確；OSProvided不憑\Microsoft\名稱猜測；材料清理重查全部引用及活躍作業。兩引擎隔離觀察確認現行draft映射／啟用預設需補，未執行實機物件；原8使用者、8成套及新6邊界情境均待實作驗收，沒有增加自動合併／安裝或非IIS產品adapter。
+R3-20–25 涵蓋實際 workload 引用映射、共享資源／C 與非 C 目的排他、零 C 控制包、啟用後 BusinessFinal、OSProvided 實證及並行材料保護；沒有新增自動合併、安裝或非 IIS 產品 adapter。
 
 ### 搬移範圍與目前界限
 
-本專案定位為企業內部**一般網站、Windows 排程及支援它們的服務主機 EOS 搬移**，不是資料庫、load balancer 或其他專業軟體服務主機搬移。Oracle Client、runtime、相依工具及使用者安裝軟體列完整清單：現行有 `.md` 等格式，第三輪統一以 HTML 確認。軟體本體由使用者安裝，設定另列工具協助或外部處理，不因不搬軟體漏設定；非 IIS 本輪不新增產品專用還原 adapter。
+本專案定位為企業內部**一般網站、Windows 排程及支援它們的服務主機 EOS 搬移**，不是資料庫、load balancer 或其他專業軟體服務主機搬移。Oracle Client、runtime、相依工具及使用者安裝軟體列完整清單：使用者從 HTML 文件中心及比較報告確認。軟體本體由使用者安裝，設定另列工具協助或外部處理，不因不搬軟體漏設定；非 IIS 本輪不新增產品專用還原 adapter。
 
-[第 3 輪規劃草案](docs/MIGRATION-3-PLAN.md)已記錄使用者定案：涵蓋網站／排程及其檔案相依；主工具只備份 C 槽的核准資料，其他槽提供跳板機直接輸入來源／目的的比對搬移小工具；版本可查就列，查不到仍保留清楚程式名稱與原因。**這些新增契約尚未實作，現行 0.3 不保證 C 槽限定，也尚無該小工具。** 本輪先討論規劃，不啟動程式修改；完整性必須有缺口揭露、檔案核驗與業務證據。
+[第三輪規劃](docs/MIGRATION-3-PLAN.md)維護原始定案、11 階段及全部反例。主工具封裝來源實體 C 槽的核准資料，非 C 來源由跳板工具搬移；目標盤符可依核准映射調整。兩通道共用目標實體身分與材料保護，不提供整機／System State 復原。
 
-## 目前版本 0.3
+## 目前版本 0.4（隔離驗證）
 
 已加入資料檔案／ACL 搬移包、內容去重與分卷 ZIP、固定來源／目標配對、規格核准、停用 staging、逐項設定及業務驗收、initial／final 差異 ZIP、切換計畫、啟用接續、回退與中斷修復。保留 0.2 的分類文件、分頁／跨頁規則／CSV 排除、版本衝突、跨主機相依與集中報告。
 
@@ -45,25 +45,26 @@ PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目
 第2輪一般主機操作與資料格式見 [GENERAL-HOST-WORKFLOW.md](docs/GENERAL-HOST-WORKFLOW.md)：完整軟體／環境確認、Oracle effective設定與wallet外部處理、分階段準備證據、具原值復原的Windows設定、固定WorkRoot與ZIP／Directory交付。Source、Manager、Target使用自己的受控目錄；來源及目標交付模式需相符。每台完整MD／JSON／HTML／TXT／CSV會保留全部已發現列與探索缺口，文件回填不構成執行核准。
 逐項 PLAN/TODO 比對、最後證據與外部待驗證見 [MIGRATION-2-VERIFICATION.md](docs/archive/MIGRATION-2-VERIFICATION.md)。
 
-企業備份／還原情境及實際支援見 [ENTERPRISE-MIGRATION-COVERAGE.md](docs/ENTERPRISE-MIGRATION-COVERAGE.md)。專業／環境軟體本體只列Markdown由使用者安裝；環境設定檔另列核准搬移／外部重建，ConfigFiles不是封裝白名單。本工具不提供整機／System State復原。
+企業備份／還原情境及實際支援見 [ENTERPRISE-MIGRATION-COVERAGE.md](docs/ENTERPRISE-MIGRATION-COVERAGE.md)。專業／環境軟體本體在 HTML 清單列出，由使用者安裝；環境設定檔另列核准搬移／外部重建，ConfigFiles不是封裝白名單。本工具不提供整機／System State復原。
 
 ## 操作
 
 以企業允許的方式部署同一份工具，使用系統管理員的 64 位元 Windows PowerShell 5.1：
 
 ```powershell
-powershell.exe -NoProfile -File C:\MigrationTools\Start-ServerMigration.ps1
+powershell.exe -NoProfile -File C:\MigrationTools\Start-ServerMigration.ps1 -Action Html -Role Manager -Workspace D:\MigrationWork
 ```
 
-選 1 盤點（可選深層探索），管理端選 2／3 建立工作區與匯入、4／6／7 審核和排除、5／8 輸出完整文件及十台總覽。選 **22 遷移角色精靈** 依管理／來源／目標角色操作後續階段。大批審核使用跨頁規則、CSV 與條件模板；CSV 必須先預覽，再以預覽回傳的 SHA256 和 DecisionRevision 套用。所有新項與設定漂移需要重新確認。角色精靈的來源 9／目標 15 操作增量 ZIP；執行畫面提供綁定配對、計畫、manifest、作業識別及狀態目錄的取消控制檔，另一本機終端可透過角色 5 請求在安全邊界停止。
+預設啟動本機 HTML 操作介面，僅綁定 127.0.0.1，關閉工具即停止。先選 Source／Manager／Target 與配對，再依盤點、匯入、審核、比較、封裝、還原及驗證步驟操作。操作需用本機 Windows PowerShell 5.1，沒有瀏覽器時加 `-Action Menu` 使用共用核心的文字選單。工作區含受控材料，必須依企業政策設權限及保留期限。
 
 測試主機無法連線给代理時，角色精靈 6 或 `-Action LabReport -Role Source／Target -Path D:\MigrationLabReports` 產生可複製貼回的文字驗證報告及完整 JSON；先跑環境檢查，再提供可信搬移包驗證本機逐項 readback。操作步驟見手冊的「測試主機結果複製貼回」。
 
 既有分類報告是離線快照，按100筆分頁，提供分類計數與搜尋；瀏覽器列印最多2,000筆。完整環境／軟體MD、JSON、TXT、CSV不使用這項列印截斷。遷移和切換仍限隔離 pilot，生產資格尚未驗收。
 
+- [HTML 操作手冊](docs/ASSISTIVE-OPERATIONS.html)與[完整文件中心](docs/html/index.html)：TS 各角色、衝突／重查及交接；Markdown 留作開發來源。
 - [操作手冊及資料契約](docs/OPERATIONS.md)：離線交換、規格／SID／機密、實際執行、重試與切換。
 - [實作紀錄與當期外部待驗證](docs/IMPLEMENTATION-0.1.md)：目前 Phase 實作與保留的實機／企業／體檢項目。
-- [第 3 輪規劃](docs/MIGRATION-3-PLAN.md)：輔助搬移、預設全選／自訂、所有功能／文件 HTML＋本機 PowerShell／文字備援、版本選擇／JSON、原設定路徑、不合併／無法放置清單、C 主包與非 C 小工具；全部 Phase 待實作。
+- [第 3 輪規劃](docs/MIGRATION-3-PLAN.md)：輔助搬移、預設全選／自訂、所有功能／文件 HTML＋本機 PowerShell／文字備援、版本選擇／JSON、原設定路徑、不合併／無法放置清單、C 主包與非 C 小工具；實作與驗收狀態集中於規劃中的完整性核對。
 - [歷史文件索引](docs/archive/README.md)：第 1／2 輪規劃、複審及驗證按需查閱；不作現行待辦或第 3 輪已完成證明。
 - [完整環境／軟體確認表](docs/ENVIRONMENT-SOFTWARE-CONFIRMATION.md)：每台全量軟體、使用者／可攜環境、Oracle TNS_ADMIN／設定檔與目標驗證的 Markdown 格式；目前是模板，非真實 Server 清單。
 - [正式資格／企業簽章信任／發行包](docs/RELEASE-QUALIFICATION.md)：精確 InstallationType／Oracle provider-consumer 維度、離線撤銷、signed-bytes 核驗；目前無實機或企業信任材料，production 仍 Blocked。

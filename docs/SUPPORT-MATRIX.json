@@ -3,7 +3,7 @@
   "kind": "SupportMatrix",
   "status": "BlockedNotTested",
   "productionExecutionEnabled": false,
-  "toolVersion": "0.3.0",
+  "toolVersion": "0.4.0",
   "entries": [
     {
       "scope": "Windows PowerShell",

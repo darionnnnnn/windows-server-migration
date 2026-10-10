@@ -1,7 +1,7 @@
 ﻿#requires -Version 5.1
 [CmdletBinding()] param(
-    [string]$Action='Menu',[switch]$DeepDiscovery,
-    [ValidateSet('Source','Target')][string]$Role='Source',[ValidateSet('Staged','Final')][string]$Phase='Staged',[string]$ManifestPath,[string]$StateDirectory,
+    [string]$Action='Html',[switch]$DeepDiscovery,[switch]$NoBrowser,[ValidateRange(0,65535)][int]$Port=0,
+    [ValidateSet('Source','Target','Manager')][string]$Role='Source',[ValidateSet('Staged','Final')][string]$Phase='Staged',[string]$ManifestPath,[string]$StateDirectory,
     [string]$Workspace,[string]$Path,[string]$ExpectedHash,[string]$TargetName,[string]$PairId,
     [string]$Category,[string]$Search,[string]$Decision='Pending',[string]$Reason,[int]$ExpectedRevision=-1,[string]$ItemId,[string]$Name,[string]$NaturalKey,[string]$Owner,[string]$Evidence,[string]$Mapping,[ValidateSet('Path','Account','Endpoint')][string]$MappingType='Path')
 $ErrorActionPreference='Stop'
@@ -57,6 +57,11 @@ function Review-Pair([string]$SelectedPair) {
     }
 }
 try {
+    if($Action -ceq 'Html'){
+        $consoleRole=$Role;if(-not $PSBoundParameters.ContainsKey('Role')){$consoleRole='Manager'}
+        Start-WsmHtmlConsole -Workspace $Workspace -Role $consoleRole -PairId $PairId -Port $Port -NoBrowser:$NoBrowser
+        exit 0
+    }
     if ($Action -eq 'Operation') { $result=Invoke-WsmOperationRequest $Path $ExpectedHash; $result; exit (Get-WsmOperationStatusCode $result) }
     if ($Action -cnotin @('Menu','LabReport','Inventory','Initialize','Import','ImportZip','Report','FleetReport','ExportCsv','ImportCsvPreview','ImportCsv','Issues','RulePreview','ApplyRule','ManualItem','Mapping','Evidence','Approve','FleetGraph','ImportResult','Capabilities','ConsistencyGroup','TemplatePreview','ApplyTemplate','ExportTemplate','ScopeAssessment','OperationRequest')) { throw (New-Object IO.InvalidDataException('Unknown action.')) }
     if ($Action -ne 'Menu') {

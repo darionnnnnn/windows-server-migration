@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="referrer" content="no-referrer">
+  <title>主機搬移工作台</title>
+  <link rel="stylesheet" href="/ui/console.css">
+  <script src="/ui/console.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳至主要內容</a>
+  <header class="topbar">
+    <a class="brand" href="#overview" aria-label="主機搬移工作台首頁"><span class="brand-mark" aria-hidden="true">W</span><span>工作台 <small>Windows Server Migration</small></span></a>
+    <div class="session-line"><span class="live-dot" aria-hidden="true"></span><span id="session-label">正在連線本機工作階段…</span><span class="host-chip" id="host-label">載入主機資訊</span><label class="context-control">角色<select id="context-role" aria-label="操作角色"></select></label><label class="context-control">配對<select id="context-pair" aria-label="目前配對"></select></label><button class="quiet-button" id="apply-context" type="button">切換</button></div>
+    <button class="quiet-button" id="refresh-button" type="button">重新整理</button>
+  </header>
+  <div class="shell">
+    <aside class="sidebar" aria-label="工作區導覽">
+      <p class="nav-heading">本次工作</p>
+      <nav id="navigation">
+        <a href="#overview" data-view="overview" class="nav-link active"><span aria-hidden="true">⌂</span>工作總覽</a>
+        <a href="#inventory" data-view="inventory" class="nav-link"><span aria-hidden="true">▤</span>盤點與選取</a>
+        <a href="#software" data-view="software" class="nav-link"><span aria-hidden="true">◫</span>軟體差異</a>
+        <a href="#files" data-view="files" class="nav-link"><span aria-hidden="true">⌁</span>檔案與路徑</a>
+        <a href="#operations" data-view="operations" class="nav-link"><span aria-hidden="true">⚙</span>操作中心</a>
+        <a href="#jobs" data-view="jobs" class="nav-link"><span aria-hidden="true">◷</span>作業與交接</a>
+      </nav>
+      <div class="sidebar-footer"><span class="role-label">執行角色</span><strong id="role-label">讀取中</strong><span id="workspace-label" class="muted">工作區尚未載入</span></div>
+    </aside>
+    <main id="main" tabindex="-1">
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+      <div id="error-summary" class="error-summary" role="alert" tabindex="-1" hidden></div>
+      <section id="view-overview" class="view" aria-labelledby="page-title">
+        <div class="page-heading"><div><p class="eyebrow">工作總覽 <span class="eyebrow-sep">/</span> <span id="pair-label">配對尚未載入</span></p><h1 id="page-title">主機搬移工作台</h1><p class="lede">查看工作負載進度，從盤點、準備到交接逐步完成。</p></div><div class="heading-actions"><span class="state-pill state-neutral" id="workload-state">工作狀態載入中</span><button class="primary-button" type="button" data-go="inventory">繼續盤點 <span aria-hidden="true">→</span></button></div></div>
+        <section class="hero-card" aria-labelledby="next-step-title"><div class="hero-copy"><p class="eyebrow light">下一步</p><h2 id="next-step-title">準備載入工作狀態</h2><p id="next-step-copy">連線成功後，這裡會顯示建議操作與尚待處理的項目。</p><button class="light-button" type="button" data-go="inventory">查看待辦</button></div><div class="hero-side"><span class="hero-ring" aria-hidden="true"><span id="progress-value">—</span></span><span>本次可執行範圍</span></div></section>
+        <div class="metric-grid" id="metrics" aria-label="工作項目摘要"></div>
+        <div class="two-column"><section class="panel"><div class="panel-heading"><div><p class="eyebrow">工作流程</p><h2>本次工作進度</h2></div><span class="muted" id="revision-label">revision —</span></div><ol class="steps" id="workflow-steps"></ol></section><section class="panel"><div class="panel-heading"><div><p class="eyebrow">角色與主機</p><h2>執行環境</h2></div><span class="icon-tile" aria-hidden="true">▣</span></div><dl class="detail-list" id="context-details"></dl><p class="inline-note">瀏覽器操作由當次本機程序執行。角色與責任宣告不代表已驗證個人身分。</p></section></div>
+      </section>
+      <section id="view-inventory" class="view" aria-labelledby="inventory-title" hidden><div class="page-heading"><div><p class="eyebrow">探索與審閱</p><h1 id="inventory-title">盤點與選取</h1><p class="lede">已發現項目預設選取；選取、核准與本次可執行狀態分別顯示。</p></div><div class="heading-actions"><button class="secondary-button" id="select-all" type="button">選取目前結果</button><button class="secondary-button" id="clear-selection" type="button">取消目前結果</button><button class="primary-button" id="save-selection" type="button">保存選取</button></div></div><div class="filter-bar"><label class="search-label">搜尋盤點項目<input id="inventory-search" type="search" autocomplete="off" placeholder="名稱、路徑、識別碼"></label><label>類別<select id="category-filter"><option value="">所有類別</option></select></label><span id="inventory-count" class="muted"></span></div><div class="table-wrap" role="region" aria-label="盤點項目，可水平捲動" tabindex="0"><table><thead><tr><th scope="col">選取</th><th scope="col">項目與來源</th><th scope="col">類別</th><th scope="col">核准</th><th scope="col">本次狀態</th><th scope="col">相依／影響</th></tr></thead><tbody id="inventory-rows"></tbody></table></div><div class="pagination" aria-label="盤點結果分頁"><button class="secondary-button" id="inventory-previous" type="button">上一頁</button><span id="inventory-page-label" aria-live="polite">第 1 頁</span><button class="secondary-button" id="inventory-next" type="button">下一頁</button><label>每頁顯示<select id="inventory-page-size"><option>25</option><option selected>50</option><option>100</option></select></label></div><div class="selection-footer"><span id="selection-summary">尚未載入盤點資料</span><span>選取不等於核准；未核准項不會提交執行。</span></div></section>
+      <section id="view-software" class="view" aria-labelledby="software-title" hidden><div class="page-heading"><div><p class="eyebrow">環境準備</p><h1 id="software-title">軟體差異與人工準備</h1><p class="lede">來源、選用與目標觀測版本分開記錄，版本差異不自動代表相容。</p></div><button class="secondary-button" id="refresh-software" type="button">重新檢查目標</button></div><div class="table-wrap" role="region" aria-label="軟體差異列表，可水平捲動" tabindex="0"><table><thead><tr><th scope="col">軟體</th><th scope="col">來源版本</th><th scope="col">選用版本</th><th scope="col">目標觀測</th><th scope="col">處置與責任</th><th scope="col">狀態</th></tr></thead><tbody id="software-rows"></tbody></table></div><section class="panel decision-panel"><div><p class="eyebrow">還原前選擇</p><h2>如何處理目前缺少的軟體？</h2><p class="muted">直接還原只執行具備條件的檔案與設定；需要 runtime 的項目會保留為待處理。等待補裝不會自動安裝或開始還原。</p></div><div class="choice-actions"><button class="secondary-button" id="wait-install" type="button">等待手動補裝</button><button class="primary-button" id="restore-now" type="button">預覽可直接還原範圍</button></div></section></section>
+      <section id="view-files" class="view" aria-labelledby="files-title" hidden><div class="page-heading"><div><p class="eyebrow">原路徑與目的範圍</p><h1 id="files-title">檔案與路徑</h1><p class="lede">分開查看原檔保存位置、產品生效路徑及無法放置原因。</p></div><button class="secondary-button" id="refresh-files" type="button">重新載入</button></div><div class="callout"><strong>路徑調整會影響設定 consumer。</strong><span>只會提交已解析且明確列出的 typed 路徑欄位；opaque 設定需人工處置。</span></div><div class="table-wrap" role="region" aria-label="檔案路徑清單，可水平捲動" tabindex="0"><table><thead><tr><th scope="col">來源原路徑</th><th scope="col">原檔保存到</th><th scope="col">產品生效路徑</th><th scope="col">目的狀態</th><th scope="col">範圍／影響</th></tr></thead><tbody id="file-rows"></tbody></table></div></section>
+      <section id="view-operations" class="view" aria-labelledby="operations-title" hidden><div class="page-heading"><div><p class="eyebrow">受控操作</p><h1 id="operations-title">操作中心</h1><p class="lede">只提供本機 allowlist 中的操作。先填妥必要資料、檢視預覽，再提交工作。</p></div><span class="state-pill state-neutral">本機 session</span></div><div class="operation-layout"><div class="panel operation-picker"><label for="action-picker">選擇操作</label><select id="action-picker"><option value="">載入可用操作…</option></select><p class="inline-note" id="action-description">操作說明與角色需求會在選取後顯示。</p><div id="action-metadata"></div></div><div class="panel"><div class="panel-heading"><div><p class="eyebrow">操作輸入</p><h2>填寫必要欄位</h2></div><span class="muted">敏感欄位只在目前頁面記憶體中保留</span></div><form id="operation-form" novalidate><div id="parameter-fields" class="form-grid"><p class="empty-state">請先選擇一項操作。</p></div><div id="field-errors" class="field-errors" role="alert" hidden></div><label class="confirm-line" id="confirm-line" hidden><input type="checkbox" id="operation-confirm">我已檢視預覽及受影響範圍，並確認提交</label><div class="form-actions"><button class="secondary-button" type="button" id="preview-operation" disabled>檢視預覽</button><button class="primary-button" type="submit" id="submit-operation" disabled>提交本機工作</button></div></form></div></div><section class="panel preview-panel" id="preview-panel" aria-labelledby="preview-title" hidden><p class="eyebrow">伺服端結果</p><h2 id="preview-title">操作預覽</h2><p id="preview-summary" class="muted"></p><ul id="preview-issues"></ul><div class="table-wrap" role="region" aria-label="操作影響項目" tabindex="0"><table><thead><tr><th scope="col">項目</th><th scope="col">狀態</th><th scope="col">來源</th><th scope="col">目標</th><th scope="col">原因</th></tr></thead><tbody id="preview-items"></tbody></table></div></section></section>
+      <section id="view-jobs" class="view" aria-labelledby="jobs-title" hidden><div class="page-heading"><div><p class="eyebrow">進度與交接</p><h1 id="jobs-title">作業與交接</h1><p class="lede">關閉頁面不會取消工作。可用工作識別碼重新連線並查看一致的進度快照。</p></div><button class="secondary-button" id="reconnect-jobs" type="button">重新連線</button></div><div id="job-list" class="job-list"><div class="empty-card">目前沒有進行中的工作。</div></div></section>
+      <section class="panel" id="spec-review-panel" aria-labelledby="spec-review-title" hidden>
+        <div class="panel-heading"><h2 id="spec-review-title">項目設定審核</h2><button class="secondary-button" id="spec-review-close" type="button">關閉審核摘要</button></div>
+        <p>以下是安全摘要。原始設定與敏感值保存在受控材料中；送出前仍須填妥欄位並檢查預覽。</p>
+        <dl id="spec-review-fields"></dl><div id="spec-review-counts"></div>
+        <h3>待補欄位</h3><ul id="spec-review-missing"></ul><h3>需人工確認的引用</h3><ul id="spec-review-pointers"></ul>
+        <button class="primary-button" id="spec-review-prefill" type="button">載入型別化審核表單</button>
+      </section>
+      <footer class="page-footer"><span>本機操作工作台</span><span id="footer-session">連線資訊載入中</span><a href="/ui/guide.html">啟動指引</a><a href="/docs/ASSISTIVE-OPERATIONS.html">完整操作與交接手冊</a></footer>
+    </main>
+  </div>
+</body>
+</html>

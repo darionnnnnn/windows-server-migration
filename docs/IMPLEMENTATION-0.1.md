@@ -1,17 +1,14 @@
-# 0.3 實作狀態與當期待辦
+# 0.4 實作狀態與外部驗證
 
 更新：2026-10-10。本文件只維護當前狀態；原始需求、歷史決策及固定快照證據見 [歷史索引](archive/README.md)。已完成程式 TODO 已移除；尚無外部資格的項目保留，不宣稱正式生產完成。
 
-新增方向及全部待實作項目集中於 [第 3 輪規劃草案](MIGRATION-3-PLAN.md)，目前僅討論文件。下表是第 2 輪現行實作，不能據此宣稱 C 槽限定、非 C 跳板機工具或第 3 輪完整相依已完成。
+## 第三輪 0.4 開發與驗證
 
-2026-10-10 第三輪續訂：輔助搬移、預設全選／自訂、允許新版仍保存原設定舊路徑；全部使用者功能／文件HTML＋本機PowerShell／文字備援已定案。目的已有內容不合併，以HTML逐檔列無法放置／scope影響／人工重試；非IIS不新增adapter。新版與HTML入口取代先前強制同版／主要Markdown入口，保留全新Windows／JSON／兩種順序。現行TargetDiff未真正比較，缺軟體擋整次full／delta，外部目的仍阻擋；Decision=Pending非預選模型，HTML只有離線報告，未有全部文件／操作入口。Mapping／MigrationSpec.TargetPath文件缺陷已用隔離fixture重現。R3-01–10及S／U等全批次未實作／修正，存檔或版本選擇不是業務可用。
+第三輪依 MIGRATION-3-PLAN.md 逐段實作／固定快照驗證／commit 與 push。Schema 3 輔助 catalog/plan/receipt 與 JSON 比較、來源 C 精確封裝、非 C 跳板搬移及共用目標 reservation、材料引用與作業保護已接入；逐項還原、IIS/task 停用 staging、部分世代/delta、修復及 HTML 操作／文件正做完整性核對。第三輪全部完成狀態以 PLAN 最後的 producer→consumer→驗收證據為準，舊第 2 輪表格不充當第三輪驗收。
 
-2026-10-10四視角複審（基準97a98f8）：從8個使用者情境反查程式與管理流程，新增R3-11–18：逐項世代／delta／新狀態consumer、封包後選版／receipt、HTML啟動／並行取消、核准前有效集合、C非C可信結果、可攜完整文件、容量／計數及多操作者／secret。Windows PowerShell5.1及PowerShell7隔離fixture均觀察到：新DeferredSoftware／WaitForInstall狀態單獨輸入返回碼仍是0、ExpectedVersion改變RequirementId、未相關Pending仍產生ReviewComplete阻擋。這是現行consumer與新需求間的契約缺口，非已提供新功能的失敗；各Phase範圍／IO／驗收已補，但runtime／tests未改，新流程、瀏覽器及實機未驗收。
+主模型另發現並補強必要 metadata 的實際 readback、單一檔案範圍，以及可攜文件下載的原始 XML／secret 隔離。HTML 使用獨立 PowerShell worker，同一核心／CAS／journal，沒有 Node 執行依賴。Node/Edge 僅作開發測試；瀏覽器 fixture 與真實 loopback 傳輸分別記錄，本機 HTTP 中間層改寫不能算為工具端測試通過。
 
-2026-10-10 八項建議定案（基準e772b4e）：D3-01–08採用特殊偵測／metadata／舊作業不轉版／材料保留／寫前重查／停寫hash／HTML小實驗／企業驗收策略。新增R3-19要求IIS全部設定／task全定義與C非C所選相依成套還原；現行已有site／pool與停用task adapter及全域XML採集，不等於完整還原已完成。D前移交可信結果／Manager匯入供G，E2投影；原8使用者及新8成套反例進11階段。企業資料與特殊能力實證仍待取得，本次未改runtime／tests、未做新流程／瀏覽器／Server驗收。
-
-2026-10-10 再審（基準884d65e）：新增R3-20–25與6個邊界反例，補typed路徑到IIS／task consumer、共享設定／跨通道目的與全域prior回退、零C與零操作、啟用後BusinessFinal及來源啟停、OSProvided證據、材料清理引用／並行。Windows PowerShell5.1／PowerShell7保留快照隔離fixture均觀察FileScope目標E:\New而IIS／task仍引用D:\Old、IIS serverAutoStart=false仍draft Enabled；未審草稿不等於實機被啟用或已核准錯誤還原。R3全部25項／D3八策略／8+8+6反例接11 Phase，沒有runtime／tests修改，新流程與Server資格仍待實作驗收。
-
+使用者確認沒有實機可直接全部驗收。本輪以小範圍實際檔案／合成資料、Windows PowerShell 5.1 與 PowerShell 7 固定快照驗證可測部分；未有兩端 Server、SMB、IIS／task 原生功能、帳號存取、企業 PKI、規模／業務結果的項目保留 NotTested，提供只讀環境探測，使用者後續補結果。ProductionVerified=false 不因 fixture 或探測通過而解除。
 ## 已實作範圍
 
 | Phase | 現行實作與消費端 |
