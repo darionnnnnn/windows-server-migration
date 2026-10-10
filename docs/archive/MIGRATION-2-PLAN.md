@@ -1,14 +1,16 @@
 # MIGRATION 第 2 輪規劃：一般服務主機、完整環境確認與企業 EOS 遷移資格
 
+> 歷史封存（2026-10-10）：保留第 2 輪決策與實作過程；外部資格仍未完成。現況及第 3 輪入口見 [封存索引](README.md)。
+
 > 日期：2026-10-09
 > 狀態：程式實作及本機驗證完成；2026-10-10 最後邊界補漏已驗證。真實環境資格及不同模型獨立體檢仍待完成，詳見文末與 MIGRATION-2-VERIFICATION.md，不推定正式生產合格。
 > 複審基準：codex/implementation，991fc864126d226b65eb0fdbe440c7f7d41040af；前輪程式與測試基準保留於下方。
 > 來源：一般主機既有定案，以及使用者要求企業 Windows Server EOS 正式工具程度、Oracle TNS_ADMIN 與完整已安裝環境／相依工具／使用者軟體 Markdown 確認。
-> 複審證據：[深度複審](MIGRATION-2-REVIEW.md)；確認文件格式：[環境與軟體確認表](ENVIRONMENT-SOFTWARE-CONFIRMATION.md)。
+> 複審證據：[深度複審](MIGRATION-2-REVIEW.md)；確認文件格式：[環境與軟體確認表](../ENVIRONMENT-SOFTWARE-CONFIRMATION.md)。
 > 輸出方式續規劃基準：9b01678d56f8fdfaced54cbdad115536eba7b688；規劃當時尚未實作；本輪實作狀態以文末執行紀錄為準。
 > 再次反向複審基準：247c528662d24adf4c52fae3dec0c544ec821a7c；另補 R2-21–R2-28。穩定狀態、分階段 gate、增量分卷等為本輪必要契約；實作與外部資格分開追蹤。
 
-> 後續方向：2026-10-10 的 [第 3 輪草案](MIGRATION-3-PLAN.md)收斂為一般網站／排程主機、C 槽主包與非 C 跳板機搬移。這些新契約尚未實作；本文件保留第 2 輪決策與現行程式證據，不作第 3 輪待辦。
+> 後續方向：2026-10-10 的 [第 3 輪草案](../MIGRATION-3-PLAN.md)收斂為一般網站／排程主機、C 槽主包與非 C 跳板機搬移。這些新契約尚未實作；本文件保留第 2 輪決策與現行程式證據，不作第 3 輪待辦。
 
 ## 前一輪確認
 
@@ -222,7 +224,7 @@
 
 ### D 補強：完整 Markdown、使用者確認與決策回流
 
-- 以 [ENVIRONMENT-SOFTWARE-CONFIRMATION.md](ENVIRONMENT-SOFTWARE-CONFIRMATION.md) 為格式契約，實際每台輸出 `environment-software-<PairId>-r<InventoryRevision>-d<DecisionRevision>-<DocumentId>.md`；DocumentId 每次產生新唯一值，另記 TargetObservationRevision、ReportProjectionHash、產生階段，fleet 索引引用確切版本。相同來源／決策下重查目標也不可覆寫舊檔。repo 空白模板不是實際清單，HTML 分頁／列印上限不能造成 Markdown 截斷。
+- 以 [ENVIRONMENT-SOFTWARE-CONFIRMATION.md](../ENVIRONMENT-SOFTWARE-CONFIRMATION.md) 為格式契約，實際每台輸出 `environment-software-<PairId>-r<InventoryRevision>-d<DecisionRevision>-<DocumentId>.md`；DocumentId 每次產生新唯一值，另記 TargetObservationRevision、ReportProjectionHash、產生階段，fleet 索引引用確切版本。相同來源／決策下重查目標也不可覆寫舊檔。repo 空白模板不是實際清單，HTML 分頁／列印上限不能造成 Markdown 截斷。
 - 文件涵蓋 metadata／有效期、coverage、全部軟體、runtime／driver／工具、Oracle／設定檔、Windows 決策、特殊／未知、人工補登、目標差異／驗證、阻擋、owner 確認與交接；每列能追 SoftwareId／PreparationId／ItemId／JSON evidence pointer，總數能對帳。
 - Markdown 可註記但不是權威可執行輸入。直接改 `.md`／勾選不變更 gate；回填由管理端 wizard 或 validated CSV／JSON preview 錄入，綁 revision／hash、重新核准及產出文件。畫面／文件明确提示。
 - 所有格式使用同一安全投影，escape 管線、換行、反引號、連結與 HTML；CSV 保留 formula 防護，不可信名稱不變成可執行內容／外部圖片。密碼／完整連線字串／wallet 永不輸出，內部路徑／endpoint 依分享分級，不能聲稱遮密碼即能公開。
@@ -377,7 +379,7 @@
 
 #### 跨段實作回查（2026-10-09，最後固定版本回歸通過）
 
-新增入口與受控操作見 [GENERAL-HOST-WORKFLOW.md](GENERAL-HOST-WORKFLOW.md)。先指定來源／管理／目標各自的固定 WorkRoot，再選分卷 ZIP 或 sealed Directory；預設 512 MiB，可選整數 128–1024 MiB。輸出偏好不能改寫既有 attempt，state／journal 不隨 attempt 重建。每台完整確認文件使用 DocumentId，提供 MD／JSON／HTML／TXT／CSV；文件回填只供 owner 審核，不解除 typed readiness。
+新增入口與受控操作見 [GENERAL-HOST-WORKFLOW.md](../GENERAL-HOST-WORKFLOW.md)。先指定來源／管理／目標各自的固定 WorkRoot，再選分卷 ZIP 或 sealed Directory；預設 512 MiB，可選整數 128–1024 MiB。輸出偏好不能改寫既有 attempt，state／journal 不隨 attempt 重建。每台完整確認文件使用 DocumentId，提供 MD／JSON／HTML／TXT／CSV；文件回填只供 owner 審核，不解除 typed readiness。
 
 | 覆蓋複審項 | 本輪程式閉環與驗證範圍 |
 |---|---|
@@ -410,4 +412,4 @@ Dev integration completed 2026-10-10: all four CI jobs passed for 0a2ac7f; local
 
 ## 2026-10-10 企業情境與設定搬移界線複查
 
-依使用者再次要求新增 [ENTERPRISE-MIGRATION-COVERAGE.md](ENTERPRISE-MIGRATION-COVERAGE.md)：專業／環境軟體本體只列完整Markdown準備清單，設定檔另列受審搬移／外部程序；逐項標示FileScope、Oracle、Windows及既有adapter協助範圍，補整機／System State、特殊角色、storage語義、機器綁定秘密與有效policy等企業情境。ConfigFiles不是payload白名單，必須使用精確scope／完整排除并對帳artifact。輸出Markdown補明支援界線；未新增泛用特殊產品／runtime安裝或整機復原能力。原始外部資格需求保留。
+依使用者再次要求新增 [ENTERPRISE-MIGRATION-COVERAGE.md](../ENTERPRISE-MIGRATION-COVERAGE.md)：專業／環境軟體本體只列完整Markdown準備清單，設定檔另列受審搬移／外部程序；逐項標示FileScope、Oracle、Windows及既有adapter協助範圍，補整機／System State、特殊角色、storage語義、機器綁定秘密與有效policy等企業情境。ConfigFiles不是payload白名單，必須使用精確scope／完整排除并對帳artifact。輸出Markdown補明支援界線；未新增泛用特殊產品／runtime安裝或整機復原能力。原始外部資格需求保留。

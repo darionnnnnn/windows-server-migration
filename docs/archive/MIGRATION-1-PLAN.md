@@ -1,8 +1,10 @@
-﻿# Windows Server Migration 第 1 輪規劃
+# Windows Server Migration 第 1 輪規劃
+
+> 歷史封存（2026-10-10）：以下狀態保留當時紀錄，不作當期待辦。現況及第 3 輪入口見 [封存索引](README.md)。
 
 > 狀態：實作中。2026-10-08 使用者授權開始實作；依序實作 A/B/C，取得真實盤點確認後展開 D/E/F。
 > 日期：2026-10-07（Asia/Taipei）。
-> 複審版本：R2。規劃契約仍有效；第一階段部分功能已實作，完整缺口與驗證見 [IMPLEMENTATION-0.1.md](IMPLEMENTATION-0.1.md)。
+> 複審版本：R2。規劃契約仍有效；第一階段部分功能已實作，完整缺口與驗證見 [IMPLEMENTATION-0.1.md](../IMPLEMENTATION-0.1.md)。
 > 歷史規劃基準：當時僅有 `Get-ServerMigrationInventory.ps1`，尚未建立 Git 工作樹；實作基準見下列執行方式。
 > 腳本 SHA-256：`CECEA767FCA8D7CC2C044B9F4B3F3588584259B13A1439FCFE88E2949CCB38B5`。
 > 既有驗證：先前 PowerShell 語法檢查及合成檔案 ZIP 雜湊測試通過；未進行 Server 實機驗證。
@@ -43,7 +45,7 @@
 
 以下行號以本輪基準腳本為準。
 
-以下是 0.1 原型的歷史基線，保留原始問題與驗收理由；不是現行 0.3 的功能清單。最新狀態見 [實作核對表](IMPLEMENTATION-0.1.md)。
+以下是 0.1 原型的歷史基線，保留原始問題與驗收理由；不是現行 0.3 的功能清單。最新狀態見 [實作核對表](../IMPLEMENTATION-0.1.md)。
 
 | 需求或問題 | 實際證據 | 結論 |
 |---|---|---|
@@ -493,7 +495,7 @@ P1 表示若未解決，可能選錯／還原錯誤、遺失資料或誤報完�
 
 ## 2026-10-08 持續補實作與完整性核對
 
-使用者要求全部未實作項目補齊後才停。0.3 已加入 D/E/F 隔離 pilot 核心與更多 A/B/C 接線，仍在「實作→核對→补齊」循環，未標整輪完成、未進入不同模型 closeout。最新逐項程式、有效測試、當期待辦與環境驗收統一維護於 [實作核對表](IMPLEMENTATION-0.1.md)，現行操作契約在 [OPERATIONS.md](OPERATIONS.md)。原 A–F／R01–R16 條件完整保留，不以刪 TODO 代替完成。
+使用者要求全部未實作項目補齊後才停。0.3 已加入 D/E/F 隔離 pilot 核心與更多 A/B/C 接線，仍在「實作→核對→补齊」循環，未標整輪完成、未進入不同模型 closeout。最新逐項程式、有效測試、當期待辦與環境驗收統一維護於 [實作核對表](../IMPLEMENTATION-0.1.md)，現行操作契約在 [OPERATIONS.md](../OPERATIONS.md)。原 A–F／R01–R16 條件完整保留，不以刪 TODO 代替完成。
 
 本輪基準 7287399，主代理整合並獨立驗證，按使用者要求以 gpt-6-luna low／medium／high 委派；本輪程式／測試已推送 checkpoint 為 10c896a，完整 GitHub CI 37792481411 通過，包含 adapter、payload、target identity、source result、restore/journal recovery、cutover、SID map、角色精靈、深層 enterprise collector、跨主機切換證據門檻與對應 fixtures。沒有對實際 Server 做任何設定還原／改名／IP 操作。
 

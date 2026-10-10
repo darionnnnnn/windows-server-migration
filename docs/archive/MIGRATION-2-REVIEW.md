@@ -1,8 +1,10 @@
-﻿# MIGRATION-2 深度複審：企業 Windows Server EOS 遷移
+# MIGRATION-2 深度複審：企業 Windows Server EOS 遷移
+
+> 歷史封存（2026-10-10）：保留一次性複審、風險與修正過程，不作現行規格。現況及第 3 輪入口見 [封存索引](README.md)。
 
 > 日期：2026-10-09；基準：991fc864126d226b65eb0fdbe440c7f7d41040af，codex/implementation。
 > 本報告是規劃及程式現況審查，不是實機資格證書。審查者未連線來源／目標 Server，未取得其真實軟體清單。
-> 權威規格：[MIGRATION-2-PLAN.md](MIGRATION-2-PLAN.md)；使用者確認格式：[ENVIRONMENT-SOFTWARE-CONFIRMATION.md](ENVIRONMENT-SOFTWARE-CONFIRMATION.md)。
+> 權威規格：[MIGRATION-2-PLAN.md](MIGRATION-2-PLAN.md)；使用者確認格式：[ENVIRONMENT-SOFTWARE-CONFIRMATION.md](../ENVIRONMENT-SOFTWARE-CONFIRMATION.md)。
 > 再次複審：2026-10-09，247c528662d24adf4c52fae3dec0c544ec821a7c；本節以下保留前次20項與輸出審查，新增 R2-21–R2-28 的操作／程式／全局回查。
 
 ## 實作前判斷（歷史；目前實作狀態以 PLAN 執行紀錄為準）

@@ -15,7 +15,7 @@ PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目
 **第2輪程式閉環已補齊，最後固定快照回歸通過；尚未取得 Server 2016／2025 生產資格。** 執行功能限定使用者明確核准的隔離 pilot。未知產品保留為缺口或具責任與證據的專用流程；不會自動匯入整個 registry、執行包內腳本或啟動舊來源。實際資料、帳號密碼、憑證、企業設定不得放入這個公開 repository。
 
 第2輪一般主機操作與資料格式見 [GENERAL-HOST-WORKFLOW.md](docs/GENERAL-HOST-WORKFLOW.md)：完整軟體／環境確認、Oracle effective設定與wallet外部處理、分階段準備證據、具原值復原的Windows設定、固定WorkRoot與ZIP／Directory交付。Source、Manager、Target使用自己的受控目錄；來源及目標交付模式需相符。每台完整MD／JSON／HTML／TXT／CSV會保留全部已發現列與探索缺口，文件回填不構成執行核准。
-逐項 PLAN/TODO 比對、最後證據與外部待驗證見 [MIGRATION-2-VERIFICATION.md](docs/MIGRATION-2-VERIFICATION.md)。
+逐項 PLAN/TODO 比對、最後證據與外部待驗證見 [MIGRATION-2-VERIFICATION.md](docs/archive/MIGRATION-2-VERIFICATION.md)。
 
 企業備份／還原情境及實際支援見 [ENTERPRISE-MIGRATION-COVERAGE.md](docs/ENTERPRISE-MIGRATION-COVERAGE.md)。專業／環境軟體本體只列Markdown由使用者安裝；環境設定檔另列核准搬移／外部重建，ConfigFiles不是封裝白名單。本工具不提供整機／System State復原。
 
@@ -35,10 +35,8 @@ powershell.exe -NoProfile -File C:\MigrationTools\Start-ServerMigration.ps1
 
 - [操作手冊及資料契約](docs/OPERATIONS.md)：離線交換、規格／SID／機密、實際執行、重試與切換。
 - [實作紀錄與當期外部待驗證](docs/IMPLEMENTATION-0.1.md)：目前 Phase 實作與保留的實機／企業／體檢項目。
-- [原始規劃與驗收條件](docs/MIGRATION-1-PLAN.md)：保留歷史需求；新方向以第 3 輪草案為準，現行程式證據仍見第 2 輪。
 - [第 3 輪規劃草案](docs/MIGRATION-3-PLAN.md)：網站／排程相依、C 槽主包、其他槽跳板機工具與版本／名稱規則；全部 Phase 待實作，待共同調整策略。
-- [第 2 輪規劃](docs/MIGRATION-2-PLAN.md)：一般服務主機、離線準備、Windows 決策、Oracle設定與D2輸出目錄／可自訂大小分卷ZIP／資料夾交付；各項程式比對與實機資格狀態見文件末尾。
-- [第 2 輪深度複審](docs/MIGRATION-2-REVIEW.md)：累計28項企業 EOS 規劃缺口；再次按角色反查，補穩定作業狀態、增量分卷、白名單資料夾、既有設定回復、分階段gate與交付版本；尚非功能或正式資格通過。
+- [歷史文件索引](docs/archive/README.md)：第 1／2 輪規劃、複審及驗證按需查閱；不作現行待辦或第 3 輪已完成證明。
 - [完整環境／軟體確認表](docs/ENVIRONMENT-SOFTWARE-CONFIRMATION.md)：每台全量軟體、使用者／可攜環境、Oracle TNS_ADMIN／設定檔與目標驗證的 Markdown 格式；目前是模板，非真實 Server 清單。
 - [正式資格／企業簽章信任／發行包](docs/RELEASE-QUALIFICATION.md)：精確 InstallationType／Oracle provider-consumer 維度、離線撤銷、signed-bytes 核驗；目前無實機或企業信任材料，production 仍 Blocked。
 - [支援矩陣](docs/SUPPORT-MATRIX.json)、[SBOM](docs/RELEASE-SBOM.json)、[0.3.0 發行說明](docs/RELEASE-NOTES-0.3.md)與[復原 runbook](docs/RECOVERY-RUNBOOK.md)：隨 ToolRelease 一併封裝；不代表生產資格。

@@ -2,7 +2,7 @@
 
 日期：2026-10-10。狀態：**規劃草案，待共同調整；本輪僅修改文件，以下 Phase 均未實作／驗收。** 現況基準：`dev` 的 `4908910`（0.3 隔離 pilot）。本文件定義新方向，不把第 2 輪通過的契約測試當成新需求已完成，也不解除 production gate。
 
-主入口見 [README](../README.md)；既有實作證據見 [第 2 輪驗證](MIGRATION-2-VERIFICATION.md)，既有能力與限制見 [涵蓋範圍](ENTERPRISE-MIGRATION-COVERAGE.md)。本輪後續待辦集中於本文；既有外部驗收仍保留於 [實作紀錄](IMPLEMENTATION-0.1.md)。
+主入口見 [README](../README.md)；既有實作證據見 [第 2 輪驗證](archive/MIGRATION-2-VERIFICATION.md)，既有能力與限制見 [涵蓋範圍](ENTERPRISE-MIGRATION-COVERAGE.md)。本輪後續待辦集中於本文；既有外部驗收仍保留於 [實作紀錄](IMPLEMENTATION-0.1.md)。
 
 ## 使用者已定案的範圍
 

@@ -1,6 +1,6 @@
 # 0.3 實作狀態與當期待辦
 
-更新：2026-10-10。本文件只維護當前狀態；原始需求與歷史決策見 MIGRATION-1-PLAN／MIGRATION-2-PLAN，固定快照及修正證據見 [MIGRATION-2-VERIFICATION.md](MIGRATION-2-VERIFICATION.md)。已完成程式 TODO 已移除；尚無外部資格的項目保留，不宣稱正式生產完成。
+更新：2026-10-10。本文件只維護當前狀態；原始需求、歷史決策及固定快照證據見 [歷史索引](archive/README.md)。已完成程式 TODO 已移除；尚無外部資格的項目保留，不宣稱正式生產完成。
 
 新增方向及全部待實作項目集中於 [第 3 輪規劃草案](MIGRATION-3-PLAN.md)，目前僅討論文件。下表是第 2 輪現行實作，不能據此宣稱 C 槽限定、非 C 跳板機工具或第 3 輪完整相依已完成。
 
@@ -32,6 +32,8 @@
 
 ## 測試與交付規則
 
-目前程式e97cbc0的GitHub Actions 37965849112四個jobs成功；同runtime/test的文件整理可沿用，新的CI設定另核對。完整證據與適用範圍統一在驗證紀錄維護，不在本文件重複各checkpoint。
+封存前程式基準4908910的 [GitHub Actions 38009745467](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38009745467)已通過；第3輪規劃提交9903cbb未改runtime/test。歷史證據適用範圍見封存驗證紀錄，不在本文件重複各checkpoint。
+
+2026-10-10文件封存：四份歷史文件以git mv移至docs/archive，更新索引及引用；ToolRelease遞迴收錄docs Markdown，保留離線連結。固定快照 `wsm-doc-archive-0c77659743ce40cb9f5c51810422a231` 的ScriptEncoding／Qualification在WinPS5.1及PS7各2/2通過；實際ZIP manifest／bytes投影通過、71個包內本機連結有效，147個src/tests/入口檔案hash與快照核對一致。核驗含封存文件收錄、無效簽章／改包拒絕及production鎖定。這是定向本機證據，不宣稱舊CI適用此修改或取得實機／企業資格；報告程式與其他遷移流程未改。ToolRelease bytes變更使工具指紋更新，既有核准須依契約重驗，不熱換執行中pair。
 
 日常按改動影響重驗；Pipeline預設16小檔、取消8檔、報告2501列、Fleet十台各200、Spec200。5000分段及真實4GiB的特殊邊界保留；大容量／50k軟體／維護窗／RPO/RTO需代表性工作量與門檻，不能從合成數量推定。HTML分類列印最多2000列；完整軟體確認五格式不截斷資料。詳細測試操作見 [README](../README.md)。

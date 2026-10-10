@@ -1,7 +1,7 @@
 # Windows Server 遷移：環境、軟體與相依設定確認表
 
 > **本檔是格式契約與可填寫模板，不是已取得的 Server 盤點結果。** 尚未提供來源／目標主機證據，欄位一律待填，未勾不代表不存在，所有驗證維持 NotTested。
-> 工具可依每台本機證據產生完整 Markdown，包含全部發現軟體，不只選搬項。權威規格：[MIGRATION-2-PLAN.md](MIGRATION-2-PLAN.md)，缺漏依據：[MIGRATION-2-REVIEW.md](MIGRATION-2-REVIEW.md)。
+> 工具可依每台本機證據產生完整 Markdown，包含全部發現軟體，不只選搬項。現行文件契約見 [一般主機工作流程](GENERAL-HOST-WORKFLOW.md)；第 2 輪規劃及缺漏背景保留於 [歷史索引](archive/README.md)。第 3 輪新方向尚在規劃，不表示本模板或程式已完成新契約。
 
 ## 填寫與核准方式
 
