@@ -2,6 +2,8 @@
 
 更新：2026-10-10。本文件只維護當前狀態；原始需求與歷史決策見 MIGRATION-1-PLAN／MIGRATION-2-PLAN，固定快照及修正證據見 [MIGRATION-2-VERIFICATION.md](MIGRATION-2-VERIFICATION.md)。已完成程式 TODO 已移除；尚無外部資格的項目保留，不宣稱正式生產完成。
 
+新增方向及全部待實作項目集中於 [第 3 輪規劃草案](MIGRATION-3-PLAN.md)，目前僅討論文件。下表是第 2 輪現行實作，不能據此宣稱 C 槽限定、非 C 跳板機工具或第 3 輪完整相依已完成。
+
 ## 已實作範圍
 
 | Phase | 現行實作與消費端 |
