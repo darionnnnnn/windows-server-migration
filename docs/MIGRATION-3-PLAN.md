@@ -698,3 +698,13 @@ Luna high 各自實作兩個 fixture；主代理查 diff 後分別獨立在 WinP
 主代理反查發現同一SaveSpecReview操作按Action保留草稿，另一項目預填只填目前存在的鍵，會殘留前一FileScope的AclControlPolicy／TargetPath及進階ReviewedTargetXmlPath/Hash。明確按本項預填現先保存一般操作草稿，再清除本次審閱操作舊草稿、建立乾淨表單並填入本項投影；普通action切換仍保存草稿，成功公告說明替換範圍。Luna high實作兩個JS檔，主代理查diff後獨立Node17/17及JS syntax PASS；隔離副本僅取消fresh-prefill呼叫，精確在跨項目DOM反例失敗（舊AclControlPolicy／TargetPath仍存在，其他16項PASS），證明測試能抓舊問題。不修改核心核准／CAS／ACL讀回，也不加入新確認流程。
 
 此段主代理另於實際工作區通過HtmlConsole／HtmlDocumentation／Qualification／ScriptEncoding各兩引擎共8次PASS，最終ZIP重新核對15HTML／80相對連結／108檔案hash、archive排除及未簽章／未正式資格；程式指紋cdaaadaeb543536c238488aa1b8cbbef862e5790175c1824c131ad4280f9b8db。前段b0e37e4的遠端第三輪兩引擎及Node16已成功，不能代替本次新增DOM17的遠端驗證；完整PowerShell廣域快照與此JS差異的定向證據分開保存。
+
+### 最終結果與停止前核對 — 2026-10-11
+
+主代理完整廣域驗證完成：`wsm-r3-final-forms-10bd2a6e4a324824bfd8ac71a999ca1d` 固定快照的106支PowerShell測試在WinPS5.1／PS7各106 PASS、合計212次，兩組runtime/test前後hash一致。日誌位於專案外 `work/runtime-final-head-powershell-20261011-023942/summary.json` 及 `work/runtime-final-head-pwsh-20261011-023944/summary.json`；EnvironmentConfirmation採使用者接受的小範圍101列，physical LargePayload 4GiB仍未執行。不是把所有可執行測試都縮成fixture，原有其他腳本依其原始預設執行。
+
+廣域快照與最終程式逐檔比較，只有 `src/ui/console.js` 及 `tests/Test-AssistiveUi.js` 的最後跨項目預填修正不同；此兩檔已另驗Node17/17、舊行為counterexample精確失敗、HtmlConsole／HtmlDocumentation／Qualification／ScriptEncoding雙引擎8次PASS及實際ZIPbytes投影。其餘src／tests無未覆蓋差異，不用早期快照替代最後手改驗證。
+
+最後程式提交 `f22719b632868dd2dbd4d73ce71096b9e5e690cd` 的 [CI 38077352696](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38077352696) 六個工作全數成功：fixtures、delta-workflow、第2輪WinPS5.1／PS7、第3輪WinPS5.1／PS7（含Node17）。前段 `b0e37e4` 的CI38076602679亦全數成功。最終程式指紋 `cdaaadaeb543536c238488aa1b8cbbef862e5790175c1824c131ad4280f9b8db`；最後文件段只同步當前狀態／證據及由其生成的HTML，不改runtime/test，也不沿用先前ZIP的文件bytes或簽章。
+
+停止前再次核對：原始R3-01–25與D3-01–08 consumer矩陣完整、16個使用者／成套案例及6個邊界接線保留、11個階段本輪實作相依閉合；IIS／task完整設定與C／非C必要相依成套、版本選擇與舊路徑／既有衝突不合併、預設全選／自訂、HTML與文字共用核心皆有對應實作及上述證據。不存在已知尚未實作的本輪程式項目；外部清單及可核實不同模型體檢仍明確NotTested，ProductionVerified=false。沿用dev分段commit／push並逐次核對遠端SHA；原有個人prototype未讀取／未納入提交，docs/archive未讀取／未收錄發行包。
