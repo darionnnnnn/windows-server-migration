@@ -41,12 +41,16 @@ public class WsmHttpFixtureStream : System.IO.MemoryStream {
     Reject {ConvertTo-WsmHtmlArguments $probe ([pscustomobject]@{Origin='http://127.0.0.1:1234';OutputPath='C:\fixture.json';RequestAdapter='throw injected'})} 'Internal script adapter accepted through HTML.'
     $command=Get-Command Set-WsmAssistiveSoftwareVersion
     $args=ConvertTo-WsmHtmlArguments $command ([pscustomobject]@{Workspace='C:\fixture';PairId=[Guid]::NewGuid().ToString();SoftwareId=('a'*64);ChosenVersion='new; $(invalid)';Reason='owner selected';ExpectedRevision=1})
-    Check ($args.ChosenVersion -ceq 'new; $(invalid)' -and $args.ExpectedRevision -eq 1) 'Typed arguments interpreted source text as commands.'
+    Check ($args.ChosenVersion -ceq 'new; $(invalid)' -and $args.Reason -ceq 'owner selected' -and $args.ExpectedRevision -eq 1) 'Typed arguments interpreted source text as commands.'
     Reject {ConvertTo-WsmHtmlArguments $command ([pscustomobject]@{Unknown='anything'})} 'Unknown action arguments were accepted.'
     $outputs=@(Get-WsmHtmlResultProjection @([pscustomobject]@{Status='ReviewRequired';Path='C:\report.html';Secrets='sentinel';Password='sentinel';Xml='<secret/>'}))
     Check ($outputs.Count -eq 1 -and $outputs[0].Status -ceq 'ReviewRequired' -and ($outputs|ConvertTo-Json) -notmatch 'sentinel|<secret') 'Durable job outputs included configuration or secrets.'
     $historyRoot=Join-Path ([IO.Path]::GetTempPath()) ('wsm-http-history-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($historyRoot)
     try{
+        $reportPath=Join-Path $historyRoot 'material-job.html';[IO.File]::WriteAllText($reportPath,'<!doctype html><title>Material status</title>')
+        $reportResult=[pscustomobject]@{HtmlPath=$reportPath;Status='ReportOnly';LockStatus='Locked';Secret='not-public'}
+        $projected=@(Get-WsmHtmlResultProjection @($reportResult));$artifacts=@(Get-WsmHtmlReportArtifacts 'MaterialJobStatus' $projected)
+        Check ($artifacts.Count -eq 1 -and $artifacts[0].Path -ceq $reportPath -and $artifacts[0].SHA256 -ceq (Get-FileHash $reportPath -Algorithm SHA256).Hash.ToLowerInvariant() -and (Get-WsmOperationStatusCode $projected) -eq 0 -and ($projected|ConvertTo-Json) -notmatch 'not-public') 'Material job status report could not cross the safe job projection and authenticated HTML artifact route as a completed read-only operation.'
         $id=[Guid]::NewGuid().ToString();$key=[Guid]::NewGuid().ToString();$recordPath=Join-Path $historyRoot ($id+'.json')
         Write-WsmJson $recordPath ([pscustomobject]@{jobId=$id;idempotencyKey=$key;RequestHash=('a'*64);status='Running';canCancel=$true})
         $jobs=@{};$keys=@{};Import-WsmHtmlJobHistory $historyRoot $jobs $keys

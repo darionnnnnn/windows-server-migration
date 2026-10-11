@@ -189,6 +189,15 @@ function Get-WsmAssistiveSoftwareKey($Entry) {
     (($parts | ForEach-Object { $_.Trim().ToUpperInvariant() }) -join '|')
 }
 
+function Get-WsmAssistiveVersionEvidenceKind($Entry) {
+    $kind=[string]$Entry.SourceKind
+    $evidence=$Entry.Evidence
+    foreach($field in @('Probe','EvidenceKind','FileKind')){
+        if($evidence -and $evidence.PSObject.Properties[$field] -and -not [string]::IsNullOrWhiteSpace([string]$evidence.$field)){$kind+='|'+$field+':'+[string]$evidence.$field}
+    }
+    $kind
+}
+
 function New-WsmAssistiveSoftwareRows($Source,$Target,$Baseline,$Choices,$TargetCoverageComplete) {
     $sourceEntries=@($Source.Entries);$targetEntries=@($Target.Entries);$baselineEntries=@();if($Baseline){$baselineEntries=@($Baseline.Entries)}
     $targetGroups=@{};foreach($entry in $targetEntries){$key=Get-WsmAssistiveSoftwareKey $entry;if(-not $targetGroups.ContainsKey($key)){$targetGroups[$key]=New-Object 'System.Collections.Generic.List[object]'};$targetGroups[$key].Add($entry)}
@@ -203,24 +212,30 @@ function New-WsmAssistiveSoftwareRows($Source,$Target,$Baseline,$Choices,$Target
         $baseVersion='';if($bases.Count -eq 1){$baseVersion=[string]$bases[0].Version}
         $sourceVersion=[string]$entry.Version;$chosenVersion=$sourceVersion;$choice=$null;$staleChoice=$false
         if($choiceById.ContainsKey([string]$entry.SoftwareId)){$choice=$choiceById[[string]$entry.SoftwareId];if($choice.SourceVersion -cne $sourceVersion){$staleChoice=$true}else{$chosenVersion=[string]$choice.ChosenVersion}}
+        $targetEntry=$null;if($targets.Count -eq 1){$targetEntry=$targets[0]}
+        $sourceEvidenceKind=Get-WsmAssistiveVersionEvidenceKind $entry;$targetEvidenceKind='';$targetCaptureStatus='';$targetSourceKind='';$targetLocation=''
+        if($targetEntry){$targetEvidenceKind=Get-WsmAssistiveVersionEvidenceKind $targetEntry;$targetCaptureStatus=[string]$targetEntry.CaptureStatus;$targetSourceKind=[string]$targetEntry.SourceKind;$targetLocation=[string]$targetEntry.Location}
         $status='TargetUnknown';$reason='Target software coverage is incomplete; absence cannot be concluded.'
         if($identityStatus -eq 'Ambiguous'){$status='Ambiguous';$reason='Multiple software instances share the available identity fields; owner matching is required.'}
         elseif($targets.Count -eq 0 -and $TargetCoverageComplete){$status='TargetMissing';$reason='Complete target coverage did not observe this source software identity.'}
         elseif($targets.Count -eq 1){
-            if(-not $sourceVersion -or -not $chosenVersion -or -not $targetVersion){$status='VersionUnknown';$reason='Source, chosen, or observed target version is unknown.'}
+            if($targetCaptureStatus -cne 'Success'){$status='TargetEvidenceIncomplete';$reason='The matched target software row is partial or manual; its version cannot satisfy preparation.'}
+            elseif([string]$entry.CaptureStatus -cne 'Success'){$status='SourceEvidenceIncomplete';$reason='The matched source software row is partial or manual; its version requires owner verification.'}
+            elseif(-not $sourceVersion -or -not $chosenVersion -or -not $targetVersion){$status='VersionUnknown';$reason='Source, chosen, or observed target version is unknown.'}
+            elseif($sourceEvidenceKind -cne $targetEvidenceKind){$status='VersionEvidenceMismatch';$reason='Source and target versions come from different evidence kinds and cannot be compared as the same version fact.'}
             elseif($targetVersion -ceq $chosenVersion){$status='ChosenVersionObserved';$reason='Target reports the chosen version; compatibility is not established.'}
             else{$status='DifferentFromChosenVersion';$reason='Observed target version differs from the selected version; owner preparation and product validation are required.'}
         }
         if($staleChoice){$status='StaleChosenVersion';$reason='Source version facts changed after this choice; the saved choice is not applied to the changed source observation and must be reviewed again.'}
         elseif($entry.CaptureStatus -cne 'Success'){$status='SourceEvidenceIncomplete';$reason='Source software evidence is partial or manual and needs owner verification.'}
-        $row=[pscustomobject][ordered]@{SoftwareId=[string]$entry.SoftwareId;Name=[string]$entry.Name;Publisher=[string]$entry.Publisher;Scope=[string]$entry.Scope;SID=[string]$entry.SID;Architecture=[string]$entry.Architecture;SourceVersion=$sourceVersion;ChosenVersion=$chosenVersion;ObservedTargetVersion=$targetVersion;TargetSoftwareId=$targetId;BaselineObservedVersion=$baseVersion;Status=$status;Reason=$reason;SourceCaptureStatus=[string]$entry.CaptureStatus;TargetCoverageComplete=[bool]$TargetCoverageComplete}
+        $row=[pscustomobject][ordered]@{SoftwareId=[string]$entry.SoftwareId;Name=[string]$entry.Name;Publisher=[string]$entry.Publisher;Scope=[string]$entry.Scope;SID=[string]$entry.SID;Architecture=[string]$entry.Architecture;SourceVersion=$sourceVersion;ChosenVersion=$chosenVersion;ObservedTargetVersion=$targetVersion;TargetSoftwareId=$targetId;BaselineObservedVersion=$baseVersion;Status=$status;Reason=$reason;SourceCaptureStatus=[string]$entry.CaptureStatus;TargetCaptureStatus=$targetCaptureStatus;SourceKind=[string]$entry.SourceKind;TargetSourceKind=$targetSourceKind;SourceLocation=[string]$entry.Location;TargetLocation=$targetLocation;SourceVersionEvidenceKind=$sourceEvidenceKind;TargetVersionEvidenceKind=$targetEvidenceKind;SourceVersionType=$(if($sourceVersion){'String'}else{'Unknown'});TargetVersionType=$(if($targetVersion){'String'}else{'Unknown'});TargetCoverageComplete=[bool]$TargetCoverageComplete}
         $accountStatus='NotCompared';$targetSid='';$targetAccount='';if($targets.Count -eq 1){$targetSid=[string]$targets[0].SID;$targetAccount=[string]$targets[0].AccountContext;$accountStatus=if([string]$entry.SID -ceq $targetSid -and [string]$entry.AccountContext -ceq $targetAccount){'SameObservedIdentity'}else{'DifferentIdentityRequiresReview'}}
         $row | Add-Member NoteProperty SourceAccountContext ([string]$entry.AccountContext);$row | Add-Member NoteProperty TargetSID $targetSid;$row | Add-Member NoteProperty TargetAccountContext $targetAccount;$row | Add-Member NoteProperty AccountScopeStatus $accountStatus
         if($accountStatus -ceq 'DifferentIdentityRequiresReview'){$manual.Add([pscustomobject]@{SoftwareId=[string]$entry.SoftwareId;Name=[string]$entry.Name;Status='AccountScopeReviewRequired';Owner='';Action='Review the source and target account/SID mapping and actual consumer access; unique product pairing does not prove account equivalence.';CompatibilityDisclaimer='Local account names and SIDs are host-specific evidence.'})}
         $rows.Add($row)
         if($status -notin @('ChosenVersionObserved')){$manual.Add([pscustomobject]@{SoftwareId=[string]$entry.SoftwareId;Name=[string]$entry.Name;Status=$status;Owner='';Action=$(if($status -eq 'TargetMissing'){'Install or explicitly disposition this source software on the target.'}elseif($status -eq 'DifferentFromChosenVersion'){'Install the chosen version or update the chosen version after evidence review.'}elseif($status -eq 'Ambiguous'){'Identify the matching target instance and account scope.'}elseif($status -eq 'StaleChosenVersion'){'Review source facts and select a version against the current source observation.'}else{'Collect reliable software evidence and review with the product owner.'});CompatibilityDisclaimer='Observed version equality or selection is not compatibility evidence.'})}
     }
-    foreach($entry in $targetEntries){if(-not $seenTarget.ContainsKey([string]$entry.SoftwareId)){$rows.Add([pscustomobject][ordered]@{SoftwareId='';Name=[string]$entry.Name;Publisher=[string]$entry.Publisher;Scope=[string]$entry.Scope;SID=[string]$entry.SID;Architecture=[string]$entry.Architecture;SourceVersion='';ChosenVersion='';ObservedTargetVersion=[string]$entry.Version;TargetSoftwareId=[string]$entry.SoftwareId;BaselineObservedVersion='';Status='TargetOnly';Reason='Target-only software is retained as an observed fact and is not treated as source compatibility.';SourceCaptureStatus='';TargetCoverageComplete=[bool]$TargetCoverageComplete})}}
+    foreach($entry in $targetEntries){if(-not $seenTarget.ContainsKey([string]$entry.SoftwareId)){$version=[string]$entry.Version;$evidenceKind=Get-WsmAssistiveVersionEvidenceKind $entry;$rows.Add([pscustomobject][ordered]@{SoftwareId='';Name=[string]$entry.Name;Publisher=[string]$entry.Publisher;Scope=[string]$entry.Scope;SID=[string]$entry.SID;TargetSID=[string]$entry.SID;SourceAccountContext='';TargetAccountContext=[string]$entry.AccountContext;AccountScopeStatus='NotCompared';Architecture=[string]$entry.Architecture;SourceVersion='';ChosenVersion='';ObservedTargetVersion=$version;TargetSoftwareId=[string]$entry.SoftwareId;BaselineObservedVersion='';Status='TargetOnly';Reason='Target-only software is retained as an observed fact and is not treated as source compatibility.';SourceCaptureStatus='';TargetCaptureStatus=[string]$entry.CaptureStatus;SourceKind='';TargetSourceKind=[string]$entry.SourceKind;SourceLocation='';TargetLocation=[string]$entry.Location;SourceVersionEvidenceKind='';TargetVersionEvidenceKind=$evidenceKind;SourceVersionType='Unknown';TargetVersionType=$(if($version){'String'}else{'Unknown'});TargetCoverageComplete=[bool]$TargetCoverageComplete})}}
     if(-not $TargetCoverageComplete){$manual.Add([pscustomobject]@{SoftwareId='';Name='Target software inventory';Status='CoverageIncomplete';Owner='';Action='Repeat target inventory with complete required probe coverage before concluding absence.';CompatibilityDisclaimer='No absence conclusions are drawn from incomplete coverage.'})}
     [pscustomobject]@{Rows=@($rows.ToArray());ManualPreparation=@($manual.ToArray())}
 }

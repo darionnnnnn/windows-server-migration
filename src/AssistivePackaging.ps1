@@ -1,4 +1,4 @@
-function Initialize-WsmAssistiveCapacityApi {
+﻿function Initialize-WsmAssistiveCapacityApi {
     if('WsmAssistiveCapacity' -as [type]){return}
     # https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-getdiskfreespaceexw
     Add-Type -TypeDefinition @'
@@ -59,7 +59,7 @@ function Complete-WsmAssistiveSourcePackageJob($Job,$Result,[bool]$Succeeded) {
     if($Succeeded -and $Result -and $Result.ManifestPath){
         $package=Test-WsmMigrationPackage $Result.ManifestPath $Result.SHA256
         $batch=Register-WsmAssistiveMaterialBatch $Job.Workspace $Job.PairId $Job.Generation @(Get-WsmAssistivePackageMaterialRows $package) @($Job.Consumer)
-        $Job.MaterialIds=@(@($Job.MaterialIds)+@($batch.MaterialIds)|Sort-Object -Unique)
+        # Keep the original lock identity set; late materials are protected by the active pair/generation hold.
     }
     # Failed/interrupted operations retain their references; only the live lock ends.
     Set-WsmAssistiveJobLock -Workspace $Job.Workspace -PairId $Job.PairId -Generation $Job.Generation -OperationId $Job.OperationId -MaterialIds @($Job.MaterialIds) -Active $false | Out-Null

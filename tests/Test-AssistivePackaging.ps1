@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 $ErrorActionPreference='Stop'
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
 $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-source-retention-'+[Guid]::NewGuid().ToString('N'))
@@ -22,6 +22,7 @@ try {
             param($PlanPath,$ExpectedHash,$SourceStateDirectory,$OutputDirectory)
             $registry=Get-WsmAssistiveResourceRegistry $SourceStateDirectory
             if(@($registry.LiveJobs).Count -ne 1){throw 'Source producer has no live retention lock.'}
+            $script:initialSourceLockIds=@($registry.LiveJobs[0].MaterialIds)
             if($script:failCapture){throw 'isolated capture failure'}
             [void][IO.Directory]::CreateDirectory((Join-Path $OutputDirectory 'payload'))
             [IO.File]::WriteAllText((Join-Path $OutputDirectory 'manifest.json'),'fixture manifest')
@@ -40,6 +41,7 @@ try {
         Check ([IO.File]::Exists($result.ManifestPath)) 'Public producer failed to retain its sealed artifact.'
         Check ($registry.Materials.Count -eq 5 -and @($registry.Materials|Where-Object Kind -EQ PayloadChunk).Count -eq 1) 'Source graph omitted plan/control/payload materials.'
         Check (@($registry.LiveJobs).Count -eq 0) 'Completed source operation retained a live job lock.'
+        Check ($script:initialSourceLockIds.Count -eq 1 -and $registry.Materials.Count -gt $script:initialSourceLockIds.Count) 'Source completion did not preserve the initial release identity while retaining later control/payload materials.'
         $cleanup=Get-WsmAssistiveCleanupPreview -Workspace $workspace -RetentionBeforeUtc ([DateTime]::UtcNow.AddYears(1).ToString('o'))
         Check (@($cleanup.Rows|Where-Object Eligible).Count -eq 0) 'Unclosed source materials became eligible for deletion.'
         $script:failCapture=$true;$rejected=$false

@@ -3,6 +3,8 @@ $ErrorActionPreference='Stop'
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
 $comparisonSource=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\src\AssistiveComparison.ps1'))
 & $module {param($path) . $path;foreach($function in @(Get-Command -CommandType Function | Where-Object {$_.Name -match '^(Clear|Get|Update|Set|New)-WsmAssistive'})){Set-Item -Path ('Function:\script:'+ $function.Name) -Value $function.ScriptBlock}} $comparisonSource
+$restoreSource=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\src\AssistiveRestore.ps1'))
+& $module {param($path) . $path;foreach($function in @(Get-Command -CommandType Function | Where-Object {$_.Name -match '^(Assert-WsmAssistive(ReceiptComparisonBinding|ComparisonSnapshotVersions)|Get-WsmAssistiveComparisonDependencyIssues)$'})){Set-Item -Path ('Function:\script:'+ $function.Name) -Value $function.ScriptBlock}} $restoreSource
 $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-assistive-e1-'+[Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($root)
 $passed=0
@@ -64,11 +66,19 @@ try {
     Check ($versionRow.Count -eq 1 -and $versionRow[0].SourceVersion -eq '1.0' -and $versionRow[0].ChosenVersion -eq '3.0' -and $versionRow[0].ObservedTargetVersion -eq '2.0' -and $versionRow[0].Status -eq 'DifferentFromChosenVersion') 'Source, chosen, and observed versions were not kept distinct.'
     $microsoftRow=@($comparison.Rows | Where-Object SoftwareId -CEQ $microsoft.SoftwareId)
     Check ($microsoftRow.Count -eq 1 -and $microsoftRow[0].Status -eq 'TargetMissing') 'Publisher/name prefix was incorrectly treated as proof that the Microsoft software matched.'
+    $targetOnlyEntry=NewSoftwareEntry '99' 'Target-only runtime' '9.0';$targetOnlyEntry.SID='S-1-5-21-target';$targetOnlyEntry.AccountContext='Machine'
+    $targetOnlyProjection=CallModule {param($source,$target) New-WsmAssistiveSoftwareRows ([pscustomobject]@{Entries=@($source)}) ([pscustomobject]@{Entries=@($target)}) $null @() $true} @((NewSoftwareEntry '98' 'Source-only runtime' '1.0'),$targetOnlyEntry)
+    $targetOnlyRow=@($targetOnlyProjection.Rows | Where-Object Status -EQ 'TargetOnly')[0]
+    Check (-not $targetOnlyRow.SoftwareId -and $targetOnlyRow.SID -eq 'S-1-5-21-target' -and $targetOnlyRow.TargetSID -eq 'S-1-5-21-target' -and -not $targetOnlyRow.SourceAccountContext -and $targetOnlyRow.TargetAccountContext -eq 'Machine' -and $targetOnlyRow.AccountScopeStatus -eq 'NotCompared') 'Target-only software identity was projected as source account evidence or lost its target account context.'
+    Check ($versionRow[0].SourceLocation -eq $sourceRows[0].Location -and $versionRow[0].TargetLocation -eq $targetRows[0].Location -and $versionRow[0].SourceKind -eq 'Registry' -and $versionRow[0].TargetSourceKind -eq 'Registry' -and $versionRow[0].SourceCaptureStatus -eq 'Success' -and $versionRow[0].TargetCaptureStatus -eq 'Success') 'Comparison omitted source/target software evidence provenance or location.'
     Check ($comparison.VersionDisclaimer -match 'not compatibility evidence') 'Comparison omitted its compatibility disclaimer.'
     Check (@($comparison.ManualPreparation | Where-Object SoftwareId -CEQ $sourceRows[0].SoftwareId).Count -eq 1) 'Version mismatch did not produce an owner preparation action.'
     $stored=CallModule {param($w,$pair) Get-WsmCatalog $w $pair} @($workspace,$catalog.PairId)
     Check ($null -eq $stored.Assistive.Comparison -and $stored.Assistive.Revision -eq $comparisonInputRevision) 'A comparison query mutated catalog state.'
     $published=CallModule {param($w,$pair,$revision) Update-WsmAssistiveComparison $w $pair $revision} @($workspace,$catalog.PairId,$comparisonInputRevision)
+    $report=Export-WsmAssistiveReport -Workspace $workspace -PairId $catalog.PairId -OutputDirectory (Join-Path $root 'comparison-report')
+    $reportHtml=[IO.File]::ReadAllText($report.ReportPath)
+    Check ($reportHtml.Contains('Source capture status') -and $reportHtml.Contains('Target capture status') -and $reportHtml.Contains('Source version provenance') -and $reportHtml.Contains('Registry|Probe:Uninstall') -and $reportHtml.Contains('fixture:Fixture Server App') -and $reportHtml.Contains('DifferentFromChosenVersion')) 'Native comparison-to-HTML report omitted software status, capture completeness, provenance or original/target location.'
     Check ($published.Revision -eq $comparison.Revision) 'Explicit comparison publication did not preserve its monotonic revision.'
     Reject {CallModule {param($w,$pair,$revision) Update-WsmAssistiveComparison $w $pair $revision} @($workspace,$catalog.PairId,$comparisonInputRevision)} 'Stale comparison publication CAS was accepted.'
     $stored=CallModule {param($w,$pair) Get-WsmCatalog $w $pair} @($workspace,$catalog.PairId)
@@ -84,6 +94,22 @@ try {
     $comparison2=CallModule {param($w,$pair) Get-WsmAssistiveComparison $w $pair} @($workspace,$catalog.PairId)
     $unknownRow=@($comparison2.Rows | Where-Object SoftwareId -CEQ $microsoft.SoftwareId); Check ($unknownRow.Count -eq 1 -and $unknownRow[0].Status -eq 'TargetUnknown') 'Incomplete target coverage produced a false missing conclusion.'
     Check ($stored.Assistive.TargetBaseline.SHA256 -eq $targetHash -and $stored.Assistive.TargetCurrent.SHA256 -eq $target2Hash) 'Target baseline was overwritten instead of retaining the first observed snapshot.'
+
+    $partialSource=NewSoftwareEntry '50' 'Partial Evidence Product' '5.0'
+    $partialTarget=NewSoftwareEntry '51' 'Partial Evidence Product' '5.0';$partialTarget.CaptureStatus='Partial'
+    $partialComparison=CallModule {param($source,$target) New-WsmAssistiveSoftwareRows ([pscustomobject]@{Entries=@($source)}) ([pscustomobject]@{Entries=@($target)}) $null @() $true} @($partialSource,$partialTarget)
+    $partialRow=@($partialComparison.Rows | Where-Object SoftwareId -CEQ $partialSource.SoftwareId)[0]
+    Check ($partialRow.Status -eq 'TargetEvidenceIncomplete' -and $partialRow.TargetCaptureStatus -eq 'Partial' -and @($partialComparison.ManualPreparation | Where-Object Status -eq 'TargetEvidenceIncomplete').Count -eq 1) 'A partial target software row was reported as a successful chosen-version observation.'
+    $depItem='d'*64;$depPackage=[pscustomobject]@{Plan=[pscustomobject]@{Items=@([pscustomobject]@{ItemId=$depItem});GeneralHost=[pscustomobject]@{Requirements=@([pscustomobject]@{ProviderSoftwareId=$partialSource.SoftwareId;ConsumerItemIds=@($depItem);Decision='Required';Certainty='Certain';RequirementId='r-partial'})}}};$depDecision=[pscustomobject]@{SelectedItemIds=@($depItem);Receipt=[pscustomobject]@{Comparison=[pscustomobject]@{Rows=@($partialRow)}}}
+    $partialIssues=@(CallModule {param($package,$decision) Get-WsmAssistiveComparisonDependencyIssues $package $decision} @($depPackage,$depDecision))
+    Check ($partialIssues.Count -eq 1 -and $partialIssues[0].ConsumerItemId -eq $depItem) 'A required workload dependency passed readiness with a partial target software row.'
+    $partialSnapshot=[pscustomobject]@{SoftwareCatalog=[pscustomobject]@{Entries=@($partialTarget)}}
+    $forgedPositive=$partialRow.PSObject.Copy();$forgedPositive.Status='ChosenVersionObserved';$forgedPositive.ChosenVersion='5.0';$forgedPositive.ObservedTargetVersion='5.0'
+    Reject {CallModule {param($comparison,$snapshot) Assert-WsmAssistiveComparisonSnapshotVersions $comparison $snapshot | Out-Null} @([pscustomobject]@{Rows=@($forgedPositive)},$partialSnapshot)} 'Snapshot validator accepted a forged positive comparison for a partial target row.'
+    $differentSource=NewSoftwareEntry '52' 'Partial Evidence Product' '5.0';$differentSource.Evidence=[pscustomobject]@{Probe='FileVersion'}
+    $differentTarget=NewSoftwareEntry '53' 'Partial Evidence Product' '5.0';$differentTarget.Evidence=[pscustomobject]@{Probe='Uninstall'}
+    $differentComparison=CallModule {param($source,$target) New-WsmAssistiveSoftwareRows ([pscustomobject]@{Entries=@($source)}) ([pscustomobject]@{Entries=@($target)}) $null @() $true} @($differentSource,$differentTarget)
+    Check (@($differentComparison.Rows | Where-Object SoftwareId -CEQ $differentSource.SoftwareId)[0].Status -eq 'VersionEvidenceMismatch') 'Equal version text from different evidence providers was treated as an equivalent observation.'
 
     $badFileScope=[pscustomobject]@{Adapter='FileScope';TransferChannel='Unknown';ContentSelection='ExactFiles';ConfigFiles=@();SourcePath='C:\data';TargetPath='D:\data';ExcludedRelativePaths=@();Consistency='Immutable';Metadata='DaclOwner';ConflictPolicy='Block';Owner='owner';Evidence='evidence'}
     Reject {CallModule {param($spec) Assert-WsmAssistiveMigrationSpec $spec} @($badFileScope)} 'Malformed schema 3 FileScope transfer/content selection was accepted.'

@@ -21,7 +21,7 @@ try{ & $module {
  $projection=Get-WsmEnvironmentConfirmationProjection $persisted
  $projected=@($projection.Items|Where-Object ItemId -CEQ $item.ItemId)[0]
  Check ($projected.TargetPath -ceq 'C:\approved-target' -and $projected.ReviewSuggestedPath -ceq 'C:\review-only') 'Environment document confused a suggestion with the approved target.'
- function Entry([string]$id,[string]$sid,[string]$account){[pscustomobject]@{SoftwareId=$id;Name='Fixture runtime';Publisher='Fixture vendor';Scope='User';SID=$sid;Architecture='x64';AccountContext=$account;Version='2';CaptureStatus='Success'}}
+ function Entry([string]$id,[string]$sid,[string]$account){[pscustomobject]@{SoftwareId=$id;Name='Fixture runtime';Publisher='Fixture vendor';Scope='User';SID=$sid;Architecture='x64';AccountContext=$account;Version='2';CaptureStatus='Success';SourceKind='Registry';Evidence=[pscustomobject]@{Probe='Uninstall'};Location='fixture:runtime'}}
  $a=Entry 'source' 'S-1-5-21-111-1001' 'OLDHOST\operator';$b=Entry 'target' 'S-1-5-21-222-1001' 'NEWHOST\operator'
  $compared=New-WsmAssistiveSoftwareRows ([pscustomobject]@{Entries=@($a)}) ([pscustomobject]@{Entries=@($b)}) $null @() $true
  Check ($compared.Rows.Count -eq 1 -and $compared.Rows[0].TargetSoftwareId -ceq 'target' -and $compared.Rows[0].Status -ceq 'ChosenVersionObserved') 'Host-local SID change incorrectly became missing plus target-only software.'

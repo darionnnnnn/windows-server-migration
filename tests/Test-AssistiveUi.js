@@ -16,14 +16,14 @@ function makeApp(fetchImpl, useDom = false) {
   const elements = new Map();
   function makeElement(tagName = 'div') {
     return {
-      tagName: tagName.toUpperCase(), children: [], dataset: {}, attributes: {}, className: '', classList: { toggle() {}, add() {}, remove() {} }, get lastElementChild() { return this.children[this.children.length - 1] || null; }, get lastChild() { return this.children[this.children.length - 1] || null; },
+      tagName: tagName.toUpperCase(), children: [], dataset: {}, attributes: {}, listeners: {}, className: '', classList: { toggle() {}, add() {}, remove() {} }, get lastElementChild() { return this.children[this.children.length - 1] || null; }, get lastChild() { return this.children[this.children.length - 1] || null; },
       appendChild(node) { this.children.push(node); node.parentNode = this; return node; },
       append(...nodes) { nodes.forEach(node => this.appendChild(node)); },
       replaceChildren(...nodes) { this.children.forEach(node => { node.parentNode = null; }); this.children = []; this.append(...nodes); },
       insertBefore(node, before) { const index = before ? this.children.indexOf(before) : -1; if (index < 0) this.appendChild(node); else { this.children.splice(index, 0, node); node.parentNode = this; } return node; },
       remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(node => node !== this); this.parentNode = null; },
       setAttribute(name, value) { this.attributes[name] = String(value); }, removeAttribute(name) { delete this.attributes[name]; },
-      focus() {}, scrollIntoView() {},
+      addEventListener(type, listener) { (this.listeners[type] ||= []).push(listener); }, dispatch(type) { return (this.listeners[type] || []).map(listener => listener({ target: this, preventDefault() {} })); }, focus() {}, scrollIntoView() {},
       querySelector(selector) { return this.querySelectorAll(selector)[0] || null; },
       querySelectorAll(selector) {
         const found = [], matches = node => selector === '[data-type]' ? node.dataset && node.dataset.type : selector === '[data-rows]' ? node.dataset && node.dataset.rows === 'true' : selector === 'input' ? node.tagName === 'INPUT' : selector === '.collection-row' ? /(^|\s)collection-row(\s|$)/.test(node.className || '') : selector === '.collection-row input' ? false : false;
@@ -100,6 +100,63 @@ test('software version choice accepts a user-entered newer version through a typ
   assert.match(appSource, /選擇或輸入明確的軟體版本/);
 });
 
+test('rendered software save sends a reason for a changed version and blocks a blank reason', async () => {
+  const calls = [];
+  const ui = makeApp(async (url, options) => { calls.push({ url, options }); return { ok: true, status: 200, json: async () => ({ revision: 18 }) }; }, true);
+  ui.state.session = { contextId: 'ctx', revision: 17 };
+  ui.renderSoftware({ rows: [{ softwareId: 'runtime', name: 'Runtime', sourceVersion: '1.0', chosenVersion: '1.0', versionChoices: [{ value: '1.0' }, { value: '3.0' }] }] });
+  const row = ui.__getElement('software-rows').children[0];
+  row.children[2].children[0].value = '3.0';
+  const reason = row.children[2].children[2];
+  reason.value = 'Required release';
+  const save = row.children[5].children[1];
+  await save.dispatch('click')[0];
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, '/api/operations');
+  const submitted = JSON.parse(calls[0].options.body);
+  assert.equal(submitted.action, 'SetSoftwareVersion');
+  assert.deepEqual(JSON.parse(JSON.stringify(submitted.args)), { softwareId: 'runtime', chosenVersion: '3.0', Reason: 'Required release' });
+  assert.equal(submitted.expectedRevision, 17);
+
+  calls.length = 0;
+  const blankReasonUi = makeApp(async (url, options) => { calls.push({ url, options }); return { ok: true, status: 200, json: async () => ({}) }; }, true);
+  blankReasonUi.state.session = { contextId: 'ctx', revision: 17 };
+  blankReasonUi.renderSoftware({ rows: [{ softwareId: 'runtime', name: 'Runtime', sourceVersion: '1.0', chosenVersion: '1.0', versionChoices: [{ value: '1.0' }, { value: '3.0' }] }] });
+  const blankRow = blankReasonUi.__getElement('software-rows').children[0];
+  blankRow.children[2].children[0].value = '3.0';
+  await blankRow.children[5].children[1].dispatch('click')[0];
+  assert.equal(calls.length, 0, 'blank reason must stop before the request');
+  assert.match(blankReasonUi.__getElement('error-summary').children[0].textContent, /請填寫選擇原因/);
+});
+
+test('software rows keep product readiness, account scope, evidence, and target-only rows distinct', () => {
+  const ui = makeApp(async () => ({ ok: true, status: 200, json: async () => ({}) }), true);
+  ui.renderSoftware({ rows: [
+    { softwareId: 'runtime-1', name: 'Portal Runtime', sourceVersion: '1.0', chosenVersion: '3.0', observedVersion: '2.0', status: 'DifferentFromChosenVersion', accountScopeStatus: 'SameObservedIdentity', sourceSID: 'S-1-5-21-source', targetSID: 'S-1-5-21-target', sourceVersionEvidenceKind: 'Registry', targetVersionEvidenceKind: 'Registry', sourceCaptureStatus: 'Success', targetCaptureStatus: 'Success', sourceLocation: 'C:\\Runtime', targetLocation: 'D:\\Runtime', manualActions: [{ action: 'Install the chosen version or update the chosen version after evidence review.', owner: '' }] },
+    { softwareId: 'runtime-missing', name: 'Missing Runtime', sourceVersion: '1.0', chosenVersion: '1.0', observedVersion: '', status: 'TargetMissing', accountScopeStatus: 'NotCompared' },
+    { softwareId: '', name: 'Target-only Runtime', sourceVersion: '', chosenVersion: '', observedVersion: '5.0', status: 'TargetOnly', targetSID: 'S-1-5-21-target-only', targetAccountContext: 'Machine', targetVersionEvidenceKind: 'Registry', targetCaptureStatus: 'Success' }
+  ] });
+  const rows = ui.__getElement('software-rows').children;
+  assert.equal(rows[0].children[5].children[0].textContent, '目標版本與選用版本不同');
+  assert.match(rows[0].children[5].children[1].textContent, /帳戶範圍：觀測身分相同/);
+  const firstAccountText = rows[0].children[4].children.map(child => child.textContent).join(' ');
+  const firstSourceText = rows[0].children[1].children.map(child => child.textContent).join(' ');
+  assert.match(firstAccountText, /來源帳戶範圍：未知 · SID S-1-5-21-source/);
+  assert.match(firstAccountText, /待處理：Install the chosen version/);
+  assert.match(firstSourceText, /來源證據：Registry · Success/);
+  assert.match(firstSourceText, /來源位置：C:\\Runtime/);
+  assert.equal(rows[1].children[5].children[0].textContent, '目標盤點確認缺少此軟體');
+  assert.match(rows[1].children[5].children[1].textContent, /帳戶範圍：未比較/);
+  assert.match(rows[2].children[5].children[0].textContent, /僅目標端觀測/);
+  assert.equal(rows[2].children[5].children.some(child => child.tagName === 'BUTTON'), false);
+  const targetOnlyAccountText = rows[2].children[4].children.map(child => child.textContent).join(' ');
+  assert.match(targetOnlyAccountText, /目標帳戶範圍：Machine · SID S-1-5-21-target-only/);
+  assert.doesNotMatch(targetOnlyAccountText, /來源帳戶範圍：[^ ]+ · SID S-1-5-21-target-only/);
+  assert.match(htmlConsoleSource, /sourceSID=\$\(if\(\$row\.SoftwareId\)\{Get-WsmConfirmationValue \$row 'SID'\}else\{''\}\)/);
+  assert.match(htmlConsoleSource, /targetSID=\$\(if\(\$row\.SoftwareId\)\{Get-WsmConfirmationValue \$row 'TargetSID'\}else\{Get-WsmConfirmationValue \$row 'SID'\}\)/);
+  for (const field of ['sourceCaptureStatus', 'targetCaptureStatus', 'sourceKind', 'targetSourceKind', 'sourceLocation', 'targetLocation', 'sourceVersionEvidenceKind', 'targetVersionEvidenceKind', 'sourceVersionType', 'targetVersionType']) assert.ok(htmlConsoleSource.includes(`${field}=(Get-WsmConfirmationValue`), `${field} is projected for the HTML consumer`);
+});
+
 test('operation request carries a revision and unique idempotency identifiers', () => {
   const ui = makeApp(async () => ({ ok: true, status: 200, json: async () => ({}) }));
   ui.state.session = { contextId: 'context-17' };
@@ -119,7 +176,7 @@ test('every backend operation has a Chinese label and a source, manager or targe
     ...[...htmlConsoleSource.matchAll(/@\('([A-Za-z][A-Za-z0-9]+)','[^']+'\)/g)].map(match => match[1])
   ]);
   assert.ok(actions.size > 90);
-  for (const htmlAction of ['SetRestoreChoice', 'ReviewIssues', 'SetSoftwareVersion', 'HttpIntegrityProbe']) assert.ok(actions.has(htmlAction), `${htmlAction} is part of the HTML action map`);
+  for (const htmlAction of ['SetRestoreChoice', 'ReviewIssues', 'SetSoftwareVersion', 'HttpIntegrityProbe', 'MaterialJobStatus']) assert.ok(actions.has(htmlAction), `${htmlAction} is part of the HTML action map`);
   actions.forEach((action, index) => {
     const label = ui.actionLabel(action, index + 1);
     assert.match(label, /[\u3400-\u9fff]/, `${action} should have a Chinese picker label`);
@@ -133,6 +190,11 @@ test('every backend operation has a Chinese label and a source, manager or targe
   assert.equal(ui.actionGroup('OsProvidedSubmit'), 'Manager');
   assert.equal(ui.actionGroup('SpecReview'), 'Manager');
   assert.equal(ui.actionGroup('TargetSnapshot'), 'Target');
+  assert.equal(ui.actionGroup('MaterialJobStatus'), 'Target');
+  assert.equal(ui.actionLabel('MaterialJobStatus'), '查看中斷作業材料鎖');
+  const materialGuidance = ui.actionGuidance('MaterialJobStatus', { readOnly: true });
+  assert.match(materialGuidance.precondition, /工作程序已停止/);
+  assert.match(materialGuidance.output, /不會自動逾期或解除鎖/);
   assert.equal(ui.actionGroup('PreparationPreview'), 'Target');
   assert.equal(ui.actionGroup('PreparationEvidence'), 'Target');
   assert.equal(ui.actionLabel('HttpIntegrityProbe'), '檢查本機頁面傳輸完整性');
