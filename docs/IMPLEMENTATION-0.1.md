@@ -4,7 +4,7 @@
 
 ## 第三輪 0.4 開發與驗證
 
-第三輪依 MIGRATION-3-PLAN.md 逐段實作／固定快照驗證／commit 與 push。Schema 3 輔助 catalog/plan/receipt 與 JSON 比較、來源 C 精確封裝、非 C 跳板搬移及共用目標 reservation、材料引用與作業保護已接入；逐項還原、IIS/task 停用 staging、部分世代/delta、修復及 HTML 操作／文件已完成原始子項與真實使用端完整性核對。最後補齊 NonC 與主流程同一原生身分、整棵目錄時間／權限讀回、Manager 匯入保留核准，以及 restore／rollback 在父設定完成後的最終 metadata 與精確 prior 重播；HTML 型別化表單也提供受審查的 FileScope ACL 政策。本機 WinPS5.1／PS7 廣域快照各106 PASS；最後修改另有雙引擎受影響回歸與真實小範圍原生反例驗證，最後程式提交的遠端6個CI工作全數通過，完整快照與最後HTML差異的證據按版本列於 PLAN。第三輪全部完成狀態以 PLAN 最後的 producer→consumer→驗收證據為準，舊第 2 輪表格不充當第三輪驗收。
+第三輪依 MIGRATION-3-PLAN.md 逐段實作／固定快照驗證／commit 與 push。Schema 3 輔助 catalog/plan/receipt 與 JSON 比較、來源 C 精確封裝、非 C 跳板搬移及共用目標 reservation、材料引用與作業保護已接入；逐項還原、IIS/task 停用 staging、部分世代/delta、修復及 HTML 操作／文件已完成原始子項與真實使用端完整性核對。最後補齊 NonC 與主流程同一原生身分、整棵目錄時間／權限讀回、Manager 匯入保留核准，以及 restore／rollback 在父設定完成後的最終 metadata 與精確 prior 重播；HTML 型別化表單也提供受審查的 FileScope ACL 政策。本機 WinPS5.1／PS7 廣域快照各106 PASS；最後修改另有雙引擎受影響回歸與真實小範圍原生反例驗證，最後程式提交的遠端6個CI工作全數通過，2026-10-11 正式不同模型體檢完成，軟體比較／材料 lock／IIS／task／installer／reviewed transition／activation consumer 缺漏已修正，分版本驗收與 CI 在 PLAN。第三輪全部完成狀態以 PLAN 最後的 producer→consumer→驗收證據為準，舊第 2 輪表格不充當第三輪驗收。
 
 主模型另發現並補強必要 metadata 的實際 readback、單一檔案範圍，以及可攜文件下載的原始 XML／secret 隔離。HTML 使用獨立 PowerShell worker，同一核心／CAS／journal，沒有 Node 執行依賴。Node/Edge 僅作開發測試；瀏覽器 fixture 與真實 loopback 傳輸分別記錄，本機 HTTP 中間層改寫不能算為工具端測試通過。
 
@@ -24,7 +24,7 @@
 
 既有generic adapters及operation journal／workspace transaction保留。ManualWorkflow不是產品自動還原能力；runtime／第三方安裝維持使用者準備。操作契約見 [OPERATIONS.md](OPERATIONS.md) 與 [GENERAL-HOST-WORKFLOW.md](GENERAL-HOST-WORKFLOW.md)。ProductionExecutionEnabled及ProductionVerified維持false。
 
-## 當期待辦：外部驗收與獨立體檢
+## 當期待辦：外部驗收
 - [ ] 代表性來源／目標及完整十台盤點：owner、產品／runtime／軟體清單、媒體、scope、容量、RPO/RTO與維護窗。
 - [ ] 實際Server2016／2025／Core、語系、32bit runtime、policy／權限及provider的collector／export／restore／verify矩陣；補產品原生錯誤分類及正反例。
 - [ ] 原生IIS／SCM／任務／分享／憑證／帳號／服務帳號模式、安裝副作用、reboot後readback，及名稱／IP／DNS／Kerberos／網域切換。
@@ -32,7 +32,9 @@
 - [ ] 代表性封裝→還原量測耗時、容量、尖峰記憶體與維護窗；既有4GiB邊界不等於企業效能，長路徑目前明確阻擋。
 - [ ] 單台pilot、相依雙台及十台波次：真實freeze／fencing／activation／新交易回退／source resume／唯一writer、業務接受、觀察、備份實還原與退役批准。
 - [ ] 真實瀏覽器與主控台完整操作旅程；Node DOM／CLI fixture不能代替此項。
-- [ ] 可核實且不同於全部實作者模型的獨立體檢；先前主代理實作模型無可信身分紀錄，同模型不同effort不算換模型。
+
+正式不同模型體檢已於2026-10-11完成，可信模型來源、完整第三輪基準、修正與驗證見 [第三輪規劃](MIGRATION-3-PLAN.md)。本次體檢方修正不稱為這些新修正的獨立換模型體檢。
+
 使用者的隔離Server無法讓代理連線，目前尚未收到真實清單／LabReport及企業材料。不能以合成測試補作這些證據，也不刪除原始驗收需求。
 
 ## 測試與交付規則

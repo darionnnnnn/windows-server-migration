@@ -1,6 +1,6 @@
 # 第 3 輪規劃：一般網站／排程主機 EOS 搬移
 
-日期：2026-10-10。狀態：**實作及本輪本機驗證／探測交付完成，正式資格與可核實換模型體檢待補：2026-10-10使用者已授權第三輪全部實作，HTML採ui-ux-pro-max；逐段核對／驗證／commit／push，所有Phase須有實際證據才能勾完成。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；上次定案起點：`d674087`；四視角複審基準：`97a98f8`；本次定案基準：`e772b4e`；本次再審基準：`884d65e`。輔助搬移、版本選擇、原路徑保存、預設全選／自訂、HTML／本機 PowerShell／文字備援、C／非 C 分工、不合併、非 IIS 不新增 adapter均沿用。IIS／排程的全部設定、物件及所選相依檔案須成套處理，非 C 路徑同樣還原；特殊能力與實機條件仍明列，不從規劃授權推論已授權實作或解除 production gate。
+日期：2026-10-10。狀態：**實作、本輪本機驗證／探測交付及可核實不同模型正式體檢完成；實機／企業正式資格待外部證據：2026-10-10使用者已授權第三輪全部實作，HTML採ui-ux-pro-max；逐段核對／驗證／commit／push，所有Phase須有實際證據才能勾完成。** 程式基準：`4908910`（0.3 隔離 pilot）；初版複審起點：`dev` 的 `b40c657`；上次定案起點：`d674087`；四視角複審基準：`97a98f8`；本次定案基準：`e772b4e`；本次再審基準：`884d65e`。輔助搬移、版本選擇、原路徑保存、預設全選／自訂、HTML／本機 PowerShell／文字備援、C／非 C 分工、不合併、非 IIS 不新增 adapter均沿用。IIS／排程的全部設定、物件及所選相依檔案須成套處理，非 C 路徑同樣還原；特殊能力與實機條件仍明列，不從規劃授權推論已授權實作或解除 production gate。
 
 主入口見 [README](../README.md)；既有實作證據見 [第 2 輪驗證](archive/MIGRATION-2-VERIFICATION.md)，既有能力與限制見 [涵蓋範圍](ENTERPRISE-MIGRATION-COVERAGE.md)。本輪後續待辦集中於本文；既有外部驗收仍保留於 [實作紀錄](IMPLEMENTATION-0.1.md)。
 
@@ -476,7 +476,7 @@ Manager 對必要非 C 相依接收綁定來源主機／根目錄、目的主機
 - [x] R3-G：IIS／task全設定物件、C非C成套／兩順序／基線／replay／返回碼／保留／回退；R3-07／11／12／17／19。 typed映射readback、共享全域prior／undo、啟用順序及清理並行；R3-20–25。
 - [x] R3-E2：全HTML文件／可攜完整索引／計數／稽核／相容格式／交接；R3-06／10／15–19文件部分。 生效引用／連帶影響、零C、啟用後業務及清理拒絕同源；R3-20–25。
 - [x] R3-U：全HTML操作／啟動／worker／取消／非互動／多頁／secret／可及性；R3-10／13／16／18操作部分。 六個邊界反例可操作／下鑽與重查；R3-20–25。
-- [x] R3-F：本輪實作、R3-01–25／D3-01–08及兩組8情境／六個邊界的接線核對、小範圍／隔離回歸與環境探測交付完成。依2026-10-10使用者明確接受的驗收方式，原始規模／實機／企業正式資格及可核實不同模型體檢仍未完成，見下方外部驗收清單；不因勾選解除阻擋。
+- [x] R3-F：本輪實作、R3-01–25／D3-01–08及兩組8情境／六個邊界的接線核對、小範圍／隔離回歸與環境探測交付完成。依2026-10-10使用者明確接受的驗收方式，原始規模／實機／企業正式資格仍未完成；2026-10-11可核實不同模型正式體檢及本輪修正已完成，見下方外部驗收清單；不因勾選解除阻擋。
 
 主代理驗收時依專案、程式、尖銳但合理的使用者與管理者四視角反查：不能只看新增 happy path。先用使用者從盤點到切換走完，再從整體檢查核准／套件／版本／相依／還原／回退是否一致；不為一次檔案搬移加常駐服務或泛用產品 adapter 框架。每段完整且驗證後，依全域規則 commit／push 本輪分支，確認遠端 SHA；不能把未驗證相依拆出去先推。
 
@@ -553,7 +553,7 @@ Support matrix and release SBOM JSON references now resolve to complete safely e
 
 主代理再次從 TS、Server Core 操作者、產品負責人、管理者及全專案契約反查原 R3-01–25、D3-01–08與全部劇本。主代理實作／整合；本段三名 gpt-6-luna high 分別補工作負載 producer、OSProvided 證據及 HTML／文字型別表單；單一 writer，主代理自行查 diff 與實際 consumer。這是具體獨立驗證，不宣稱已取得可核實的不同模型正式體檢資格。
 
-本輪修正：來源／目的端本機 SID 不同時，唯一同產品仍可配對，但另列帳號映射待辦，多實例不自動配對；環境文件將 MigrationSpec.TargetPath 與建議 Mapping 分開；原生決策與長工作記錄 Windows principal／SID／主機／時間，Owner 聲明與瀏覽器身分驗證分開。新增 IIS 全域／宣告分節／location／configSource 及 web.config 證據、相依與站台核准前處置，未知／budget／特殊項明列人工。generic enabled 欄位不假称網站啟動。OSProvided 使用完整 XML／task與folder安全、獨立來源與目的 Windows基準／来源證明及責任人確認；同名不等於 OS 提供。排除條目仍保存封存證據，來源絕對路徑不成為新主機必要檔案位置；目的端真正重新讀回。文字備援逐欄輸入同一型別契約與預覽，再明確 APPLY，無需手製正常流程 JSON。
+本輪修正：來源／目的端本機 SID 不同時，唯一同產品仍可配對，但另列帳號映射待辦，多實例不自動配對；環境文件將 MigrationSpec.TargetPath 與建議 Mapping 分開；原生決策與長工作記錄 Windows principal／SID／主機／時間，Owner 聲明與瀏覽器身分驗證分開。新增 IIS 全域／宣告分節／location／configSource 及 web.config 證據、相依與站台核准前處置，未知／budget／特殊項明列人工。generic enabled 欄位不假称網站啟動。OSProvided 使用完整 XML／task與folder安全、獨立來源與目的 Windows基準／來源證明及責任人確認；同名不等於 OS 提供。排除條目仍保存封存證據，來源絕對路徑不成為新主機必要檔案位置；目的端真正重新讀回。文字備援逐欄輸入同一型別契約與預覽，再明確 APPLY，無需手製正常流程 JSON。
 
 原 U commit a3b625f 的全量原生回歸在不可變快照執行；本段修正另以最終固定快照補驗受影響 consumer。基準快照不冒稱涵蓋後來修改，所有執行結果完成後才更新本段最終數量及 Phase。2501 列環境文件驗證在 WinPS 5.1 已通過，PS7 與整輪其餘測試仍在執行。實體4GiB、企業規模與 Server／IIS／TaskScheduler／SMB／PKI／業務仍依使用者小範圍驗證決策標 NotTested；本機嚴格 HTTP 遭傳輸修改時也標 ModifiedTransport，保留探測結果，不變更使用者網路政策或把 mock API 瀏覽器測試當實際橋接驗收。
 ### R3 決策與帳號審閱驗證段落 — 2026-10-11
@@ -683,9 +683,9 @@ Luna high 各自實作兩個 fixture；主代理查 diff 後分別獨立在 WinP
 - [ ] 真實非 C 實體磁碟及 SMB peer、來源停寫責任與一致性窗口；隔離 collection proof 不充當跨 Server 證據。
 - [ ] EFS／特殊檔案與實際權限存取、physical 4GiB 邊界／企業容量與效能樣本。
 - [ ] 使用者選用新版軟體、人工匯入設定、業務驗收與具名責任、企業 PKI／正式資格。
-- [ ] 由可信設定可核實、符合 project-closeout 條件的不同模型體檢；交接已備妥，不推定模型身分。
+- [x] 2026-10-11 由可信設定確認的不同模型正式體檢；完整受檢基準、模型來源、本輪修正及驗收見本文最後正式體檢段落。
 
-上述全部維持 NotTested，ProductionVerified=false；probe成功只代表該次觀察，不代表還原、啟用或業務已通過。原始各項企業驗收契約保留，不刪除以營造完成率。
+上述外部主機／企業驗收維持 NotTested，ProductionVerified=false；probe成功只代表該次觀察，不代表還原、啟用或業務已通過。原始各項企業驗收契約保留，不刪除以營造完成率。
 
 主代理最後表單受影響驗證：WinPS5.1／PS7各12支、合計24次PASS；每組Node UI16項及JS語法PASS，src/tests快照hash前後一致，與實際工作區逐檔核對無差異。日誌分別為專案外 `work/final-forms-powershell-20261011-023341/summary.json` 與 `work/final-forms-pwsh-20261011-023344/summary.json`。ReviewForms41、Directory10、WorkloadIntegration45及原有CAS／sealed consumer／native漂移條件全部保留。
 
@@ -708,3 +708,53 @@ Luna high 各自實作兩個 fixture；主代理查 diff 後分別獨立在 WinP
 最後程式提交 `f22719b632868dd2dbd4d73ce71096b9e5e690cd` 的 [CI 38077352696](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38077352696) 六個工作全數成功：fixtures、delta-workflow、第2輪WinPS5.1／PS7、第3輪WinPS5.1／PS7（含Node17）。前段 `b0e37e4` 的CI38076602679亦全數成功。最終程式指紋 `cdaaadaeb543536c238488aa1b8cbbef862e5790175c1824c131ad4280f9b8db`；最後文件段只同步當前狀態／證據及由其生成的HTML，不改runtime/test，也不沿用先前ZIP的文件bytes或簽章。
 
 停止前再次核對：原始R3-01–25與D3-01–08 consumer矩陣完整、16個使用者／成套案例及6個邊界接線保留、11個階段本輪實作相依閉合；IIS／task完整設定與C／非C必要相依成套、版本選擇與舊路徑／既有衝突不合併、預設全選／自訂、HTML與文字共用核心皆有對應實作及上述證據。不存在已知尚未實作的本輪程式項目；外部清單及可核實不同模型體檢仍明確NotTested，ProductionVerified=false。沿用dev分段commit／push並逐次核對遠端SHA；原有個人prototype未讀取／未納入提交，docs/archive未讀取／未收錄發行包。
+
+### 第三輪正式不同模型體檢 — 2026-10-11
+
+本節是目前正式體檢狀態；前面逐段紀錄保留各次日期、基準與當時限制，先前的「體檢待補」由本節已核實的結果取代。
+
+受檢範圍由第三輪實作起點 `df21f02` 至本次 dev 完整差異及本次已推送修正核對，不使用空的遠端差異當作已完成證據。原始 R3-01–25、D3-01–08、11 階段、16 個使用者／成套情境及六個邊界沿用；沒有把本輪缺漏移到下一輪。
+
+模型資格依可信來源分開記錄：本機 session turn_context 的第三輪主代理實作紀錄為 gpt-6.1-sol（medium），既有實作代理為 gpt-6-luna（high／medium）；使用者回覆已切換後，唯讀 app threads 設定確認本 chat 為 gpt-6-astra（low）。正式複核採此可信設定，不把舊的 turn 啟動 metadata 說成已出現 Astra 執行事件，也不以同模型提高 effort 當換模型。切換前的查漏與 Luna 的範圍掃描屬一般審查；正式裁定與整合驗收由主代理親自完成。本次體檢修正由主代理及 Luna 共同實作、主代理驗證，依 project-closeout 不稱為這些新修正的獨立換模型體檢，也不因此無限要求再切換。
+
+| 已確認缺陷／缺漏 | 修正與完整相依 | 驗收使用端 |
+|---|---|---|
+| 目標軟體 Partial 仍被判為 ChosenVersionObserved；相同字串但版本證據來源不同也被當作同種版本事實 | 比較保留兩端 capture、證據來源、版本 provenance、位置；不完整或異種證據列人工待辦。還原 receipt 同時核對 immutable source 與 exact target raw facts，舊比較省略新欄位也不能繞過。只阻擋相關必要 consumer | 真正比較 producer → dependency gates → receipt／freshness consumer；Comparison、Restore 與 HTML 匯出 |
+| HTML 用帳號狀態蓋掉缺軟體／異版狀態，SID 投影錯誤，TargetOnly 有無效選版操作 | 產品 readiness 與帳號狀態分欄；來源 SID 與目標 SID 按 producer 欄位；TargetOnly 顯示目標身分並取消來源選版 affordance；證據及人工行動保留 | 真實投影與 rendered DOM，ReviewForms、Ui、Reports |
+| HTML 選新版未傳核心必要 Reason；無儲存選版紀錄時讀不存在的 Reason | 新版輸入原因、隨 typed request／CAS 傳到原核心；空理由先指出欄位。投影空／未匹配 choice 保留空值，不讓整頁失敗；跨項目與普通草稿保留契約不變 | rendered 保存按鈕 → 實際 request shape、零請求反例、核心 SetSoftwareVersion、ReviewForms／HtmlConsole |
+| 材料鎖可用錯 Pair／generation／部分或重複集合解除；中斷後正常 HTML 缺精確識別 | Active lock 綁同 Pair／generation 的唯一素材；release 只接受現存精確 tuple。新增 MaterialJobStatus，Restore 模式核對 package／native target／state／journal／RestoreAttempt；NonCRegistry 明示 RegistryOnly，提供全部鎖與素材識別，未證明 worker／journal／effects。保留人工停止、對帳、精確解除順序，不自動逾期／接管／解鎖 | 真 registry／journal → 只讀 HTML → safe worker projection → report artifact；Resources、HtmlConsole 與 typed 選單 |
+| 執行後期才登記的材料未在最初 ID 鎖，可能被 close／cleanup 提前刪除 | 同 Pair／generation 的任一 live job 保護後登記素材；共享同一實體檔案的別 Pair 引用也列保留；preview 與鎖內 recheck 一致。來源封裝完成仍保留新增 control／payload 引用，但用原鎖的 ID 集合精確解除 | 實際 filesystem／registry／close／preview／cleanup、SourcePackage producer、NonC／TargetPreparation／Restore |
+
+原缺陷反例：Partial target 同版本原先得到 ChosenVersionObserved、0 個 dependency issue／0 個人工待辦；修正後 TargetEvidenceIncomplete、各 1 個。隔離副本只取消 pair／generation close guard，精確在 late-material 回歸失敗；只取消 UI 的 Reason 傳遞，精確在 rendered 保存測試失敗。全量回歸也抓出修正相依的 source package release 集合及空 choice 投影問題，已補齊；帳號配對 fixture 補入既有契約必要 SourceKind／Evidence／Location，沒有降低 runtime 證據要求。
+
+四視角核對：TS／產品負責人的兩種安裝順序、新版選擇、舊路徑／目的衝突與待辦能從 HTML 操作／文件追查；Server Core 文字備援使用相同 actions／核心，不新增執行引擎。對尖銳但合理的使用者，來源／選用／目標事實、缺口／未知、檔案核驗／可用性／業務驗收分開，不能用綠色帳號狀態或未知版本冒稱已準備好。程式與整體追 sealed subset／CAS／native freshness／state／journal、IIS 全域／階層及 task 全 XML／folder／安全的 typed staging／readback、C／非 C 同輪 final／generation、零 C 控制材料、delta 完整 base、ownership／metadata／rollback 與共用資源；管理者另核對中斷恢復、保留、秘密投影、責任與 exact qualification／release gates。已完成項目以 producer→consumer 及反例／回歸證據對照；代理沒有全面查過的範圍不冒稱其已審查。
+
+本次沿實際原生 consumer 再確認並修正：
+
+| 原生流程缺口 | 完整修正／使用者影響 | 驗收範圍 |
+|---|---|---|
+| ScheduledTask、IIS section/location、Certificate 使用不存在的 Desired.Name；非 FileScope 讀取契約禁止的 TransferChannel | 依 adapter 取得型別化物件識別；通道只在 FileScope 讀取，原生設定繼續走主控制包 | 嚴格模式 adapter identity、輔助還原／repair、真正 reservation consumer |
+| 排程沒有 durable folder callback；共用目錄讀回只帶個別項目的 receipt；journal 事件 phase 不一致 | 寫入前保存目錄 intent，建立後保存實際 creator receipt；讀回按 spec 從整份 state 取共享 receipt，回復只清除本項目所有權；classic 及 schema3 consumer 同步 | 完整 plan→package→restore→journal replay→retry→validation→activation/resume→rollback，模擬 Scheduler COM／原生命令 |
+| WindowsFeature 忽略安裝副作用、結果及 reboot；reviewed settings 被一般既有物件阻擋 | 安裝前保存 exact baseline／hash／boot，保存 installer safety／RestartNeeded，重啟前不能續跑成功，重啟後重驗；設定交由原 reviewed transition coordinator。另修正 WinPS5.1 將空 installer side-effect array 序列化成 value／Count 包裝物件的原生 consumer bug；零新增副作用保留真正空 receipt。已手動安裝的角色依既有 classic 流程只讀驗證，記錄 CreatedByTool=false，不重裝、不取得 installer 所有權；工具安裝項仍要求原基線與 reboot 證據 | 小範圍 feature／setting 替身、durable recovery／replay 與共用 installer／transition suites |
+| 已存在的 IIS section/location 被當成不准處理的既有物件，但原生 updater 要求其存在；更新缺 rollback ownership | 只執行審核過的 typed Changes，必須產出 exact staged XML；保存原 XML／hash 與 UpdatedByTool ownership。重試、修復、切換、回復使用精確狀態；不覆寫整份新 OS 設定，不接管漂移內容 | 模擬 IIS manager 的實際 typed updater／readback／rollback，保護來源 XML；仍未在 Server IIS 服務驗收 |
+| typed task/folder 被套用檔案父子排他；共用 folder hash 含不同 task 本體；同 location 多 section 相互衝突 | typed resource 用精確 canonical key；folder hash 只含 exact path／ACL／ExistingPolicy，祖先鏈完整驗證；location hash 綁 immutable approved 同位置集合，排除無 spec／未 Include 項 | 實際 sealed plan 與 registry reservation、重試不新增 revision、root task identity |
+| 已完成啟用仍強制檢查 staged disabled；排程驗證／activation recovery 缺共享安全 receipt | exact manifest／spec activation checkpoint 決定讀回：Completed 必須 Final，Intent 允許 Staged 或 Final。共享收據依 spec 取用；顯式 resume 核准與資料對帳 gate 保留 | 原生介面替身正反例：首次 staged、completed final、interrupted final/staged、錯 spec hash／ACL／completed staged 均拒絕 |
+
+驗證採分版本固定快照，不用較早的 PASS 冒稱最後 bytes 已測：
+
+- 軟體／HTML／材料段 `197e914c440f16325c627b465489e1fc71786308`：固定快照 `wsm-r3-formal-final-9a640d244caf4475b0c41ba8689ec8a9`，WinPS5.1／PS7 各106支全通過，前後 src/tests hash 不變。日誌為專案外 `work/runtime-formal-audit-powershell-20261011-083455/summary.json`、`work/runtime-formal-audit-pwsh-20261011-083459/summary.json`。EnvironmentConfirmation 僅採101列小範圍；physical4GiB 未執行。此段 [CI38099694276](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38099694276) 六工作全成功。
+- 原生生命週期段 `57e97d1b5a0f5e0a785b4c484c2fb1968093b91d`：固定快照 `wsm-r3-formal-native-8707b02cc28b424e9a44d0efb2cd1e80` 的37支受影響測試在兩引擎各37 PASS；最後 PriorXML／empty installer 修正的 `wsm-r3-formal-installer-final-e8ba1493c0844b1eaaaed7cdc321403a` 各13 PASS，AssistiveRestore114 checks。日誌為 `work/formal-native-pwsh-20261011-092142/summary.json`、`work/formal-native-powershell-20261011-092208/summary.json` 及 `work/formal-native-delta-powershell-20261011-093941/summary.json`、`work/formal-native-delta-pwsh-20261011-093949/summary.json`。各組 src/tests 前後 hash 不變。
+- 手動已安裝角色段 `f5eab04e030a9b41eff2b080d75013051087dd6f`：固定快照 `wsm-r3-preexisting-final-393bcf4af1914cb187ceef3a2b0b60fe` 在兩引擎各7支受影響測試全通過，AssistiveRestore116 checks，前後 hash 不變且工作區與受檢 bytes 相同；日誌為 `work/formal-native-delta-powershell-20261011-095003/summary.json`、`work/formal-native-delta-pwsh-20261011-095010/summary.json`。Node rendered UI19項全通過；這段沒有 UI bytes 差異。
+- 原生反例逐一只撤回對應 runtime 修正：共用 task receipt 缺失使 validation 失敗；只撤回 activation checkpoint dispatch 使已啟用排程續跑被錯拒；舊 InstallerSafety 在 WinPS5.1 的空新增副作用產生 phantom consumer；只撤回最後角色修正精確出現「Already-installed approved WindowsFeature was not offered as a verified existing dependency」。沒有用 parser 或無關錯誤當反例。
+
+原生段 [CI38103066681](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38103066681) 已確認六個工作全數 success；包含 fixtures、delta、第二輪與第三輪各兩引擎。最後角色段的 CI 與最終封裝證據如下。
+
+最後 runtime 提交 `f5eab04e030a9b41eff2b080d75013051087dd6f` 的 [CI38103381310](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38103381310) 六工作全部 success：fixtures、delta-workflow、第二輪 WinPS5.1／PS7、第三輪 WinPS5.1／PS7（含 Node UI19）。透過 GitHub 公開 REST 同時核對 run.head_sha 與六工作結果，不使用早期 CI 代替最後角色修正。
+
+結案文件檢查 HtmlDocumentation13、Qualification、ScriptEncoding 在 WinPS5.1／PS7 共6次 PASS；188個 runtime/test/入口維持嚴格 UTF-8／必要 BOM 與解析。日誌為 `work/formal-docs-final-powershell-20261011-095949/`、`work/formal-docs-final-pwsh-20261011-095952/`，兩組核對程式／文件 hash 前後一致。後續只在本節加入已核實 CI／封裝證據，不改 runtime/test 或生成操作頁面。
+
+最終 ToolRelease 核對實際 ZIP manifest 與 bytes、15個HTML頁面及80個包內相對連結、108個程式／文件檔案前後hash；逐一檢查沒有 docs/archive 或個人 prototype 成員。程式指紋 `6dc8b85b6a881d3f179bca8b163980b52422425820dcdc4c779be314dc7856a4`，Signed=false、ProductionVerified=false。最後 ZIP 的 SHA256 由專案外 `work/delivery-proof-*/summary.json` 保存，不在包內寫入自身 hash 形成循環；重建／企業簽署須核驗新包 bytes。
+
+停止前按原矩陣再次核對25條款、8補強、11Phase、16使用者／成套情境及6邊界；兩種軟體安裝順序、新版選用、舊路徑保存與衝突清單、預設全選／自訂、完整 IIS／task 設定及 C／非C必要相依、部分續跑／修復／回退、材料保留、HTML／文字備援均有對應實作與分版本證據。沒有已知本輪程式缺漏留待後續。修正分段 commit／push 至 dev，每段核對遠端 SHA；最後文件段只同步目前狀態、證據、HTML手冊與生成文件，不改 runtime/test。
+
+外部主機、IIS／task／SMB、domain／SACL／EFS、企業規模與實體 4GiB、真實瀏覽器操作、產品／業務及企業 PKI 仍沿用 NotTested，ProductionVerified=false。NonC 中斷測試驗證真 producer 登記後的留鎖 seam，未執行 OS 強制殺程序演練；RegistryOnly 報告是觀察，不是對帳或執行核准。

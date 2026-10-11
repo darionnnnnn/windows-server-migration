@@ -22,7 +22,7 @@ PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目
 
 **還原前先檢查新主機，讓使用者選擇「確認缺口後直接還原」或「等待手動安裝選用的軟體，再檢查及還原」。** 直接還原先處理具備條件的所選資料／設定，需要產品 API／runtime 的操作保留待處理；操作結果與未完成清單持久保存，安裝後可重查及續跑。還原完成不代表環境或業務立即可用。
 
-第三輪 0.4 已補齊原規劃的實作：已接上 schema 3 輔助契約、JSON 比較、來源 C 封裝／非 C 跳板搬移、逐項還原／修復、HTML 表單（含可審查 ACL 政策）及可攜文件。每段已分別以固定快照驗證及推送；本機兩引擎各 106 支廣域回歸全通過，最後 HTML 差異另補互動與受影響驗證，最後程式提交的遠端6個CI工作全數通過，完整快照與最後HTML差異的證據按版本列於 PLAN。本輪完整性與驗收證據見 [第三輪規劃](docs/MIGRATION-3-PLAN.md)。實機 Server／SMB／IIS／排程／業務與企業簽章資格仍為 NotTested。
+第三輪 0.4 已補齊原規劃實作並完成正式換模型體檢。軟體比較、HTML 操作、材料保護、IIS／排程設定與中斷續跑的缺漏已在本輪修正；固定快照廣域回歸兩引擎各106支通過，後續原生修正另完成兩引擎各37／13／7支受影響驗證及Node UI19項。分版本證據與遠端 CI 見 [第三輪規劃](docs/MIGRATION-3-PLAN.md)，不以早期測試替代最後程式 bytes 的驗證。實機 Server／SMB／IIS／排程／業務與企業簽章資格仍為 NotTested。
 
 第三輪依逐項實際基線續跑；等待、缺軟體、衝突與人工項不回報成功。封包後改選新版或目標子集只使相關目標比較及 receipt 失效，來源封存內容保持不變。
 
@@ -40,7 +40,7 @@ R3-20–25 涵蓋實際 workload 引用映射、共享資源／C 與非 C 目的
 
 已加入資料檔案／ACL 搬移包、內容去重與分卷 ZIP、固定來源／目標配對、規格核准、停用 staging、逐項設定及業務驗收、initial／final 差異 ZIP、切換計畫、啟用接續、回退與中斷修復。保留 0.2 的分類文件、分頁／跨頁規則／CSV 排除、版本衝突、跨主機相依與集中報告。
 
-**第三輪實作已補齊，本機固定快照與受影響回歸通過；最後程式提交的遠端6個CI工作全數通過，完整快照與最後HTML差異的證據按版本列於 PLAN，尚未取得 Server 2016／2025 生產資格。** 執行功能限定使用者明確核准的隔離 pilot。未知產品保留為缺口或具責任與證據的專用流程；不會自動匯入整個 registry、執行包內腳本或啟動舊來源。實際資料、帳號密碼、憑證、企業設定不得放入這個公開 repository。
+**第三輪實作與正式換模型體檢完成；本機固定快照、受影響回歸與遠端 CI 證據按版本列於 PLAN，尚未取得 Server 2016／2025 生產資格。** 執行功能限定使用者明確核准的隔離 pilot。未知產品保留為缺口或具責任與證據的專用流程；不會自動匯入整個 registry、執行包內腳本或啟動舊來源。實際資料、帳號密碼、憑證、企業設定不得放入這個公開 repository。
 
 第2輪一般主機操作與資料格式見 [GENERAL-HOST-WORKFLOW.md](docs/GENERAL-HOST-WORKFLOW.md)：完整軟體／環境確認、Oracle effective設定與wallet外部處理、分階段準備證據、具原值復原的Windows設定、固定WorkRoot與ZIP／Directory交付。Source、Manager、Target使用自己的受控目錄；來源及目標交付模式需相符。每台完整MD／JSON／HTML／TXT／CSV會保留全部已發現列與探索缺口，文件回填不構成執行核准。
 逐項 PLAN/TODO 比對、最後證據與外部待驗證見 [MIGRATION-2-VERIFICATION.md](docs/archive/MIGRATION-2-VERIFICATION.md)。
@@ -63,7 +63,7 @@ powershell.exe -NoProfile -File C:\MigrationTools\Start-ServerMigration.ps1 -Act
 
 - [HTML 操作手冊](docs/ASSISTIVE-OPERATIONS.html)與[完整文件中心](docs/html/index.html)：TS 各角色、衝突／重查及交接；Markdown 留作開發來源。
 - [操作手冊及資料契約](docs/OPERATIONS.md)：離線交換、規格／SID／機密、實際執行、重試與切換。
-- [實作紀錄與當期外部待驗證](docs/IMPLEMENTATION-0.1.md)：目前 Phase 實作與保留的實機／企業／體檢項目。
+- [實作紀錄與當期外部待驗證](docs/IMPLEMENTATION-0.1.md)：目前 Phase 實作、正式體檢結果與保留的實機／企業驗收項目。
 - [第 3 輪規劃](docs/MIGRATION-3-PLAN.md)：輔助搬移、預設全選／自訂、所有功能／文件 HTML＋本機 PowerShell／文字備援、版本選擇／JSON、原設定路徑、不合併／無法放置清單、C 主包與非 C 小工具；實作與驗收狀態集中於規劃中的完整性核對。
 - [歷史文件索引](docs/archive/README.md)：第 1／2 輪規劃、複審及驗證按需查閱；不作現行待辦或第 3 輪已完成證明。
 - [完整環境／軟體確認表](docs/ENVIRONMENT-SOFTWARE-CONFIRMATION.md)：每台全量軟體、使用者／可攜環境、Oracle TNS_ADMIN／設定檔與目標驗證的 Markdown 格式；目前是模板，非真實 Server 清單。
