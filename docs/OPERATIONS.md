@@ -1,18 +1,18 @@
-# 0.3 操作契約
+# 0.4 操作契約
 
 ## 第四輪 HTML 工作台（實作與可驗證範圍完成；傳輸例外保留）
 
 工作台已實作八個頁面：工作總覽、盤點與選取、軟體差異、檔案與路徑、操作中心、作業與交接、說明與教學、文件中心；以 hash 連結導覽，可使用瀏覽器上一頁／下一頁及有效直接連結。教學經本機資源 `/ui/guide.html` 提供，完整手冊與文件中心可另開；文件中心按起步、角色操作、差異與清單、設定／路徑、驗證／交接、恢復／疑難分類。請先閱讀[主機搬移操作指引](../src/ui/guide.html)及[完整操作手冊](ASSISTIVE-OPERATIONS.html)；離線文件頁不能替代工作台當下的資料、核心檢查或核准。
 
-教學／文件導覽採六個主題：**起步、角色操作、差異與清單、設定／路徑、驗證／交接、恢復／疑難**。三種角色是 Source、Manager、Target 的操作上下文，不是登入身分或權限授予。各主機本機執行；Manager 匯入具可信來源的材料並審閱，不能以 Manager 角色遠端操作 Target。Owner 欄位是責任聲明，並不驗證填寫者。
+Source、Manager、Target 是操作上下文，不是登入身分或權限授予。各主機本機執行；Manager 匯入可信材料並審閱，不能以 Manager 角色遠端操作 Target。Owner 欄位是責任聲明，不驗證填寫者。
 
-常用任務只導向既有具名 action 與 typed 表單，完整進階 allowlist 仍可搜尋。`Inventory` 需提供輸出目錄；`ImportInventory` 需選擇盤點檔並核對其獨立可信 SHA-256；`AssistiveEnable` 使用目前配對／角色上下文；選取保存時每個未選項目都必須附原因。目標端先取得可信目標盤點，再由 Manager 提交 `TargetSnapshot`（目標材料路徑及其可信 SHA-256）並 `PublishComparison`；重新載入舊比較不會重新探測目標。核准後才可選擇封包、還原及後續驗證。表單欄位說明尚未涵蓋所有專業證據欄位；不確定欄位用途時先查手冊及核准流程，不以空值或自填路徑繞過檢查。
+常用任務只導向既有具名 action 與 typed 表單，完整進階 allowlist 仍可搜尋。`Inventory` 在 Source 或 Target 本機的 Windows Server／管理員／64 位 FullLanguage PowerShell 執行，需提供該主機專屬輸出目錄；`ImportInventory` 僅匯入來源盤點，需選擇盤點檔並核對其獨立可信 SHA-256；`AssistiveEnable` 使用目前配對／角色上下文；選取保存時每個未選項目都必須附原因。目標端先取得可信目標盤點，再由 Manager 提交 `TargetSnapshot`（目標材料路徑及其可信 SHA-256）並 `PublishComparison`；重新載入舊比較不會重新探測目標。核准後才可選擇封包、還原及後續驗證。表單欄位說明尚未涵蓋所有專業證據欄位；不確定欄位用途時先查手冊及核准流程，不以空值或自填路徑繞過檢查。
 
 操作結果請回到「作業與交接」按權威 OperationId 檢查。提交逾時或回應中斷時，先查是否已有該工作紀錄，不要盲目重送。關閉瀏覽器、停止本機 PowerShell 程序及要求取消是不同動作；取消要求不代表工作已停止。報告以經驗證的路徑與 hash 交由 Windows 預設應用程式開啟，可能另開視窗或程式，不保證是瀏覽器新分頁。
 
-截至 2026-10-11，第四輪功能實作、可驗證範圍及正式不同模型程式審查已完成。功能提交 `18709bc40eac69adf479f1d1defdda61815b4c84` 已推送至 `dev` 並通過六個 CI 工作；修正提交 `0db0fe57299fcf104756f0de54a8e51475588a90` 已推送，固定快照定向檢查通過。修正提交的最終 CI 結果按版本記錄於開發 PLAN。版本化測試覆蓋 212 項／兩引擎案例，包含首次逾時及 NativeExecution 失敗的後續隔離重驗；不是單一固定快照全數通過。Feature 定向、probe、最新 45 項 UI mock、Edge 2,501 列及四視角程式審查證據見[實作狀態](IMPLEMENTATION-0.1.md)。
+功能與驗證範圍見[實作狀態](IMPLEMENTATION-0.1.md)，分版本證據集中於開發 PLAN。提交等待期間再次保存會被阻擋；保留第一筆 OperationId，先查清其權威結果再決定後續操作。
 
-原生 loopback probe 的四個靜態資產均為 `ModifiedTransport`；其中 index 與 guide 兩個 HTML 回應長度各增加 510 bytes，JavaScript／CSS 長度及觀測 SHA-256 與本機相同但 headers 不同。原始傳輸完整性整體為 `NotPassed`，使用者選擇保留 AdGuard 設定。真實 IAB 可見初始 HTML但持續載入，動態工作台未通過；靜態 guide 可另頁讀取。Node mock、語法或 fixture 結果不得寫成真實瀏覽器／傳輸成功；企業實機與業務驗收仍為 `NotTested`，`ProductionVerified=false`、`ProductionExecutionEnabled=false`，release 未簽署。
+原始傳輸完整性為 **NotPassed**：保留 AdGuard 設定的本機環境能顯示初始 HTML，但動態工作台完整旅程尚未通過。靜態 guide 可另頁閱讀，必要時使用文字選單／CLI。Node mock 或隔離 fixture 通過不能代替真實傳輸、企業主機及業務驗收；ProductionVerified=false、ProductionExecutionEnabled=false，發行包未簽署。
 
 本版目前僅供明確批准的隔離 pilot。來源、目標與管理工作區各自本機執行。不得用此文件宣稱實際十台已完成遷移。
 

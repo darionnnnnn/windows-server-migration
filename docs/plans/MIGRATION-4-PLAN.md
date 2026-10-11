@@ -360,3 +360,28 @@
 - 補漏段落 `f31a55c0d1206fd11ced7808e487e3aa6d63a6b3` 已推送 dev，遠端 SHA 核對相符。先前測試修正 `e9c91e5` 的 CI run `38120540891` 六項全部 success；f31 的 run `38121304283` 已確認 R3 pwsh／delta success，其餘工作在核對時仍執行中，不宣稱整個 run 已成功。
 - 最後 gpt-6-luna/high 唯讀體檢找到 Source／Target 本機盤點說明仍漏列實際 FullLanguage 必要條件；frontend_a 同樣 high 只補兩張任務卡及共用操作前提，四項條件明列 Windows Server／管理員／64 位 PowerShell／FullLanguage，政策不符由管理者確認既有原則，沒有教使用者修改企業政策。主代理核對實際 Export-WsmInventory preflight 與全部三段指引，對照 R4-C／Q08 的原規劃後確認此漏項已處理，其他既有 consumer／角色契約沒有改動。
 - 最終 todo-guidance-final bytes 比對上一個 16/16 PASS 快照，除 PLAN 紀錄、console.js 三段文字及兩個 UI 指引斷言外完全相同；所有 PowerShell 與原生測試 bytes 相同，16/16 證據精確沿用。主代理另從最終快照重跑 Node 語法／45 UI／Edge 2,501 列與三角色真 metadata→DOM 表單點擊，全部 PASS；全部發行 payload 與最終來源 bytes／長度／SHA-256 核對通過，109 payload、15 HTML、11 source hashes、145 本地引用、problems=[]。最終工具指紋 `273ddf0eb1d3e8f9fbab64e4d0880d7ddf1c21980e16b11424599c0da44c7e87`，驗證 ZIP SHA-256 `56689ba4a0c28d8c56d8dfae0839b26e4509d01de009945ca360f1e25e932acc`。此為隔離 UI、程式與封裝驗證，原始傳輸 NotPassed、原生動態完整旅程未通過、七項外部驗收待驗與生產資格限制仍有效。最終 R4-01–12／Q01–10 開發項目及已確認缺口沒有未實作殘留；八處已完成待辦已清除，十项每次操作的使用者核對勾選保留。
+
+
+### 使用者要求的最終收尾體檢（2026-10-11）
+
+本次依使用者授權完成體檢、修正及分段推送 dev；不建立額外功能或改動既有安全設定。完整範圍從 R4 基準 `f3cd91930c0bb51d5d0e3e8153072a952f340141`、實作起點 `50f137b8ddfd5e2b796711c930b7caed9fa828f0` 至程式修正 `ecf56c38cb8f7e180c0ba4b4a8dc1d20704bea1b` 及本次文件差異，重新對照 A–E、R4-01–12、Q01–10 原始子契約與真正使用端。
+
+可信本 chat turn_context 確認本次主模型為 `gpt-6-astra/low`，不同於原 runtime／測試／使用者文件實作者 `gpt-6-luna/high、medium`。使用者此次指定 subagent 僅用 Opus low，但目前執行端沒有該模型，因此本次未委派；主代理直接完成體檢。下述競態修正及現況文件由本次主代理實作與驗證，不稱其自身修正已受獨立換模型體檢。
+
+| Phase | 實作與整合核對 |
+|---|---|
+| A／一致性及恢復 | HtmlConsole 鎖內 session／view／spec 向量、revision／dataVersion、context／request epoch、草稿隔離與過期回應、核心 CAS／BeforeWrite、原始 request hash、durable job／Interrupted／同 OperationId 查詢接線一致；並修正下述並行預檢缺陷。 |
+| B／真實資訊 | OverviewProjection 使用目前世代 catalog／journal／delivery／讀回結果；C／非 C、準備完成與業務接受分開，舊配對及未知狀態不轉為成功，報告開啟維持受控路徑與 hash 核對。 |
+| C／操作工作台 | 八個 hash 頁面、歷史導覽／焦點、角色與階段常用任務、完整 typed allowlist、預覽後明確確認均使用既有 consumer。三角色 metadata／Inventory supportedRoles、Target 專屬輸出與 Manager 接收快照契約沿用已驗證修正。 |
+| D／教學與說明 | 前置條件、欄位範例、結果／下一步與角色交接對應實際程式；靜態模板仍是使用者核對表。重新整理現況文件，移除重複歷史數字與過期說法，保留有效限制。 |
+| E／交付 | 正式產生器、受控路由、來源 hash、payload／工具指紋及本地引用完整核對。實際 release 只選取既定頂層文件與 HTML，不遞迴打包 archive／plans，不生成 PLAN HTML；保留既有 Migration-3 PLAN Markdown 契約。 |
+
+- 先從使用者連續儲存／斷線恢復重現一個缺陷：兩次寫入同時進行非同步 context 預檢時，都能越過舊 pending 檢查，造成實際送出兩筆並覆蓋第一筆待查 OperationId。新增反例在修正前確實失敗（預期一筆、實際兩筆）；於真正送出前再檢查既有 pending 狀態，保留第一筆待查身分並阻擋後續送出。沒有新增佇列、框架、狀態引擎或改寫核心 CAS。`ecf56c38cb8f7e180c0ba4b4a8dc1d20704bea1b` 已分段 commit／push，遠端 dev SHA 相符。
+- 修正後 Node 語法與 UI 46/46 PASS；Edge mocked API 2,501 列、八頁導覽／返回前進／焦點／320px／typed review 完整劇本 PASS。不可變 `closeout-race-final` 的 HtmlConsole／HtmlDocumentation／Qualification／ScriptEncoding 在 WinPS5.1、PS7 共 8/8 PASS，snapshotChanges=[]。這是隔離 UI 與程式契約驗證，不是原生 HTTP 完整旅程成功。
+- 七份現況 Markdown（含 AGENTS／README）同步，正式產生器更新六份有效 HTML 差異。修正 RELEASE-QUALIFICATION 錯稱 archive 會收入離線包的敘述；壓縮 README／IMPLEMENTATION／OPERATIONS／AGENTS 的歷史重複，將證據留在本 PLAN，保留當前架構限制與歷史規劃本身。掃描十份現況 Markdown 的 52 個本地引用無缺檔；archive 歷史連結僅排除，不讀取內容。七項外部驗收及十項每次操作核對表保留，已完成開發 TODO 無殘留。
+- 文件最終不可變 `closeout-docs-final` 的 HtmlDocumentation／Qualification／ScriptEncoding 雙引擎 6/6 PASS、snapshotChanges=[]；其 runtime／tests／tools bytes 與前一修正快照完全相同，故沿用該範圍 UI／Edge／8 組原生結果。原 212 案例仍是前述分版本有效覆蓋，未冒稱本次單一快照重跑全部 212 次。
+- 從最終文件快照實際匯出 ZIP，109 payload 的來源 bytes／長度／SHA-256、15 HTML、11 個 source hash、146 個本地引用及八頁 route 全部核對，problems=[]。工具指紋 `2c90ca9a173bf1f169ceaeee01dcf165755058136019ec6cec0daaea2daa725d`；驗證包 SHA-256 `18dc6f21f93018e718e643051678ced688ee03081dac73a45f4ecb3f73dd0181`。PLAN／AGENTS 不在 payload；補寫本紀錄不改該包證據。
+- 從 Windows 身分、session／PairId、typed 操作、核心 gate、journal／report 至總覽／交接再查整體相依，未發現其他已確認缺漏、未修 bug 或過度設計。sealed plan／receipt／journal 格式、CLI 旅程與生產資格 gate 不變；工具 bytes 更新仍須重新封裝核准。原始傳輸 NotPassed、真實 IAB 動態完整旅程未通過、外部 Server／產品／帳號／業務／PKI／規模 NotTested 繼續有效；ProductionVerified=false、ProductionExecutionEnabled=false、未簽章。
+- 評估 project-lifecycle／project-closeout／project-doc-hygiene 規則已涵蓋逐項補齊、證據版本、體檢自修範圍及現況／歷史分離；此次缺陷不需要新增流程或全域規則，沒有修改 skill，也沒有把單次 Opus 選擇改成永久模型設定。
+- 已核對本機／遠端只有 dev、main，且無其他本輪 worktree 或開發分支；沒有可刪除的已整合本輪分支，不刪 dev／main。個人未追蹤 prototype 未讀／未改／未 stage，docs/archive 全程排除；本機測試程序、服務與驗證瀏覽器已結束。
+- 遠端最終 CI：前次指引提交 `8b3ef1e6a2cb22b36a0cc8de95c1dc5567030d20` 的 run `38121599040` 與本次競態修正 `ecf56c38cb8f7e180c0ba4b4a8dc1d20704bea1b` 的 run `38139269867` 均已直接核對六個工作全部 success。本次後續只有文件差異，依 workflow paths-ignore 不另觸發程式 CI；文件／封裝差異已以上述最終快照補驗。

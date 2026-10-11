@@ -2,21 +2,19 @@
 
 PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目標 Server 2016 → 2025、約十台主機。各台本機執行，管理端彙整文件與結果，不要求 WinRM。
 
-## 第四輪目前狀態（2026-10-11）
+## 目前狀態（2026-10-11）
 
-第四輪 A–E 功能實作、可驗證範圍及正式不同模型程式審查已完成。E1 文件／發行提交與功能提交 `18709bc40eac69adf479f1d1defdda61815b4c84` 各自的六個 CI 工作均通過；後續修正提交 `0db0fe57299fcf104756f0de54a8e51475588a90` 已推送並核對遠端，針對性本機驗證通過。修正提交的最終 CI 結果按版本記錄於開發 PLAN。八頁工作台、常用任務與完整操作清單、資料一致性及安全恢復已實作，producer→consumer 接線已逐項核對。
+第四輪 A–E 已提供八頁工作台、角色任務與完整操作清單、繁中教學、跨頁資料一致性及提交結果恢復。Source／Target 可從常用任務建立本機盤點；Manager 核對可信材料、記錄目標快照並發布比較。操作仍使用既有 PowerShell 核心與核准流程。
 
-版本化驗證涵蓋完整 212 項引擎案例：初次 immutable run 有 206 PASS、5 個逾時及 1 個 PS7 `NativeExecution` 失敗；5 個逾時後續隔離延長均通過（WinPS Cancellation 273.22 秒、WinPS DeltaContracts 543.36 秒、WinPS EnvironmentConfirmation 1509.38 秒；PS7 DeltaContracts 777.09 秒、PS7 EnvironmentConfirmation 671.81 秒）。`NativeExecution` 修正明確參數繫結及量測就緒時間後，WinPS／PS7 正常與實際 10 秒延遲共 4/4 通過。因此 212 項均有通過覆蓋，但來自版本化快照與定向重驗，不是單次同快照全通過。最新 UI mock 45 項與 Edge 2,501 列劇本通過；四視角程式審查通過。
+能力與外部待辦見[實作狀態](docs/IMPLEMENTATION-0.1.md)，逐 Phase、修正及分版本驗證見[第四輪 PLAN](docs/plans/MIGRATION-4-PLAN.md)。原始傳輸仍為 **NotPassed**：保留 AdGuard 設定的本機環境可顯示初始 HTML，但動態工作台尚未通過完整旅程。外部 Server／產品／帳號／業務／PKI／規模驗收仍為 NotTested；ProductionVerified=false、ProductionExecutionEnabled=false，發行包未簽署。操作限制見[操作契約](docs/OPERATIONS.md)。
 
-傳輸完整性仍為 `NotPassed`：使用者選擇保留 AdGuard 設定。Native probe 的四個靜態資產均為 `ModifiedTransport`；其中 index 與 guide 兩個 HTML 回應長度各增加 510 bytes，JavaScript／CSS 長度及觀測 SHA-256 與本機相同，但 headers 有差異。真實 IAB 可顯示初始 HTML，但 session 持續載入，動態工作台未通過；靜態 guide 可另頁閱讀。外部 Server、SMB、IIS／排程原生行為、帳號與業務接受仍為 `NotTested`；`ProductionVerified=false`、`ProductionExecutionEnabled=false`、release 未簽署，不可放行生產搬移。最新狀態見 [實作狀態與外部驗證](docs/IMPLEMENTATION-0.1.md)，實際操作限制見 [操作契約](docs/OPERATIONS.md)。
-
-## 專案用途與第 3 輪方向
+## 專案用途與現行契約
 
 ### 企業 EOS 搬移目標
 
 本專案是企業 TS（技術支援／遷移操作人員）的**輔助搬移工具**：從 EOS 主機盡可能找出並還原使用者需要的業務內容、原有設定及可重建的系統項目，讓使用者自行決定搬哪些內容、使用哪個軟體版本及何時補裝。TS 執行搬移及收集證據，使用者／應用負責人確認相依與業務結果，平台／產品負責人處理授權、帳號、政策及專業產品事項。
 
-第 3 輪必須交付下列可驗收結果：
+本工具的輔助搬移流程遵循下列契約：
 
 1. **TS 能依文件完成操作與交接。** 每一步說明在哪台主機操作、前置條件、預期產出、如何確認成功、阻擋原因、下一步與回復方式；工具顯示檔案搬移、軟體準備與業務驗收各自的狀態。
 2. **使用者知道兩台主機的軟體差異及要手動補什麼。** 新主機以全新 Windows Server 的首次盤點為初始基準，每次還原前再盤點現況。軟體預設參考來源版本，使用者也可選擇新版或其他版本。程式自行維護 JSON 比較資料庫，分別保存來源版本、使用者選用版本、目標實際版本及人工待辦，另列架構、位置、帳號範圍、責任人與結果；未知版本保留名稱及原因。版本差異供決策及驗證，不單憑不同版本阻擋所有檔案還原。
@@ -30,13 +28,13 @@ PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目
 
 **還原前先檢查新主機，讓使用者選擇「確認缺口後直接還原」或「等待手動安裝選用的軟體，再檢查及還原」。** 直接還原先處理具備條件的所選資料／設定，需要產品 API／runtime 的操作保留待處理；操作結果與未完成清單持久保存，安裝後可重查及續跑。還原完成不代表環境或業務立即可用。
 
-第三輪 0.4 已補齊原規劃實作並完成正式換模型體檢。軟體比較、HTML 操作、材料保護、IIS／排程設定與中斷續跑的缺漏已在本輪修正；固定快照廣域回歸兩引擎各106支通過，後續原生修正另完成兩引擎各37／13／7支受影響驗證及Node UI19項。分版本證據與遠端 CI 見 [第三輪規劃](docs/MIGRATION-3-PLAN.md)，不以早期測試替代最後程式 bytes 的驗證。實機 Server／SMB／IIS／排程／業務與企業簽章資格仍為 NotTested。
+第三輪原始需求與分版本驗證見[第三輪規劃](docs/MIGRATION-3-PLAN.md)；既有能力與本輪工作台共用相同核心、材料保護及核准契約。
 
-第三輪依逐項實際基線續跑；等待、缺軟體、衝突與人工項不回報成功。封包後改選新版或目標子集只使相關目標比較及 receipt 失效，來源封存內容保持不變。
+作業依逐項實際基線續跑；等待、缺軟體、衝突與人工項不回報成功。封包後改選新版或目標子集只使相關目標比較及 receipt 失效，來源封存內容保持不變。
 
-D3-01–08 保留特殊項揭露、必要 metadata／帳號映射、舊作業以原版本接續、材料保護、寫入前重查與同輪 final 停寫／hash 契約。沒有實機可用的項目以只讀環境探測取得觀察；探測成功不等於還原、業務或正式資格通過。
+保留特殊項揭露、必要 metadata／帳號映射、舊作業以原版本接續、材料保護、寫入前重查與同輪 final 停寫／hash 契約。沒有實機可用的項目以只讀環境探測取得觀察；探測成功不等於還原、業務或正式資格通過。
 
-R3-20–25 涵蓋實際 workload 引用映射、共享資源／C 與非 C 目的排他、零 C 控制包、啟用後 BusinessFinal、OSProvided 實證及並行材料保護；沒有新增自動合併、安裝或非 IIS 產品 adapter。
+既有核心涵蓋實際 workload 引用映射、共享資源／C 與非 C 目的排他、零 C 控制包、啟用後 BusinessFinal、OSProvided 實證及並行材料保護；沒有新增自動合併、安裝或非 IIS 產品 adapter。
 
 ### 搬移範圍與目前界限
 
@@ -48,10 +46,10 @@ R3-20–25 涵蓋實際 workload 引用映射、共享資源／C 與非 C 目的
 
 已加入資料檔案／ACL 搬移包、內容去重與分卷 ZIP、固定來源／目標配對、規格核准、停用 staging、逐項設定及業務驗收、initial／final 差異 ZIP、切換計畫、啟用接續、回退與中斷修復。保留 0.2 的分類文件、分頁／跨頁規則／CSV 排除、版本衝突、跨主機相依與集中報告。
 
-**第三輪實作與正式換模型體檢完成；本機固定快照、受影響回歸與遠端 CI 證據按版本列於 PLAN，尚未取得 Server 2016／2025 生產資格。** 執行功能限定使用者明確核准的隔離 pilot。未知產品保留為缺口或具責任與證據的專用流程；不會自動匯入整個 registry、執行包內腳本或啟動舊來源。實際資料、帳號密碼、憑證、企業設定不得放入這個公開 repository。
+**尚未取得 Server 2016／2025 生產資格，執行功能限定使用者明確核准的隔離 pilot。** 未知產品保留為缺口或具責任與證據的專用流程；不會自動匯入整個 registry、執行包內腳本或啟動舊來源。實際資料、帳號密碼、憑證、企業設定不得放入這個公開 repository。
 
 第2輪一般主機操作與資料格式見 [GENERAL-HOST-WORKFLOW.md](docs/GENERAL-HOST-WORKFLOW.md)：完整軟體／環境確認、Oracle effective設定與wallet外部處理、分階段準備證據、具原值復原的Windows設定、固定WorkRoot與ZIP／Directory交付。Source、Manager、Target使用自己的受控目錄；來源及目標交付模式需相符。每台完整MD／JSON／HTML／TXT／CSV會保留全部已發現列與探索缺口，文件回填不構成執行核准。
-逐項 PLAN/TODO 比對、最後證據與外部待驗證見 [MIGRATION-2-VERIFICATION.md](docs/archive/MIGRATION-2-VERIFICATION.md)。
+當前外部驗收待辦集中於[實作狀態](docs/IMPLEMENTATION-0.1.md)，不以歷史規劃作為最新完成證明。
 
 企業備份／還原情境及實際支援見 [ENTERPRISE-MIGRATION-COVERAGE.md](docs/ENTERPRISE-MIGRATION-COVERAGE.md)。專業／環境軟體本體在 HTML 清單列出，由使用者安裝；環境設定檔另列核准搬移／外部重建，ConfigFiles 是精確設定檔清單；不擴張成整個安裝目錄。本工具不提供整機／System State復原。
 

@@ -1,25 +1,28 @@
 # 0.4 實作狀態與外部驗證
 
-更新：2026-10-11。本文件只維護當前狀態；原始需求、歷史決策及固定快照證據見 [歷史索引](archive/README.md)。已完成程式 TODO 已移除；尚無外部資格的項目保留，不宣稱正式生產完成。
+更新：2026-10-11。本文件維護當前能力與外部待辦；本輪原始需求、逐項程式證據、修正及 CI 見[第四輪 PLAN](plans/MIGRATION-4-PLAN.md)，前輪證據見[第三輪 PLAN](MIGRATION-3-PLAN.md)。已完成開發 TODO 已清除，操作模板中的核對勾選仍由使用者依真實證據完成。
 
-## 第四輪目前狀態（實作與可驗證範圍完成；傳輸例外保留）
+## 第四輪 A–E 現況
 
-第四輪 A–E 功能實作、可驗證範圍及正式不同模型程式審查已完成。E1 文件／發行提交與功能提交 `18709bc40eac69adf479f1d1defdda61815b4c84` 各自的六個 CI 工作均通過。後續修正提交 `0db0fe57299fcf104756f0de54a8e51475588a90` 已推送並核對遠端；固定快照定向檢查通過。修正提交的最終 CI 結果按版本記錄於開發 PLAN。八個工作台頁面、常用任務與完整 allowlist、狀態投影、上下文與資料一致性、提交結果恢復、文件路由及發行相依均已實作，producer→consumer 接線及全專案四視角程式審查通過。
+| Phase | 已實作行為與整合位置 |
+|---|---|
+| A | 鎖內 revision／資料版本投影、上下文及快取失效、非秘密草稿、同一 OperationId 的結果查詢；並行保存不覆蓋第一筆待確認紀錄 |
+| B | 總覽依 catalog、目前世代階段結果及交付收據呈現來源、時間、阻擋與下一步；C／非 C、軟體準備、檔案讀回及業務接受分開 |
+| C | 八頁 hash 導覽、返回／前進、焦點及分頁；角色任務接同一 typed 表單，完整進階操作仍可到達 |
+| D | 頁內提示、繁中角色教學、完整操作手冊及分類文件中心；盤點明列 Windows Server／管理員／64 位 PowerShell／FullLanguage 前提 |
+| E | 正式產生 HTML、排除 PLAN HTML／archive、文件路由、工具指紋及實際 ZIP manifest／來源 hash／本地連結核對 |
 
-版本化測試覆蓋完整 212 項引擎案例。初次 immutable run 有 206 PASS、5 個逾時及 1 個 PS7 `NativeExecution` 失敗；五個逾時後續隔離延長均通過：WinPS `Cancellation` 273.22 秒、`DeltaContracts` 543.36 秒、`EnvironmentConfirmation` 1509.38 秒；PS7 `DeltaContracts` 777.09 秒、`EnvironmentConfirmation` 671.81 秒。`NativeExecution` 修正明確參數繫結及量測就緒時間後，WinPS／PS7 的正常與實際 10 秒延遲測試共 4/4 通過。故 212 項均有通過覆蓋；這些結果來自多個固定快照及定向重驗，不是單次同快照全數通過。Feature `HtmlConsole`、`Qualification`、`ScriptEncoding`、`HtmlDocumentation` 在兩引擎共 8/8 PASS；probe 固定快照雙引擎共 10/10 PASS；最新 UI mock 45 項與 Edge 2,501 列劇本 PASS。
+本輪沒有引入另一套執行引擎、遠端服務或前端框架。資料與核准仍由既有 PowerShell 核心、CAS、journal、sealed plan／receipt 及 Windows 身分決定；UI 角色與文件勾選不授權執行。
 
-傳輸完整性仍為 `NotPassed`，使用者已選擇保留 AdGuard 設定。Native probe 的四個靜態資產均為 `ModifiedTransport`；其中 index 與 guide 兩個 HTML 回應長度各比原檔增加 510 bytes，JavaScript／CSS 長度及觀測 SHA-256 與本機相同，但 headers 有差異，錯誤欄位為 null。真實 IAB 可確認初始 HTML 可見，但 session 持續載入，動態工作台未通過；靜態 guide 可另頁閱讀。純文件收尾不觸發相同 feature CI；CI 證據僅適用明確受測的程式提交。修正提交的最終 CI 結果按版本記錄於開發 PLAN。
+可驗證範圍有版本化的 212 項引擎案例通過覆蓋，包含初次逾時／失敗後的修正與定向重驗，**不是單次最終快照全量通過**。補漏另有 WinPS5.1／PS7 的 16/16 相關驗證；收尾並行保存修正有 46 項前端測試、Edge 模擬 API 的 2,501 列劇本與 8/8 雙引擎整合／文件／資格／編碼驗證。各項適用版本、環境與 CI 結果集中 PLAN，不以舊 PASS 代替新 bytes 的驗證。
 
-尚待外部驗證：實際來源／目標 Server、SMB、IIS／排程原生讀回、實際帳號與業務接受、企業 PKI、規模及生產資格；外部項目維持 `NotTested`。`ProductionVerified=false`、`ProductionExecutionEnabled=false`、正式 release 未簽署仍有效；隔離測試及只讀探測不能解除。
+原始傳輸完整性仍為 **NotPassed**。使用者保留 AdGuard 設定；本機 probe 觀察到回應被改寫，真實 IAB 僅確認初始 HTML 可見，session 持續載入，動態完整旅程未通過。靜態 guide 可另頁閱讀，文字選單及 CLI 提供備援。Node／Edge mock 通過不能代替原生傳輸或真實主機驗收。
 
-## 第三輪 0.4 開發與驗證
+外部 Server／SMB／IIS／排程／帳號／業務／PKI／規模驗收仍為 **NotTested**。ProductionVerified=false、ProductionExecutionEnabled=false，發行包未簽署；隔離測試或唯讀探測不解除正式資格限制。
 
-第三輪依 MIGRATION-3-PLAN.md 逐段實作／固定快照驗證／commit 與 push。Schema 3 輔助 catalog/plan/receipt 與 JSON 比較、來源 C 精確封裝、非 C 跳板搬移及共用目標 reservation、材料引用與作業保護已接入；逐項還原、IIS/task 停用 staging、部分世代/delta、修復及 HTML 操作／文件已完成原始子項與真實使用端完整性核對。最後補齊 NonC 與主流程同一原生身分、整棵目錄時間／權限讀回、Manager 匯入保留核准，以及 restore／rollback 在父設定完成後的最終 metadata 與精確 prior 重播；HTML 型別化表單也提供受審查的 FileScope ACL 政策。本機 WinPS5.1／PS7 廣域快照各106 PASS；最後修改另有雙引擎受影響回歸與真實小範圍原生反例驗證，最後程式提交的遠端6個CI工作全數通過，2026-10-11 正式不同模型體檢完成，軟體比較／材料 lock／IIS／task／installer／reviewed transition／activation consumer 缺漏已修正，分版本驗收與 CI 在 PLAN。第三輪全部完成狀態以 PLAN 最後的 producer→consumer→驗收證據為準，舊第 2 輪表格不充當第三輪驗收。
+## 既有核心與第二輪 Phase
 
-主模型另發現並補強必要 metadata 的實際 readback、單一檔案範圍，以及可攜文件下載的原始 XML／secret 隔離。HTML 使用獨立 PowerShell worker，同一核心／CAS／journal，沒有 Node 執行依賴。Node/Edge 僅作開發測試；瀏覽器 fixture 與真實 loopback 傳輸分別記錄，本機 HTTP 中間層改寫不能算為工具端測試通過。
-
-使用者確認沒有實機可直接全部驗收。本輪以小範圍實際檔案／合成資料、Windows PowerShell 5.1 與 PowerShell 7 固定快照驗證可測部分；未有兩端 Server、SMB、IIS／task 原生功能、帳號存取、企業 PKI、規模／業務結果的項目保留 NotTested，提供只讀環境探測，使用者後續補結果。ProductionVerified=false 不因 fixture 或探測通過而解除。
-## 已實作範圍
+第三輪 Schema 3 輔助 catalog／plan／receipt、軟體比較、C 主包／非 C 跳板搬移、共享 reservation／材料保護、逐項還原、IIS／task 停用 staging、部分世代／delta 及復原已接入。HTML worker 使用同一核心；Node／Edge 僅是開發驗證工具。完整 producer→consumer 與前輪修正證據保留於第三輪 PLAN，不在現況文件重述各次測試過程。
 
 | Phase | 現行實作與消費端 |
 |---|---|
@@ -43,14 +46,12 @@
 - [ ] 單台pilot、相依雙台及十台波次：真實freeze／fencing／activation／新交易回退／source resume／唯一writer、業務接受、觀察、備份實還原與退役批准。
 - [ ] 真實瀏覽器與主控台完整操作旅程；Node DOM／CLI fixture不能代替此項。
 
-正式不同模型體檢已於2026-10-11完成，可信模型來源、完整第三輪基準、修正與驗證見 [第三輪規劃](MIGRATION-3-PLAN.md)。本次體檢方修正不稱為這些新修正的獨立換模型體檢。
-
-使用者的隔離Server無法讓代理連線，目前尚未收到真實清單／LabReport及企業材料。不能以合成測試補作這些證據，也不刪除原始驗收需求。
+使用者的隔離 Server 無法讓代理直接連線，目前尚未收到真實清單／LabReport及企業材料。不能以合成測試補作這些證據，也不刪除原始驗收需求。
 
 ## 測試與交付規則
 
-封存前程式基準4908910的 [GitHub Actions 38009745467](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38009745467)已通過；第3輪規劃提交9903cbb未改runtime/test。歷史證據適用範圍見封存驗證紀錄，不在本文件重複各checkpoint。
+ToolRelease 收錄 README、docs 頂層文件與手冊資產、docs/html 使用者投影及支援／SBOM JSON；不遞迴收錄 archive 或 docs/plans，PLAN HTML 不進路由／索引／新發行包。既有頂層第三輪 PLAN Markdown 保留原交付契約，歷史引用仍需回專案原始碼查閱。
 
-2026-10-10文件封存：四份歷史文件以git mv移至docs/archive，更新索引及引用；ToolRelease遞迴收錄docs Markdown，保留離線連結。固定快照 `wsm-doc-archive-0c77659743ce40cb9f5c51810422a231` 的ScriptEncoding／Qualification在WinPS5.1及PS7各2/2通過；實際ZIP manifest／bytes投影通過、71個包內本機連結有效，147個src/tests/入口檔案hash與快照核對一致。核驗含封存文件收錄、無效簽章／改包拒絕及production鎖定。這是定向本機證據，不宣稱舊CI適用此修改或取得實機／企業資格；報告程式與其他遷移流程未改。第三輪複審已更正發行影響：純文件變更更新發行包／文件 hash，ToolFingerprint 只計 src／入口 bytes，本次程式指紋不變；重建包須核驗最終 bytes 並重新簽署，不沿用舊包簽章。後續改程式時既有核准依契約重驗，不熱換執行中 pair。
+UI／src／入口 bytes 變更會更新 ToolFingerprint，執行中配對須以原版工具接續，不能熱換 UI。純文件變更不改工具指紋，但會更新發行包與文件 hash；新包必須核驗最終 bytes 並重新簽署，不能沿用舊簽章。
 
 日常按改動影響重驗；Pipeline預設16小檔、取消8檔、報告2501列、Fleet十台各200、Spec200。5000分段及真實4GiB的特殊邊界保留；大容量／50k軟體／維護窗／RPO/RTO需代表性工作量與門檻，不能從合成數量推定。HTML分類列印最多2000列；完整軟體確認五格式不截斷資料。詳細測試操作見 [README](../README.md)。
