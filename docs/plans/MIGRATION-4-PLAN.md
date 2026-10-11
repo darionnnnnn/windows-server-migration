@@ -263,7 +263,7 @@
 
 - 主代理可信身分：本 chat rollout 的 turn_context 記錄為 `gpt-6.1-sol`／`medium`；runtime／使用者文件實作者目前均為 `gpt-6-luna`。主代理負責規劃紀錄、獨立核對與驗收，尚未親自修改 runtime，因此可於完整性門檻通過後執行不同模型體檢；後續若親自修正受檢產物需更新範圍。
 - 2026-10-11：主代理依使用者授權開始 A–E；bridge_a 使用 gpt-6-luna/high 處理 A 後端橋接，frontend_a 使用 gpt-6-luna/high 處理 A 前端狀態，verification_map 使用 gpt-6-luna/medium 做驗證地圖及 D/E 文件產生與封裝實作。單檔單 writer；由主代理獨立驗收及推送。
-- E1 文件產生／封裝：通用排除 PLAN HTML；辨識的舊生成檔才清除，同名手寫檔與 reparse 候選保留；頂層 PLAN Markdown 交付契約維持。主代理檢查真實 consumer 與 diff，Git index 固定快照 `e-pack` 的 HtmlDocumentation、Qualification、ScriptEncoding 在 WinPS5.1／PS7 共 6 支全部通過，來源 manifest 前後不變。Qualification 含實際 ZIP manifest／payload 讀回；生成 HTML 尚待最後來源同步後重建，不因此標整輪完成。
+- E1 文件產生／封裝：通用排除 PLAN HTML；辨識的舊生成檔才清除，同名手寫檔與 reparse 候選保留；頂層 PLAN Markdown 交付契約維持。主代理檢查真實 consumer 與 diff，Git index 固定快照 `e-pack` 的 HtmlDocumentation、Qualification、ScriptEncoding 在 WinPS5.1／PS7 共 6 支全部通過，來源 manifest 前後不變。Qualification 含實際 ZIP manifest／payload 讀回；此段的來源同步與生成驗收已完成，結果見最後收尾紀錄。
 - 2026-10-11 傳輸環境決策：使用者選擇「保留目前設定，先完成所有可驗項目，傳輸完整性明列未通過」。本機實測 CSP 被加入 local.adguard.org，教學回應長度與原始檔案不同；原始 socket 有重設／逾時，程式回應寫入 trace 已完成。保留安全設定，採標準 HTTP consumer 驗功能；資產 bytes／CSP 完整性獨立列 NotPassed，不宣稱所有重設均已證明由同一因素造成。此決策解除必須調整環境後才能收尾的要求，其餘原定實作與可驗項目仍全部完成後才收尾。
 - E1 提交／遠端：`8b51e1653262ac6cd91d958227196ca22bd58c28` 已推送 `dev`，遠端 SHA 相符；GitHub Actions run `38107964084` 的 fixtures、delta-workflow、R2 與 R3 雙引擎共六個工作全部 success。此結果只涵蓋該提交，不能代表仍在實作的 A–D 已通過。
 - 主代理實作中獨立核對：`GetNewClosure()` 建立的軟體保存回呼無法解析未匯出的 `Get-WsmHtmlDataVersion`；在模組內建立再呼叫的隔離反例重現 command-not-found。交由 bridge_a 修正函式綁定，要求實際同一回呼的合法保存成功，以及 DecisionRevision／資料內容單獨變更時的鎖內拒絕；未以 callback 參數隱藏測試替代保存閉環。
@@ -287,29 +287,29 @@
 | Q03/Q05 | 新 job 保存 workspace／pair／role／session／context／各revision／Actor；舊紀錄保持未知；歷史可查、跨配對不直接預填；報告沿受驗證 hash／路徑交 Windows 預設程式，不宣稱 Opened 已顯示。 |
 | R4-10 | guide／ASSISTIVE-OPERATIONS 完整繁中教學 → 工作台 help/docs 六分類 → 原始手冊與 11 份生成來源投影；靜態頁焦點刷新不要求 nonexistent API view。 |
 | R4-11、Q10 | 產生器排除全部輪次 PLAN、只清可辨識生成殘留 → 路由排除 PLAN → release ZIP；保留原 Markdown 交付契約。實際 ZIP 已逐檔比 manifest/source bytes、11 份來源 hash、15 HTML／139 本地引用；prototype/archive 未入包。 |
-| R4-12 | 完整相依的 A/B/C/D 與來源投影共用安全橋接；不能拆出未依赖完成的單檔提交。E1 已推送，最後 feature 及證據同步提交待下面正式驗證完成後記錄遠端 SHA。 |
+| R4-12 | 完整相依的 A/B/C/D 與來源投影共用安全橋接；不能拆出未依赖完成的單檔提交。E1、feature、修正與文件同步已分段驗證及推送，遠端 SHA 核對結果見後續提交紀錄。 |
 
 固定快照：`abc-final` 保留工作區實際 bytes（非舊 Git index），所有原生 suite 均在隔離副本執行。獨立 browser 初跑揭露測試同步競態：activeAction 已由上一份同類草稿恢復，不能代表新預填完成；修正只等待新 PreviewPath／ExpectedRevision／ReviewWindowsSettings 出現，保留全部原斷言。新快照 `abc-browser-final` runtime 相同，修正後獨立 Edge mock 劇本通過；45 前端單元通過。此 test-only 差異不改原生受測 runtime，沒有以重跑挑選結果迴避缺陷。
 
 - 真實模組探針揭露 StrictMode 缺陷：資產長度初始化讀取 `$null.Length`，造成尚未測資產就回 NotTested／PropertyNotFoundException。bridge_a 僅修正初始化為未知，成功讀取後才填實際長度；新增真實匯入模組 consumer，證明原 initializer 失敗與四資產合法檢查成功。主代理固定 `abc-probe-final` 補驗 Probe／HtmlConsole／Comparison／Qualification／ScriptEncoding 雙引擎 10/10 PASS，manifest 前後一致。
 - 修正版原生探針實测：整體 `ModifiedTransport`，四資產均 ModifiedTransport、Error=null；index 17504→18014 bytes、guide 18235→18745 bytes，JS／CSS bytes 長度相同但標頭差異。原始傳輸完整性判 NotPassed；保留 AdGuard 設定。IAB 本機工作台只能確認初始 HTML，session 持續連線、動態操作未通過；另開靜態 guide 可讀。Edge mocked API 的操作驗證與這項真實傳輸結果分列。
 - 最後相容性檢查重現另一 StrictMode 缺陷：舊式操作 body 未帶三個 optional CAS 欄位，直接讀取屬性令合法請求失敗。bridge_a 新增 guarded extraction 接原 canonical hash，未提供欄位採 null，新向量仍全部綁定；主代理確認 HTTP route 消費此 helper。修正後 HtmlConsole 局部雙引擎 58 checks，主代理固定 `abc-feature-final` 另行補驗，不能用先前 57 checks 冒充最後版本。
-- `abc-feature-final` 實際 ZIP：109 payload、15 HTML、11 來源快照、139 本地引用全部核對，problems=[]；工具指紋 `18cce0655a3ad46ed109558bfc5f243cb4bc1117c63228ac0481ba5059158a36`。ProductionVerified=false、未簽章；這是最後 runtime 與當時文件 bytes，收尾來源文件同步後仍需重新生成與封装核對。
+- `abc-feature-final` 實際 ZIP：109 payload、15 HTML、11 來源快照、139 本地引用全部核對，problems=[]；工具指紋 `18cce0655a3ad46ed109558bfc5f243cb4bc1117c63228ac0481ba5059158a36`。ProductionVerified=false、未簽章；這是最後 runtime 與當時文件 bytes，後續來源同步與重新生成／封裝核對已完成，最後產物結果見收尾紀錄。
 
 ### 功能提交與完整回歸原始結果
 
 - A/B/C/D 與完整相依已提交 `18709bc40eac69adf479f1d1defdda61815b4c84`，推送 `dev` 後遠端 SHA 相符。GitHub Actions run `38114489760` 六個工作全部 success；這項證據涵蓋該提交，不冒稱覆蓋其後修正。
 - `abc-feature-final` HtmlConsole／Qualification／ScriptEncoding／HtmlDocumentation 雙引擎 8/8 PASS，manifest 前後一致；其中 HtmlConsole 為 58 checks。與 probe 固定快照 10/10、UI 45/45、Edge mocked API 2,501 列劇本分列，不等同真實本機動態工作台通過。
 - `abc-final` 廣域回歸完成：WinPS5.1／PS7 各 106 支，共 212 次；原始結果 206 PASS，WinPS CancellationWorkflow／DeltaContracts／EnvironmentConfirmation 與 PS7 DeltaContracts／EnvironmentConfirmation 超過 runner 360 秒，PS7 NativeExecution 於 silent-child 觀察斷言失敗。原始失敗保留，未寫成全 PASS。固定快照 manifest 前後一致；實體大檔測試依使用者既定小範圍政策排除。
-- 五個逾時劇本保留原 fixture／斷言，改為單 worker、runner 上限 1,800 秒，使用包含最後 native 修正的 `abc-feature-final`。已確認 WinPS CancellationWorkflow 273.22 秒、WinPS DeltaContracts 543.36 秒、PS7 DeltaContracts 777.09 秒、PS7 EnvironmentConfirmation 671.81 秒 PASS，PS7 各快照 manifest 不變；WinPS EnvironmentConfirmation 仍待完成。提高外層等待時間不改核心 operation timeout 或產品 gate。
-- 最後使用者走讀發現確認文字將切換角色／配對的清除效果混用；實際同配對角色切換保留選取／軟體草稿，僅清操作表單草稿，配對切換另清選取／版本。frontend_a 僅校正提示，既有取消切換測試新增精確提示斷言，主代理親跑語法及 UI 45/45 PASS；正式固定產物補驗與提交待下方紀錄。
+- 五個逾時劇本保留原 fixture／斷言，改為單 worker、runner 上限 1,800 秒，使用包含最後 native 修正的 `abc-feature-final`。已確認 WinPS CancellationWorkflow 273.22 秒、WinPS DeltaContracts 543.36 秒、PS7 DeltaContracts 777.09 秒、PS7 EnvironmentConfirmation 671.81 秒 PASS，各快照 manifest 不變；WinPS EnvironmentConfirmation 最後亦以原 fixture／斷言完成，1,509.38 秒 PASS。提高外層等待時間不改核心 operation timeout 或產品 gate。
+- 最後使用者走讀發現確認文字將切換角色／配對的清除效果混用；實際同配對角色切換保留選取／軟體草稿，僅清操作表單草稿，配對切換另清選取／版本。frontend_a 僅校正提示，既有取消切換測試新增精確提示斷言，主代理親跑語法及 UI 45/45 PASS；正式固定產物補驗與提交均已完成，結果見下方紀錄。
 - 主代理固定 `abc-native-prefixed` 獨立重現原 NativeExecution 測試的觀察者競態：原始測試僅在 test-owned observer 加十秒啟動延遲與安全失敗診斷，runtime 不變；PS7 exit 1，TimeoutException／Elapsed=3／stdout=0／stderr=0／pipeline results=0／progress 已清除，但 ObserverSamples=0、observer 仍 Running。保留原始斷言及失敗結果，不以一次正常重跑替代反例。
 - bridge_a（gpt-6-luna/high）只修測試：observer ready 握手上限二十秒，原 native TimeoutSeconds=3 保持；LastObservedActivityUtc 由 test factory 時間至 timeout return 界定，且每筆 silent progress 必須保留相同時間。原 helper 寫 marker 的時間受排程影響，不能用正負二秒猜測其等於 process 起始；未放寬 native 輸出／清理／throttle gate。
 - 主代理再查出延遲參數未明確跨模組綁定的驗證缺口，交由原 writer 補第三個參數與實際 ready timestamp 下限斷言。最後 `abc-native-bound-final` 原生測試雙引擎正常 2/2 PASS（22.44／25.03 秒）、實際十秒延遲 2/2 PASS（32.38／35.55 秒），兩次 manifest 前後均一致；先前未量測延遲的 PASS 不當作有效十秒延遲證據。
 - `abc-audit-final` 對提示修正及當時測試實作的 NativeExecution／HtmlConsole／Qualification／ScriptEncoding 雙引擎 8/8 PASS；UI 45/45 及 Edge mocked API 2,501 列完整劇本 PASS。此快照至 `abc-native-bound-final` 只有 NativeExecution 的參數綁定／量測差異，已另補雙引擎正常與延遲驗證；兩者 runtime 相同。其餘廣域結果按上述版本差異及覆蓋範圍沿用，不稱單一最後快照跑了全部 212 項。
 - 提交前由原 frontend writer 統一其檔案為 Windows checkout 的 CRLF；主代理核對只改換行、BOM 保持，實際三個修正程式／測試檔 bytes 與目前 Git 設定預期的 Windows checkout 相同（Git index 採 canonical LF，不能宣稱兩者 raw bytes 相同）。`abc-checkout-final` 對最終 bytes 補 Qualification／ScriptEncoding 雙引擎 4/4 PASS、manifest 不變；最終封装指紋另由收尾實際 ZIP 計算。
 - 最後 WinPS EnvironmentConfirmation 使用原 2,501 列 fixture 及全部斷言，1,509.38 秒 PASS；long runner 三項全部 PASS，manifest 不變。主代理按 engine/test 聚合原始 212 次及上述版本補驗，得到 212 個案例皆有有效 PASS、無未處理失敗。這是分版本覆蓋，不是單一最後快照 212 次 PASS；HTML optional body／probe 最後修正及提示／測試同步另按受影響範圍補驗，完整原始失敗保留。
-- 提示／測試同步段 `0db0fe57299fcf104756f0de54a8e51475588a90` 已 commit／push 至 `dev`，遠端 SHA 相符；CI run `38116603215` 執行中，最終六工作結果待下方紀錄。只包含四個相依檔案，尚未完成的文件狀態修改未混入這次提交。
+- 提示／測試同步段 `0db0fe57299fcf104756f0de54a8e51475588a90` 已 commit／push 至 `dev`，遠端 SHA 相符；CI run `38116603215` 最終六個工作全部 success。只包含四個相依檔案，尚未完成的文件狀態修改未混入這次提交。
 
 ### 正式不同模型體檢：先操作，再檢查全專案
 
@@ -322,7 +322,7 @@
 | 管理者 | 當前配對／所有歷史／未知舊紀錄及 Windows 程序 actor 分明；Owner 不冒稱身份驗證。總覽依目前世代真實結果，C／非 C／項目／檔案／讀回／軟體準備／業務接受不混用，未知不變綠色成功；報告開啟仍先核對受控路徑及 hash，Opened 不保證顯示。材料引用、核准、鎖及生產 gate 保留，沒有新增權限繞過。 |
 | 全專案／上帝視角 | 從 Windows 身分→session/context→PairId／各 revision→view→typed 預覽確認→核心 gate→durable job／journal／report→總覽／交接逐段檢查；A 的一致性供 B/C，D 文字對應已定案行為，E 生成／路由／原始與生成文件／payload／來源 hash／工具指紋相依皆納入。核心 sealed plan／receipt／journal 格式與 CLI 旅程不因 UI 改版而變更；tool bytes 變更仍需重新核准、不能熱換執行中的原版工具。 |
 
-程式體檢未留下未實作 R4/Q 子項或已確認未修 bug。文件最終來源／生成物／ZIP 與新提交六項 CI 仍須完成下方收尾驗證，不能以本表代替產物結果。原始傳輸 NotPassed、IAB 動態旅程未通過，以及 Server／IIS／SCM／task／企業 PKI／業務／企業規模 NotTested 依使用者決策與原範圍明列；ProductionVerified=false、release 未簽章，沒有以本輪 UI 回歸解除生產阻擋。
+程式體檢未留下未實作 R4/Q 子項或已確認未修 bug。文件最終來源／生成物／ZIP 與新提交六項 CI 的收尾驗證已完成，實際產物結果見下方紀錄。原始傳輸 NotPassed、IAB 動態旅程未通過，以及 Server／IIS／SCM／task／企業 PKI／業務／企業規模 NotTested 依使用者決策與原範圍明列；ProductionVerified=false、release 未簽章，沒有以本輪 UI 回歸解除生產阻擋。
 
 ### 最後收尾驗收與裁定
 
@@ -333,4 +333,16 @@
 - 最終工具指紋：`03cd3ecda726ffe0601e31fe222d0e032d892b2c8763304b146a2f4e2427f038`；驗證用 ZIP SHA-256：`a1b4169d575ac4ad80e3f51d9cd8f37e067f1ef967b3c26b5fe7e79740875296`。此為專案外驗證包的精確位元組證據，未宣稱它是企業簽章正式發行。ProductionVerified=false、ProductionExecutionEnabled=false、未簽章。
 - 主代理再次核對 R4-01–12／Q01–10 的每項實作、連續操作／失敗恢復及整體相依：没有未實作子項、未處理已確認 bug 或未驗證的本輪文件／封裝差異。212 案例的分版本有效通過覆蓋、最後反例與補驗、45 UI／Edge mock 2,501 列、最後六項 CI 各自保留範圍，正式不同模型體檢完成。
 - 本輪依使用者「保留設定、完成可驗項目、傳輸明列未通過」定案收尾：原始傳輸 NotPassed，真實 IAB 動態完整旅程未通過／未驗證；不把 mock 操作成功轉寫成原生端到端成功。既有企業 Server／產品／帳號／業務／PKI／規模驗收仍 NotTested，不改列為本輪漏做或生產資格通過。
-- 最後工作區只剩本輪已驗證文件變更及使用者原有未追蹤 prototype；prototype 未讀、未改、未 stage。所有自建本機 HTTP 服務與驗證瀏覽器已關閉，長測試及子程序已完成；未停用 AdGuard 或修改安全設定。文件提交按既有授權完成後，工作區須再次核對乾淨（原 prototype 除外），並確認遠端 `dev` 指向最終提交。文件-only 路徑依 workflow paths-ignore，不預期新增程式 CI。
+- 最後工作區只剩本輪已驗證文件變更及使用者原有未追蹤 prototype；prototype 未讀、未改、未 stage。所有自建本機 HTTP 服務與驗證瀏覽器已關閉，長測試及子程序已完成；未停用 AdGuard 或修改安全設定。文件提交 `40983684dff88a325b2c0eea87b50f95612b45bf` 已推送，遠端 `dev` SHA 相符，提交後工作區僅剩原 prototype。文件-only 路徑依 workflow paths-ignore，不預期新增程式 CI。
+
+
+### 使用者要求的 PLAN／TODO 再核對（2026-10-11）
+
+- 本次從 R4-01–12、Q01–10 與 A–E 原始子契約重新對照實際程式及文件使用端，不只採用前次完成結論。主代理直接讀取八頁／導覽／草稿、getView／鎖內快照與各 revision、OverviewProjection 的真實階段、快速保存／BeforeWrite、durable job／報告開啟，以及產生器／路由／發行 consumer；額外由 gpt-6-luna/high 唯讀交叉檢查。前次體檢漏掉下列文件與角色導引問題，本次已補齊；保留前次版本證據及其限制。
+- 清除 8 處已完成事項仍寫成待完成的狀態，包括生成同步、feature／證據提交、長測試、正式補驗、CI 及最後工作區核對。原始規劃契約與當時規劃階段的歷史紀錄保留，不藉刪除需求縮減範圍。`IMPLEMENTATION-0.1.md` 剩餘 7 個未勾項都是外部實機／資格／真實操作旅程驗收，仍保留；環境模板的 10 個核對勾選是使用者每次操作檢查表，不是程式 TODO，未代使用者勾選或刪除。
+- R4-01/03/06、Q08 補漏：`TargetSnapshot` 實際以可信 Path／ExpectedHash 記錄目前配對目標快照，應在 Manager 工作區執行；原 metadata 卻分到 Target。另實際 153 項 metadata 與原前端分類有 NonCPeerProof／NonCPlan／MaterialJobStatus／EnrolledInventory／ImportInventory 五項差異。frontend_a（gpt-6-luna/high）依真實 consumer 修正後端明確角色、前端以 metadata.requiredRole 分類清單／表單／導引，無 metadata 時的 fallback 對齊後端；Source 擷取來源／跳板材料，Manager 建配對及傳輸計畫，Target 查本機材料狀態。角色仍是操作指引，沒有新增授權 gate、遠端執行或更動核心核准／信任契約。
+- R4-10、D/E 補漏：文件中心直接消費的 GENERAL-HOST-WORKFLOW、ENTERPRISE-MIGRATION-COVERAGE、ENVIRONMENT-SOFTWARE-CONFIRMATION 仍把已實作 R3 功能寫成未實作。verification_map（gpt-6-luna/medium）修正三份來源與正式生成投影；保留第二輪詳細能力邊界、靜態模板、CLI 備援及 NotTested。guide／完整手冊同步修正 Source→Manager→Target 責任：ImportInventory 僅以來源盤點建立配對，目標盤點不再誤教為另一組來源匯入；目標交付可信材料後由 Manager 以 TargetSnapshot→PublishComparison 更新原配對，AssistiveEnable／SaveSelection 也明確由 Manager 操作。
+- 主代理獨立驗證：不可變實際 bytes 快照 `todo-final` 的 HtmlConsole（59 checks）／OperationRequests／TextConsole／HtmlDocumentation／Qualification／ScriptEncoding 在 WinPS5.1、PS7 共 12/12 PASS，snapshotChanges=[]；Node 語法／45 UI checks／Edge mocked API 2,501 列完整劇本 PASS。另真正匯入模組取得 153 項完整 metadata，逐項送入前端分類與 fallback，零差異；Manager 常用任務實際 click 兩按鈕開啟 TargetSnapshot／PublishComparison typed 表單，欄位逐項對照真 metadata（含 Path、ExpectedHash），Target 不提供這兩項管理端任務。這是實際 producer→mock DOM consumer 驗證，不冒稱原生傳輸通過；未修改前次 212 案例的版本化證據。
+- 最終交付再核對：從同一快照匯出 ZIP，逐檔 bytes／manifest／來源 hash 與全部本地參照核對，109 payload、15 HTML、11 來源快照、145 本地引用，problems=[]。本次工具指紋 `5b16efddcf2dd35648e1f16e767de8e2019e4255f5152154c1ad9f7f1ad4b30d`、驗證包 SHA-256 `465a8e6f2417b0e821c39e0dbfe93df99a8c285dfb5b0f233d3a542db208d036`；新工具 bytes 仍须重新封裝與核准，不熱換舊作業。ProductionVerified=false、ProductionExecutionEnabled=false、未簽章。
+- 正式補查：主代理未親自修改 runtime／使用者教學，對上述 Luna 實作直接核對完整 diff、實際來源及連續角色操作後再查全專案相依，確認 metadata→導引／清單／欄位→既有操作、文字備援、文件中心→正式生成→release／fingerprint 均一致。已確認缺口皆已修正，沒有剩餘本輪未實作項目。原始傳輸 NotPassed、真實動態完整旅程未通過與外部 Server／產品／帳號／業務／PKI／規模待驗繼續保留，不以本次 PASS 解除。
+- 範圍失誤如實記錄：文件代理首次排除 glob 未生效，曾短暫輸出 docs/archive 匹配文字，立即停止且未使用；後續僅用明確頂層檔案清單。封存檔案未修改／產生／打包，個人 prototype 未讀／未改／未 stage。

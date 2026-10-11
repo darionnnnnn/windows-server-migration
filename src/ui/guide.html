@@ -57,8 +57,8 @@
 
     <section id="journeys" class="panel guide-section"><p class="eyebrow">常用任務</p><h2>沿用具名操作逐步完成工作</h2>
       <h3>來源：取得並保存可信材料</h3><ol><li>在來源主機執行 <code>Inventory</code>，指定輸出目錄並盤點主機、軟體、服務及工作負載；對無法可靠辨識的項目補充發現與責任說明。</li><li>檢查完整 IIS 設定、排程 XML 與安全設定、檔案範圍、C／非 C 分流和共享相依。未支援或無法解析的內容保留人工處置。</li><li>按畫面要求輸出受控材料並記錄路徑、SHA-256、來源主機與時間。Hash 用於確認 bytes 未變，不單獨證明製作者身分。<a href="index.html#inventory">回到盤點與選取</a>。</li></ol>
-      <h3>管理：比較、審閱並核准</h3><ol><li>以 <code>ImportInventory</code> 匯入來源／目標盤點檔及其必要的 ExpectedHash，建立正確 PairId；再以 <code>AssistiveEnable</code> 初始化輔助盤點／選取。來源版本、選用版本與目標觀測分開核對。</li><li>透過 <code>SaveSelection</code> 保存選取；每個未選項目都要提供原因，再逐項處理相依影響、檔案 scope、生效路徑、帳號／SID、IIS／排程 typed 設定與人工責任。預設選取不代表核准。</li><li>預覽整個有效集合；核對必要項、共享資源與目標阻擋，再由有權責任人依既有流程核准。保存核准材料與交接所需證據。<a href="index.html#operations">在操作中心執行具名操作</a>。</li></ol>
-      <h3>目標：準備、還原與讀回</h3><ol><li>先在目標主機取得目前盤點，再以 <code>TargetSnapshot</code> 指定盤點檔路徑與 ExpectedHash 更新目標快照，接著執行 <code>PublishComparison</code>。僅重新載入舊比較不會重新盤點主機。</li><li>軟體須由責任人手動安裝；安裝或改版後重新盤點、比較並檢查相關收據是否仍有效。等待補裝不是安裝工作，也不是還原成功。</li><li>逐檔預覽衝突與原路徑／生效路徑，確認本次範圍及核准。明確確認後執行，再檢查 durable job、階段結果與實際目標讀回。</li><li>檔案成功、C 通道完成、非 C 通道完成、原生設定 readback、業務 staged、切換核准、啟用與 BusinessFinal 各自記錄。未取得證據的階段保持未知或待處理。<a href="index.html#operations">查看操作表單與作業狀態</a>。</li></ol>
+      <h3>管理：比較、審閱並核准</h3><ol><li>以 <code>ImportInventory</code> 匯入來源盤點檔及其必要的 ExpectedHash，依來源身分與 TargetName 建立配對；此動作只建立來源 catalog，不匯入目標盤點。目標人員另取得可信盤點並交給 Manager，由 Manager 以 <code>TargetSnapshot</code> 的 Path 與 ExpectedHash 更新該配對，再執行 <code>PublishComparison</code>。之後以 <code>AssistiveEnable</code> 初始化輔助盤點／選取，分開核對來源版本、選用版本與目標觀測。</li><li>透過 <code>SaveSelection</code> 保存選取；每個未選項目都要提供原因，再逐項處理相依影響、檔案 scope、生效路徑、帳號／SID、IIS／排程 typed 設定與人工責任。預設選取不代表核准。</li><li>預覽整個有效集合；核對必要項、共享資源與目標阻擋，再由有權責任人依既有流程核准。保存核准材料與交接所需證據。<a href="index.html#operations">在操作中心執行具名操作</a>。</li></ol>
+      <h3>目標：準備、還原與讀回</h3><ol><li>目標人員先在目標主機取得可信盤點，透過受控離線材料交給 Manager。Manager 在自己的工作區以 <code>TargetSnapshot</code> 提供檔案路徑與獨立 ExpectedHash 記錄目標快照，再執行 <code>PublishComparison</code> 發布比較；這不是目標主機本機操作，也不需先以來源 <code>ImportInventory</code> 匯入。僅重新載入舊比較不會重新盤點主機。</li><li>軟體須由責任人手動安裝；安裝或改版後重新盤點、比較並檢查相關收據是否仍有效。等待補裝不是安裝工作，也不是還原成功。</li><li>逐檔預覽衝突與原路徑／生效路徑，確認本次範圍及核准。明確確認後執行，再檢查 durable job、階段結果與實際目標讀回。</li><li>檔案成功、C 通道完成、非 C 通道完成、原生設定 readback、業務 staged、切換核准、啟用與 BusinessFinal 各自記錄。未取得證據的階段保持未知或待處理。<a href="index.html#operations">查看操作表單與作業狀態</a>。</li></ol>
       <p>對話式說明不會替你填核准、Owner、證據或確認欄位；不得以角色選擇代替執行者權限。進階操作仍可由完整清單到達。</p>
     </section>
 
@@ -90,7 +90,7 @@
 
     <section id="evidence" class="panel guide-section"><p class="eyebrow">時間與證據</p><h2>快照呈現取得當時事實，不會持續更新主機狀態</h2>
       <p>來源盤點、目標快照、軟體比較、核准、收據與階段結果都有範圍與版本。Assistive.Revision、DecisionRevision、currentSelectionRevision 是三個獨立原生 revision，不可相加成單一數值；dataVersion 是 fleet／catalog 實際 bytes 的摘要。sourceSelectionRevision 另供來源 SpecReview 綁定；current-selection revision 則供 UI CAS 使用。共同核對配對、主機指紋、取得時間、三個 revision 與 dataVersion，才能判斷是否仍是同一份目前資料。</p>
-      <ul><li>「重新載入比較」只重讀或推導已保存材料，不會登入目標或重新盤點實機。</li><li>更新目標觀測必須在正確的目標主機取得可信盤點，再按受控流程匯入、保存 TargetSnapshot 並發布比較。</li><li>更新軟體選用版本不改寫來源盤點事實；受影響的 comparison、receipt 或準備證據可能需要重新核驗。</li><li>Hash 可發現 bytes 改變；它不單獨證明來源可信、操作者身分、原生設定已生效或業務已接受。</li></ul>
+      <ul><li>「重新載入比較」只重讀或推導已保存材料，不會登入目標或重新盤點實機。</li><li>更新目標觀測必須由目標人員在正確主機取得可信盤點，再以受控離線材料交給 Manager；Manager 在自己的工作區以 Path 與 ExpectedHash 執行 TargetSnapshot，然後 PublishComparison。ImportInventory 僅用於來源 catalog。</li><li>更新軟體選用版本不改寫來源盤點事實；受影響的 comparison、receipt 或準備證據可能需要重新核驗。</li><li>Hash 可發現 bytes 改變；它不單獨證明來源可信、操作者身分、原生設定已生效或業務已接受。</li></ul>
     </section>
 
     <section id="reports" class="panel guide-section"><p class="eyebrow">報告與文件</p><h2>報告會交由 Windows 預設程式開啟</h2>

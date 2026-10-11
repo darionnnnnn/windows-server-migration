@@ -47,7 +47,9 @@ function Get-WsmTextMetadataValue($Metadata,[string]$Name,$Default=$null) {
 }
 function Get-WsmTextActionGroup([string]$Action) {
     if($Action -eq 'OsProvidedCapture'){return 'Source'}
-    if($Action -in @('OsProvidedBaseline','OsProvidedReview','OsProvidedSubmit')){return 'Manager'}
+    if($Action -in @('OsProvidedBaseline','OsProvidedReview','OsProvidedSubmit','TargetSnapshot','NonCPlan','ImportInventory')){return 'Manager'}
+    if($Action -eq 'EnrolledInventory'){return 'Source'}
+    if($Action -eq 'MaterialJobStatus'){return 'Target'}
     if($Action -match '^(Source|Inventory|FreezeSource|SourceResult|SourceTask|SourceResume|NonCPeer)'){return 'Source'}
     if($Action -match '(Target|Preparation|Restore|Rollback|Cutover|Validation|Resource|Reservation|Reserve|Release|Cleanup|NonCPhysical|NonCTransfer)'){return 'Target'}
     'Manager'

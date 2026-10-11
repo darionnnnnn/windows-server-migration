@@ -268,7 +268,14 @@ test('every backend operation has a Chinese label and a source, manager or targe
   assert.equal(ui.actionGroup('OsProvidedReview'), 'Manager');
   assert.equal(ui.actionGroup('OsProvidedSubmit'), 'Manager');
   assert.equal(ui.actionGroup('SpecReview'), 'Manager');
-  assert.equal(ui.actionGroup('TargetSnapshot'), 'Target');
+  assert.equal(ui.actionGroup('TargetSnapshot'), 'Manager');
+  assert.equal(ui.actionGroup('TargetSnapshot', { requiredRole:'Manager' }), 'Manager');
+  assert.equal(ui.actionGroup('MaterialJobStatus'), 'Target');
+  assert.equal(ui.actionGroup('MaterialJobStatus', { requiredRole:'Manager' }), 'Manager', 'server requiredRole takes precedence over fallback classification');
+  assert.equal(ui.actionGroup('ImportInventory'), 'Manager');
+  assert.equal(ui.actionGroup('EnrolledInventory'), 'Source');
+  assert.equal(ui.actionGroup('NonCPeerProof'), 'Source');
+  assert.equal(ui.actionGroup('NonCPlan'), 'Manager');
   assert.equal(ui.actionGroup('MaterialJobStatus'), 'Target');
   assert.equal(ui.actionLabel('MaterialJobStatus'), '查看中斷作業材料鎖');
   const materialGuidance = ui.actionGuidance('MaterialJobStatus', { readOnly: true });
@@ -298,17 +305,23 @@ test('every backend operation has a Chinese label and a source, manager or targe
   assert.match(ui.parameterLabel('UnknownFutureHash'), /進階欄位/);
 });
 
-test('guided tasks prioritize roleAvailable operations but keep all workflows and explain other roles', () => {
+test('guided tasks expose TargetSnapshot and PublishComparison to Manager without directing Target to Manager imports', () => {
   const ui=makeApp(async()=>({ok:true,status:200,json:async()=>({})}),true), catalog=[
-    ['Inventory','Source'],['ImportInventory','Manager'],['AssistiveEnable','Manager'],['SaveSelection','Manager'],['SetSoftwareVersion','Manager'],['TargetSnapshot','Target'],['PublishComparison','Manager'],['RestorePreview','Manager'],['Restore','Target'],['ApproveMigration','Manager'],['ExportPackage','Source'],['PackageZip','Source'],['ImportPackageZip','Target'],['Repair','Manager'],['SourceResume','Source'],['RepairWorkspace','Manager'],['Validate','Target'],['Acceptance','Manager'],['Cutover','Target'],['ExportResult','Target'],['DeliveryDocument','Manager'],['RequestCancellation','Manager'],['CheckJournal','Manager'],['MaterialJobStatus','Target']
+    ['Inventory','Source'],['ImportInventory','Manager'],['AssistiveEnable','Manager'],['SaveSelection','Manager'],['SetSoftwareVersion','Manager'],['TargetSnapshot','Manager'],['PublishComparison','Manager'],['RestorePreview','Manager'],['Restore','Target'],['ApproveMigration','Manager'],['ExportPackage','Source'],['PackageZip','Source'],['ImportPackageZip','Target'],['Repair','Manager'],['SourceResume','Source'],['RepairWorkspace','Manager'],['Validate','Target'],['Acceptance','Manager'],['Cutover','Target'],['ExportResult','Target'],['DeliveryDocument','Manager'],['RequestCancellation','Manager'],['CheckJournal','Manager'],['MaterialJobStatus','Target']
   ];
-  const titles=()=>ui.__getElement('guided-tasks').children.map(card=>card.children.find(node=>node.tagName==='H3').textContent);
-  const fill=role=>{ui.state.session={role};const available={Source:new Set(['Inventory']),Manager:new Set(['AssistiveEnable']),Target:new Set(['TargetSnapshot'])}[role];ui.state.actions=catalog.map(([action,requiredRole])=>({action,requiredRole,roleAvailable:available.has(action),parameters:[]}));ui.renderTaskGuide();};
+  const cards=()=>ui.__getElement('guided-tasks').children, titles=()=>cards().map(card=>card.children.find(node=>node.tagName==='H3').textContent), card=title=>cards().find(item=>item.children.some(node=>node.tagName==='H3'&&node.textContent===title)), textOf=node=>[node.textContent||'',...(node.children||[]).map(textOf)].join(' ');
+  const fill=role=>{ui.state.session={role};const available={Source:new Set(['Inventory']),Manager:new Set(['ImportInventory','AssistiveEnable','TargetSnapshot','PublishComparison']),Target:new Set(['ImportPackageZip','Restore','Validate','Cutover','MaterialJobStatus'])}[role];ui.state.actions=catalog.map(([action,requiredRole])=>({action,requiredRole,roleAvailable:available.has(action),parameters:action==='TargetSnapshot'?[{name:'TargetPath',label:'目標材料路徑',type:'path',required:true}]:action==='PublishComparison'?[{name:'ExpectedRevision',label:'預期 revision',type:'integer',required:true}]:[]}));ui.renderTaskGuide();};
   fill('Source'); assert.equal(titles()[0],'建立來源盤點');
   const sourceText=ui.__getElement('guided-tasks').children.map(card=>card.children.flatMap(node=>[node.textContent||'',...(node.children||[]).map(child=>child.textContent||'')]).join(' ')).join(' ');
   assert.match(sourceText,/其他角色操作/); assert.match(sourceText,/Manager/); assert.equal(titles().length,9);
-  fill('Manager'); assert.ok(['啟用輔助流程','選取項目與軟體版本'].includes(titles()[0]));
-  fill('Target'); assert.equal(titles()[0],'更新目標觀測');
+  fill('Manager'); assert.ok(['啟用輔助流程','選取項目與軟體版本','更新目標觀測'].includes(titles()[0]));
+  const targetCheck=card('更新目標觀測'), managerButtons=targetCheck.children.find(node=>node.className==='task-actions').children;
+  assert.deepEqual(managerButtons.map(button=>button.textContent.slice(button.textContent.lastIndexOf('（')+1,-1)),['TargetSnapshot','PublishComparison']);
+  for(const action of ['TargetSnapshot','PublishComparison']) { ui.state.actions.find(item=>item.action===action).roleAvailable=true; ui.setAction(action); assert.equal(ui.state.activeAction,action); assert.ok(ui.__getElement('parameter-fields').children.length>0,`${action} opens its typed form`); }
+  fill('Target');
+  const targetText=textOf(card('更新目標觀測')), targetButtons=card('更新目標觀測').children.find(node=>node.className==='task-actions').children;
+  assert.equal(targetButtons.length,0); assert.match(targetText,/Manager/);
+  const exchange=card('可信材料離線交接'); assert.match(textOf(exchange),/匯入盤點（Manager）/); assert.equal(exchange.children.find(node=>node.className==='task-actions').children.some(button=>button.textContent.includes('ImportInventory')),false);
 });
 
 test('Windows settings preview produces a safe all-row draft bound to the physical preview file hash', () => {
@@ -717,8 +730,8 @@ test('an explicitly cleared inventory reason stays blank after row rebuild and b
 });
 
 test('operations route restores its selected typed form and refreshes server-readonly fields', async () => {
-  const ui=makeApp(async()=>({ok:true,status:200,json:async()=>({})}),true), metadata=revision=>[{action:'TargetSnapshot',requiredRole:'Target',roleAvailable:true,parameters:[{name:'TargetPath',label:'目標盤點路徑',type:'path'},{name:'ExpectedRevision',label:'預期 revision',type:'integer',readOnly:true,value:revision}]}];
-  ui.state.session={sessionId:'s',contextId:'c',pairId:'p',role:'Target',revision:4,decisionRevision:23,selectionRevision:2,dataVersion:'d1'};
+  const ui=makeApp(async()=>({ok:true,status:200,json:async()=>({})}),true), metadata=revision=>[{action:'TargetSnapshot',requiredRole:'Manager',roleAvailable:true,parameters:[{name:'TargetPath',label:'目標盤點路徑',type:'path'},{name:'ExpectedRevision',label:'預期 revision',type:'integer',readOnly:true,value:revision}]}];
+  ui.state.session={sessionId:'s',contextId:'c',pairId:'p',role:'Manager',revision:4,decisionRevision:23,selectionRevision:2,dataVersion:'d1'};
   ui.renderActions(metadata(23)); ui.setAction('TargetSnapshot');
   ui.__getElement('param-0').value='D:\\target-inventory.json'; ui.__getElement('param-1').value='23';
   await ui.navigate('help');
@@ -732,13 +745,13 @@ test('operations route restores its selected typed form and refreshes server-rea
 
 test('overview consumes native workflow and evidence projection fields and role-gates suggested actions', () => {
   const ui=makeApp(async()=>({ok:true,status:200,json:async()=>({})}),true);
-  ui.renderOverview({metrics:{discovered:7},workloadStatus:'ReviewRequired',nextStep:{title:'下一步',description:'檢視目前證據。',reason:'角色符合。',action:'TargetSnapshot',actionMetadata:{action:'TargetSnapshot',label:'更新目標觀測',requiredRole:'Target',roleAvailable:true}},provenance:{pairId:'pair-7',role:'Target',revision:9,generation:3,stage:'Restore',stageStatus:'Succeeded',producedUtc:'2026-10-11T01:02:03Z',planHash:'a'.repeat(64),approvalReference:'b'.repeat(64),approvalKind:'SealedPlan',deliveryStatus:'ImportedVerified',deliveryGeneration:3,deliveryId:'delivery-7',transportHash:'c'.repeat(64),deliveryReportOnly:false,deliveryReadinessProof:true,deliveryProductionVerified:false},steps:[{id:'restore',label:'還原',status:'Recorded',source:'目前世代已接受的 Restore 階段結果',value:'還原 · 完成',resultStatus:'Succeeded',stage:'Restore',generation:3,producedUtc:'2026-10-11T01:02:03Z'}]});
+  ui.renderOverview({metrics:{discovered:7},workloadStatus:'ReviewRequired',nextStep:{title:'下一步',description:'檢視目前證據。',reason:'角色符合。',action:'TargetSnapshot',actionMetadata:{action:'TargetSnapshot',label:'更新目標觀測',requiredRole:'Manager',roleAvailable:true}},provenance:{pairId:'pair-7',role:'Manager',revision:9,generation:3,stage:'Restore',stageStatus:'Succeeded',producedUtc:'2026-10-11T01:02:03Z',planHash:'a'.repeat(64),approvalReference:'b'.repeat(64),approvalKind:'SealedPlan',deliveryStatus:'ImportedVerified',deliveryGeneration:3,deliveryId:'delivery-7',transportHash:'c'.repeat(64),deliveryReportOnly:false,deliveryReadinessProof:true,deliveryProductionVerified:false},steps:[{id:'restore',label:'還原',status:'Recorded',source:'目前世代已接受的 Restore 階段結果',value:'還原 · 完成',resultStatus:'Succeeded',stage:'Restore',generation:3,producedUtc:'2026-10-11T01:02:03Z'}]});
   let overview=ui.__getElement('overview-provenance').textContent;
   for(const value of ['階段產生時間（ProducedUtc；非目標觀測時間）2026-10-11T01:02:03Z','計畫 SHA-256','核准參照 SHA-256','delivery-7','傳輸 SHA-256','僅報告 否','含就緒證明 是','正式環境驗證 否']) assert.ok(overview.includes(value),value);
   const step=ui.__getElement('workflow-steps').children[0]; assert.equal(step.children[1].children[0].textContent,'還原'); assert.match(step.children[1].children[1].textContent,/目前世代已接受的 Restore/); assert.match(step.children[1].children[1].textContent,/階段結果狀態：Succeeded/); assert.match(step.children[1].children[1].textContent,/2026-10-11T01:02:03Z/);
   assert.equal(ui.__getElement('next-step-action').hidden,false); assert.equal(ui.__getElement('next-step-action').textContent,'更新目標觀測');
   assert.equal(ui.statusName('Partial'),'部分完成'); assert.equal(ui.statusName('ReviewRequired'),'需要審閱'); assert.equal(ui.statusName('NotObserved'),'未觀測'); assert.equal(ui.statusName('Recorded'),'已記錄（不代表核准或完成）'); assert.equal(ui.statusName('NotTested'),'未測試');
-  ui.renderOverview({metrics:{},nextStep:{action:'TargetSnapshot',actionMetadata:{action:'TargetSnapshot',roleAvailable:false,requiredRole:'Target'}},provenance:{},steps:[{id:'selection',label:'項目選取',status:'Unknown',source:'輔助模式尚未啟用',value:'未知'}]});
+  ui.renderOverview({metrics:{},nextStep:{action:'TargetSnapshot',actionMetadata:{action:'TargetSnapshot',roleAvailable:false,requiredRole:'Manager'}},provenance:{},steps:[{id:'selection',label:'項目選取',status:'Unknown',source:'輔助模式尚未啟用',value:'未知'}]});
   assert.equal(ui.__getElement('next-step-action').hidden,true,'producer roleAvailable=false must suppress the suggestion link');
   ui.renderOverview({metrics:{},nextStep:{action:'TargetSnapshot',actionMetadata:{action:'DifferentAction',roleAvailable:true}},provenance:{},steps:[{id:'selection',label:'項目選取',status:'Unknown',source:'輔助模式尚未啟用',value:'未知'}]});
   assert.equal(ui.__getElement('next-step-action').hidden,true,'metadata for a different operation must not authorize the suggestion link');

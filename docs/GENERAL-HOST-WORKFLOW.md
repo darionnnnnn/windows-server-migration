@@ -1,8 +1,18 @@
-# 第 2 輪一般主機操作閉環
+# 一般主機操作閉環（第 2 輪契約與現行 HTML 入口）
 
 本流程供受控隔離 pilot。Windows Server、Oracle 實際帳號／產品、企業 PKI 與業務驗收仍需外部實機證據；本機 fixture 通過不等於正式上線資格。所有主機使用相同工具 bytes，以系統管理員的 64 位元 Windows PowerShell 5.1 執行。
 
-第 3 輪輔助搬移預設全選／可自訂；**全部使用者功能與文件以HTML入口**，本機PowerShell執行／文字備援。軟體可選新版取代強制同版，原設定預設原路徑保存並另驗新版生效；不合併目的既有文件，HTML列無法放置及人工重試，非IIS不新增adapter。全新Windows／JSON／還原前直接或等待補裝／逐項續跑保留。全部尚未實作；下文仍是現行文字選單、Markdown及準備門檻，第三輪需遷移全部使用者入口而非假裝已有按鈕。詳見 [MIGRATION-3-PLAN.md](MIGRATION-3-PLAN.md)。
+第三輪輔助搬移契約已實作；第四輪在此基礎完成目前本機 HTML 工作台：八個資訊頁、依角色與階段排列的常用任務、完整進階操作清單及教學／文件中心都使用同一核心與受控檢查。文字選單及非互動 CLI 仍是無瀏覽器或政策阻擋時的備援。本文件保留第二輪已驗的一般主機資料契約、細節與 CLI 範例；不要把其保留文字範例解讀為只有文字入口。
+
+從各自主機的受控工具目錄啟動 HTML 入口；以下工作區為虛構範例，Source、Manager、Target 必須各用自己的 WorkRoot：
+
+```powershell
+.\Start-ServerMigration.ps1 -Action Html -Role Source -Workspace 'C:\MigrationDemo\source'
+.\Start-ServerMigration.ps1 -Action Html -Role Manager -Workspace 'C:\MigrationDemo\manager'
+.\Start-ServerMigration.ps1 -Action Html -Role Target -Workspace 'C:\MigrationDemo\target'
+```
+
+來源人員由操作中心執行 `Inventory` 並交付可信盤點；Manager 使用 `ImportInventory` 核對檔案與獨立 SHA-256，接著以 `AssistiveEnable` 建立輔助狀態、檢查預選項目並用 `SaveSelection` 記錄選取（每項未選內容都要有原因）。選取不是核准。目標人員在目標主機取得可信盤點並透過受控離線材料交給 Manager；Manager 在自己的工作區以檔案路徑與獨立 `ExpectedHash` 執行 `TargetSnapshot` 記錄目標快照，再執行 `PublishComparison` 發布比較。目標材料不需先用來源 `ImportInventory` 匯入。核准後才沿用既有封裝、目標預覽、還原、讀回及交接流程。完整欄位、責任分工與疑難處理見[HTML 操作與交接手冊](ASSISTIVE-OPERATIONS.html)及[企業遷移涵蓋範圍](ENTERPRISE-MIGRATION-COVERAGE.md)。實際 Windows Server／業務資格和本機 loopback 傳輸限制見[目前狀態](IMPLEMENTATION-0.1.md)；使用 HTML 入口不代表外部驗收完成。
 
 ## 工作目錄與交付
 
