@@ -4,9 +4,11 @@ PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目
 
 ## 第四輪目前狀態（2026-10-11）
 
-第四輪正在補強 HTML 工作台導覽、資料一致性、教學與發行文件。此段是當前進度，不代表 A–E 全部完成。E1 發行文件段已提交至 `dev`（`8b51e1653262ac6cd91d958227196ca22bd58c28`），遠端 SHA 已核對；文件產生器、發行封裝及編碼相關的六組測試在 Windows PowerShell 5.1 與 PowerShell 7 通過。操作教學與完整手冊來源也通過各自的文件測試，但最後輸出與工作台消費端尚未完成驗收。
+第四輪 A–E 功能實作、可驗證範圍及正式不同模型程式審查已完成。E1 文件／發行提交與功能提交 `18709bc40eac69adf479f1d1defdda61815b4c84` 各自的六個 CI 工作均通過；後續修正提交 `0db0fe57299fcf104756f0de54a8e51475588a90` 已推送並核對遠端，針對性本機驗證通過。修正提交的最終 CI 結果按版本記錄於開發 PLAN。八頁工作台、常用任務與完整操作清單、資料一致性及安全恢復已實作，producer→consumer 接線已逐項核對。
 
-A 的後端／前端與 B、C 仍在處理中。Node UI mock 與語法檢查通過不等於真實瀏覽器／本機 HTTP bridge 通過；已觀察到 loopback 回應差異及逾時，尚未釐清所有原因。工作台基準比較、真實瀏覽器與完整回歸尚未完成。企業 Server、SMB、IIS／排程原生行為、帳號存取及業務接受仍是外部待驗證項目；`ProductionVerified=false`，不可據此放行生產搬移。最新狀態見 [實作狀態與外部驗證](docs/IMPLEMENTATION-0.1.md)，實際操作限制見 [操作契約](docs/OPERATIONS.md)。
+版本化驗證涵蓋完整 212 項引擎案例：初次 immutable run 有 206 PASS、5 個逾時及 1 個 PS7 `NativeExecution` 失敗；5 個逾時後續隔離延長均通過（WinPS Cancellation 273.22 秒、WinPS DeltaContracts 543.36 秒、WinPS EnvironmentConfirmation 1509.38 秒；PS7 DeltaContracts 777.09 秒、PS7 EnvironmentConfirmation 671.81 秒）。`NativeExecution` 修正明確參數繫結及量測就緒時間後，WinPS／PS7 正常與實際 10 秒延遲共 4/4 通過。因此 212 項均有通過覆蓋，但來自版本化快照與定向重驗，不是單次同快照全通過。最新 UI mock 45 項與 Edge 2,501 列劇本通過；四視角程式審查通過。
+
+傳輸完整性仍為 `NotPassed`：使用者選擇保留 AdGuard 設定。Native probe 的四個靜態資產均為 `ModifiedTransport`；其中 index 與 guide 兩個 HTML 回應長度各增加 510 bytes，JavaScript／CSS 長度及觀測 SHA-256 與本機相同，但 headers 有差異。真實 IAB 可顯示初始 HTML，但 session 持續載入，動態工作台未通過；靜態 guide 可另頁閱讀。外部 Server、SMB、IIS／排程原生行為、帳號與業務接受仍為 `NotTested`；`ProductionVerified=false`、`ProductionExecutionEnabled=false`、release 未簽署，不可放行生產搬移。最新狀態見 [實作狀態與外部驗證](docs/IMPLEMENTATION-0.1.md)，實際操作限制見 [操作契約](docs/OPERATIONS.md)。
 
 ## 專案用途與第 3 輪方向
 

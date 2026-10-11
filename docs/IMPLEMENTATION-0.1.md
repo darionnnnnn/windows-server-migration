@@ -2,13 +2,15 @@
 
 更新：2026-10-11。本文件只維護當前狀態；原始需求、歷史決策及固定快照證據見 [歷史索引](archive/README.md)。已完成程式 TODO 已移除；尚無外部資格的項目保留，不宣稱正式生產完成。
 
-## 第四輪目前狀態（進行中）
+## 第四輪目前狀態（實作與可驗證範圍完成；傳輸例外保留）
 
-第四輪 A–E 尚未整體完成。E1 文件／發行段已提交 `dev`：`8b51e1653262ac6cd91d958227196ca22bd58c28`，遠端 SHA 已確認。文件產生、發行 ZIP 投影及編碼六組測試在 Windows PowerShell 5.1 與 PowerShell 7 通過；操作教學文件測試各 24 項亦在兩引擎通過。這些結果只證明相應來源、fixture 與發行封裝範圍，不代表整合後的生成文件或瀏覽器文件中心已驗收。
+第四輪 A–E 功能實作、可驗證範圍及正式不同模型程式審查已完成。E1 文件／發行提交與功能提交 `18709bc40eac69adf479f1d1defdda61815b4c84` 各自的六個 CI 工作均通過。後續修正提交 `0db0fe57299fcf104756f0de54a8e51475588a90` 已推送並核對遠端；固定快照定向檢查通過。修正提交的最終 CI 結果按版本記錄於開發 PLAN。八個工作台頁面、常用任務與完整 allowlist、狀態投影、上下文與資料一致性、提交結果恢復、文件路由及發行相依均已實作，producer→consumer 接線及全專案四視角程式審查通過。
 
-A 後端 `HtmlConsole` 單元測試 28 項、前端 A mock／語法 25 項曾通過，但 A 仍有待補缺，不列為接受完成。C 前端整合與 B overview 尚在處理。一次真實 loopback 觀察中，測試端收到的 HTML response 為 35,963 bytes，伺服端記錄為 35,453 bytes，回應 CSP 含 `local.adguard.org`；另有請求重設／逾時。這些觀察尚未證明所有重設／逾時的共同原因。工作台基準比較、最終真實瀏覽器與完整回歸尚未完成；使用者的非同步環境選項也待回覆。不得把 mock、Node／語法、文件 fixture 或受影響單元測試稱作真實瀏覽器／完整傳輸通過。
+版本化測試覆蓋完整 212 項引擎案例。初次 immutable run 有 206 PASS、5 個逾時及 1 個 PS7 `NativeExecution` 失敗；五個逾時後續隔離延長均通過：WinPS `Cancellation` 273.22 秒、`DeltaContracts` 543.36 秒、`EnvironmentConfirmation` 1509.38 秒；PS7 `DeltaContracts` 777.09 秒、`EnvironmentConfirmation` 671.81 秒。`NativeExecution` 修正明確參數繫結及量測就緒時間後，WinPS／PS7 的正常與實際 10 秒延遲測試共 4/4 通過。故 212 項均有通過覆蓋；這些結果來自多個固定快照及定向重驗，不是單次同快照全數通過。Feature `HtmlConsole`、`Qualification`、`ScriptEncoding`、`HtmlDocumentation` 在兩引擎共 8/8 PASS；probe 固定快照雙引擎共 10/10 PASS；最新 UI mock 45 項與 Edge 2,501 列劇本 PASS。
 
-尚待外部驗證：實際來源／目標 Server、SMB、IIS／排程原生讀回、實際帳號與業務接受、企業 PKI、規模及生產資格。`ProductionVerified=false` 仍有效；隔離測試及只讀探測不能解除。A–E 完成狀態須等最後 consumer、完整回歸及具體驗收證據確認後再更新。
+傳輸完整性仍為 `NotPassed`，使用者已選擇保留 AdGuard 設定。Native probe 的四個靜態資產均為 `ModifiedTransport`；其中 index 與 guide 兩個 HTML 回應長度各比原檔增加 510 bytes，JavaScript／CSS 長度及觀測 SHA-256 與本機相同，但 headers 有差異，錯誤欄位為 null。真實 IAB 可確認初始 HTML 可見，但 session 持續載入，動態工作台未通過；靜態 guide 可另頁閱讀。純文件收尾不觸發相同 feature CI；CI 證據僅適用明確受測的程式提交。修正提交的最終 CI 結果按版本記錄於開發 PLAN。
+
+尚待外部驗證：實際來源／目標 Server、SMB、IIS／排程原生讀回、實際帳號與業務接受、企業 PKI、規模及生產資格；外部項目維持 `NotTested`。`ProductionVerified=false`、`ProductionExecutionEnabled=false`、正式 release 未簽署仍有效；隔離測試及只讀探測不能解除。
 
 ## 第三輪 0.4 開發與驗證
 

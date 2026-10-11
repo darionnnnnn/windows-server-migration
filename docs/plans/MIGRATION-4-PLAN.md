@@ -1,6 +1,6 @@
 # 第 4 輪規劃：HTML 操作教學、資訊分頁與流程一致性
 
-> 日期：2026-10-11（Asia/Taipei）。狀態：2026-10-11 使用者授權完整實作，執行中；未完成驗收。
+> 日期：2026-10-11（Asia/Taipei）。狀態：本輪全部規劃實作、可驗回歸、正式不同模型體檢與文件／發行核對已完成；原始傳輸完整性 NotPassed、本機動態旅程未通過，依使用者接受的環境限制收尾。
 > 基準：`dev` / `f3cd91930c0bb51d5d0e3e8153072a952f340141`。
 > 來源：使用者要求操作 HTML 加入說明與教學、容易操作、可分頁確認資訊；先核對整個專案影響，討論後詳細規劃，不實作。
 
@@ -308,3 +308,29 @@
 - 主代理再查出延遲參數未明確跨模組綁定的驗證缺口，交由原 writer 補第三個參數與實際 ready timestamp 下限斷言。最後 `abc-native-bound-final` 原生測試雙引擎正常 2/2 PASS（22.44／25.03 秒）、實際十秒延遲 2/2 PASS（32.38／35.55 秒），兩次 manifest 前後均一致；先前未量測延遲的 PASS 不當作有效十秒延遲證據。
 - `abc-audit-final` 對提示修正及當時測試實作的 NativeExecution／HtmlConsole／Qualification／ScriptEncoding 雙引擎 8/8 PASS；UI 45/45 及 Edge mocked API 2,501 列完整劇本 PASS。此快照至 `abc-native-bound-final` 只有 NativeExecution 的參數綁定／量測差異，已另補雙引擎正常與延遲驗證；兩者 runtime 相同。其餘廣域結果按上述版本差異及覆蓋範圍沿用，不稱單一最後快照跑了全部 212 項。
 - 提交前由原 frontend writer 統一其檔案為 Windows checkout 的 CRLF；主代理核對只改換行、BOM 保持，實際三個修正程式／測試檔 bytes 與目前 Git 設定預期的 Windows checkout 相同（Git index 採 canonical LF，不能宣稱兩者 raw bytes 相同）。`abc-checkout-final` 對最終 bytes 補 Qualification／ScriptEncoding 雙引擎 4/4 PASS、manifest 不變；最終封装指紋另由收尾實際 ZIP 計算。
+- 最後 WinPS EnvironmentConfirmation 使用原 2,501 列 fixture 及全部斷言，1,509.38 秒 PASS；long runner 三項全部 PASS，manifest 不變。主代理按 engine/test 聚合原始 212 次及上述版本補驗，得到 212 個案例皆有有效 PASS、無未處理失敗。這是分版本覆蓋，不是單一最後快照 212 次 PASS；HTML optional body／probe 最後修正及提示／測試同步另按受影響範圍補驗，完整原始失敗保留。
+- 提示／測試同步段 `0db0fe57299fcf104756f0de54a8e51475588a90` 已 commit／push 至 `dev`，遠端 SHA 相符；CI run `38116603215` 執行中，最終六工作結果待下方紀錄。只包含四個相依檔案，尚未完成的文件狀態修改未混入這次提交。
+
+### 正式不同模型體檢：先操作，再檢查全專案
+
+主代理於全部 R4/Q 項實作及本輪可驗回歸通過後，從實作起點 `50f137b8ddfd5e2b796711c930b7caed9fa828f0` 至 `0db0fe5` 及本輪未提交文件核對完整範圍。2026-10-11 再查本 chat 最新可信 turn_context，模型為 `gpt-6.1-sol`／`medium`；受檢 runtime／測試／使用者文件實作者均 `gpt-6-luna` high／medium。主代理只改 PLAN／AGENTS 及專案外驗證腳本，沒有親自改受檢 runtime，符合不同模型體檢條件；原 writer 修正仍由主代理獨立驗證。
+
+| 視角 | 最終檢查與裁定 |
+|---|---|
+| 使用者（合理尖銳質疑） | 新手的起步／角色／前置材料／結果／下一步，熟手完整 allowlist，八頁與返回／前進／直接連結，未保存草稿與取消切換、跨視窗身份刷新、斷線先查同 ID、舊作業不得跨配對預填均接實際 consumer；最末角色／配對提示不精確已修。45 UI 反例與 Edge 2,501 列／320px／放大／焦點劇本支持 mock 狹義互動，不宣稱是 Reddit 使用者研究或原生本機完整旅程通過。 |
+| 程式 | 鎖內 view／spec 原子向量、各自 revision／dataVersion、延遲回應採用條件、typed metadata／預覽／核心執行、software BeforeWrite 動態模組綁定、request hash optional body 相容、durable job／correlation／同 ID 查詢及重啟 Interrupted 接線均已核對與反例補驗。最末 NativeExecution 僅修 observer／時間錨定的測試可靠性，原 native timeout／清理 gate 不變。 |
+| 管理者 | 當前配對／所有歷史／未知舊紀錄及 Windows 程序 actor 分明；Owner 不冒稱身份驗證。總覽依目前世代真實結果，C／非 C／項目／檔案／讀回／軟體準備／業務接受不混用，未知不變綠色成功；報告開啟仍先核對受控路徑及 hash，Opened 不保證顯示。材料引用、核准、鎖及生產 gate 保留，沒有新增權限繞過。 |
+| 全專案／上帝視角 | 從 Windows 身分→session/context→PairId／各 revision→view→typed 預覽確認→核心 gate→durable job／journal／report→總覽／交接逐段檢查；A 的一致性供 B/C，D 文字對應已定案行為，E 生成／路由／原始與生成文件／payload／來源 hash／工具指紋相依皆納入。核心 sealed plan／receipt／journal 格式與 CLI 旅程不因 UI 改版而變更；tool bytes 變更仍需重新核准、不能熱換執行中的原版工具。 |
+
+程式體檢未留下未實作 R4/Q 子項或已確認未修 bug。文件最終來源／生成物／ZIP 與新提交六項 CI 仍須完成下方收尾驗證，不能以本表代替產物結果。原始傳輸 NotPassed、IAB 動態旅程未通過，以及 Server／IIS／SCM／task／企業 PKI／業務／企業規模 NotTested 依使用者決策與原範圍明列；ProductionVerified=false、release 未簽章，沒有以本輪 UI 回歸解除生產阻擋。
+
+### 最後收尾驗收與裁定
+
+- 修正提交 `0db0fe57299fcf104756f0de54a8e51475588a90` 的 GitHub Actions run `38116603215` 六個工作全部 success；主代理直接讀遠端 job 結果，不以較早提交 CI 代替。E1、主功能、最後修正三段均已逐段推送 `dev` 並核對遠端 SHA；本段只提交已驗證文件／代理入口，不改主分支或改寫歷史。
+- README／IMPLEMENTATION／OPERATIONS 由原 gpt-6-luna/medium writer 同步為現況，保留版本化回歸及真實傳輸／實機限制，移除暫時執行數字與過期工具指紋；主代理逐份讀實際 diff，核對三份來源為 CRLF、BOM 狀態不变。正式體檢補查最後文件，與 runtime／教學／生成頁／交付語意一致。
+- 使用實際 `tools/Build-HtmlDocumentation.ps1` 重新生成 11 份完整來源投影及索引。主代理確認完成後工作區與 `abc-closeout-final` 的全部來源 bytes 相同；該不可變快照的 HtmlDocumentation／Qualification／ScriptEncoding 雙引擎 6/6 PASS，manifest 前後不變。只有兩份狀態投影與文件 README 的有效生成差異，不以手寫生成 HTML 補測試。
+- 從同一快照實際匯出最終 ZIP，再逐檔核對 manifest／payload 長度與 SHA-256、與來源實際 bytes 相同、11 個 source-sha256、15 份 HTML 的 139 個本地參照／fragment／八頁 route。結果：109 payload、15 HTML、11 來源快照、139 參照、problems=[]。不含 archive、prototype 或任何 PLAN HTML；保留原 Migration-3 PLAN Markdown 交付契約。
+- 最終工具指紋：`03cd3ecda726ffe0601e31fe222d0e032d892b2c8763304b146a2f4e2427f038`；驗證用 ZIP SHA-256：`a1b4169d575ac4ad80e3f51d9cd8f37e067f1ef967b3c26b5fe7e79740875296`。此為專案外驗證包的精確位元組證據，未宣稱它是企業簽章正式發行。ProductionVerified=false、ProductionExecutionEnabled=false、未簽章。
+- 主代理再次核對 R4-01–12／Q01–10 的每項實作、連續操作／失敗恢復及整體相依：没有未實作子項、未處理已確認 bug 或未驗證的本輪文件／封裝差異。212 案例的分版本有效通過覆蓋、最後反例與補驗、45 UI／Edge mock 2,501 列、最後六項 CI 各自保留範圍，正式不同模型體檢完成。
+- 本輪依使用者「保留設定、完成可驗項目、傳輸明列未通過」定案收尾：原始傳輸 NotPassed，真實 IAB 動態完整旅程未通過／未驗證；不把 mock 操作成功轉寫成原生端到端成功。既有企業 Server／產品／帳號／業務／PKI／規模驗收仍 NotTested，不改列為本輪漏做或生產資格通過。
+- 最後工作區只剩本輪已驗證文件變更及使用者原有未追蹤 prototype；prototype 未讀、未改、未 stage。所有自建本機 HTTP 服務與驗證瀏覽器已關閉，長測試及子程序已完成；未停用 AdGuard 或修改安全設定。文件提交按既有授權完成後，工作區須再次核對乾淨（原 prototype 除外），並確認遠端 `dev` 指向最終提交。文件-only 路徑依 workflow paths-ignore，不預期新增程式 CI。
