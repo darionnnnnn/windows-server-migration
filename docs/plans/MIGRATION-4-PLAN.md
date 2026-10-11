@@ -295,3 +295,16 @@
 - 修正版原生探針實测：整體 `ModifiedTransport`，四資產均 ModifiedTransport、Error=null；index 17504→18014 bytes、guide 18235→18745 bytes，JS／CSS bytes 長度相同但標頭差異。原始傳輸完整性判 NotPassed；保留 AdGuard 設定。IAB 本機工作台只能確認初始 HTML，session 持續連線、動態操作未通過；另開靜態 guide 可讀。Edge mocked API 的操作驗證與這項真實傳輸結果分列。
 - 最後相容性檢查重現另一 StrictMode 缺陷：舊式操作 body 未帶三個 optional CAS 欄位，直接讀取屬性令合法請求失敗。bridge_a 新增 guarded extraction 接原 canonical hash，未提供欄位採 null，新向量仍全部綁定；主代理確認 HTTP route 消費此 helper。修正後 HtmlConsole 局部雙引擎 58 checks，主代理固定 `abc-feature-final` 另行補驗，不能用先前 57 checks 冒充最後版本。
 - `abc-feature-final` 實際 ZIP：109 payload、15 HTML、11 來源快照、139 本地引用全部核對，problems=[]；工具指紋 `18cce0655a3ad46ed109558bfc5f243cb4bc1117c63228ac0481ba5059158a36`。ProductionVerified=false、未簽章；這是最後 runtime 與當時文件 bytes，收尾來源文件同步後仍需重新生成與封装核對。
+
+### 功能提交與完整回歸原始結果
+
+- A/B/C/D 與完整相依已提交 `18709bc40eac69adf479f1d1defdda61815b4c84`，推送 `dev` 後遠端 SHA 相符。GitHub Actions run `38114489760` 六個工作全部 success；這項證據涵蓋該提交，不冒稱覆蓋其後修正。
+- `abc-feature-final` HtmlConsole／Qualification／ScriptEncoding／HtmlDocumentation 雙引擎 8/8 PASS，manifest 前後一致；其中 HtmlConsole 為 58 checks。與 probe 固定快照 10/10、UI 45/45、Edge mocked API 2,501 列劇本分列，不等同真實本機動態工作台通過。
+- `abc-final` 廣域回歸完成：WinPS5.1／PS7 各 106 支，共 212 次；原始結果 206 PASS，WinPS CancellationWorkflow／DeltaContracts／EnvironmentConfirmation 與 PS7 DeltaContracts／EnvironmentConfirmation 超過 runner 360 秒，PS7 NativeExecution 於 silent-child 觀察斷言失敗。原始失敗保留，未寫成全 PASS。固定快照 manifest 前後一致；實體大檔測試依使用者既定小範圍政策排除。
+- 五個逾時劇本保留原 fixture／斷言，改為單 worker、runner 上限 1,800 秒，使用包含最後 native 修正的 `abc-feature-final`。已確認 WinPS CancellationWorkflow 273.22 秒、WinPS DeltaContracts 543.36 秒、PS7 DeltaContracts 777.09 秒、PS7 EnvironmentConfirmation 671.81 秒 PASS，PS7 各快照 manifest 不變；WinPS EnvironmentConfirmation 仍待完成。提高外層等待時間不改核心 operation timeout 或產品 gate。
+- 最後使用者走讀發現確認文字將切換角色／配對的清除效果混用；實際同配對角色切換保留選取／軟體草稿，僅清操作表單草稿，配對切換另清選取／版本。frontend_a 僅校正提示，既有取消切換測試新增精確提示斷言，主代理親跑語法及 UI 45/45 PASS；正式固定產物補驗與提交待下方紀錄。
+- 主代理固定 `abc-native-prefixed` 獨立重現原 NativeExecution 測試的觀察者競態：原始測試僅在 test-owned observer 加十秒啟動延遲與安全失敗診斷，runtime 不變；PS7 exit 1，TimeoutException／Elapsed=3／stdout=0／stderr=0／pipeline results=0／progress 已清除，但 ObserverSamples=0、observer 仍 Running。保留原始斷言及失敗結果，不以一次正常重跑替代反例。
+- bridge_a（gpt-6-luna/high）只修測試：observer ready 握手上限二十秒，原 native TimeoutSeconds=3 保持；LastObservedActivityUtc 由 test factory 時間至 timeout return 界定，且每筆 silent progress 必須保留相同時間。原 helper 寫 marker 的時間受排程影響，不能用正負二秒猜測其等於 process 起始；未放寬 native 輸出／清理／throttle gate。
+- 主代理再查出延遲參數未明確跨模組綁定的驗證缺口，交由原 writer 補第三個參數與實際 ready timestamp 下限斷言。最後 `abc-native-bound-final` 原生測試雙引擎正常 2/2 PASS（22.44／25.03 秒）、實際十秒延遲 2/2 PASS（32.38／35.55 秒），兩次 manifest 前後均一致；先前未量測延遲的 PASS 不當作有效十秒延遲證據。
+- `abc-audit-final` 對提示修正及當時測試實作的 NativeExecution／HtmlConsole／Qualification／ScriptEncoding 雙引擎 8/8 PASS；UI 45/45 及 Edge mocked API 2,501 列完整劇本 PASS。此快照至 `abc-native-bound-final` 只有 NativeExecution 的參數綁定／量測差異，已另補雙引擎正常與延遲驗證；兩者 runtime 相同。其餘廣域結果按上述版本差異及覆蓋範圍沿用，不稱單一最後快照跑了全部 212 項。
+- 提交前由原 frontend writer 統一其檔案為 Windows checkout 的 CRLF；主代理核對只改換行、BOM 保持，實際三個修正程式／測試檔 bytes 與目前 Git 設定預期的 Windows checkout 相同（Git index 採 canonical LF，不能宣稱兩者 raw bytes 相同）。`abc-checkout-final` 對最終 bytes 補 Qualification／ScriptEncoding 雙引擎 4/4 PASS、manifest 不變；最終封装指紋另由收尾實際 ZIP 計算。

@@ -42,7 +42,7 @@ function makeApp(fetchImpl, useDom = false) {
     createElement(tagName) { return makeNode ? makeNode(tagName) : { appendChild() {}, setAttribute() {}, replaceChildren() {}, classList: { toggle() {} } }; }
   };
   const window = { addEventListener() {} };
-  window.__confirmResult = true; window.confirm = () => window.__confirmResult;
+  window.__confirmResult = true; window.__confirmMessage = ''; window.confirm = message => { window.__confirmMessage = String(message || ''); return window.__confirmResult; };
   const context = { window, document, fetch: fetchImpl, URLSearchParams, encodeURIComponent, crypto: require('node:crypto').webcrypto, Date, Math, Set, Map, Object, Array, String, Number, Promise, history: { replaceState() {}, pushState() {} }, location: { hash: '', origin: 'http://localhost' }, setInterval, clearInterval, setTimeout, clearTimeout, Option: function Option(text, value) { this.text = text; this.value = value; this.dataset = {}; this.children = []; } };
   vm.runInNewContext(appSource, context, { filename: 'console.js' });
   const app = window.WsmConsole;
@@ -143,6 +143,8 @@ test('software drafts trigger pair-change confirmation and survive a cancelled s
   ui.__window.__confirmResult=false;
   ui.__getElement('context-pair').value='p2'; ui.__getElement('context-role').value='Manager';
   await ui.applyContext();
+  assert.match(ui.__window.__confirmMessage,/變更角色或配對都會使舊預覽失效/);
+  assert.match(ui.__window.__confirmMessage,/變更配對另會清除未保存的項目選取／原因與軟體版本／原因/);
   assert.equal(ui.state.session.pairId,'p1');
   assert.ok(ui.state.softwareDirty.has('runtime'));
   assert.equal(calls.some(call=>call.url==='/api/context'&&call.options.method==='POST'),false);
