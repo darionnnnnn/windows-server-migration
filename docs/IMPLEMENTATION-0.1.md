@@ -2,6 +2,14 @@
 
 更新：2026-10-11。本文件只維護當前狀態；原始需求、歷史決策及固定快照證據見 [歷史索引](archive/README.md)。已完成程式 TODO 已移除；尚無外部資格的項目保留，不宣稱正式生產完成。
 
+## 第四輪目前狀態（進行中）
+
+第四輪 A–E 尚未整體完成。E1 文件／發行段已提交 `dev`：`8b51e1653262ac6cd91d958227196ca22bd58c28`，遠端 SHA 已確認。文件產生、發行 ZIP 投影及編碼六組測試在 Windows PowerShell 5.1 與 PowerShell 7 通過；操作教學文件測試各 24 項亦在兩引擎通過。這些結果只證明相應來源、fixture 與發行封裝範圍，不代表整合後的生成文件或瀏覽器文件中心已驗收。
+
+A 後端 `HtmlConsole` 單元測試 28 項、前端 A mock／語法 25 項曾通過，但 A 仍有待補缺，不列為接受完成。C 前端整合與 B overview 尚在處理。一次真實 loopback 觀察中，測試端收到的 HTML response 為 35,963 bytes，伺服端記錄為 35,453 bytes，回應 CSP 含 `local.adguard.org`；另有請求重設／逾時。這些觀察尚未證明所有重設／逾時的共同原因。工作台基準比較、最終真實瀏覽器與完整回歸尚未完成；使用者的非同步環境選項也待回覆。不得把 mock、Node／語法、文件 fixture 或受影響單元測試稱作真實瀏覽器／完整傳輸通過。
+
+尚待外部驗證：實際來源／目標 Server、SMB、IIS／排程原生讀回、實際帳號與業務接受、企業 PKI、規模及生產資格。`ProductionVerified=false` 仍有效；隔離測試及只讀探測不能解除。A–E 完成狀態須等最後 consumer、完整回歸及具體驗收證據確認後再更新。
+
 ## 第三輪 0.4 開發與驗證
 
 第三輪依 MIGRATION-3-PLAN.md 逐段實作／固定快照驗證／commit 與 push。Schema 3 輔助 catalog/plan/receipt 與 JSON 比較、來源 C 精確封裝、非 C 跳板搬移及共用目標 reservation、材料引用與作業保護已接入；逐項還原、IIS/task 停用 staging、部分世代/delta、修復及 HTML 操作／文件已完成原始子項與真實使用端完整性核對。最後補齊 NonC 與主流程同一原生身分、整棵目錄時間／權限讀回、Manager 匯入保留核准，以及 restore／rollback 在父設定完成後的最終 metadata 與精確 prior 重播；HTML 型別化表單也提供受審查的 FileScope ACL 政策。本機 WinPS5.1／PS7 廣域快照各106 PASS；最後修改另有雙引擎受影響回歸與真實小範圍原生反例驗證，最後程式提交的遠端6個CI工作全數通過，2026-10-11 正式不同模型體檢完成，軟體比較／材料 lock／IIS／task／installer／reviewed transition／activation consumer 缺漏已修正，分版本驗收與 CI 在 PLAN。第三輪全部完成狀態以 PLAN 最後的 producer→consumer→驗收證據為準，舊第 2 輪表格不充當第三輪驗收。

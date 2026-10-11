@@ -261,5 +261,37 @@
 
 ## 第四輪實作紀錄（本輪起點 50f137b）
 
+- 主代理可信身分：本 chat rollout 的 turn_context 記錄為 `gpt-6.1-sol`／`medium`；runtime／使用者文件實作者目前均為 `gpt-6-luna`。主代理負責規劃紀錄、獨立核對與驗收，尚未親自修改 runtime，因此可於完整性門檻通過後執行不同模型體檢；後續若親自修正受檢產物需更新範圍。
 - 2026-10-11：主代理依使用者授權開始 A–E；bridge_a 使用 gpt-6-luna/high 處理 A 後端橋接，frontend_a 使用 gpt-6-luna/high 處理 A 前端狀態，verification_map 使用 gpt-6-luna/medium 做驗證地圖及 D/E 文件產生與封裝實作。單檔單 writer；由主代理獨立驗收及推送。
 - E1 文件產生／封裝：通用排除 PLAN HTML；辨識的舊生成檔才清除，同名手寫檔與 reparse 候選保留；頂層 PLAN Markdown 交付契約維持。主代理檢查真實 consumer 與 diff，Git index 固定快照 `e-pack` 的 HtmlDocumentation、Qualification、ScriptEncoding 在 WinPS5.1／PS7 共 6 支全部通過，來源 manifest 前後不變。Qualification 含實際 ZIP manifest／payload 讀回；生成 HTML 尚待最後來源同步後重建，不因此標整輪完成。
+- 2026-10-11 傳輸環境決策：使用者選擇「保留目前設定，先完成所有可驗項目，傳輸完整性明列未通過」。本機實測 CSP 被加入 local.adguard.org，教學回應長度與原始檔案不同；原始 socket 有重設／逾時，程式回應寫入 trace 已完成。保留安全設定，採標準 HTTP consumer 驗功能；資產 bytes／CSP 完整性獨立列 NotPassed，不宣稱所有重設均已證明由同一因素造成。此決策解除必須調整環境後才能收尾的要求，其餘原定實作與可驗項目仍全部完成後才收尾。
+- E1 提交／遠端：`8b51e1653262ac6cd91d958227196ca22bd58c28` 已推送 `dev`，遠端 SHA 相符；GitHub Actions run `38107964084` 的 fixtures、delta-workflow、R2 與 R3 雙引擎共六個工作全部 success。此結果只涵蓋該提交，不能代表仍在實作的 A–D 已通過。
+- 主代理實作中獨立核對：`GetNewClosure()` 建立的軟體保存回呼無法解析未匯出的 `Get-WsmHtmlDataVersion`；在模組內建立再呼叫的隔離反例重現 command-not-found。交由 bridge_a 修正函式綁定，要求實際同一回呼的合法保存成功，以及 DecisionRevision／資料內容單獨變更時的鎖內拒絕；未以 callback 參數隱藏測試替代保存閉環。
+- 主代理使用者情境核對：作業列表更新時，報告／審閱預填按鈕缺少穩定焦點識別；跨視窗配對同步也須明示清除原配對未保存輸入並清除軟體 dirty 狀態。交由 frontend_a 補齊並以背景其他作業變更、跨視窗寫入前同步反例驗證；尚未將中途核對標為完成驗收。
+- 最後接線核對確認並修正：總覽原生 steps 使用 label/value/source 而前端仍讀 title/note，導致實際階段空白；ProducedUtc／planHash／approvalReference／交付識別未呈現；ReviewRequired 工作結束未使頁面失效；help/docs 靜態頁焦點刷新誤呼叫不存在的 view；空白取消選取原因被舊原因覆蓋；乾淨軟體欄位未採最新保存值。以上由原 writer 補齊真實 producer 形狀反例，主代理逐項重查消費端。
+- 鎖內保存反例改為一次只改 DecisionRevision 或 dataVersion，其餘向量維持正確，精確核對拒絕原因、catalog SHA-256 與軟體選擇均不變；合法保存使用與 HTTP 路由相同的回呼工廠。sealed inventory 投影核對 source 選取與 Include 子集；非 sealed approval 保持原核心可編輯語意。
+- 前端 44 項局部單元與 Edge mocked API 2501 列劇本曾通過；最後計數翻譯與 native counts fixture 尚在補驗，這些中途結果不代替最後固定快照。真實 Node HTTP bridge 在服務端記錄 invalid_token 後仍遇 ECONNRESET，另一次在 inventory 重設；維持 NotPassed，未用重試挑選一次成功作整套通過。
+
+### 固定產物前的實作完整性核對
+
+主代理直接核對下列實際接線；這是實作證據，正式測試结果及最終文件狀態在後續紀錄，不能以表格代替驗收。
+
+| 需求／複審項 | 最後實作使用端與證據 |
+|---|---|
+| R4-01/03、Q08 | index 八頁說明、console guidedTasks／actionGuidance／fieldGuidance → 同一 metadata typed 表單／預覽／確認；全部原生 action 名稱有繁中用途入口，完整進階操作可搜尋到達。 |
+| R4-02/08、Q04/Q07 | navigate／hashchange／popstate／aria-current → 八頁及直接連結；選取／版本／安全表單草稿在頁內保留，beforeunload 與配對切換提示；跨頁、焦點與輪詢有 browser 反例。 |
+| R4-04/05、Q01 | Get-WsmHtmlRevisionVector／ViewSnapshot／SpecReviewSnapshot 鎖內綁定 → getView 完整 identity、request 序號／epoch → ensureFreshContext；保存與工作結束使相關頁面失效，各種 revision／dataVersion 不混用。 |
+| R4-06 | 軟體頁的重載比較與 startTargetSnapshot → TargetSnapshot／PublishComparison 真正表單；guide 說明目標本機擷取、Manager 可信匯入，無暗中盤點／自動還原。 |
+| R4-07、Q09 | 原生 catalog／StageResult／DeliveryReceipt／ReportCounts → OverviewProjection → renderOverview；目前世代各階段、C/NonC 項目／檔案／路徑／讀回、軟體準備、業務接受分開，來源／時間／hash 可查，未知中性且無虛構百分比。 |
+| R4-09、Q02/Q06 | 待查 operationId 在送出前以原分頁 sessionStorage 保存純識別資訊 → 同一 ID 查 durable job；安全錯誤與 correlationId 接 HTTP／job／errors.jsonl；完整 body 逾時，不自動重送寫入。真實傳輸獨立列 NotPassed。 |
+| Q03/Q05 | 新 job 保存 workspace／pair／role／session／context／各revision／Actor；舊紀錄保持未知；歷史可查、跨配對不直接預填；報告沿受驗證 hash／路徑交 Windows 預設程式，不宣稱 Opened 已顯示。 |
+| R4-10 | guide／ASSISTIVE-OPERATIONS 完整繁中教學 → 工作台 help/docs 六分類 → 原始手冊與 11 份生成來源投影；靜態頁焦點刷新不要求 nonexistent API view。 |
+| R4-11、Q10 | 產生器排除全部輪次 PLAN、只清可辨識生成殘留 → 路由排除 PLAN → release ZIP；保留原 Markdown 交付契約。實際 ZIP 已逐檔比 manifest/source bytes、11 份來源 hash、15 HTML／139 本地引用；prototype/archive 未入包。 |
+| R4-12 | 完整相依的 A/B/C/D 與來源投影共用安全橋接；不能拆出未依赖完成的單檔提交。E1 已推送，最後 feature 及證據同步提交待下面正式驗證完成後記錄遠端 SHA。 |
+
+固定快照：`abc-final` 保留工作區實際 bytes（非舊 Git index），所有原生 suite 均在隔離副本執行。獨立 browser 初跑揭露測試同步競態：activeAction 已由上一份同類草稿恢復，不能代表新預填完成；修正只等待新 PreviewPath／ExpectedRevision／ReviewWindowsSettings 出現，保留全部原斷言。新快照 `abc-browser-final` runtime 相同，修正後獨立 Edge mock 劇本通過；45 前端單元通過。此 test-only 差異不改原生受測 runtime，沒有以重跑挑選結果迴避缺陷。
+
+- 真實模組探針揭露 StrictMode 缺陷：資產長度初始化讀取 `$null.Length`，造成尚未測資產就回 NotTested／PropertyNotFoundException。bridge_a 僅修正初始化為未知，成功讀取後才填實際長度；新增真實匯入模組 consumer，證明原 initializer 失敗與四資產合法檢查成功。主代理固定 `abc-probe-final` 補驗 Probe／HtmlConsole／Comparison／Qualification／ScriptEncoding 雙引擎 10/10 PASS，manifest 前後一致。
+- 修正版原生探針實测：整體 `ModifiedTransport`，四資產均 ModifiedTransport、Error=null；index 17504→18014 bytes、guide 18235→18745 bytes，JS／CSS bytes 長度相同但標頭差異。原始傳輸完整性判 NotPassed；保留 AdGuard 設定。IAB 本機工作台只能確認初始 HTML，session 持續連線、動態操作未通過；另開靜態 guide 可讀。Edge mocked API 的操作驗證與這項真實傳輸結果分列。
+- 最後相容性檢查重現另一 StrictMode 缺陷：舊式操作 body 未帶三個 optional CAS 欄位，直接讀取屬性令合法請求失敗。bridge_a 新增 guarded extraction 接原 canonical hash，未提供欄位採 null，新向量仍全部綁定；主代理確認 HTTP route 消費此 helper。修正後 HtmlConsole 局部雙引擎 58 checks，主代理固定 `abc-feature-final` 另行補驗，不能用先前 57 checks 冒充最後版本。
+- `abc-feature-final` 實際 ZIP：109 payload、15 HTML、11 來源快照、139 本地引用全部核對，problems=[]；工具指紋 `18cce0655a3ad46ed109558bfc5f243cb4bc1117c63228ac0481ba5059158a36`。ProductionVerified=false、未簽章；這是最後 runtime 與當時文件 bytes，收尾來源文件同步後仍需重新生成與封装核對。

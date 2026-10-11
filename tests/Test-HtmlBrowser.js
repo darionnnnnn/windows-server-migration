@@ -32,9 +32,15 @@ const server = http.createServer((request, response) => {
     const url = `http://127.0.0.1:${server.address().port}/`;
     browser = await chromium.launch({ headless: true, executablePath: process.env.WSM_EDGE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' });
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    page.on('dialog', dialog => dialog.accept());
     const errors = [];
-    let reportOpenRequest = null, cancelRequest = null, reconnectRequest = null, settingsSubmitRequest = null;
-    let contextId = 'fixture-context-1', role = 'Manager', revision = 1;
+    const diagnostics = [];
+    page.on('console', message => { if (message.type() === 'error') diagnostics.push(`console: ${message.text()}`); });
+    page.on('requestfailed', request => diagnostics.push(`request: ${request.method()} ${request.url()} ${request.failure()?.errorText || ''}`));
+    let reportOpenRequest = null, cancelRequest = null, reconnectRequest = null, settingsSubmitRequest = null, jobsPollFailure = false, unknownOperationCount = 0, jobsSnapshot = [];
+    let contextId = 'fixture-context-1', role = 'Manager', revision = 1, decisionRevision = 7, selectionRevision = 3, sourceSelectionRevision = 3, dataVersion = 'fixture-catalog-1', safeEmptyState = false;
+    const viewContext = () => ({ sessionId:'fixture-session', contextId, pairId:'fixture-pair', role, revision, decisionRevision, selectionRevision, sourceSelectionRevision, dataVersion, readUtc:new Date().toISOString() });
+    const viewReads = [];
     const inventory = Array.from({ length: 125 }, (_, index) => ({
       itemId: `fixture-${index}`, name: `Fixture ${index} <img src=x onerror=alert(1)>`, category: 'Runtime',
       selected: true, selectable: true, approvalStatus: 'Pending', executionStatus: 'NotObserved', reason: '', impact: 'Fixture only'
@@ -80,18 +86,22 @@ const server = http.createServer((request, response) => {
     page.route(/\/api\/.*/, async route => {
       const request = route.request(), parsed = new URL(request.url()), pathname = parsed.pathname;
       const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-      if (pathname === '/api/session' && request.method() === 'GET') return json({ token: 'memory-only-test-token', sessionId: 'fixture-session', contextId, hostName: 'fixture-host', role, workspace: root, pairId: 'fixture-pair', revision, principal: 'fixture-user' });
-      if (pathname === '/api/context' && request.method() === 'GET') return json({ roles: ['Manager', 'Source', 'Target'], pairs: [{ pairId: 'fixture-pair', label: 'Fixture pair' }], role, pairId: 'fixture-pair', revision });
-      if (pathname === '/api/context' && request.method() === 'POST') { role = request.postDataJSON().role; contextId = `fixture-context-${Date.now()}`; return json({ role, pairId: 'fixture-pair', contextId, revision }); }
+      if (pathname === '/api/session' && request.method() === 'GET') return json({ token: 'memory-only-test-token', sessionId: 'fixture-session', contextId, hostName: 'fixture-host', role, workspace: root, pairId: 'fixture-pair', revision, decisionRevision, selectionRevision, sourceSelectionRevision, dataVersion, principal: 'fixture-user' });
+      if (pathname === '/api/context' && request.method() === 'GET') return json({ roles: ['Manager', 'Source', 'Target'], pairs: [{ pairId: 'fixture-pair', label: 'Fixture pair' }], role, pairId: 'fixture-pair', revision, decisionRevision, selectionRevision, sourceSelectionRevision, dataVersion });
+      if (pathname === '/api/context' && request.method() === 'POST') { const body = request.postDataJSON(); if (body.expectedDecisionRevision !== decisionRevision || body.expectedSelectionRevision !== selectionRevision || body.expectedDataVersion !== dataVersion) return json({ code:'stale_revision', message:'Fixture context changed.', nextStep:'Reload context.', correlationId:'fixture-context-conflict' }, 409); role = body.role; contextId = `fixture-context-${Date.now()}`; return json({ role, pairId: 'fixture-pair', contextId, revision, decisionRevision, selectionRevision, sourceSelectionRevision, dataVersion }); }
       if (pathname === '/api/view' && request.method() === 'GET') {
         const action = parsed.searchParams.get('action');
-        if (action === 'overview') return json({ metrics: { discovered: 125, selected: 125, approved: 0, executable: 'NotMeasured', pendingOrFailed: 125 }, workloadStatus: 'ReviewRequired', nextStep: { title: 'Review inventory', description: 'Fixture preview only.' }, steps: [] });
-        if (action === 'inventory') return json({ items: inventory, totalCount: inventory.length, pageSize: 50, selectedItemIds: inventory.filter(row => row.selected).map(row => row.itemId) });
-        if (action === 'actions') return json({ actions });
-        if (action === 'files') return json({ rows: [] });
-        if (action === 'software') return json({ rows: [] });
+        viewReads.push(action);
+        if (parsed.searchParams.get('contextId') !== contextId || parsed.searchParams.get('dataVersion') !== dataVersion) return json({ code:'stale_revision', message:'Fixture view changed.', nextStep:'Reload current context.', correlationId:'fixture-view-conflict' }, 409);
+        const meta = { viewContext:viewContext() };
+        if (action === 'overview') return json({ ...meta, counts: [{ id:'discovered', label:'盤點項目', value:125, unit:'項', source:'目前配對目錄', status:'Observed', definition:'目前目錄中的項目列數。' }, { id:'selected', label:'已選項目', value:125, unit:'項', source:'目前已保存的選取', status:'Observed', definition:'目前選取的目錄項目，不代表核准。' }, { id:'stageObjects', label:'階段項目結果', value:'Unknown', unit:'項目結果列', source:'目前世代有效階段結果的 ItemResults', status:'Unknown', definition:'ItemResults 中實際存在的列數，不是完成百分比。' }, { id:'availability', label:'服務可用性', value:'NotTested', unit:'資格狀態', source:'此總覽沒有可用性測試結果生產者', status:'NotTested', definition:'本總覽不推定正式環境就緒。' }], workloadStatus: 'ReviewRequired', nextStep: { title: '檢查目前證據', description: '依目前配對檢視已記錄項目。', reason:'目前無足夠證據指定寫入操作。', action:null, actionMetadata:null }, provenance: { pairId:'fixture-pair', role, revision, readUtc:viewContext().readUtc, generation:2, stage:'Restore', stageStatus:'Succeeded', producedUtc:'2026-10-11T01:02:03Z', planHash:'a'.repeat(64), approvalReference:'b'.repeat(64), approvalKind:'SealedPlan', deliveryStatus:'ImportedVerified', deliveryGeneration:2, deliveryId:'fixture-delivery', transportHash:'c'.repeat(64), deliveryReportOnly:false, deliveryReadinessProof:true, deliveryProductionVerified:false }, steps: [{ id:'source', label:'來源盤點', status:'Recorded', source:'目前配對輔助目錄', value:'已記錄目前來源快照', resultStatus:null, producedUtc:null }, { id:'restore', label:'還原', status:'Recorded', source:'目前世代已接受的 Restore 階段結果', value:'還原 · 完成', resultStatus:'Succeeded', stage:'Restore', generation:2, producedUtc:'2026-10-11T01:02:03Z' }] });
+        if (action === 'inventory') return json({ ...meta, items: safeEmptyState ? [] : inventory, totalCount: safeEmptyState ? 0 : inventory.length, pageSize: 50, selectedItemIds: safeEmptyState ? [] : inventory.filter(row => row.selected).map(row => row.itemId), canSaveSelection:!safeEmptyState, assistiveEnabled:!safeEmptyState, ...(safeEmptyState ? { stateReason:'尚未啟用 Assistive；目前沒有可保存的盤點選取。', stateNextAction:{ action:'AssistiveEnable', label:'開啟 Assistive 型別化表單', description:'先審閱操作欄位與角色條件。', requiredRole:'Manager', roleAvailable:true } } : {}) });
+        if (action === 'actions') return json({ ...meta, actions });
+        if (action === 'files') return json({ ...meta, rows: [] });
+        if (action === 'software') return json({ ...meta, rows: [] });
       }
-      if (pathname === '/api/spec-review' && request.method() === 'GET') return json({
+      if (pathname === '/api/spec-review' && request.method() === 'GET') { if (parsed.searchParams.get('contextId') !== contextId || parsed.searchParams.get('dataVersion') !== dataVersion) return json({ code:'stale_revision', message:'Fixture review changed.', nextStep:'Reload current context.', correlationId:'fixture-review-conflict' }, 409); return json({
+        viewContext:viewContext(),
         ItemId: parsed.searchParams.get('itemId'), Adapter: 'FileScope', DecisionRevision: 7, AssistiveRevision: 4, SelectionRevision: 3,
         Owner: 'Fixture owner', Evidence: 'Reviewed evidence', DesiredFinalState: 'Enabled',
         TypedFields: { TargetPath: 'E:\\Sites\\Portal', Product: 'Portal', WorkloadFieldReviews: [{ FieldPointer: 'IIS/site/FixtureSite/application[0]/virtualDirectory[0]/@physicalPath', Value: 'E:\\Sites\\Portal' }], IisBindings: [{ Index: 0, Protocol: 'custom+http', BindingInformation: '*:443:fixture.example', CertificateHash: 'ABC123', CertificateStoreName: '', SslFlags: '', SslFlagsPresent: false, Password: 'do not render', Command: 'DO-NOT-RENDER', Xml: '<secret>DO-NOT-RENDER</secret>' }], IisApplicationPools: [{ Index: 0, ApplicationPath: '/', PoolName: 'FixturePool', Arguments: 'DO-NOT-RENDER' }], IisPoolSettings: { managedRuntimeVersion: 'v4.0', startMode: 'OnDemand', privateKey: 'DO-NOT-RENDER' }, Arguments: 'must not appear', Xml: '<secret>must not appear</secret>' },
@@ -99,27 +109,29 @@ const server = http.createServer((request, response) => {
         WorkloadActions: [{ Index: 0 }, { Index: 1 }], IisBindings: [], IisApplications: [], SharedResourceReviewReasons: [],
         WorkloadPathReferences: [{ FieldPointer: 'IIS/site/FixtureSite/application[0]/virtualDirectory[0]/@physicalPath', ReferenceKind: 'IISPhysicalPath', SourcePath: 'C:\\Sites\\Portal', DraftTargetPath: 'E:\\Sites\\Portal', Channel: 'SuggestedNonC', ParseConfidence: 'Typed', Opaque: false, ReviewRequired: false }, { FieldPointer: 'Task/Actions/Action[0]/Arguments', ReferenceKind: 'TaskArguments', SourcePath: '', DraftTargetPath: '', Opaque: true, ReviewRequired: true, Reason: 'Opaque arguments withheld' }],
         SourceXmlSHA256: 'source-hash', TargetXmlSHA256: 'target-hash', RawXmlIncluded: false, SecretsIncluded: false
-      });
-      if (pathname === '/api/view' && request.method() === 'POST') return json({ preview: { revision, previewKind: 'ResourcePreview', canExecute: true, items: [], issues: [] } });
+      }); }
+      if (pathname === '/api/view' && request.method() === 'POST') { const body = request.postDataJSON(); if (body.expectedDecisionRevision !== decisionRevision || body.expectedSelectionRevision !== selectionRevision || body.expectedDataVersion !== dataVersion) return json({ code:'stale_revision', message:'Fixture preview changed.', nextStep:'Reload current context.', correlationId:'fixture-preview-conflict' }, 409); return json({ viewContext:viewContext(), preview: { revision, previewKind: 'ResourcePreview', canExecute: true, items: [], issues: [] } }); }
       if (pathname === '/api/operations' && request.method() === 'POST') {
         const body = request.postDataJSON();
+        if (body.action === 'UnknownStatusTest') { unknownOperationCount++; return json({ job:{ jobId:body.operationId, status:'FutureStatus' } }); }
+        if (body.expectedDecisionRevision !== decisionRevision || body.expectedSelectionRevision !== selectionRevision || body.expectedDataVersion !== dataVersion) return json({ code:'stale_revision', message:'Fixture operation changed.', nextStep:'Reload current context.', correlationId:'fixture-operation-conflict' }, 409);
         if (body.action === 'WindowsSettingsSubmit') { settingsSubmitRequest = body; return json({ job: { jobId: body.operationId, action: body.action, status: 'Running', canCancel: false } }, 202); }
         if (body.action === 'SaveSelection') {
           const selected = new Set(body.args.selectedItemIds);
           inventory.forEach(row => { row.selected = selected.has(row.itemId); if (!row.selected) row.reason = (body.args.unselectedItems || []).find(item => item.itemId === row.itemId)?.reason || ''; });
-          return json({ revision: ++revision, status: 'Saved' });
+          return json({ jobId:body.operationId, revision: ++revision, selectionRevision: ++selectionRevision, dataVersion: dataVersion = `fixture-catalog-${selectionRevision}`, status: 'Saved' });
         }
         return json({ job: { jobId: body.operationId, action: body.action, status: 'Running', canCancel: false } }, 202);
       }
       if (/^\/api\/jobs\/[^/]+\/cancel$/.test(pathname) && request.method() === 'POST') {
         cancelRequest = { pathname, method: request.method(), headers: request.headers(), body: request.postDataJSON() };
-        return json({ job: { jobId: 'fixture-job', action: 'AssistiveReport', status: 'CancelRequested', canCancel: true } });
+        return json({ job: { jobId: 'fixture-job', workspace:root, pairId:'fixture-pair', role:'Manager', sessionId:'fixture-session', contextId, startedRevision:1, action: 'AssistiveReport', status: 'CancelRequested', canCancel: true } });
       }
       if (pathname === '/api/jobs/fixture-job' && request.method() === 'GET') {
         reconnectRequest = { pathname, method: request.method(), headers: request.headers() };
-        return json({ jobId: 'fixture-job', action: 'AssistiveReport', status: 'CancelRequested', canCancel: true });
+        return json({ jobId: 'fixture-job', workspace:root, pairId:'fixture-pair', role:'Manager', sessionId:'fixture-session', contextId, startedRevision:1, action: 'AssistiveReport', status: 'CancelRequested', canCancel: true });
       }
-      if (pathname === '/api/jobs' && request.method() === 'GET') return json({ items: [] });
+      if (pathname === '/api/jobs' && request.method() === 'GET') return jobsPollFailure ? json({code:'worker_limit',message:'Fixture job worker interrupted.',correlationId:'fixture-poll-error',nextStep:'Retry later.'},503) : json({ items: jobsSnapshot });
       if (/^\/api\/jobs\/.*\/reports\/\d+\/open$/.test(pathname) && request.method() === 'POST') {
         reportOpenRequest = { method: request.method(), headers: request.headers(), body: request.postDataJSON() };
         return json({ status: 'Opened', SHA256: reportOpenRequest.body.SHA256 });
@@ -128,6 +140,15 @@ const server = http.createServer((request, response) => {
     });
 
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    try { await page.waitForFunction(() => window.WsmConsole && window.WsmConsole.state.session && window.WsmConsole.state.token, { timeout:15000 }); } catch (error) { throw new Error(`${error.message}; pageerror=${JSON.stringify(errors)}; diagnostics=${JSON.stringify(diagnostics)}; text=${(await page.locator('body').innerText()).slice(0,1000)}`); }
+    await page.waitForFunction(() => !document.querySelector('#view-overview').hidden);
+    assert.equal(await page.locator('#workflow-steps .step-title').first().textContent(), '來源盤點');
+    assert.deepEqual(await page.locator('#metrics .metric-value').allTextContents(), ['125 項', '125 項', '未知', '未測試']);
+    assert.doesNotMatch(await page.locator('#metrics').textContent(), /NotMeasured|NotTested|Unknown/);
+    assert.match(await page.locator('#workflow-steps').textContent(), /目前世代已接受的 Restore/);
+    assert.match(await page.locator('#overview-provenance').textContent(), /階段產生時間（ProducedUtc；非目標觀測時間）2026-10-11T01:02:03Z/);
+    assert.match(await page.locator('#overview-provenance').textContent(), /交付識別碼 fixture-delivery/);
+    if (process.env.WSM_SCREENSHOT_DIR) { fs.mkdirSync(process.env.WSM_SCREENSHOT_DIR, { recursive:true }); await page.screenshot({ path:path.join(process.env.WSM_SCREENSHOT_DIR,'overview-desktop.png'), fullPage:true }); }
     for (const [name, expected] of Object.entries({ OsProvidedCapture: '擷取 OS 提供排程工作證據', OsProvidedBaseline: '建立 OS 提供排程工作可信基準', OsProvidedReview: '比對 OS 提供排程工作證據', OsProvidedSubmit: '提交 OS 提供排程工作審閱' })) {
       assert.equal(await page.evaluate(action => window.WsmConsole.actionLabel(action), name), expected);
     }
@@ -139,12 +160,22 @@ const server = http.createServer((request, response) => {
     assert.equal(await page.locator('#param-0').inputValue(), '7');
     assert.equal(await page.locator('#param-0').getAttribute('readonly'), '');
     assert.match(await page.locator('#action-description').textContent(), /角色只是操作上下文/);
-    await page.waitForFunction(() => window.WsmConsole && window.WsmConsole.state.session && window.WsmConsole.state.token);
     await page.locator('[data-view="inventory"]').first().click();
-    await page.waitForFunction(() => window.WsmConsole.state.inventory.length === 125);
+    try { await page.waitForFunction(() => window.WsmConsole.state.inventory.length === 125, { timeout:5000 }); } catch (error) { throw new Error(`${error.message}; hash=${await page.evaluate(()=>location.hash)}; state=${JSON.stringify(await page.evaluate(()=>({currentView:window.WsmConsole.state.currentView,inventory:window.WsmConsole.state.inventory.length,context:window.WsmConsole.state.session,errors:document.querySelector('#error-summary').innerText,notice:document.querySelector('#notice').innerText})))}`); }
     assert.equal(await page.locator('#inventory-rows tr').count(), 50);
     assert.equal(await page.locator('#inventory-rows img').count(), 0);
     assert.match(await page.locator('#selection-summary').textContent(), /125/);
+
+    safeEmptyState = true; dataVersion = 'fixture-catalog-no-assistive'; await page.evaluate(() => window.WsmConsole.refreshSession(false));
+    await page.evaluate(() => window.WsmConsole.loadView('inventory', true));
+    assert.match(await page.locator('#state-message').textContent(), /尚未啟用 Assistive/);
+    assert.equal(await page.locator('#save-selection').isDisabled(), true);
+    await page.locator('#state-message button').click();
+    await page.waitForFunction(() => window.WsmConsole.state.activeAction === 'AssistiveEnable');
+    assert.equal(await page.locator('#action-picker').inputValue(), 'AssistiveEnable');
+    safeEmptyState = false; dataVersion = 'fixture-catalog-1'; await page.evaluate(() => window.WsmConsole.refreshSession(false));
+    await page.locator('[data-view="inventory"]').first().click();
+    try { await page.waitForFunction(() => window.WsmConsole.state.inventory.length === 125, { timeout:5000 }); } catch (error) { throw new Error(`${error.message}; hash=${await page.evaluate(()=>location.hash)}; state=${JSON.stringify(await page.evaluate(()=>({currentView:window.WsmConsole.state.currentView,inventory:window.WsmConsole.state.inventory.length,context:window.WsmConsole.state.session,errors:document.querySelector('#error-summary').innerText,notice:document.querySelector('#notice').innerText})))}`); }
 
     await page.locator('.spec-review-button').first().click();
     await page.waitForFunction(() => !document.querySelector('#spec-review-panel').hidden);
@@ -214,7 +245,7 @@ const server = http.createServer((request, response) => {
       const oldContext = await page.evaluate(() => window.WsmConsole.state.session.contextId);
       await page.locator('#context-role').selectOption(nextRole);
       await page.locator('#apply-context').click();
-      await page.waitForFunction(old => window.WsmConsole.state.session.contextId !== old, oldContext);
+      try { await page.waitForFunction(old => window.WsmConsole.state.session.contextId !== old, oldContext, { timeout:5000 }); } catch (error) { throw new Error(`${error.message}; UI error: ${await page.locator('#error-summary').textContent()}; session: ${JSON.stringify(await page.evaluate(() => ({ ...window.WsmConsole.state.session })))}`); }
       await page.waitForFunction(() => window.WsmConsole.state.actions.length > 90);
       assert.equal(await page.locator('#action-picker optgroup').count(), 3);
       assert.ok(await page.locator('#action-picker option').evaluateAll(options => options.filter(option => option.value).every(option => /[\u3400-\u9fff]/.test(option.textContent))));
@@ -239,21 +270,41 @@ const server = http.createServer((request, response) => {
 
     await page.locator('[data-view="jobs"]').first().click();
     await page.waitForFunction(() => location.hash === '#jobs');
+    await page.waitForFunction(() => document.querySelector('#job-id-lookup'));
+    await page.locator('#job-id-lookup').focus();
+    await page.evaluate(() => { window.__emptyJobCard = document.querySelector('#job-list .empty-card'); });
+    await page.evaluate(() => window.WsmConsole.refreshJobs({ background:true }));
+    assert.equal(await page.evaluate(() => document.querySelector('#job-list .empty-card') === window.__emptyJobCard), true, 'unchanged polling does not rebuild the list');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'job-id-lookup', 'unchanged polling preserves keyboard focus');
+    jobsPollFailure = true;
+    await page.evaluate(() => window.WsmConsole.refreshJobs({ background:true }));
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'job-id-lookup', 'a background polling error does not move focus');
+    assert.match(await page.locator('#notice').textContent(), /背景讀取作業狀態暫時失敗/);
+    jobsPollFailure = false;
     await page.evaluate(() => {
       window.WsmConsole.state.jobs.clear();
-      window.WsmConsole.state.jobs.set('fixture-job', { jobId: 'fixture-job', status: 'Succeeded', action: 'AssistiveReport', outputs: [{ Path: 'C:\\very\\long\\migration\\report.html' }], reportArtifacts: [{ Path: 'C:\\very\\long\\migration\\report.html', Label: 'fixture report', SHA256: 'report-hash' }] });
+      window.WsmConsole.state.jobs.set('fixture-job', { jobId: 'fixture-job', workspace: window.WsmConsole.state.session.workspace, pairId: 'fixture-pair', role:'Manager', sessionId:'fixture-session', contextId:'fixture-context-1', startedRevision:1, startedUtc:'2026-10-11T00:00:00Z', completedUtc:'2026-10-11T00:01:00Z', status: 'Succeeded', action: 'AssistiveReport', outputs: [{ Path: 'C:\\very\\long\\migration\\report.html' }], reportArtifacts: [{ Path: 'C:\\very\\long\\migration\\report.html', Label: 'fixture report', SHA256: 'report-hash' }] });
       window.WsmConsole.renderJobs();
     });
     assert.equal(await page.locator('#job-list .job-output dd').first().textContent(), 'C:\\very\\long\\migration\\report.html');
     assert.match(await page.locator('#job-list').textContent(), /管理報告/);
+    const reportOpened = page.waitForResponse(response => /\/api\/jobs\/fixture-job\/reports\/0\/open$/.test(response.url()));
     await page.locator('#job-list button').filter({ hasText: '開啟報告' }).click();
+    await reportOpened;
     await page.waitForFunction(() => window.WsmConsole.state.jobs.size === 1);
     assert.equal(reportOpenRequest.method, 'POST');
     assert.ok(reportOpenRequest.headers['x-wsm-token']);
     assert.deepEqual(reportOpenRequest.body, { SHA256: 'report-hash' });
+    jobsSnapshot = await page.evaluate(() => { const current = window.WsmConsole.state.jobs.get('fixture-job'); return [current, { jobId:'fixture-other-job', workspace:current.workspace, pairId:current.pairId, role:current.role, sessionId:current.sessionId, contextId:current.contextId, startedRevision:current.startedRevision, status:'Running', action:'AssistiveReport' }]; });
+    await page.locator('#job-list button').filter({ hasText: '開啟報告' }).focus();
+    await page.evaluate(() => window.scrollTo(0, 350));
+    const reportFocusScroll = await page.evaluate(() => window.scrollY);
+    await page.evaluate(() => window.WsmConsole.refreshJobs({ background:true }));
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.focusKey), 'report:fixture-job:0', 'a changed background poll preserves report-action focus');
+    assert.equal(await page.evaluate(() => window.scrollY), reportFocusScroll, 'a changed background poll preserves page scroll');
 
     await page.evaluate(() => {
-      window.WsmConsole.state.jobs.set('fixture-job', { jobId: 'fixture-job', status: 'Running', action: 'AssistiveReport', canCancel: true });
+      window.WsmConsole.state.jobs.set('fixture-job', { jobId: 'fixture-job', workspace:window.WsmConsole.state.session.workspace, pairId:'fixture-pair', role:'Manager', sessionId:'fixture-session', contextId:window.WsmConsole.state.session.contextId, startedRevision:1, jobId: 'fixture-job', status: 'Running', action: 'AssistiveReport', canCancel: true });
       window.WsmConsole.renderJobs();
     });
     await page.locator('#job-list button').filter({ hasText: '要求取消' }).click();
@@ -265,16 +316,18 @@ const server = http.createServer((request, response) => {
     assert.deepEqual(cancelRequest.body, {});
     assert.match(await page.locator('#job-list').textContent(), /取消已送出/);
     assert.doesNotMatch(await page.locator('#job-list').textContent(), /已取消/);
-    await page.locator('#job-list button').filter({ hasText: '重新連線' }).click();
+    await page.locator('#job-list button[data-focus-key="reconnect:fixture-job"]').click();
     assert.ok(reconnectRequest);
     assert.equal(reconnectRequest.pathname, '/api/jobs/fixture-job');
     assert.ok(reconnectRequest.headers['x-wsm-token']);
     assert.equal(await page.evaluate(() => window.WsmConsole.state.jobs.get('fixture-job').jobId), 'fixture-job');
 
+    decisionRevision = 23;
+    await page.evaluate(() => window.WsmConsole.refreshSession(false));
     const physicalPreviewHash = 'a'.repeat(64), semanticPreviewHash = 'b'.repeat(64);
-    await page.evaluate(({ physicalPreviewHash, semanticPreviewHash }) => {
+    await page.evaluate(({ physicalPreviewHash, semanticPreviewHash, workspace, startedRevision }) => {
       window.WsmConsole.state.jobs.clear();
-      window.WsmConsole.state.jobs.set('fixture-settings-preview', { jobId: 'fixture-settings-preview', status: 'Succeeded', action: 'WindowsSettingsPreviewExport', outputs: [{
+      window.WsmConsole.state.jobs.set('fixture-settings-preview', { jobId: 'fixture-settings-preview', status: 'Succeeded', action: 'WindowsSettingsPreviewExport', workspace, pairId:'fixture-pair', role:'Manager', sessionId:'fixture-session', contextId:window.WsmConsole.state.session.contextId, startedRevision, outputs: [{
         Kind: 'AssistiveWindowsSettingsPreviewOutput', PairId: 'fixture-pair',
         SourceInventoryPath: 'C:\\WSM\\source.json', SourceInventoryHash: 'c'.repeat(64),
         TargetInventoryPath: 'C:\\WSM\\target.json', TargetInventoryHash: 'd'.repeat(64),
@@ -286,10 +339,14 @@ const server = http.createServer((request, response) => {
         ], SecretToken: 'DO-NOT-RENDER'
       }] });
       window.WsmConsole.renderJobs();
-    }, { physicalPreviewHash, semanticPreviewHash });
+    }, { physicalPreviewHash, semanticPreviewHash, workspace:root, startedRevision:revision });
     assert.match(await page.locator('#job-list').textContent(), /Safe setting one/);
     assert.match(await page.locator('#job-list').textContent(), /來源值 SHA-256/);
     assert.doesNotMatch(await page.locator('#job-list').textContent(), /DO-NOT-RENDER|<secret>/);
+    jobsSnapshot = await page.evaluate(() => { const current = window.WsmConsole.state.jobs.get('fixture-settings-preview'); return [current, { jobId:'fixture-other-job', workspace:current.workspace, pairId:current.pairId, role:current.role, sessionId:current.sessionId, contextId:current.contextId, startedRevision:current.startedRevision, status:'Queued', action:'AssistiveReport' }]; });
+    await page.locator('#job-list button').filter({ hasText: '使用此預覽準備設定審閱' }).focus();
+    await page.evaluate(() => window.WsmConsole.refreshJobs({ background:true }));
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.focusKey), 'prefill-settings:fixture-settings-preview:23', 'a changed background poll preserves prefill-action focus');
     await page.locator('#job-list button').filter({ hasText: '使用此預覽準備設定審閱' }).click();
     await page.waitForFunction(() => window.WsmConsole.state.activeAction === 'WindowsSettingsSubmit');
     assert.equal(await page.locator('[data-parameter="SourceInventoryPath"]').inputValue(), 'C:\\WSM\\source.json');
@@ -307,10 +364,12 @@ const server = http.createServer((request, response) => {
     assert.equal(await page.locator('#submit-operation').isEnabled(), false);
     assert.match(await page.locator('[aria-live="polite"]').allTextContents().then(values => values.join(' ')), /尚未提交/);
 
+    decisionRevision = 24;
+    await page.evaluate(() => window.WsmConsole.refreshSession(false));
     await page.locator('[data-view="jobs"]').first().click();
     await page.evaluate(() => {
       window.WsmConsole.state.jobs.clear();
-      window.WsmConsole.state.jobs.set('fixture-empty-settings-preview', { jobId: 'fixture-empty-settings-preview', status: 'Succeeded', action: 'WindowsSettingsPreviewExport', outputs: [{
+      window.WsmConsole.state.jobs.set('fixture-empty-settings-preview', { jobId: 'fixture-empty-settings-preview', workspace:window.WsmConsole.state.session.workspace, pairId:'fixture-pair', role:'Manager', sessionId:'fixture-session', contextId:window.WsmConsole.state.session.contextId, startedRevision:1, status: 'Succeeded', action: 'WindowsSettingsPreviewExport', outputs: [{
         Kind: 'AssistiveWindowsSettingsPreviewOutput', PairId: 'fixture-pair', SourceInventoryPath: 'C:\\WSM\\source.json', SourceInventoryHash: 'c'.repeat(64),
         TargetInventoryPath: 'C:\\WSM\\target.json', TargetInventoryHash: 'd'.repeat(64), PreviewPath: 'C:\\WSM\\empty-preview.json', PreviewFileHash: '4'.repeat(64),
         PreviewHash: '5'.repeat(64), ExpectedRevision: 24, ReviewWindowsSettings: false, RowCount: 0, Rows: []
@@ -318,7 +377,7 @@ const server = http.createServer((request, response) => {
       window.WsmConsole.renderJobs();
     });
     await page.locator('#job-list button').filter({ hasText: '使用此預覽準備設定審閱' }).click();
-    await page.waitForFunction(() => window.WsmConsole.state.activeAction === 'WindowsSettingsSubmit');
+    await page.waitForFunction(() => window.WsmConsole.state.activeAction === 'WindowsSettingsSubmit' && document.querySelector('[data-parameter="PreviewPath"]')?.value === 'C:\\WSM\\empty-preview.json' && document.querySelector('[data-parameter="ExpectedRevision"]')?.value === '24' && document.querySelector('[data-parameter="ReviewWindowsSettings"]')?.value === 'false');
     assert.equal(await page.locator('[data-parameter="ReviewWindowsSettings"]').inputValue(), 'false');
     assert.equal(await page.locator('#parameter-fields [data-parameter="SettingId"]').count(), 0);
     await page.locator('[data-parameter="Ack"]').selectOption('true');
@@ -341,16 +400,18 @@ const server = http.createServer((request, response) => {
     await page.locator('[data-view="jobs"]').first().click();
     await page.evaluate(() => {
       window.WsmConsole.state.jobs.clear();
-      window.WsmConsole.state.jobs.set('fixture-preparation-preview', { jobId: 'fixture-preparation-preview', status: 'Succeeded', action: 'PreparationPreview', outputs: [{ Kind: 'AssistivePreparationPreview', RowCount: 1, Rows: [{ RequirementId: 'requirement-one', ProviderSoftwareId: 'runtime-one', ExpectedVersion: '9.4', Architecture: 'x64', RequiredPhase: 'BeforeRestore', Decision: 'External', Certainty: 'High', ConsumerItemIds: ['consumer-one'], ContextHash: '3'.repeat(64), SecretValue: 'DO-NOT-RENDER' }] }] });
+      window.WsmConsole.state.jobs.set('fixture-preparation-preview', { jobId: 'fixture-preparation-preview', workspace:window.WsmConsole.state.session.workspace, pairId:window.WsmConsole.state.session.pairId, role:window.WsmConsole.state.session.role, sessionId:window.WsmConsole.state.session.sessionId, contextId:window.WsmConsole.state.session.contextId, startedRevision:window.WsmConsole.state.session.revision, status: 'Succeeded', action: 'PreparationPreview', outputs: [{ Kind: 'AssistivePreparationPreview', RowCount: 1, Rows: [{ RequirementId: 'requirement-one', ProviderSoftwareId: 'runtime-one', ExpectedVersion: '9.4', Architecture: 'x64', RequiredPhase: 'BeforeRestore', Decision: 'External', Certainty: 'High', ConsumerItemIds: ['consumer-one'], ContextHash: '3'.repeat(64), SecretValue: 'DO-NOT-RENDER' }] }] });
       window.WsmConsole.renderJobs();
     });
     assert.match(await page.locator('#job-list').textContent(), /runtime-one/);
     assert.match(await page.locator('#job-list').textContent(), /BeforeRestore/);
     assert.doesNotMatch(await page.locator('#job-list').textContent(), /DO-NOT-RENDER/);
 
-    await page.evaluate(() => {
+    decisionRevision = 31;
+    await page.evaluate(() => window.WsmConsole.refreshSession(false));
+    await page.evaluate(({ workspace, startedRevision }) => {
       window.WsmConsole.state.jobs.clear();
-      window.WsmConsole.state.jobs.set('fixture-requirement-review', { jobId: 'fixture-requirement-review', status: 'Succeeded', action: 'RequirementReview', outputs: [{
+      window.WsmConsole.state.jobs.set('fixture-requirement-review', { jobId: 'fixture-requirement-review', status: 'Succeeded', action: 'RequirementReview', workspace, pairId:'fixture-pair', role:'Manager', sessionId:'fixture-session', contextId:window.WsmConsole.state.session.contextId, startedRevision, outputs: [{
         Kind: 'AssistiveRequirementReview', Status: 'Previewed', PairId: 'fixture-pair', ExpectedRevision: 31, ReviewHash: '6'.repeat(64), RowCount: 2,
         Rows: [
           { RequirementId: 'req-one', Type: 'Runtime', ProviderSoftwareId: 'provider-one', ProviderItemId: 'source-one', ExternalId: '', ExpectedVersion: '9.4', Architecture: 'x64', RequiredPhase: 'BeforeRestore', Decision: 'Required', Certainty: 'High', ConsumerItemIds: ['consumer-one'], ContextHash: '7'.repeat(64), Context: { Secret: 'DO-NOT-RENDER' }, SourceProof: { Evidence: 'DO-NOT-RENDER' }, Arguments: 'DO-NOT-RENDER' },
@@ -358,7 +419,7 @@ const server = http.createServer((request, response) => {
         ], SecretToken: 'DO-NOT-RENDER'
       }] });
       window.WsmConsole.renderJobs();
-    });
+    }, {workspace:root, startedRevision:revision});
     const reqOutput = await page.locator('#job-list').textContent();
     assert.match(reqOutput, /req-one/);
     assert.match(reqOutput, /provider-one/);
@@ -379,24 +440,53 @@ const server = http.createServer((request, response) => {
     assert.equal(await page.locator('#inventory-rows img').count(), 0);
     assert.equal(await page.locator('#inventory-rows input[type="checkbox"]').first().isDisabled(), true);
     assert.match(await page.locator('#inventory-rows').textContent(), /not eligible/);
+    while (inventory.length < 2501) { const index=inventory.length; inventory.push({itemId:`large-fixture-${index}`,name:`Large fixture ${index}`,category:'Runtime',selected:false,selectable:true,approvalStatus:'Pending',executionStatus:'NotObserved'}); }
     await page.locator('[data-view="inventory"]').first().click();
+    await page.waitForFunction(() => window.WsmConsole.state.inventory.length === 2501);
+    assert.equal(await page.locator('#inventory-rows tr').count(),50);
+    assert.match(await page.locator('#inventory-count').textContent(),/2501 筆符合篩選/);
     await page.setViewportSize({ width: 320, height: 720 });
     await page.waitForTimeout(100);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'page overflow at 320px');
+    if (process.env.WSM_SCREENSHOT_DIR) await page.screenshot({ path:path.join(process.env.WSM_SCREENSHOT_DIR,'inventory-2501-320.png'), fullPage:true });
     await page.keyboard.press('Tab');
     assert.ok(await page.evaluate(() => document.activeElement !== document.body));
     await page.locator('[data-view="operations"]').first().click();
     await page.waitForFunction(() => window.WsmConsole.state.actions.length > 90);
     await page.locator('#action-picker').selectOption('HttpIntegrityProbe');
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'operation panel reflows at 320px');
-    if (process.env.WSM_SCREENSHOT) await page.screenshot({ path: process.env.WSM_SCREENSHOT, fullPage: true });
+    viewReads.length=0;
+    await page.goto(`${url}#files`, { waitUntil:'domcontentloaded' });
+    await page.waitForFunction(() => location.hash==='#files' && window.WsmConsole.state.currentView==='files');
+    assert.ok(viewReads.includes('files'));
+    assert.equal(viewReads.includes('overview'),false,'a deep link loads only its selected view');
+    await page.goto(`${url}#invalid-route`, { waitUntil:'domcontentloaded' });
+    await page.waitForFunction(() => location.hash==='#overview' && window.WsmConsole.state.currentView==='overview');
+    await page.locator('[data-view="inventory"]').first().click();
+    await page.locator('[data-view="files"]').first().click();
+    await page.goBack(); await page.waitForFunction(() => location.hash==='#inventory');
+    await page.goForward(); await page.waitForFunction(() => location.hash==='#files');
+    const pendingId = await page.evaluate(async () => { const request=window.WsmConsole.buildOperationRequest('UnknownStatusTest',{},window.WsmConsole.state.session.revision); try { await window.WsmConsole.endpoint('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)}); } catch (_) {} return request.operationId; });
+    assert.equal(await page.evaluate(() => window.WsmConsole.state.pendingOperation.operationId),pendingId);
+    const persisted = await page.evaluate(workspace => JSON.parse(sessionStorage.getItem(`wsm.pending.v1.${encodeURIComponent(workspace.toLowerCase())}`)),root);
+    assert.equal(persisted.operationId,pendingId);
+    assert.deepEqual(Object.keys(persisted).sort(),['action','contextId','createdUtc','expectedDataVersion','expectedDecisionRevision','expectedRevision','expectedSelectionRevision','operationId','pairId','workspace'].sort());
+    assert.equal(unknownOperationCount,1);
+    await page.reload({waitUntil:'domcontentloaded'});
+    await page.waitForFunction(id => window.WsmConsole.state.pendingOperation && window.WsmConsole.state.pendingOperation.operationId===id,pendingId);
+    assert.equal(unknownOperationCount,1,'same-origin reload performs a lookup only, never a second write');
+    await page.locator('[data-view="jobs"]').first().click();
+    await page.waitForFunction(() => location.hash==='#jobs');
+    assert.match(await page.locator('#job-list').textContent(),new RegExp(pendingId));
+    await page.setViewportSize({width:1280,height:900});
     await page.goto(`${url}ui/guide.html`, { waitUntil: 'domcontentloaded' });
-    assert.match(await page.locator('main').textContent(), /-Action Html/);
-    assert.match(await page.locator('main').textContent(), /-Action Menu/);
+    if (process.env.WSM_SCREENSHOT_DIR) await page.screenshot({ path:path.join(process.env.WSM_SCREENSHOT_DIR,'operation-guide-desktop.png'), fullPage:true });
+    assert.match(await page.locator('main').textContent(), /Start-ServerMigration\.ps1/);
+    assert.match(await page.locator('main').textContent(), /固定的 WorkRoot/);
     assert.match(await page.locator('main').textContent(), /Windows Server Core/);
-    assert.match(await page.locator('main').textContent(), /互動式 PowerShell 輸入/);
+    assert.match(await page.locator('main').textContent(), /文字選單/);
     assert.deepEqual(errors, []);
-    console.log('PASS: Edge UI fixture with mocked APIs; 125-item pagination, review summary and typed prefill, report-open POST, path/hash states, XSS text rendering, 320px reflow and keyboard focus. Actual loopback browser transport: NotTested; use the read-only HTTP integrity probe.');
+    console.log('PASS: Edge UI fixture with mocked APIs; 2,501-item pagination, eight routes and deep links, stale context/cache guards, pending-write reload lookup, typed review prefill, report-open POST, actor provenance, 320px reflow, and background poll focus/scroll preservation. Actual loopback bridge transport: NotTested; main must verify separately.');
   } finally {
     if (browser) await browser.close();
     if (server.listening) await new Promise(resolve => server.close(resolve));

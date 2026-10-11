@@ -115,6 +115,23 @@ try {
     Assert-Probe ($sessionError.Status -ceq 'NotTested' -and $sessionError.Error) 'session endpoint errors are NotTested without throwing or exposing data'
 
     $savedHash=(Get-FileHash -LiteralPath $sessionError.JsonPath -Algorithm SHA256).Hash;$rejected=$false;try{Export-WsmAssistiveHttpProbe -Origin $origin -OutputPath $output -RequestAdapter $script:requestAdapter|Out-Null}catch{$rejected=$true};Assert-Probe ($rejected -and (Get-FileHash -LiteralPath $sessionError.JsonPath -Algorithm SHA256).Hash -ceq $savedHash) 'an existing probe document cannot be overwritten'
+
+    $module=Import-Module (Join-Path $repoRoot 'src\WindowsServerMigration.psd1') -Force -PassThru -DisableNameChecking
+    $baselineFailure=& $module {Set-StrictMode -Version Latest;$localBytes=$null;try{$entry=[ordered]@{ExpectedBytes=$localBytes.Length};'NoFailure'}catch{$_.Exception.GetType().Name}}
+    Assert-Probe ($baselineFailure -ceq 'PropertyNotFoundException') 'the original null .Length initializer is a reproducible strict-mode regression'
+    $capturedUi=$fixtureUi;$capturedCalls=New-Object 'System.Collections.Generic.List[string]';$moduleHashes=@{}
+    foreach($name in @('index.html','console.js','console.css','guide.html')){$moduleHashes['/ui/'+$name]=Get-FixtureHash ([IO.File]::ReadAllBytes((Join-Path $capturedUi $name)))}
+    $moduleAdapter={
+        param($Method,$Uri)
+        [void]$capturedCalls.Add($Method+' '+$Uri.AbsolutePath)
+        if($Uri.AbsolutePath -ceq '/api/session'){$body=[Text.Encoding]::UTF8.GetBytes((@{assetHashes=$moduleHashes}|ConvertTo-Json -Compress));return [pscustomobject]@{StatusCode=200;Body=$body;Headers=@{'Content-Type'='application/json; charset=utf-8';'Content-Length'=[string]$body.Length}}}
+        $file=Join-Path $capturedUi (Split-Path $Uri.AbsolutePath -Leaf);$body=[IO.File]::ReadAllBytes($file);$contentType=switch([IO.Path]::GetExtension($file)){'.html'{'text/html; charset=utf-8'}'.js'{'application/javascript; charset=utf-8'}'.css'{'text/css; charset=utf-8'}}
+        return [pscustomobject]@{StatusCode=200;Body=$body;Headers=@{'Content-Type'=$contentType;'Content-Length'=[string]$body.Length;'Connection'='close';'X-Content-Type-Options'='nosniff';'Referrer-Policy'='no-referrer';'Content-Security-Policy'="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"}}
+    }.GetNewClosure()
+    $moduleOutput=Join-Path $testRoot 'strict-module-probe'
+    $moduleResult=& $module {param($ProbeOrigin,$ProbeOutput,$ProbeAdapter) Export-WsmAssistiveHttpProbe -Origin $ProbeOrigin -OutputPath $ProbeOutput -RequestAdapter $ProbeAdapter} $origin $moduleOutput $moduleAdapter
+    Assert-Probe ($moduleResult.Status -ceq 'ObservedMatches' -and $moduleResult.Assets.Count -eq 4 -and @($moduleResult.Assets|Where-Object Status -NE 'ObservedMatches').Count -eq 0 -and $moduleResult.Error -eq $null) 'the exported function in the real imported module works under strict mode with all four verified assets'
+    Assert-Probe ($capturedCalls.Count -eq 5 -and @($capturedCalls|Where-Object {$_ -notmatch '^GET '}).Count -eq 0) 'the strict-mode imported-module consumer remains read-only and requests only session plus four assets'
     Write-Host ('PASS: '+$checkCount+' HTTP probe fixture checks on '+$PSVersionTable.PSEdition+' '+$PSVersionTable.PSVersion)
 } finally {
     if(Test-Path -LiteralPath $testRoot){Remove-Item -LiteralPath $testRoot -Recurse -Force}

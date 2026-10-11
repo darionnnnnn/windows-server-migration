@@ -1,6 +1,8 @@
 ﻿#requires -Version 5.1
 $ErrorActionPreference='Stop'
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
+$htmlSource=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\src\HtmlConsole.ps1'))
+& $module {param($path) . $path;foreach($function in @(Get-Command -CommandType Function | Where-Object {$_.Name -match '^(Get-WsmHtml(DataVersion|RevisionVector)|New-WsmHtmlSoftwareBeforeWrite)$'})){Set-Item -Path ('Function:\script:'+ $function.Name) -Value $function.ScriptBlock}} $htmlSource
 $comparisonSource=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\src\AssistiveComparison.ps1'))
 & $module {param($path) . $path;foreach($function in @(Get-Command -CommandType Function | Where-Object {$_.Name -match '^(Clear|Get|Update|Set|New)-WsmAssistive'})){Set-Item -Path ('Function:\script:'+ $function.Name) -Value $function.ScriptBlock}} $comparisonSource
 $restoreSource=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\src\AssistiveRestore.ps1'))
@@ -39,6 +41,8 @@ try {
     $catalog=CallModule {param($w,$p,$h) Import-WsmInventory $w $p $h 'target'} @($workspace,$sourcePath,$sourceHash)
     $catalog=CallModule {param($w,$pair,$revision) Enable-WsmAssistiveMode $w $pair $revision} @($workspace,$catalog.PairId,$catalog.DecisionRevision)
     Check ($catalog.Assistive.Selections.Items.Count -eq 2 -and @($catalog.Assistive.Selections.Items|Where-Object {-not $_.Selected}).Count -eq 0) 'All discovered items should default selected independently of Decision.'
+    $missingTargetView=CallModule {param($w,$pair) Get-WsmHtmlViewSnapshot $w $pair 'software' 'Target' 'session-fixture' 'context-fixture' ''} @($workspace,$catalog.PairId)
+    Check ($missingTargetView.assistiveEnabled -and $missingTargetView.canSaveSelection -and @($missingTargetView.rows).Count -eq 0 -and $missingTargetView.stateNextAction.action -ceq 'TargetSnapshot' -and $missingTargetView.stateReason -match '目標快照') 'Software view attempted a comparison without a target snapshot instead of returning a safe, actionable empty state.'
 
     $catalog=CallModule {param($w,$pair,$revision,$ids) Set-WsmAssistiveSelections $w $pair $revision $ids $false 'independent fixture is not migrating'} @($workspace,$catalog.PairId,$catalog.Assistive.Revision,@($item1.ItemId))
     $catalog=CallModule {param($w,$pair,$ids,$revision) Set-WsmDecision -Workspace $w -PairId $pair -ItemId $ids -Decision Include -Reason 'approved independent workload' -ExpectedRevision $revision} @($workspace,$catalog.PairId,@($item2.ItemId),$catalog.DecisionRevision)
@@ -58,6 +62,47 @@ try {
     $catalog=CallModule {param($w,$pair,$path,$hash,$revision) Update-WsmAssistiveTargetSnapshot $w $pair $path $hash $revision} @($workspace,$catalog.PairId,$targetPath,$targetHash,$catalog.Assistive.Revision)
     Check ($catalog.Assistive.TargetBaseline.BaselineKind -ceq 'FirstObserved') 'Initial target inventory was not labeled FirstObserved.'
     Reject {CallModule {param($w,$pair,$path,$hash,$revision) Update-WsmAssistiveTargetSnapshot $w $pair $path $hash $revision} @($workspace,$catalog.PairId,$targetPath,$targetHash,1)} 'Stale target snapshot CAS was accepted.'
+    $capturedVector=CallModule {param($w,$pair) Get-WsmHtmlRevisionVector $w $pair} @($workspace,$catalog.PairId)
+    $gatedSave=CallModule {
+        param($w,$pair,$id,$revision,$vector)
+        $gate=New-WsmHtmlSoftwareBeforeWrite $w $pair $vector
+        Set-WsmAssistiveSoftwareVersion -Workspace $w -PairId $pair -SoftwareId $id -ChosenVersion '3.0' -ExpectedRevision $revision -Reason 'closure gate fixture' -BeforeWrite $gate
+    } @($workspace,$catalog.PairId,$sourceRows[0].SoftwareId,$catalog.Assistive.Revision,$capturedVector)
+    Check ($gatedSave.Assistive.Revision -eq ($catalog.Assistive.Revision+1)) 'A captured server-style BeforeWrite closure could not resolve its private data-version helper and commit a valid software choice.'
+    $catalog=$gatedSave
+    $beforeDecisionGate=CallModule {param($w,$pair) Get-WsmHtmlRevisionVector $w $pair} @($workspace,$catalog.PairId)
+    CallModule {param($w,$pair,$revision) Set-WsmPairPlan -Workspace $w -PairId $pair -Owner 'Fixture owner' -Wave 'Wave 1' -FinalName 'fixture-target' -TemporaryIP '' -FinalIP '' -Domain '' -ExpectedRevision $revision | Out-Null} @($workspace,$catalog.PairId,$beforeDecisionGate.decisionRevision) | Out-Null
+    $afterDecisionVector=CallModule {param($w,$pair) Get-WsmHtmlRevisionVector $w $pair} @($workspace,$catalog.PairId)
+    $staleDecisionVector=[pscustomobject]@{revision=$afterDecisionVector.revision;decisionRevision=$beforeDecisionGate.decisionRevision;selectionRevision=$afterDecisionVector.selectionRevision;dataVersion=$afterDecisionVector.dataVersion}
+    $catalog=CallModule {param($w,$pair) Get-WsmCatalog $w $pair} @($workspace,$catalog.PairId)
+    $decisionAttemptHash=(Get-FileHash -LiteralPath (CallModule {param($w,$pair) Get-WsmCatalogPath $w $pair} @($workspace,$catalog.PairId)) -Algorithm SHA256).Hash
+    $decisionAttemptChoices=($catalog.Assistive.SoftwareChoices|ConvertTo-Json -Depth 12 -Compress)
+    $decisionError=''
+    try {CallModule {
+        param($w,$pair,$id,$revision,$vector)
+        $gate=New-WsmHtmlSoftwareBeforeWrite $w $pair $vector
+        Set-WsmAssistiveSoftwareVersion -Workspace $w -PairId $pair -SoftwareId $id -ChosenVersion '9.0' -ExpectedRevision $revision -Reason 'stale decision vector fixture' -BeforeWrite $gate
+    } @($workspace,$catalog.PairId,$sourceRows[1].SoftwareId,$catalog.Assistive.Revision,$staleDecisionVector) | Out-Null}catch{$decisionError=$_.Exception.Message}
+    $afterDecisionRejected=CallModule {param($w,$pair) Get-WsmCatalog $w $pair} @($workspace,$catalog.PairId)
+    $afterDecisionHash=(Get-FileHash -LiteralPath (CallModule {param($w,$pair) Get-WsmCatalogPath $w $pair} @($workspace,$catalog.PairId)) -Algorithm SHA256).Hash
+    Check ($decisionError -match 'decision revision' -and $afterDecisionRejected.Assistive.Revision -eq $catalog.Assistive.Revision -and $afterDecisionHash -ceq $decisionAttemptHash -and (($afterDecisionRejected.Assistive.SoftwareChoices|ConvertTo-Json -Depth 12 -Compress) -ceq $decisionAttemptChoices)) 'The decision-only mismatch did not hit its intended lock-time check without any catalog/software-choice mutation.'
+    $catalog=$afterDecisionRejected
+    $beforeHashGate=CallModule {param($w,$pair) Get-WsmHtmlRevisionVector $w $pair} @($workspace,$catalog.PairId)
+    CallModule {param($w,$pair) Invoke-WsmLocked $w {$c=Get-WsmCatalog $w $pair;$c | Add-Member NoteProperty HtmlCasFixtureMarker 'changed-without-revision' -Force;Write-WsmJson (Get-WsmCatalogPath $w $pair) $c}} @($workspace,$catalog.PairId) | Out-Null
+    $staleDataVector=[pscustomobject]@{revision=$beforeHashGate.revision;decisionRevision=$beforeHashGate.decisionRevision;selectionRevision=$beforeHashGate.selectionRevision;dataVersion=$beforeHashGate.dataVersion}
+    $catalog=CallModule {param($w,$pair) Get-WsmCatalog $w $pair} @($workspace,$catalog.PairId)
+    $dataAttemptHash=(Get-FileHash -LiteralPath (CallModule {param($w,$pair) Get-WsmCatalogPath $w $pair} @($workspace,$catalog.PairId)) -Algorithm SHA256).Hash
+    $dataAttemptChoices=($catalog.Assistive.SoftwareChoices|ConvertTo-Json -Depth 12 -Compress)
+    $dataVersionError=''
+    try {CallModule {
+        param($w,$pair,$id,$revision,$vector)
+        $gate=New-WsmHtmlSoftwareBeforeWrite $w $pair $vector
+        Set-WsmAssistiveSoftwareVersion -Workspace $w -PairId $pair -SoftwareId $id -ChosenVersion '9.0' -ExpectedRevision $revision -Reason 'stale data vector fixture' -BeforeWrite $gate
+    } @($workspace,$catalog.PairId,$sourceRows[1].SoftwareId,$catalog.Assistive.Revision,$staleDataVector) | Out-Null}catch{$dataVersionError=$_.Exception.Message}
+    $afterDataRejected=CallModule {param($w,$pair) Get-WsmCatalog $w $pair} @($workspace,$catalog.PairId)
+    $afterDataHash=(Get-FileHash -LiteralPath (CallModule {param($w,$pair) Get-WsmCatalogPath $w $pair} @($workspace,$catalog.PairId)) -Algorithm SHA256).Hash
+    Check ($dataVersionError -match 'data version' -and $afterDataRejected.Assistive.Revision -eq $catalog.Assistive.Revision -and $afterDataHash -ceq $dataAttemptHash -and (($afterDataRejected.Assistive.SoftwareChoices|ConvertTo-Json -Depth 12 -Compress) -ceq $dataAttemptChoices)) 'The dataVersion-only mismatch did not hit its intended lock-time check without any catalog/software-choice mutation.'
+    $catalog=$afterDataRejected
     $microsoft=NewSoftwareEntry '2' 'Microsoft Runtime Name' '8.0' ''
     $catalog=CallModule {param($w,$pair,$id,$version,$revision) Set-WsmAssistiveSoftwareVersion $w $pair $id $version $revision 'product owner selected supported release'} @($workspace,$catalog.PairId,$sourceRows[0].SoftwareId,'3.0',$catalog.Assistive.Revision)
     $comparisonInputRevision=$catalog.Assistive.Revision

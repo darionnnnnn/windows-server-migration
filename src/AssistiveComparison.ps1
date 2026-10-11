@@ -278,12 +278,13 @@ function Update-WsmAssistiveComparison {
 }
 
 function Set-WsmAssistiveSoftwareVersion {
-    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$SoftwareId,[Parameter(Mandatory)][string]$ChosenVersion,[Parameter(Mandatory)][int]$ExpectedRevision,[string]$Reason='')
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$SoftwareId,[Parameter(Mandatory)][string]$ChosenVersion,[Parameter(Mandatory)][int]$ExpectedRevision,[string]$Reason='',[Parameter(DontShow)][scriptblock]$BeforeWrite=$null)
     if([string]::IsNullOrWhiteSpace($ChosenVersion) -or $ChosenVersion.Length -gt 128 -or $ChosenVersion -match '[\x00-\x1f]'){throw 'ChosenVersion must be a nonempty safe version label.'}
     Invoke-WsmLocked $Workspace {
         $catalog=Get-WsmCatalog $Workspace $PairId
         if(-not $catalog.PSObject.Properties['Assistive']){throw 'Enable Assistive mode before selecting software versions.'}
         if($catalog.Assistive.Revision -ne $ExpectedRevision){throw 'Assistive data changed; refresh before selecting a version.'}
+        if($BeforeWrite){& $BeforeWrite $catalog}
         $sourceInventory=Get-WsmAssistiveSnapshotInventory $Workspace $catalog.Assistive.SourceSnapshot Source
         $entries=@($sourceInventory.SoftwareCatalog.Entries | Where-Object SoftwareId -CEQ $SoftwareId)
         if($entries.Count -ne 1){throw 'SoftwareId must identify exactly one source evidence entry.'}

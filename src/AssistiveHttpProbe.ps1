@@ -107,7 +107,7 @@ try {
             Route=$asset.Route
             LocalSHA256=$localHash
             SessionSHA256=$serverHash
-            ExpectedBytes=$localBytes.Length
+            ExpectedBytes=$null
             ObservedBytes=$null
             ObservedSHA256=$null
             HTTPStatus=$null
