@@ -791,3 +791,24 @@ test('legacy overview metric sentinels render Chinese unknown states without num
   for(const [label,display,status] of [['目前選取','未知','未知'],['已核准','未測量','未測量'],['本次可執行','未測試','未測試'],['待處理／失敗','未知','未知']]) { const card=byLabel(label); assert.ok(card); assert.equal(card.children[1].textContent,display); assert.match(card.children[2].textContent,new RegExp(`狀態：${status} ·`)); assert.doesNotMatch(card.children[1].textContent,/項$/); }
   assert.equal(ui.statusName('Sealed'),'已封存（效力仍須核對）'); assert.equal(ui.statusName('ImportedVerified'),'匯入收據已驗證'); assert.equal(ui.statusName('NoApproval'),'尚無核准'); assert.equal(ui.statusName('NoReceipt'),'尚無交付收據'); assert.equal(ui.statusName('Stale'),'已過期／需要複核'); assert.equal(ui.statusName('OldApproval'),'沿用舊核准／需要複核'); assert.equal(ui.statusName('FutureDeliveryStatus'),'FutureDeliveryStatus');
 });
+
+
+test('concurrent write preflights preserve the first uncertain operation and send only once', async () => {
+  const session={sessionId:'s1',contextId:'c1',pairId:'p1',role:'Manager',revision:3,token:'t',workspace:'C:\\WSM\\Manager'};
+  const writes=[];
+  const ui=makeApp(async(url,options)=>{
+    if(url==='/api/session') return {ok:true,status:200,json:async()=>({...session})};
+    if(url==='/api/operations') { writes.push(JSON.parse(options.body)); throw new Error('connection reset after send'); }
+    throw new Error('Unexpected read: '+url);
+  },true);
+  ui.state.session={...session};ui.state.token='t';
+  const submit=(action,id)=>ui.endpoint('/api/operations',{method:'POST',body:JSON.stringify({action,operationId:id,idempotencyKey:id+'-key',args:{},expectedRevision:3,contextId:'c1'})});
+  const results=await Promise.allSettled([submit('SaveSelection','first-operation'),submit('SetSoftwareVersion','second-operation')]);
+  assert.equal(writes.length,1,'two callers that pass the initial preflight must not send two mutations');
+  assert.equal(writes[0].operationId,'first-operation');
+  assert.equal(ui.state.pendingOperation.operationId,'first-operation','the original uncertain write must remain recoverable');
+  assert.equal(results[0].status,'rejected');assert.equal(results[1].status,'rejected');
+  assert.match(results[1].reason.message,/上一筆提交結果仍待確認/);
+  await assert.rejects(submit('SaveSelection','third-operation'),/上一筆提交結果仍待確認/);
+  assert.equal(writes.length,1);
+});

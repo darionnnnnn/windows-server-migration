@@ -21,7 +21,7 @@
     if (state.token) headers['X-Wsm-Token'] = state.token;
     const method = String(options && options.method || 'GET').toUpperCase(), post = method === 'POST', write = post && path !== '/api/view';
     if (write && path === '/api/operations' && state.pendingOperation) return Promise.reject(new Error(`上一筆提交結果仍待確認（${state.pendingOperation.operationId}）；先查詢此識別碼，不可重新提交。`));
-    const send = () => { if (write && path === '/api/operations' && options && options.body) { try { persistPendingOperation(JSON.parse(options.body)); } catch (_) {} } return timedJsonFetch(path, Object.assign({}, options || {}, { headers, credentials: 'same-origin', cache: 'no-store' }), write ? 30000 : 15000, write ? 'write-uncertain' : 'read-timeout').then(({ response, body }) => {
+    const send = () => { if (write && path === '/api/operations' && state.pendingOperation) throw new Error(`上一筆提交結果仍待確認（${state.pendingOperation.operationId}）；先查詢此識別碼，不可重新提交。`); if (write && path === '/api/operations' && options && options.body) { try { persistPendingOperation(JSON.parse(options.body)); } catch (_) {} } return timedJsonFetch(path, Object.assign({}, options || {}, { headers, credentials: 'same-origin', cache: 'no-store' }), write ? 30000 : 15000, write ? 'write-uncertain' : 'read-timeout').then(({ response, body }) => {
       if (body && typeof body.code === 'string' && body.code) throw apiError(body, response.status, '要求未完成');
       if (response.status === 401) { state.token = null; fail('本機工作階段已失效，請重新啟動工具並開啟新的操作頁面。'); throw new Error('session expired'); }
       if (!response.ok) { const error = new Error(body && body.message || `要求失敗（${response.status}）`); error.status = response.status; error.body = body; throw error; }
