@@ -137,7 +137,8 @@ function Get-WsmHtmlActionMetadata {
         $readOnly=$entry.Value -match '^(Get|Test|Assert|Read)-'
         $previewAction=if($entry.Key -eq 'Restore'){'RestorePreview'}elseif($entry.Key -eq 'Rollback'){'RollbackPreview'}elseif($entry.Key -eq 'SpecBundleImport'){'SpecBundlePreview'}else{$null}
         $requiredRole=Get-WsmTextActionGroup $entry.Key
-        [pscustomobject]@{action=$entry.Key;label=(Get-WsmTextActionLabel $entry.Key);description=(Get-WsmTextActionGuidance $entry.Key);role=$Role;requiredRole=$requiredRole;roleAvailable=($requiredRole -ceq $Role);readOnly=$readOnly;impact=@($(if($readOnly){'Read local state'}else{'Write local state or approved system resources'}));previewAction=$previewAction;parameters=$parameters}
+        $supportedRoles=@($requiredRole);if($entry.Key -ceq 'Inventory'){$supportedRoles=@('Source','Target')}
+        [pscustomobject]@{action=$entry.Key;label=(Get-WsmTextActionLabel $entry.Key);description=(Get-WsmTextActionGuidance $entry.Key);role=$Role;requiredRole=$requiredRole;supportedRoles=$supportedRoles;roleAvailable=($supportedRoles -contains $Role);readOnly=$readOnly;impact=@($(if($readOnly){'Read local state'}else{'Write local state or approved system resources'}));previewAction=$previewAction;parameters=$parameters}
     }
 }
 

@@ -38,7 +38,7 @@ function makeApp(fetchImpl, useDom = false) {
     addEventListener() {},
     getElementById(id) { if (makeNode) { const find = node => { if (node.id === id) return node; for (const child of node.children || []) { const found = find(child); if (found) return found; } return null; }; for (const root of elements.values()) { const found = find(root); if (found) return found; } } if (!elements.has(id)) { const node = makeNode ? makeNode() : { textContent: '', hidden: false, focus() {}, replaceChildren() {}, appendChild() {} }; node.id = id; elements.set(id, node); } return elements.get(id); },
     querySelectorAll() { return []; },
-    querySelector() { return null; },
+    querySelector(selector) { return selector === '#view-operations .operation-layout' ? { scrollIntoView() {} } : null; },
     createElement(tagName) { return makeNode ? makeNode(tagName) : { appendChild() {}, setAttribute() {}, replaceChildren() {}, classList: { toggle() {} } }; }
   };
   const window = { addEventListener() {} };
@@ -305,23 +305,32 @@ test('every backend operation has a Chinese label and a source, manager or targe
   assert.match(ui.parameterLabel('UnknownFutureHash'), /進階欄位/);
 });
 
-test('guided tasks expose TargetSnapshot and PublishComparison to Manager without directing Target to Manager imports', () => {
+test('Source and Target can open local Inventory forms while Manager owns target snapshot import and comparison', () => {
   const ui=makeApp(async()=>({ok:true,status:200,json:async()=>({})}),true), catalog=[
     ['Inventory','Source'],['ImportInventory','Manager'],['AssistiveEnable','Manager'],['SaveSelection','Manager'],['SetSoftwareVersion','Manager'],['TargetSnapshot','Manager'],['PublishComparison','Manager'],['RestorePreview','Manager'],['Restore','Target'],['ApproveMigration','Manager'],['ExportPackage','Source'],['PackageZip','Source'],['ImportPackageZip','Target'],['Repair','Manager'],['SourceResume','Source'],['RepairWorkspace','Manager'],['Validate','Target'],['Acceptance','Manager'],['Cutover','Target'],['ExportResult','Target'],['DeliveryDocument','Manager'],['RequestCancellation','Manager'],['CheckJournal','Manager'],['MaterialJobStatus','Target']
   ];
   const cards=()=>ui.__getElement('guided-tasks').children, titles=()=>cards().map(card=>card.children.find(node=>node.tagName==='H3').textContent), card=title=>cards().find(item=>item.children.some(node=>node.tagName==='H3'&&node.textContent===title)), textOf=node=>[node.textContent||'',...(node.children||[]).map(textOf)].join(' ');
-  const fill=role=>{ui.state.session={role};const available={Source:new Set(['Inventory']),Manager:new Set(['ImportInventory','AssistiveEnable','TargetSnapshot','PublishComparison']),Target:new Set(['ImportPackageZip','Restore','Validate','Cutover','MaterialJobStatus'])}[role];ui.state.actions=catalog.map(([action,requiredRole])=>({action,requiredRole,roleAvailable:available.has(action),parameters:action==='TargetSnapshot'?[{name:'TargetPath',label:'目標材料路徑',type:'path',required:true}]:action==='PublishComparison'?[{name:'ExpectedRevision',label:'預期 revision',type:'integer',required:true}]:[]}));ui.renderTaskGuide();};
-  fill('Source'); assert.equal(titles()[0],'建立來源盤點');
+  const fill=role=>{ui.state.session={role};const available={Source:new Set(['Inventory']),Manager:new Set(['ImportInventory','AssistiveEnable','TargetSnapshot','PublishComparison']),Target:new Set(['Inventory','ImportPackageZip','Restore','Validate','Cutover','MaterialJobStatus'])}[role];ui.state.actions=catalog.map(([action,requiredRole])=>({action,requiredRole,supportedRoles:action==='Inventory'?['Source','Target']:[requiredRole],roleAvailable:available.has(action),parameters:action==='Inventory'?[{name:'OutputDirectory',label:'輸出目錄',type:'path',required:true}]:action==='TargetSnapshot'?[{name:'Path',label:'目標材料路徑',type:'path',required:true},{name:'ExpectedHash',label:'目標材料 SHA-256',type:'string',required:true}]:action==='PublishComparison'?[{name:'ExpectedRevision',label:'預期 revision',type:'integer',required:true}]:[]}));ui.renderTaskGuide();};
+  fill('Source'); assert.equal(titles()[0],'建立來源盤點'); assert.equal(titles().length,10);
+  const sourceInventory=card('建立來源盤點'), sourceInventoryButton=sourceInventory.children.find(node=>node.className==='task-actions').children[0]; sourceInventoryButton.dispatch('click');
+  assert.equal(ui.state.activeAction,'Inventory'); assert.ok(ui.__getElement('param-0')); assert.match(textOf(ui.__getElement('action-metadata')),/目前執行本操作的 Windows Server/); assert.match(textOf(ui.__getElement('action-metadata')),/ImportInventory/);
   const sourceText=ui.__getElement('guided-tasks').children.map(card=>card.children.flatMap(node=>[node.textContent||'',...(node.children||[]).map(child=>child.textContent||'')]).join(' ')).join(' ');
-  assert.match(sourceText,/其他角色操作/); assert.match(sourceText,/Manager/); assert.equal(titles().length,9);
+  assert.match(sourceText,/其他角色操作/); assert.match(sourceText,/Manager/); assert.equal(titles().length,10);
   fill('Manager'); assert.ok(['啟用輔助流程','選取項目與軟體版本','更新目標觀測'].includes(titles()[0]));
+  const managerTargetInventory=card('建立目標本機盤點材料'); assert.equal(managerTargetInventory.children.find(node=>node.className==='task-actions').children.length,0); assert.match(textOf(managerTargetInventory),/Source／Target/);
   const targetCheck=card('更新目標觀測'), managerButtons=targetCheck.children.find(node=>node.className==='task-actions').children;
   assert.deepEqual(managerButtons.map(button=>button.textContent.slice(button.textContent.lastIndexOf('（')+1,-1)),['TargetSnapshot','PublishComparison']);
   for(const action of ['TargetSnapshot','PublishComparison']) { ui.state.actions.find(item=>item.action===action).roleAvailable=true; ui.setAction(action); assert.equal(ui.state.activeAction,action); assert.ok(ui.__getElement('parameter-fields').children.length>0,`${action} opens its typed form`); }
   fill('Target');
+  const targetInventory=card('建立目標本機盤點材料'), targetInventoryActions=()=>card('建立目標本機盤點材料').children.find(node=>node.className==='task-actions').children; assert.equal(card('建立來源盤點').children.find(node=>node.className==='task-actions').children.length,0,'Target cannot receive the Source common-task shortcut');
+  const inventoryMetadata=ui.state.actions.find(item=>item.action==='Inventory'); inventoryMetadata.roleAvailable=undefined; inventoryMetadata.supportedRoles=['Source']; ui.renderTaskGuide(); assert.equal(targetInventoryActions().length,0,'an explicit supportedRoles list excludes Target when roleAvailable is absent');
+  inventoryMetadata.supportedRoles=['Source','Target']; inventoryMetadata.roleAvailable=false; ui.renderTaskGuide(); assert.equal(targetInventoryActions().length,0,'explicit roleAvailable false overrides the broader supportedRoles list');
+  inventoryMetadata.roleAvailable=true; ui.renderTaskGuide(); const targetInventoryButton=targetInventoryActions()[0]; assert.ok(targetInventoryButton); targetInventoryButton.dispatch('click');
+  assert.equal(ui.state.activeAction,'Inventory'); assert.ok(ui.__getElement('param-0')); assert.match(textOf(ui.__getElement('action-metadata')),/目前執行本操作的 Windows Server/); assert.match(textOf(ui.__getElement('action-metadata')),/目標專屬目錄/); assert.match(textOf(ui.__getElement('action-metadata')),/TargetSnapshot/); assert.match(textOf(ui.__getElement('action-metadata')),/受控離線交接/); assert.doesNotMatch(textOf(ui.__getElement('action-metadata')),/來源主機執行/);
   const targetText=textOf(card('更新目標觀測')), targetButtons=card('更新目標觀測').children.find(node=>node.className==='task-actions').children;
   assert.equal(targetButtons.length,0); assert.match(targetText,/Manager/);
   const exchange=card('可信材料離線交接'); assert.match(textOf(exchange),/匯入盤點（Manager）/); assert.equal(exchange.children.find(node=>node.className==='task-actions').children.some(button=>button.textContent.includes('ImportInventory')),false);
+  ui.state.actions.find(item=>item.action==='Inventory').roleAvailable=undefined; ui.renderTaskGuide(); assert.equal(card('建立目標本機盤點材料').children.find(node=>node.className==='task-actions').children.length,1,'supportedRoles remains the target fallback when roleAvailable is absent');
 });
 
 test('Windows settings preview produces a safe all-row draft bound to the physical preview file hash', () => {
