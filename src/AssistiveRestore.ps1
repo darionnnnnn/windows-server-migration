@@ -255,7 +255,7 @@ function Get-WsmAssistiveRestorePreview {
                 else{
                 foreach($command in (Get-WsmAdapterRequiredCommands $spec.Adapter)){if(-not (Get-Command $command -ErrorAction SilentlyContinue)){$action='DeferredSoftware';$status='DeferredSoftware';$reason=('Required target dependency is unavailable: '+$command);break}}
                 if($status -eq 'Ready'){
-                    try{$existing=Get-WsmAdapterState $spec;$prior=@($state.Items | Where-Object ItemId -CEQ $item.ItemId);if($existing.Exists -and -not ($prior.Count -and $prior[0].CreatedByTool -and $prior[0].AppliedManifestHash -and $prior[0].Status -in @('Succeeded','Partial','RebootRequired'))){$action='BlockedConflict';$status='BlockedConflict';$reason='Existing target object is not owned by an exact prior Assistive generation.'};if($existing.Exists -and $prior.Count -and $prior[0].Status -eq 'RebootRequired'){if($spec.Adapter -cne 'WindowsFeature'){throw 'Only a WindowsFeature result may require a reviewed reboot before retry.'};Assert-WsmRebootCompleted $prior[0]}}
+                    try{$existing=Get-WsmAdapterState $spec;$prior=@($state.Items | Where-Object ItemId -CEQ $item.ItemId);$priorCreated=($prior.Count -and $prior[0].CreatedByTool -and $prior[0].AppliedManifestHash -and $prior[0].Status -in @('Succeeded','Partial','RebootRequired'));if($existing.Exists -and $spec.Adapter -ceq 'WindowsFeature' -and -not $priorCreated){if([string]$existing.Name -ine [string]$spec.Desired.Name){throw 'Installed Windows feature name differs from the exact approved feature.'};$action='VerifyExistingFeature';$reason='The exact approved Windows feature is already installed; verify it without claiming installer or rollback ownership.'}elseif($existing.Exists -and -not $priorCreated){$action='BlockedConflict';$status='BlockedConflict';$reason='Existing target object is not owned by an exact prior Assistive generation.'};if($existing.Exists -and $prior.Count -and $prior[0].Status -eq 'RebootRequired'){if($spec.Adapter -cne 'WindowsFeature'){throw 'Only a WindowsFeature result may require a reviewed reboot before retry.'};Assert-WsmRebootCompleted $prior[0]}}
                     catch{$action='DeferredSoftware';$status='DeferredSoftware';$reason=('Native target preflight unavailable: '+$_.Exception.GetType().FullName)}
                 }
                 }
@@ -382,7 +382,13 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
             else{
                 $before=Get-WsmAdapterState $spec
                 $prior=@($state.Items | Where-Object ItemId -CEQ $item.ItemId)
-                if($spec.Adapter -in @('IISSection','IISLocation')){
+                if($spec.Adapter -ceq 'WindowsFeature' -and $before.Exists -and -not ($prior.Count -and $prior[0].CreatedByTool -and $prior[0].AppliedManifestHash -and $prior[0].Status -in @('Succeeded','Partial','RebootRequired'))){
+                    if([string]$before.Name -ine [string]$spec.Desired.Name){throw 'Installed Windows feature name differs from the exact approved feature.'}
+                    $check=Test-WsmAdapterConfiguration $spec Staged;if(-not $check.Passed){throw ('Preinstalled Windows feature verification failed: '+($check.Problems -join '; '))}
+                    $actual=Get-WsmHashText ($check.Actual | ConvertTo-Json -Depth 30 -Compress)
+                    $result=[pscustomobject]@{ItemId=$item.ItemId;Status='Succeeded';CreatedByTool=$false;AppliedManifestHash=$ManifestHash;AppliedGeneration=[long]$Package.Manifest.Generation;ActualHash=$actual;Target=(Get-WsmAdapterObjectIdentity $spec);Backup='';Error='';NativeCode=0;OwnershipChannel='Preexisting'}
+                }
+                elseif($spec.Adapter -in @('IISSection','IISLocation')){
                     Assert-WsmAssistiveIisConfigSpec $spec
                     if(-not $before.Exists){throw 'Reviewed IIS section/location is unavailable on the target.'}
                     if($prior.Count -and (($prior[0].CreatedByTool) -or ($prior[0].PSObject.Properties['UpdatedByTool'] -and $prior[0].UpdatedByTool)) -and $prior[0].AppliedManifestHash -and $prior[0].Status -in @('Succeeded','Partial')){
