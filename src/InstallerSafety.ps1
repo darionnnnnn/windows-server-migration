@@ -54,5 +54,6 @@ function Protect-WsmInstallerSideEffects($Desired,$Baseline) {
     $after=@{};foreach($o in (Get-WsmInstallerSnapshot).Items){$after[$o.Kind+'|'+$o.Name.ToUpperInvariant()]=$o}
     foreach($o in $new){$key=$o.Kind+'|'+$o.Name.ToUpperInvariant();if(-not $after.ContainsKey($key) -or $after[$key].Running -or ($o.Kind -eq 'Service' -and $after[$key].Mode -ne 'Disabled') -or ($o.Kind -eq 'ScheduledTask' -and $after[$key].Mode -ne 'False') -or ($o.Kind -eq 'IISSite' -and $after[$key].Mode -ne 'False') -or ($o.Kind -eq 'IISPool' -and $after[$key].Mode -ne 'False|OnDemand')){throw 'Installer-created consumer did not reach verified disabled staging.'}}
     if($unexpected.Count){$error=New-Object InvalidOperationException(('Installer side effects differ from review; new consumers quarantined, existing changes need reconciliation: '+($unexpected -join '; ')));$error.Data['InstallerSideEffects']=$new.ToArray();throw $error}
-    [pscustomobject]@{Quarantined=@(ConvertFrom-WsmJson (ConvertTo-Json -InputObject $new.ToArray() -Depth 15));IsolationEvidence=$Desired.IsolationEvidence;NoAutomaticReboot=$true;BeforeInstallerControl='Owner-verified isolation; installer may run new consumers before control returns'}
+    $quarantined=@();if($new.Count -gt 0){$quarantined=@(ConvertFrom-WsmJson (ConvertTo-Json -InputObject $new.ToArray() -Depth 15))}
+    [pscustomobject]@{Quarantined=$quarantined;IsolationEvidence=$Desired.IsolationEvidence;NoAutomaticReboot=$true;BeforeInstallerControl='Owner-verified isolation; installer may run new consumers before control returns'}
 }

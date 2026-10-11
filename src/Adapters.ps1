@@ -33,6 +33,17 @@
     if($Spec.Adapter -eq 'ScheduledTask'){$principal=(Read-WsmXml $Spec.Desired.Xml).SelectSingleNode("//*[local-name()='Principal']/*[local-name()='LogonType']");if($principal -and $principal.InnerText -eq 'Password'){$needsSecret=$true}}
     if($needsSecret -and (-not $Spec.PSObject.Properties['SecretRef'] -or -not $Spec.SecretRef)){throw 'Adapter requires a reviewed SecretRef; no passwords may be stored in desired configuration.'}
 }
+function Get-WsmAdapterObjectIdentity($Spec) {
+    if(-not $Spec -or -not $Spec.PSObject.Properties['Adapter'] -or -not $Spec.PSObject.Properties['Desired']){throw 'Adapter target identity requires a complete migration spec.'}
+    $desired=$Spec.Desired
+    switch([string]$Spec.Adapter){
+        'ScheduledTask' {if(-not $desired.TaskPath -or -not $desired.TaskName){throw 'Scheduled task target identity requires TaskPath and TaskName.'};$folder=[string]$desired.TaskPath;if(-not $folder.EndsWith('\')){$folder+='\'};return ($folder+[string]$desired.TaskName)}
+        'IISSection' {if(-not $desired.SectionPath){throw 'IIS section target identity requires SectionPath.'};return [string]$desired.SectionPath}
+        'IISLocation' {if(-not $desired.SectionPath -or -not $desired.LocationPath){throw 'IIS location target identity requires SectionPath and LocationPath.'};return ([string]$desired.SectionPath+' @ '+[string]$desired.LocationPath)}
+        'Certificate' {if(-not $desired.Store -or -not $desired.Thumbprint){throw 'Certificate target identity requires Store and Thumbprint.'};return ([string]$desired.Store+'\'+[string]$desired.Thumbprint)}
+        default {if($desired.PSObject.Properties['Name'] -and -not [string]::IsNullOrWhiteSpace([string]$desired.Name)){return [string]$desired.Name};throw ('Adapter '+[string]$Spec.Adapter+' has no supported target identity projection.')}
+    }
+}
 function Get-WsmAdapterRequiredCommands([string]$Adapter) {
     switch ($Adapter) {
         ScheduledTask { @('Get-ScheduledTask','Register-ScheduledTask','Export-ScheduledTask','Unregister-ScheduledTask') }
@@ -104,7 +115,7 @@ function Invoke-WsmAdapterRestore($Spec,[hashtable]$Secrets,$Package,$InstallerB
         FirewallRule { $args=@{Enabled='False';ErrorAction='Stop'}; foreach($f in $d.PSObject.Properties){$args[$f.Name]=$f.Value}; New-NetFirewallRule @args | Out-Null }
         Certificate { $artifact=Get-WsmCertificateArtifact $Package $d;try{if ($d.HasPrivateKey) { if (-not $secret) { throw 'PFX requires in-memory password credential.' };$data=Get-PfxData -FilePath $artifact -Password $secret.Password;if(@($data.EndEntityCertificates).Count -ne 1 -or @($data.OtherCertificates).Count -gt 0 -or $data.EndEntityCertificates[0].Thumbprint -ine $d.Thumbprint){throw 'PFX must contain the exact reviewed leaf only; chain certificates require separately reviewed items.'}; Import-PfxCertificate -FilePath $artifact -CertStoreLocation $d.Store -Password $secret.Password | Out-Null } else {$cert=New-Object Security.Cryptography.X509Certificates.X509Certificate2($artifact);try{if($cert.Thumbprint -ine $d.Thumbprint -or $cert.HasPrivateKey){throw 'Public certificate artifact differs from reviewed thumbprint/type.'}}finally{$cert.Dispose()}; Import-Certificate -FilePath $artifact -CertStoreLocation $d.Store | Out-Null }}finally{if([IO.File]::Exists($artifact)){[IO.File]::Delete($artifact)}} }
         { $_ -in @('IISPool','IISSite') } { Invoke-WsmIisRestore $Spec $secret }
-        { $_ -in @('IISSection','IISLocation') } { Invoke-WsmIisConfigRestore $Spec }
+        { $_ -in @('IISSection','IISLocation') } { $result=Invoke-WsmIisConfigRestore $Spec;$result | Add-Member NoteProperty RebootRequired $false -Force;return $result }
         default { throw 'Unsupported adapter.' }
     }
     [pscustomobject]@{RebootRequired=$false}

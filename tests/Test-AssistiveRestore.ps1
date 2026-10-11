@@ -269,6 +269,202 @@ try {
         Check (@($repairState.PendingOperations).Count -eq 0 -and $repairState.Items[0].Status -eq 'Partial' -and $repairState.Items[0].AppliedManifestHash -eq '') 'Per-file repair incorrectly marked a partial scope fully applied or left intent ambiguous.'
         $singleRepairRoot=Join-Path $root 'single-repair';[void][IO.Directory]::CreateDirectory($singleRepairRoot);$singleRepairTarget=Join-Path $singleRepairRoot 'exact.ini';$singleRepairStaging=$singleRepairTarget+'.wsm-'+[Guid]::NewGuid().ToString('N')+'.tmp';$singleRepairBackup=$singleRepairTarget+'.wsm-assistive-backup-'+$script:testItemId.Substring(0,12)+'-'+[Guid]::NewGuid().ToString('N');[IO.File]::WriteAllText($singleRepairBackup,'prior single bytes');[IO.File]::WriteAllText($singleRepairStaging,'approved single bytes');$singleRepairHash=(Get-FileHash -LiteralPath $singleRepairStaging -Algorithm SHA256).Hash.ToLowerInvariant();$singleOldHash=(Get-FileHash -LiteralPath $singleRepairBackup -Algorithm SHA256).Hash.ToLowerInvariant();$singleMetadata=[pscustomobject]@{MetadataMode='DaclOwner';Sddl='';Attributes=0;CreationUtc=$script:fixtureUtc;LastWriteUtc=$script:fixtureUtc};$singleRepairOp=[pscustomobject]@{ItemId=$script:testItemId;Phase='AssistiveFileReplace';ManifestHash=('d'*64);Generation=3;RelativePath='';Target=$singleRepairTarget;Staging=$singleRepairStaging;Backup=$singleRepairBackup;PreviousHash=$singleOldHash;ExpectedHash=$singleRepairHash;ExpectedMetadata=$singleMetadata;WasOwned=$true;PriorOwner=[pscustomobject]@{MetadataHash=(Get-WsmAssistiveMetadataHash $singleMetadata)}};$singleRepairItem=[pscustomobject]@{ItemId=$script:testItemId;Name='preview single';Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='FileScope';TargetPath=$singleRepairTarget}};$singleRepairState=[pscustomobject]@{Items=@();PendingOperations=@($singleRepairOp)};Complete-WsmAssistiveOperationRepair $singleRepairItem $singleRepairOp $repairPackage $repairPaths $singleRepairState | Out-Null
         Check ([IO.File]::ReadAllText($singleRepairTarget) -ceq 'approved single bytes' -and [IO.File]::ReadAllText($singleRepairBackup) -ceq 'prior single bytes' -and $singleRepairState.Items[0].OwnedFiles[0].RelativePath -ceq '' -and $singleRepairState.Items[0].OwnedFiles[0].TargetPath -ceq $singleRepairTarget) 'Single-file recovery did not reconcile the exact empty-relative file target and rollback copy.'
+        # Strict task and IIS adapter contracts intentionally omit Desired.Name.
+        # Exercise the shared projection and durable Assistive repair consumer
+        # with only the native state/readback boundary replaced.
+        $identityCases=@(
+            [pscustomobject]@{Adapter='ScheduledTask';Desired=[pscustomobject]@{TaskPath='\Ops\';TaskName='Rotate';FolderSecurity=@([pscustomobject]@{Path='\';SecuritySddl='O:SYG:SYD:(A;;FA;;;SY)';ExistingPolicy='VerifyExact'})};Expected='\Ops\Rotate'},
+            [pscustomobject]@{Adapter='IISSection';Desired=[pscustomobject]@{SectionPath='system.webServer/security';LocationPath='';Xml='<security />';Changes=@()};Expected='system.webServer/security'},
+            [pscustomobject]@{Adapter='IISLocation';Desired=[pscustomobject]@{SectionPath='system.webServer/security';LocationPath='Default Web Site/api';Xml='<security />';Changes=@()};Expected='system.webServer/security @ Default Web Site/api'}
+        )
+        $script:nativeAssistiveAdapterState=(Get-Command Get-WsmAdapterState -CommandType Function).ScriptBlock
+        $script:nativeAssistiveAdapterConfiguration=(Get-Command Test-WsmAdapterConfiguration -CommandType Function).ScriptBlock
+        foreach($identityCase in $identityCases){
+            $identitySpec=[pscustomobject]@{Adapter=$identityCase.Adapter;Desired=$identityCase.Desired}
+            Check (-not $identitySpec.Desired.PSObject.Properties['Name'] -and (Get-WsmAdapterObjectIdentity $identitySpec) -ceq $identityCase.Expected) ($identityCase.Adapter+' target identity was not projected from its strict native target fields.')
+            $identityItem=[pscustomobject]@{ItemId=$script:testItemId;MigrationSpec=$identitySpec}
+            $identityOperation=[pscustomobject]@{ItemId=$script:testItemId;Phase='AssistiveAdapterCreating';Adapter=$identityCase.Adapter;ManifestHash=('d'*64);Generation=12;Before=[pscustomobject]@{Exists=$false};AbsentBefore=$true;DesiredHash=(Get-WsmHashText ($identitySpec.Desired|ConvertTo-Json -Depth 40 -Compress));FolderCreateIntents=@();AuxiliaryOwnership=@()}
+            $identityPackage=[pscustomobject]@{SHA256=('d'*64);Manifest=[pscustomobject]@{Generation=12}}
+            $identityState=[pscustomobject]@{Items=@();PendingOperations=@($identityOperation);Stage='Running'}
+            if($identityCase.Adapter -ceq 'ScheduledTask'){
+                Set-Item Function:\script:Get-WsmAdapterState -Value {param($Spec)[pscustomobject]@{Exists=$true;Configuration=$Spec.Desired}}
+                Set-Item Function:\script:Test-WsmAdapterConfiguration -Value {param($Spec,$Phase,[object[]]$OwnedReceipts=@())[pscustomobject]@{Passed=$true;Actual=$Spec.Desired;Problems=@()}}
+                Complete-WsmAssistiveOperationRepair $identityItem $identityOperation $identityPackage $repairPaths $identityState | Out-Null
+                Check ($identityState.Items[0].Target -ceq $identityCase.Expected -and @($identityState.PendingOperations).Count -eq 0) 'ScheduledTask durable repair did not persist its strict-contract native target identity.'
+            }
+        }
+        Set-Item Function:\script:Get-WsmAdapterState -Value $script:nativeAssistiveAdapterState
+        Set-Item Function:\script:Test-WsmAdapterConfiguration -Value $script:nativeAssistiveAdapterConfiguration
+
+        # Run the actual schema-3 Assistive restore consumer for strict IIS
+        # Desired shapes. Only native IIS read/write and package-state edges
+        # are isolated; Invoke-WsmAdapterRestore and the restore loop stay real.
+        $script:nativeAssistiveDecisionForLoop=(Get-Command Get-WsmAssistiveRestoreDecision -CommandType Function).ScriptBlock
+        $script:nativeAssistiveTestPackageForLoop=(Get-Command Test-WsmMigrationPackage -CommandType Function).ScriptBlock
+        $script:nativeAssistiveAssertHostForLoop=(Get-Command Assert-WsmMigrationHost -CommandType Function).ScriptBlock
+        $script:nativeAssistiveMachineIdentityForLoop=(Get-Command Get-WsmMachineIdentity -CommandType Function).ScriptBlock
+        $script:nativeAssistiveNonCRowsForLoop=(Get-Command Get-WsmAssistiveNonCResultRows -CommandType Function).ScriptBlock
+        $script:nativeAssistiveAssertFreshForLoop=(Get-Command Assert-WsmAssistiveReceiptFresh -CommandType Function).ScriptBlock
+        $script:nativeAssistiveRegisterJobForLoop=(Get-Command Register-WsmAssistivePackageMaterials -CommandType Function).ScriptBlock
+        $script:nativeAssistiveGetPathsForLoop=(Get-Command Get-WsmOperationPaths -CommandType Function).ScriptBlock
+        $script:nativeAssistiveGetStateForLoop=(Get-Command Get-WsmOperationState -CommandType Function).ScriptBlock
+        $script:nativeAssistiveReservationsForLoop=(Get-Command Get-WsmAssistiveReservations -CommandType Function).ScriptBlock
+        $script:nativeAssistiveCheckpointForLoop=(Get-Command Confirm-WsmOutputStateCheckpoint -CommandType Function).ScriptBlock
+        $script:nativeAssistiveIisWriteForLoop=(Get-Command Invoke-WsmIisConfigRestore -CommandType Function).ScriptBlock
+        $script:nativeAssistiveNewIisManagerForLoop=(Get-Command New-WsmIisManager -CommandType Function).ScriptBlock
+        $script:nativeAssistiveGetOperationPaths=(Get-Command Get-WsmOperationPaths -CommandType Function).ScriptBlock
+        $script:nativeAssistiveInstallerSnapshot=(Get-Command Get-WsmInstallerSnapshot -CommandType Function).ScriptBlock
+        $script:nativeAssistiveBootStamp=(Get-Command Get-WsmBootStamp -CommandType Function).ScriptBlock
+        $script:nativeAssistiveSettingSnapshot=(Get-Command Get-WsmSettingNativeSnapshot -CommandType Function).ScriptBlock
+        $script:nativeAssistiveSetSetting=(Get-Command Set-WsmSettingNativeState -CommandType Function).ScriptBlock
+        $script:nativeAssistiveInstallerConsumers=(Get-Command Test-WsmInstallerConsumers -CommandType Function).ScriptBlock
+        $script:nativeAssistiveInstallerPolicy=(Get-Command Assert-WsmInstallerPolicy -CommandType Function).ScriptBlock
+        $script:assistiveLoopPresent=$false;$script:assistiveLoopState=$null;$script:assistiveLoopPaths=[pscustomobject]@{Root=$root;State=(Join-Path $root 'loop-state.json');Journal=(Join-Path $root 'loop-journal.jsonl')}
+        $script:assistiveLoopPackage=$null
+        Set-Item Function:\Test-WsmMigrationPackage -Value {param([string]$ManifestPath,[string]$ExpectedHash,$CancellationToken)$script:assistiveLoopPackage}
+        Set-Item Function:\Assert-WsmMigrationHost -Value {param($Identity,[string]$ExpectedFingerprint)}
+        Set-Item Function:\Get-WsmMachineIdentity -Value {[pscustomobject]@{Fingerprint=('c'*64)}}
+        Set-Item Function:\Get-WsmAssistiveNonCResultRows -Value {param($Package,[string]$TransferPlanPath,[string]$TransferPlanHash,[string]$ResultPath,[string]$ResultHash,[string]$StateDirectory)@{}}
+        Set-Item Function:\Get-WsmAssistiveRestoreDecision -Value {param($Package,[string]$ManifestHash,[string]$ReceiptPath,[string]$ReceiptHash,[string]$SnapshotPath)[pscustomobject]@{Decision='RestoreNow';ReceiptPath='fixture-receipt';ReceiptHash=('4'*64);SnapshotPath='fixture-snapshot';SelectedItemIds=@($Package.Plan.Items.ItemId);Snapshot=[pscustomobject]@{};Receipt=[pscustomobject]@{Decision='RestoreNow';TargetSnapshotHash=('5'*64)}}}
+        Set-Item Function:\Assert-WsmAssistiveReceiptFresh -Value {param($Package,$Decision)$true}
+        Set-Item Function:\Register-WsmAssistivePackageMaterials -Value {param($Package,$Decision,[string]$Workspace,$Preview)[pscustomobject]@{MaterialIds=@();OperationId=''}}
+        Set-Item Function:\Get-WsmOperationPaths -Value {param([string]$StateDirectory,[string]$PairId)$script:assistiveLoopPaths}
+        Set-Item Function:\Get-WsmOperationState -Value {param($Paths,$Package)$script:assistiveLoopState}
+        Set-Item Function:\Get-WsmAssistiveReservations -Value {param($Item,$Package,[string]$Workspace)@()}
+        Set-Item Function:\Confirm-WsmOutputStateCheckpoint -Value {param([string]$StateDirectory,[string]$PairId,[string]$PlanHash)}
+        $script:iisLoopSectionInfo=[pscustomobject]@{}
+        $script:iisLoopSectionInfo | Add-Member ScriptMethod GetRawXml {return [string]$script:iisLoopXml}
+        $script:iisLoopSectionInfo | Add-Member ScriptMethod SetRawXml {param([string]$Xml)$script:iisLoopXml=$Xml}
+        $script:iisLoopSection=[pscustomobject]@{SectionInformation=$script:iisLoopSectionInfo}
+        $script:iisLoopConfiguration=[pscustomobject]@{}
+        $script:iisLoopConfiguration | Add-Member ScriptMethod GetSection {param([string]$SectionPath,[string]$LocationPath)$script:iisLoopSection}
+        $script:iisLoopManager=[pscustomobject]@{}
+        $script:iisLoopManager | Add-Member ScriptMethod GetApplicationHostConfiguration {$script:iisLoopConfiguration}
+        $script:iisLoopManager | Add-Member ScriptMethod CommitChanges {}
+        $script:iisLoopManager | Add-Member ScriptMethod Dispose {}
+        Set-Item Function:\New-WsmIisManager -Value {$script:iisLoopManager}
+        foreach($adapterName in @('IISSection','IISLocation')){
+            $location='';if($adapterName -ceq 'IISLocation'){$location='Default Web Site/api'}
+            $script:iisLoopXml='<security><access enabled="true" policy="read" /></security>'
+            $desiredIis=[pscustomobject]@{SectionPath='system.webServer/security';LocationPath=$location;Xml='<security><access enabled="false" policy="read,write" /></security>';Changes=@([pscustomobject]@{FieldPointer='/security/access/@policy';Operation='SetAttribute';ElementName='access';KeyAttributes=@();AttributeName='policy';BeforeValue='read';AfterValue='read,write'},[pscustomobject]@{FieldPointer='/security/access/@enabled';Operation='SetAttribute';ElementName='access';KeyAttributes=@();AttributeName='enabled';BeforeValue='true';AfterValue='false'})}
+            $loopSpec=[pscustomobject]@{Adapter=$adapterName;Desired=$desiredIis;SourceXml='<security><access enabled="true" policy="read" /></security>';SourceAutoStart='true';DesiredFinalState='Enabled';StagedDisabled=$true;ActivationPolicyFieldPointer='/security/access/@enabled';ReviewedActivation=[pscustomobject]@{FinalState='Enabled';Owner='Fixture owner';Reason='Preserve the explicitly approved source startup behavior.';SourceAutoStart='true';FieldPointer='/security/access/@enabled';StagedValue='false';FinalValue='true'}}
+            $loopItem=[pscustomobject]@{ItemId=$script:testItemId;Name=$adapterName;Decision='Include';MigrationSpec=$loopSpec}
+            $loopPackage=[pscustomobject]@{Root=$root;SHA256=('a'*64);PlanHash=('b'*64);Plan=[pscustomobject]@{SchemaVersion=3;Items=@($loopItem)};Manifest=[pscustomobject]@{PairId='pair-assistive-loop';PlanHash=('b'*64);Generation=13;Final=$true;Target=[pscustomobject]@{Fingerprint=('c'*64)}}}
+            $script:assistiveLoopPackage=$loopPackage
+            $script:assistiveLoopPresent=$false;$script:assistiveLoopState=[pscustomobject]@{Items=@();PendingOperations=@();Cutover=$null;ManifestHash='';Generation=0;Stage='NotStarted';AssistiveFileResults=@();JournalHash=('0'*64)}
+            $loopPreview=Get-WsmAssistiveRestorePreview -ManifestPath 'fixture' -ExpectedHash ('a'*64) -StateDirectory $root -AssistiveDecisionReceiptPath 'fixture-receipt' -AssistiveDecisionReceiptHash ('4'*64) -AssistiveTargetSnapshotPath 'fixture-snapshot'
+            Check (($loopPreview.Rows[0].Status -ceq 'Ready') -and ($loopPreview.Rows[0].Action -ceq 'ApplyReviewedIisChanges')) ($adapterName+' native preview did not validate its exact before-state field changes.')
+            $loopCreated=Invoke-WsmAssistiveRestore $loopPackage ('a'*64) $root @{} @{} $null @() 'fixture-receipt' ('4'*64) 'fixture-snapshot' $loopPreview
+            Check ($loopCreated.Results[0].Status -ceq 'Succeeded' -and $loopCreated.Results[0].Target -ceq (Get-WsmAdapterObjectIdentity $loopItem.MigrationSpec) -and $script:iisLoopXml -ceq $desiredIis.Xml) ($adapterName+' real Assistive restore loop failed to apply exact typed IIS field changes and identify the target. status='+$loopCreated.Results[0].Status+' error='+$loopCreated.Results[0].Error+' actual='+$script:iisLoopXml+' preview='+$loopPreview.Rows[0].Status+'/'+$loopPreview.Rows[0].Reason)
+            $loopPackage.Manifest.Generation=14;$script:assistiveLoopState.Items=@($loopCreated.Items);$loopPreview=Get-WsmAssistiveRestorePreview -ManifestPath 'fixture' -ExpectedHash ('a'*64) -StateDirectory $root -AssistiveDecisionReceiptPath 'fixture-receipt' -AssistiveDecisionReceiptHash ('4'*64) -AssistiveTargetSnapshotPath 'fixture-snapshot'
+            Check (($loopPreview.Rows[0].Status -ceq 'Ready') -and ($loopPreview.Rows[0].Action -ceq 'VerifyOwnedIisConfig')) ($adapterName+' native preview did not accept exact already-owned staged XML.')
+            $loopRetry=Invoke-WsmAssistiveRestore $loopPackage ('a'*64) $root @{} @{} $null @() 'fixture-receipt' ('4'*64) 'fixture-snapshot' $loopPreview
+            Check ($loopRetry.Results[0].Status -ceq 'Succeeded' -and $loopRetry.Results[0].Target -ceq $loopCreated.Results[0].Target -and $loopRetry.Results[0].PriorManifestHash -ceq ('a'*64)) ($adapterName+' verified-owned retry did not preserve the exact target identity and prior-generation ownership.')
+            $loopRecord=$loopCreated.Items[0];$repairBefore=$loopRecord.Before;$iisRepairOp=[pscustomobject]@{ItemId=$script:testItemId;Phase='AssistiveAdapterCreating';Adapter=$adapterName;ManifestHash=('a'*64);Generation=13;Before=$repairBefore;BeforeHash=(Get-WsmHashText ($repairBefore|ConvertTo-Json -Depth 30 -Compress));DesiredHash=(Get-WsmHashText ($desiredIis|ConvertTo-Json -Depth 40 -Compress));AbsentBefore=$false;UpdatedByTool=$true;FolderCreateIntents=@();AuxiliaryOwnership=@()}
+            $iisRepairState=[pscustomobject]@{Items=@();PendingOperations=@($iisRepairOp);Stage='Running'}
+            Complete-WsmAssistiveOperationRepair $loopItem $iisRepairOp $loopPackage $script:assistiveLoopPaths $iisRepairState | Out-Null
+            Check ($iisRepairState.Items[0].UpdatedByTool -and -not $iisRepairState.Items[0].CreatedByTool -and $iisRepairState.Items[0].BeforeHash -eq $iisRepairOp.BeforeHash -and $iisRepairState.Items[0].Target -ceq (Get-WsmAdapterObjectIdentity $loopItem.MigrationSpec)) ($adapterName+' interrupted reviewed IIS update did not recover exact XML ownership evidence.')
+            Check (Test-WsmRollbackRecordOwnership $iisRepairState.Items[0] $loopSpec) ($adapterName+' reviewed update record did not pass durable ownership verification.')
+            $script:iisLoopXml=Get-WsmIisReviewedActivationXml $loopSpec
+            Check ((Test-WsmAdapterConfiguration $loopSpec Final).Passed -and (Test-WsmRollbackRecordOwnership $iisRepairState.Items[0] $loopSpec)) ($adapterName+' legitimate reviewed final XML was rejected by native verification or durable rollback ownership.')
+            $script:iisLoopXml='<security><access enabled="true" policy="drift" /></security>'
+            Check (-not (Test-WsmAdapterConfiguration $loopSpec Staged).Passed -and -not (Test-WsmAdapterConfiguration $loopSpec Final).Passed) ($adapterName+' native verification accepted drifted IIS XML.')
+            Check (Test-WsmRollbackRecordOwnership $iisRepairState.Items[0] $loopSpec) ($adapterName+' durable ownership was incorrectly coupled to live XML instead of caller-side staged/final verification.')
+            $badPrior=$iisRepairState.Items[0] | ConvertTo-Json -Depth 30 | ConvertFrom-Json;$badPrior.PriorXml='<security />'
+            Check (-not (Test-WsmRollbackRecordOwnership $badPrior $loopSpec)) ($adapterName+' rollback ownership accepted PriorXml that differed from durable Before.Xml.')
+            $script:iisLoopXml=Get-WsmIisReviewedActivationXml $loopSpec
+            $rollbackOperation=[pscustomobject]@{ItemId=$script:testItemId;Phase='RollbackAdapter';ManifestHash=('a'*64);Adapter=$adapterName;SpecHash=(Get-WsmHashText ($loopSpec | ConvertTo-Json -Depth 40 -Compress))}
+            Complete-WsmAdapterRollback $loopItem $rollbackOperation $script:assistiveLoopPaths $iisRepairState
+            Check ($iisRepairState.Items[0].Status -ceq 'RolledBack' -and -not $iisRepairState.Items[0].UpdatedByTool -and $script:iisLoopXml -ceq [string]$loopCreated.Items[0].Before.Xml) ($adapterName+' final-to-staged-to-exact-prior rollback did not complete through native XML readback.')
+        }
+        $script:iisLoopXml=[string]$loopCreated.Items[0].Before.Xml;$loopPackage.Manifest.Generation=15;$script:assistiveLoopPackage=$loopPackage;$script:assistiveLoopState=[pscustomobject]@{Items=@();PendingOperations=@();Cutover=$null;ManifestHash='';Generation=0;Stage='NotStarted';AssistiveFileResults=@();JournalHash=('0'*64)}
+        Set-Item Function:\Invoke-WsmIisConfigRestore -Value {param($Spec)$nativeResult=& $script:nativeAssistiveIisWriteForLoop $Spec;$nativeResult.PriorXml='<operator-mismatched-prior />';$nativeResult}
+        $priorMismatchPreview=Get-WsmAssistiveRestorePreview -ManifestPath 'fixture' -ExpectedHash ('a'*64) -StateDirectory $root -AssistiveDecisionReceiptPath 'fixture-receipt' -AssistiveDecisionReceiptHash ('4'*64) -AssistiveTargetSnapshotPath 'fixture-snapshot'
+        $priorMismatchResult=Invoke-WsmAssistiveRestore $loopPackage ('a'*64) $root @{} @{} $null @() 'fixture-receipt' ('4'*64) 'fixture-snapshot' $priorMismatchPreview
+        Check ($priorMismatchResult.Results[0].Status -ceq 'Failed' -and @($script:assistiveLoopState.PendingOperations | Where-Object Phase -ceq 'AssistiveAdapterCreating').Count -eq 1 -and $script:iisLoopXml -ceq $desiredIis.Xml) 'Assistive IIS accepted a native PriorXml race or discarded its durable ambiguous-write intent.'
+        Set-Item Function:\Invoke-WsmIisConfigRestore -Value $script:nativeAssistiveIisWriteForLoop
+
+        # Exercise WindowsFeature through the Assistive consumer and real
+        # installer safety coordinator, substituting only native OS APIs.
+        $script:featureInstalled=$false;$script:featureInstallCalls=0;$script:featureTrace=New-Object 'System.Collections.Generic.List[string]';$script:featureBootStamp='boot-before';$script:fixtureInstallerSnapshot=[pscustomobject]@{Utc='fixture';Items=@()}
+        $featureRoot=Join-Path $root 'feature-state';[void][IO.Directory]::CreateDirectory($featureRoot)
+        $script:assistiveLoopPaths=[pscustomobject]@{Root=$featureRoot;State=(Join-Path $featureRoot 'state.json');Journal=(Join-Path $featureRoot 'journal.jsonl')}
+        $script:assistiveLoopState=[pscustomobject]@{PairId='pair-feature-loop';TargetFingerprint=('c'*64);PlanHash=('b'*64);RunId=[Guid]::NewGuid().ToString();Sequence=0;JournalHash=('0'*64);Items=@();PendingOperations=@();Cutover=$null;ManifestHash='';Generation=0;Stage='NotStarted';AssistiveFileResults=@()}
+        Set-Item Function:\Get-WindowsFeature -Value {param([string]$Name)$script:featureTrace.Add('Get-WindowsFeature');[pscustomobject]@{Name=$Name;Installed=$script:featureInstalled}}
+        Set-Item Function:\Install-WindowsFeature -Value {param([string]$Name,[string]$ErrorAction)$script:featureTrace.Add('Install-WindowsFeature');$script:featureInstallCalls++;$script:featureInstalled=$true;[pscustomobject]@{Success=$true;ExitCode='SuccessRestart';RestartNeeded='Yes'}}
+        Set-Item Function:\Get-WsmBootStamp -Value {$script:featureTrace.Add('Get-WsmBootStamp');$script:featureBootStamp}
+        Set-Item Function:\Get-WsmInstallerSnapshot -Value {$script:featureTrace.Add('Get-WsmInstallerSnapshot count='+$script:fixtureInstallerSnapshot.Items.Count+' type='+$script:fixtureInstallerSnapshot.Items.GetType().FullName);$script:fixtureInstallerSnapshot}
+        $script:featureDebugError='none';Set-Item Function:\Assert-WsmInstallerPolicy -Value {param($Desired)try{& $script:nativeAssistiveInstallerPolicy $Desired}catch{$script:featureDebugError='Policy: '+$_.Exception.ToString();throw}}
+        Set-Item Function:\Test-WsmInstallerConsumers -Value {param($Desired,$Receipt,[string]$Phase='Staged')try{$script:featureDebugError='Inputs '+($Desired|ConvertTo-Json -Depth 4 -Compress)+' receipt '+($Receipt|ConvertTo-Json -Depth 4 -Compress);& $script:nativeAssistiveInstallerConsumers $Desired $Receipt $Phase}catch{$script:featureDebugError+=' failure '+$_.Exception.ToString();throw}}
+        Set-Item Function:\Get-WsmAdapterState -Value {param($Spec)$script:featureTrace.Add('Get-WsmAdapterState/'+$Spec.Adapter);if($Spec.Adapter -ceq 'WindowsFeature'){$feature=Get-WindowsFeature -Name $Spec.Desired.Name;[pscustomobject]@{Exists=[bool]$feature.Installed;Name=$feature.Name}}elseif($Spec.PSObject.Properties['SettingTransition']){[pscustomobject]@{Exists=$script:settingState.Exists;Value=$script:settingState.Value;ValueKind=$script:settingState.ValueKind}}else{& $script:nativeAssistiveAdapterState $Spec}}
+        $featureItem=[pscustomobject]@{ItemId=$script:testItemId;Name='Feature fixture';Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='WindowsFeature';Desired=[pscustomobject]@{Name='Fixture-Feature';IsolationEvidence='Owner-approved isolated maintenance window.';SideEffects=@()}}}
+        $featurePackage=[pscustomobject]@{Root=$root;SHA256=('a'*64);PlanHash=('b'*64);Plan=[pscustomobject]@{SchemaVersion=3;Items=@($featureItem)};Manifest=[pscustomobject]@{PairId='pair-feature-loop';PlanHash=('b'*64);Generation=21;Final=$true;Target=[pscustomobject]@{Fingerprint=('c'*64)}}}
+        $script:assistiveLoopPackage=$featurePackage;$script:assistiveLoopState.ManifestHash='';$script:assistiveLoopState.Generation=0;$script:assistiveLoopState.Stage='NotStarted';$script:assistiveLoopState.Items=@();$script:assistiveLoopState.PendingOperations=@()
+        $featurePreview=Get-WsmAssistiveRestorePreview -ManifestPath 'fixture' -ExpectedHash ('a'*64) -StateDirectory $featureRoot -AssistiveDecisionReceiptPath 'fixture-receipt' -AssistiveDecisionReceiptHash ('4'*64) -AssistiveTargetSnapshotPath 'fixture-snapshot'
+        Check ($featurePreview.Rows[0].Status -ceq 'Ready') 'WindowsFeature Assistive preview did not pass the isolated native capability boundary.'
+        $featureApplied=Invoke-WsmAssistiveRestore $featurePackage ('a'*64) $featureRoot @{} @{} $null @() 'fixture-receipt' ('4'*64) 'fixture-snapshot' $featurePreview
+        $featureRecord=$featureApplied.Items[0];$baselinePath=Join-Path $featureRoot ($script:testItemId+'.installer-baseline.json')
+        $featureError='none';if($Error.Count){$featureError=[string]$Error[0].Exception.Message}
+        Check ($featureApplied.Stage -ceq 'RebootRequired' -and $featureRecord.Status -ceq 'RebootRequired' -and $featureRecord.InstallerResult.NativeResult -ceq 'SuccessRestart' -and $featureRecord.InstallerResult.RestartNeeded -ceq 'Yes') ('WindowsFeature Assistive consumer failed to persist restart result and RebootRequired state: '+($featureApplied|ConvertTo-Json -Depth 10 -Compress)+' error='+$featureError+' inner='+$script:featureDebugError+' trace='+(@($script:featureTrace)-join ','))
+        Check ([IO.File]::Exists($baselinePath) -and (Get-FileHash -LiteralPath $baselinePath -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $featureRecord.InstallerBaselineHash -and $featureRecord.InstallerBaselinePath -ceq $baselinePath) 'WindowsFeature installer baseline was not durably written and hash-bound before native installation.'
+        $featurePreview=Get-WsmAssistiveRestorePreview -ManifestPath 'fixture' -ExpectedHash ('a'*64) -StateDirectory $featureRoot -AssistiveDecisionReceiptPath 'fixture-receipt' -AssistiveDecisionReceiptHash ('4'*64) -AssistiveTargetSnapshotPath 'fixture-snapshot'
+        Check ($featurePreview.Rows[0].Status -ceq 'DeferredSoftware' -and $script:featureInstallCalls -eq 1) 'WindowsFeature retry was allowed before a changed boot stamp proved reboot completion.'
+        $featureBootBefore=$featureRecord.BootBefore
+        $featureOperation=[pscustomobject]@{ItemId=$script:testItemId;Phase='AssistiveAdapterCreating';Adapter='WindowsFeature';ManifestHash=('a'*64);Generation=21;Before=[pscustomobject]@{Exists=$false};DesiredHash=(Get-WsmHashText ($featureItem.MigrationSpec.Desired|ConvertTo-Json -Depth 40 -Compress));AbsentBefore=$true;BootBefore=$featureBootBefore;InstallerBaselinePath=$baselinePath;InstallerBaselineHash=$featureRecord.InstallerBaselineHash;FolderCreateIntents=@();AuxiliaryOwnership=@()}
+        $featureRepairState=[pscustomobject]@{Items=@();PendingOperations=@($featureOperation);Stage='Running'}
+        $script:featureBootStamp=$featureBootBefore
+        Complete-WsmAssistiveOperationRepair $featureItem $featureOperation $featurePackage ([pscustomobject]@{Root=$featureRoot;State=$script:assistiveLoopPaths.State;Journal=$script:assistiveLoopPaths.Journal}) $featureRepairState | Out-Null
+        Check ($featureRepairState.Stage -ceq 'RebootRequired' -and $featureRepairState.Items[0].Status -ceq 'RebootRequired') 'Interrupted WindowsFeature recovery did not reconstruct the durable RebootRequired stage.'
+        $script:featureBootStamp='boot-after';$featurePreview=Get-WsmAssistiveRestorePreview -ManifestPath 'fixture' -ExpectedHash ('a'*64) -StateDirectory $featureRoot -AssistiveDecisionReceiptPath 'fixture-receipt' -AssistiveDecisionReceiptHash ('4'*64) -AssistiveTargetSnapshotPath 'fixture-snapshot'
+        Check ($featurePreview.Rows[0].Status -ceq 'Ready') 'WindowsFeature retry remained blocked after the simulated boot stamp changed.'
+        $featureRetry=Invoke-WsmAssistiveRestore $featurePackage ('a'*64) $featureRoot @{} @{} $null @() 'fixture-receipt' ('4'*64) 'fixture-snapshot' $featurePreview
+        Check ($featureRetry.Results[0].Status -ceq 'Succeeded' -and $featureRetry.Stage -ceq 'Succeeded' -and $script:featureInstallCalls -eq 1 -and $featureRetry.Items[0].InstallerResult.NativeResult -ceq 'SuccessRestart') 'WindowsFeature post-reboot retry reinstalled the role or lost the original native restart receipt.'
+
+        # Drive the real setting-transition coordinator from a schema-3
+        # Assistive item; only the machine setting native snapshot/write API is
+        # replaced so the host registry is untouched.
+        $script:settingState=[pscustomobject]@{Exists=$true;Value='fixture-before';ValueKind='String'}
+        Set-Item Function:\Get-WsmSettingNativeSnapshot -Value {param($Transition)$script:settingState.PSObject.Copy()}
+        Set-Item Function:\Set-WsmSettingNativeState -Value {param($Transition,$State)$script:settingState=[pscustomobject]@{Exists=[bool]$State.Exists;Value=[string]$State.Value;ValueKind=[string]$State.ValueKind}}
+        $transition=New-WsmSettingTransition -Adapter MachineEnvironment -Action UpdateReviewed -Name NLS_LANG -Before ([pscustomobject]@{Exists=$true;Value='fixture-before';ValueKind='String'}) -After ([pscustomobject]@{Exists=$true;Value='fixture-after';ValueKind='String'}) -Owner 'Fixture owner' -Evidence 'Isolated consumer test with native setting API substituted.' -OwnerReviewHash ('9'*64)
+        $settingItem=[pscustomobject]@{ItemId=$script:testItemId;Name='Reviewed setting';Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='MachineEnvironment';Desired=[pscustomobject]@{Name='NLS_LANG';Value='fixture-after'};SettingTransition=$transition}}
+        $settingPackage=[pscustomobject]@{Root=$root;SHA256=('a'*64);PlanHash=('b'*64);Plan=[pscustomobject]@{SchemaVersion=3;Items=@($settingItem)};Manifest=[pscustomobject]@{PairId='pair-setting-loop';PlanHash=('b'*64);Generation=22;Final=$true;Target=[pscustomobject]@{Fingerprint=('c'*64)}}}
+        $settingRoot=Join-Path $root 'setting-state';[void][IO.Directory]::CreateDirectory($settingRoot);$script:assistiveLoopPaths=[pscustomobject]@{Root=$settingRoot;State=(Join-Path $settingRoot 'state.json');Journal=(Join-Path $settingRoot 'journal.jsonl')};$script:assistiveLoopPackage=$settingPackage
+        $script:assistiveLoopState=[pscustomobject]@{PairId='pair-setting-loop';TargetFingerprint=('c'*64);PlanHash=('b'*64);RunId=[Guid]::NewGuid().ToString();Sequence=0;JournalHash=('0'*64);Items=@();PendingOperations=@();Cutover=$null;ManifestHash='';Generation=0;Stage='NotStarted';AssistiveFileResults=@()}
+        $settingPreview=Get-WsmAssistiveRestorePreview -ManifestPath 'fixture' -ExpectedHash ('a'*64) -StateDirectory $settingRoot -AssistiveDecisionReceiptPath 'fixture-receipt' -AssistiveDecisionReceiptHash ('4'*64) -AssistiveTargetSnapshotPath 'fixture-snapshot'
+        Check ($settingPreview.Rows[0].Action -ceq 'ApplySettingTransition' -and $settingPreview.Rows[0].Status -ceq 'Ready') 'Reviewed MachineEnvironment transition did not reach the Assistive preview consumer.'
+        $settingApplied=Invoke-WsmAssistiveRestore $settingPackage ('a'*64) $settingRoot @{} @{} $null @() 'fixture-receipt' ('4'*64) 'fixture-snapshot' $settingPreview
+        Check ($script:settingState.Value -ceq 'fixture-after' -and $settingApplied.Results[0].Status -ceq 'Succeeded' -and $settingApplied.Items[0].SettingTransitionReceipt.Status -ceq 'Applied') 'Assistive restore did not invoke the real transition coordinator and native exact readback path.'
+        Check ((Test-WsmSettingTransitionRecordOwnership $settingApplied.Items[0] $settingItem.MigrationSpec ('c'*64)) -and $settingApplied.Items[0].UpdatedByTool -and -not $settingApplied.Items[0].CreatedByTool) 'Assistive setting transition did not retain its typed receipt and update ownership proof.'
+
+        $replayPair='pair-replay-feature';$replayRoot=Join-Path $root 'replay-state';[void][IO.Directory]::CreateDirectory($replayRoot);$replayPaths=[pscustomobject]@{Root=$replayRoot;State=(Join-Path $replayRoot 'state.json');Journal=(Join-Path $replayRoot 'journal.jsonl')};$script:assistiveLoopPaths=$replayPaths;$replayRun=[Guid]::NewGuid().ToString();$startRow=[pscustomobject][ordered]@{Sequence=1;PreviousHash=('0'*64);RunId=$replayRun;PairId=$replayPair;Utc=(Get-WsmUtc);Action='AssistiveRestoreStarted';ItemId='';Detail=[pscustomobject]@{ManifestHash=('a'*64);Generation=21}};$startText=$startRow|ConvertTo-Json -Depth 15 -Compress;$startHash=Get-WsmHashText $startText;$recoveredRow=[pscustomobject][ordered]@{Sequence=2;PreviousHash=$startHash;RunId=$replayRun;PairId=$replayPair;Utc=(Get-WsmUtc);Action='AssistiveAdapterRecovered';ItemId=$script:testItemId;Detail=[pscustomobject]@{ItemId=$script:testItemId;Status='RebootRequired';CreatedByTool=$true}};$recoveredText=$recoveredRow|ConvertTo-Json -Depth 15 -Compress;$recoveredHash=Get-WsmHashText $recoveredText
+        [IO.File]::WriteAllText($replayPaths.Journal,$startText+[Environment]::NewLine+$recoveredText+[Environment]::NewLine)
+        $replayState=[pscustomobject]@{SchemaVersion=1;ToolVersion='fixture';Kind='OperationState';BatchId='fixture';PairId=$replayPair;TargetFingerprint=('c'*64);PlanHash=('b'*64);RunId=$replayRun;ManifestHash=('a'*64);Generation=21;Stage='Running';Sequence=1;ResultSequence=0;JournalHash=$startHash;JournalSegment=0;Items=@();Evidence=@();Cutover=$null;PendingOperations=@()};Write-WsmJson $replayPaths.State $replayState
+        Restore-WsmJournalCheckpoint $replayPaths $replayState
+        Check ((Read-WsmJson $replayPaths.State).Stage -ceq 'RebootRequired') 'Journal checkpoint replay did not retain RebootRequired after interrupted feature recovery.'
+        Set-Item Function:\Get-WsmInstallerSnapshot -Value $script:nativeAssistiveInstallerSnapshot
+        Set-Item Function:\Get-WsmBootStamp -Value $script:nativeAssistiveBootStamp
+        Set-Item Function:\Get-WsmSettingNativeSnapshot -Value $script:nativeAssistiveSettingSnapshot
+        Set-Item Function:\Set-WsmSettingNativeState -Value $script:nativeAssistiveSetSetting
+        Set-Item Function:\Test-WsmInstallerConsumers -Value $script:nativeAssistiveInstallerConsumers
+        Set-Item Function:\Assert-WsmInstallerPolicy -Value $script:nativeAssistiveInstallerPolicy
+        Remove-Item Function:\Install-WindowsFeature -ErrorAction SilentlyContinue
+        Remove-Item Function:\Get-WindowsFeature -ErrorAction SilentlyContinue
+        Set-Item Function:\Get-WsmAssistiveRestoreDecision -Value $script:nativeAssistiveDecisionForLoop
+        Set-Item Function:\Test-WsmMigrationPackage -Value $script:nativeAssistiveTestPackageForLoop
+        Set-Item Function:\Assert-WsmMigrationHost -Value $script:nativeAssistiveAssertHostForLoop
+        Set-Item Function:\Get-WsmMachineIdentity -Value $script:nativeAssistiveMachineIdentityForLoop
+        Set-Item Function:\Get-WsmAssistiveNonCResultRows -Value $script:nativeAssistiveNonCRowsForLoop
+        Set-Item Function:\Assert-WsmAssistiveReceiptFresh -Value $script:nativeAssistiveAssertFreshForLoop
+        Set-Item Function:\Register-WsmAssistivePackageMaterials -Value $script:nativeAssistiveRegisterJobForLoop
+        Set-Item Function:\Get-WsmOperationPaths -Value $script:nativeAssistiveGetPathsForLoop
+        Set-Item Function:\Get-WsmOperationState -Value $script:nativeAssistiveGetStateForLoop
+        Set-Item Function:\Get-WsmAssistiveReservations -Value $script:nativeAssistiveReservationsForLoop
+        Set-Item Function:\Confirm-WsmOutputStateCheckpoint -Value $script:nativeAssistiveCheckpointForLoop
+        Set-Item Function:\Invoke-WsmIisConfigRestore -Value $script:nativeAssistiveIisWriteForLoop
+        Set-Item Function:\New-WsmIisManager -Value $script:nativeAssistiveNewIisManagerForLoop
+        Set-Item Function:\Get-WsmAdapterState -Value $script:nativeAssistiveAdapterState
+
         $deltaItem=[pscustomobject]@{ItemId=$script:testItemId;Name='preview single';Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='FileScope';TargetPath=(Join-Path $root 'delta-target')}}
         $deltaBase=[pscustomobject]@{SHA256=('e'*64);Manifest=[pscustomobject]@{PairId='0123456789abcdef0123456789abcdef';Generation=4};Plan=[pscustomobject]@{SchemaVersion=3;Items=@($deltaItem)}}
         $deltaCurrent=[pscustomobject]@{SHA256=('f'*64);Manifest=[pscustomobject]@{PairId=$deltaBase.Manifest.PairId;Generation=5};Plan=[pscustomobject]@{SchemaVersion=3;Assistive=[pscustomobject]@{ApprovedItemIds=@($script:testItemId)};Items=@($deltaItem)}}

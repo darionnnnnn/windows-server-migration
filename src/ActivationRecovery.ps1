@@ -2,7 +2,8 @@
     $spec=$Item.MigrationSpec
     if($spec.Adapter -eq 'FileScope'){if(-not $Package){return $false};$map=Resolve-WsmIdentityMap $Package.Plan @{};$fileCheck=Test-WsmFileScope $Item $Package $spec.TargetPath $map;return ($fileCheck.Passed -and $fileCheck.ActualHash -ceq $Ownership.ActualHash)}
     if($spec.Adapter -eq 'ManualWorkflow'){if(-not $State){return $false};return (Test-WsmEvidence $State $Item.ItemId ManualRestore $State.ManifestHash)}
-    $check=Test-WsmAdapterConfiguration $spec $Phase
+    $taskReceipts=@();if($spec.Adapter -ceq 'ScheduledTask'){if($State){$taskReceipts=@(Get-WsmTaskSecurityReceiptsForSpec $spec (Get-WsmTaskSecurityOwnershipReceipts $State))}elseif($Ownership -and $Ownership.PSObject.Properties['AuxiliaryOwnership']){$taskReceipts=@($Ownership.AuxiliaryOwnership)}}
+    $check=Test-WsmAdapterConfiguration $spec $Phase $taskReceipts
     if(-not $check.Passed){return $false}
     if($spec.Adapter -eq 'WindowsFeature' -and $Ownership.CreatedByTool){try{[void](Test-WsmInstallerConsumers $spec.Desired $Ownership.InstallerSafety $Phase)}catch{return $false}}
     $true

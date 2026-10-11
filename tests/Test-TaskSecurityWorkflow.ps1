@@ -55,7 +55,25 @@ try {
         $state=Invoke-WsmRestore $shared.Package.ManifestPath $shared.Package.SHA256 $shared.StatePath
         if($state.Stage -ne 'Succeeded' -or $state.Items.Count -ne 2 -or $state.Items[0].AuxiliaryOwnership.Count -ne 2 -or $state.Items[1].AuxiliaryOwnership.Count -ne 0){throw 'Shared folder receipt ownership was duplicated or not durably attached to its creator.'}
         if(-not $script:fixtureFolders.ContainsKey('\Ops\Nested\') -or -not $script:fixtureFolders.ContainsKey('\Ops\')){throw 'Nested target folders were not created.'}
+        $reservationPackage=Test-WsmMigrationPackage $shared.Package.ManifestPath $shared.Package.SHA256
+        foreach($reservationItem in $reservationPackage.Plan.Items){[void](Get-WsmAssistiveReservations $reservationItem $reservationPackage $shared.StatePath)}
+        $reservationRegistry=Get-WsmAssistiveResourceRegistry $shared.StatePath
+        $folderReservations=@($reservationRegistry.Resources | Where-Object ResourceKind -EQ TaskFolder)
+        if($folderReservations.Count -ne 3 -or @($folderReservations | Where-Object {$_.Owners.Count -ne 2}).Count){throw 'Real native task reservations did not permit distinct nested folders and matching shared folder definitions.'}
+        $reservationRevision=$reservationRegistry.Revision
+        foreach($reservationItem in $reservationPackage.Plan.Items){[void](Get-WsmAssistiveReservations $reservationItem $reservationPackage $shared.StatePath)}
+        if((Get-WsmAssistiveResourceRegistry $shared.StatePath).Revision -ne $reservationRevision){throw 'Native task reservation retry duplicated existing owners.'}
+        $replayPaths=Get-WsmOperationPaths $shared.StatePath $shared.PairId
+        $replaySeed=ConvertFrom-WsmJson ($state | ConvertTo-Json -Depth 40);$replaySeed.Sequence=0;$replaySeed.JournalHash=('0'*64);$replaySeed.Items=@();$replaySeed.PendingOperations=@()
+        Write-WsmJson $replayPaths.State $replaySeed;Restore-WsmJournalCheckpoint $replayPaths $replaySeed
+        if($replaySeed.Items.Count -ne 2 -or $replaySeed.Items[0].AuxiliaryOwnership.Count -ne 2 -or $replaySeed.PendingOperations.Count -or -not (Test-WsmJournal $shared.StatePath $shared.PairId).Consistent){throw 'Actual task creation callback journal failed exact checkpoint replay.'}
+        $retried=Invoke-WsmRestore $shared.Package.ManifestPath $shared.Package.SHA256 $shared.StatePath
+        if($retried.Stage -ne 'Succeeded' -or $retried.Items[0].AuxiliaryOwnership.Count -ne 2 -or $retried.Items[1].AuxiliaryOwnership.Count -ne 0){throw 'Owned task retry must verify shared folders while retaining only creator ownership.'}
+        $validation=Invoke-WsmValidation $shared.Package.ManifestPath $shared.Package.SHA256 $shared.StatePath
+        if($validation.Checks.Count -ne 2 -or @($validation.Checks | Where-Object {-not $_.ConfigurationPassed}).Count -or @($validation.Checks | Where-Object BusinessPassed -EQ $true).Count){throw 'Staged validation must reuse exact owned/shared folder receipts without inventing business evidence.'}
         $script:fixtureFolders['\Ops\Nested\'].SecuritySddl='O:SYG:SYD:(A;;FR;;;BA)'
+        $validationDrift=Invoke-WsmValidation $shared.Package.ManifestPath $shared.Package.SHA256 $shared.StatePath
+        if(@($validationDrift.Checks | Where-Object ConfigurationPassed -EQ $true).Count){throw 'Staged validation accepted folder ACL drift.'}
         $drift=Get-WsmRestorePreview $shared.Package.ManifestPath $shared.Package.SHA256 $shared.StatePath
         if(-not $drift.Blocked){throw 'Nested folder ACL drift was accepted for retry.'}
         $rollbackDrift=Get-WsmRollbackPreview $shared.Package.ManifestPath $shared.Package.SHA256 $shared.StatePath
@@ -65,6 +83,42 @@ try {
         $rolled=Invoke-WsmRollback $shared.Package.ManifestPath $shared.Package.SHA256 $shared.StatePath $rollback.PreviewHash ('ROLLBACK '+$shared.PairId)
         if($rolled.Stage -ne 'RolledBack' -or $script:fixtureTasks.Count -ne 0 -or $script:fixtureFolders.ContainsKey('\Ops\') -or $script:fixtureFolders.ContainsKey('\Ops\Nested\')){throw 'Rollback did not remove created tasks and last-use owned folders in reverse nesting order.'}
 
+        $activation=New-TaskSecurityFixture 'shared-activation' 2
+        $activationState=Invoke-WsmRestore $activation.Package.ManifestPath $activation.Package.SHA256 $activation.StatePath
+        $activationPackage=Test-WsmMigrationPackage $activation.Package.ManifestPath $activation.Package.SHA256
+        $activationPaths=Get-WsmOperationPaths $activation.StatePath $activation.PairId
+        $guardPackage=ConvertFrom-WsmJson ($activationPackage | ConvertTo-Json -Depth 60);$guardPackage.Plan.SchemaVersion=3;$guardPackage.Plan | Add-Member NoteProperty Assistive ([pscustomobject]@{ApprovedItemIds=@($guardPackage.Plan.Items.ItemId)})
+        foreach($guardItem in $guardPackage.Plan.Items){$guardSpec=$guardItem.MigrationSpec;$guardSpec | Add-Member NoteProperty SourceXml ([string]$guardSpec.Desired.Xml);$guardSpec | Add-Member NoteProperty SourceAutoStart 'true';$guardSpec | Add-Member NoteProperty StagedDisabled $true;$guardSpec | Add-Member NoteProperty ActivationPolicyFieldPointer 'Task/Settings/Enabled';$guardSpec | Add-Member NoteProperty ReviewedActivation ([pscustomobject]@{FinalState='Enabled';Owner='Fixture task owner';Reason='Preserve reviewed source enabled task intent';SourceAutoStart='true';FieldPointer='Task/Settings/Enabled'})}
+        $guardReceiptPath=Join-Path $activation.Root 'decision.json';$guardSnapshotPath=Join-Path $activation.Root 'snapshot.json'
+        $guardAttempt=[pscustomobject]@{ManifestHash=$guardPackage.SHA256;Generation=$guardPackage.Manifest.Generation;DecisionReceiptPath=$guardReceiptPath;DecisionReceiptHash=('4'*64);TargetSnapshotPath=$guardSnapshotPath;TargetSnapshotHash=('5'*64);SelectedItemIds=@($guardPackage.Plan.Items.ItemId)}
+        $activationState | Add-Member NoteProperty RestoreAttempt $guardAttempt -Force
+        foreach($guardRecord in $activationState.Items){$guardRecord | Add-Member NoteProperty AppliedManifestHash $guardPackage.SHA256 -Force;$guardRecord | Add-Member NoteProperty AppliedGeneration $guardPackage.Manifest.Generation -Force}
+        $script:guardDecisionFixture=[pscustomobject]@{Receipt=[pscustomobject]@{Decision='RestoreNow';TargetSnapshotHash=('5'*64)};ReceiptHash=('4'*64);ReceiptPath=$guardReceiptPath;SnapshotPath=$guardSnapshotPath;SelectedItemIds=@($guardPackage.Plan.Items.ItemId)}
+        $nativeDecisionGuard=(Get-Command Get-WsmAssistiveRestoreDecision -CommandType Function).ScriptBlock
+        Set-Item Function:\Get-WsmAssistiveRestoreDecision -Value {param($Package,$ManifestHash,$ReceiptPath,$ReceiptHash,$SnapshotPath)$script:guardDecisionFixture}
+        Assert-WsmAssistiveCutoverActivationIntent $guardPackage $activation.StatePath $activationState
+        $activationState.Cutover=[pscustomobject]@{Activations=@();NewTransactionsPossible=$true}
+        Invoke-WsmActivationSequence $activationPackage $activationPaths $activationState
+        if($activationState.Cutover.Activations.Count -ne 2 -or @($activationState.Cutover.Activations | Where-Object Status -NE Completed).Count -or @($script:fixtureTasks.Values | Where-Object {$_.Settings.Enabled -ne $true}).Count){throw 'Native task activation failed to reuse owned/shared security receipts.'}
+        foreach($guardItem in $guardPackage.Plan.Items){$activationState.Cutover.Activations | Where-Object ItemId -CEQ $guardItem.ItemId | ForEach-Object {$_.SpecHash=Get-WsmHashText ($guardItem.MigrationSpec | ConvertTo-Json -Depth 40 -Compress)}}
+        Assert-WsmAssistiveCutoverActivationIntent $guardPackage $activation.StatePath $activationState
+        $firstActivation=$activationState.Cutover.Activations[0];$firstGuardItem=@($guardPackage.Plan.Items | Where-Object ItemId -CEQ $firstActivation.ItemId)[0];$firstActivation.Status='Intent';Assert-WsmAssistiveCutoverActivationIntent $guardPackage $activation.StatePath $activationState;$firstActivation.Status='Completed'
+        Disable-ScheduledTask -TaskName $firstGuardItem.MigrationSpec.Desired.TaskName -TaskPath $firstGuardItem.MigrationSpec.Desired.TaskPath
+        $completedStageRejected=$false;try{Assert-WsmAssistiveCutoverActivationIntent $guardPackage $activation.StatePath $activationState}catch{$completedStageRejected=$true}
+        if(-not $completedStageRejected){throw 'Completed Assistive activation checkpoint accepted a staged-only task.'}
+        $firstActivation.Status='Intent';Assert-WsmAssistiveCutoverActivationIntent $guardPackage $activation.StatePath $activationState
+        Enable-ScheduledTask -TaskName $firstGuardItem.MigrationSpec.Desired.TaskName -TaskPath $firstGuardItem.MigrationSpec.Desired.TaskPath
+        $firstActivation.Status='Completed';$firstActivation.SpecHash=('f'*64);$checkpointDriftRejected=$false;try{Assert-WsmAssistiveCutoverActivationIntent $guardPackage $activation.StatePath $activationState}catch{$checkpointDriftRejected=$true}
+        if(-not $checkpointDriftRejected){throw 'Assistive activation guard accepted a changed checkpoint spec binding.'}
+        $firstActivation.SpecHash=Get-WsmHashText ($firstGuardItem.MigrationSpec | ConvertTo-Json -Depth 40 -Compress)
+        Set-Item Function:\Get-WsmAssistiveRestoreDecision -Value $nativeDecisionGuard
+        foreach($originalItem in $activationPackage.Plan.Items){$activationState.Cutover.Activations | Where-Object ItemId -CEQ $originalItem.ItemId | ForEach-Object {$_.SpecHash=Get-WsmHashText ($originalItem.MigrationSpec | ConvertTo-Json -Depth 40 -Compress)}}
+        $script:fixtureFolders['\Ops\Nested\'].SecuritySddl='O:SYG:SYD:(A;;FR;;;BA)'
+        $activationDriftBlocked=$false;try{Invoke-WsmActivationSequence $activationPackage $activationPaths $activationState -Resume}catch{$activationDriftBlocked=$true}
+        if(-not $activationDriftBlocked){throw 'Completed task activation resume accepted shared folder security drift.'}
+        $script:fixtureFolders['\Ops\Nested\'].SecuritySddl=$script:fixtureNestedSddl
+        Invoke-WsmActivationSequence $activationPackage $activationPaths $activationState -Resume
+        if($activationState.Cutover.Activations.Count -ne 2){throw 'Completed task activation resume duplicated checkpoints.'}
         $interrupted=New-TaskSecurityFixture 'interrupted-create' 1 -InterruptAfterCreate
         $failed=$false;try{Invoke-WsmRestore $interrupted.Package.ManifestPath $interrupted.Package.SHA256 $interrupted.StatePath | Out-Null}catch{$failed=$true}
         if(-not $failed -or $script:fixtureTasks.Count -ne 0 -or -not $script:fixtureFolders.ContainsKey('\Ops\')){throw 'Injected post-create/readback interruption did not preserve the folder intent boundary.'}

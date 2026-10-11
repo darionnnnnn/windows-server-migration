@@ -49,7 +49,7 @@ function Get-WsmAssistiveTypedResourceIdentity([string]$TargetFingerprint,[strin
     $name=$ResourceName.Trim();if(-not $name -or $name.Length -gt 512 -or $name -match '[\x00-\x1f]'){throw 'Typed target resource name is empty, too long, or contains control characters.'}
     switch($ResourceKind){
         'TaskFolder' {if($name -notmatch '^\\'){throw 'Task folder identity must be an absolute task path.'};$name='\'+(($name -split '[\\/]+'|Where-Object {$_}) -join '\')}
-        'ScheduledTask' {if($name -notmatch '^\\.+\\[^\\]+$'){throw 'Scheduled task identity must include a canonical folder and task leaf.'};$parts=$name -split '[\\/]+'|Where-Object {$_};$name='\'+(@($parts|Select-Object -First ($parts.Count-1)) -join '\')+'\'+$parts[-1]}
+        'ScheduledTask' {if($name -notmatch '^\\[^\\]+(?:\\[^\\]+)*$'){throw 'Scheduled task identity must include an absolute folder path and task leaf.'};$parts=@($name -split '[\\/]+'|Where-Object {$_});$name='\'+($parts -join '\')}
         'IISPool' {if($name -match '[\\/]'){throw 'IIS pool identity must be its exact pool name.'}}
         'IISSite' {if($name -notmatch '^(?:id:[0-9]+|name:.+)$'){throw 'IIS site identity must be `id:<numeric>` or `name:<exact>`.'}}
         'IISSection' {if($name -notmatch '^[^/\\]+/[^/\\]+(?:/[^/\\]+)*$'){throw 'IIS section identity must use canonical typed section path segments.'};$name=($name -split '/'|ForEach-Object {$_.ToLowerInvariant()}) -join '/'}
@@ -69,7 +69,7 @@ function Get-WsmAssistiveResourceReservationPreview {
     }
     $registry=Get-WsmAssistiveResourceRegistry $Workspace;$key=Get-WsmHashText $targetIdentity
     $existing=@($registry.Resources|Where-Object ResourceKey -CEQ $key);if($existing.Count -gt 1){throw 'Resource registry contains duplicate physical ownership records.'}
-    $conflicts=@();$overlappingRecords=@($registry.Resources|Where-Object {$_.ResourceKind -ceq $ResourceKind -and $_.TargetFingerprint -ceq $TargetFingerprint -and (Test-WsmAssistiveResourceOverlap ([string]$_.CanonicalPhysicalPath) ([string]$(if($ResourceKind -eq 'FileScope'){$resource.CanonicalPhysicalPath}else{$ResourceName})))})
+    $conflicts=@();$overlappingRecords=@($registry.Resources|Where-Object {$_.ResourceKind -ceq $ResourceKind -and $_.TargetFingerprint -ceq $TargetFingerprint -and (($ResourceKind -ceq 'FileScope' -and (Test-WsmAssistiveResourceOverlap ([string]$_.CanonicalPhysicalPath) ([string]$resource.CanonicalPhysicalPath))) -or ($ResourceKind -cne 'FileScope' -and $_.ResourceKey -ceq $key))})
     foreach($rec in $overlappingRecords){foreach($owner in @($rec.Owners)){if($owner.SourceHash -ine $SourceHash -or $owner.ResourceName -cne $resourceName -or $owner.ResourceKind -cne $ResourceKind){$conflicts+=@($owner)}}}
     $canonicalPath=if($ResourceKind -eq 'FileScope'){$resource.CanonicalPhysicalPath}else{$ResourceName}
     $preview=[pscustomobject][ordered]@{SchemaVersion=1;Kind='AssistiveResourceReservationPreview';RegistryRevision=$registry.Revision;PairId=$PairId;ItemId=$ItemId.ToLowerInvariant();Channel=$Channel;ResourceKind=$ResourceKind;ResourceName=$resourceName;TargetFingerprint=$TargetFingerprint;ResourceKey=$key;PhysicalIdentity=$targetIdentity;CanonicalPhysicalPath=$canonicalPath;Path=$resourceName;ProviderId=$providerIdentity;SourceHash=$SourceHash.ToLowerInvariant();ConsumerRefs=@($ConsumerRefs|Sort-Object -Unique);ExistingOwners=$(if($existing.Count){@($existing[0].Owners)}else{@()});Conflicts=$conflicts;CanReserve=($conflicts.Count -eq 0);CreatedUtc=(Get-WsmUtc)}

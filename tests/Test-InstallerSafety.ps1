@@ -10,6 +10,11 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
     $script:installerObjects=@($baseline.Items[0],[pscustomobject]@{Kind='Service';ConfigHash=('b'*64);Name='Created';Mode='Auto';Running=$true})
     $result=Protect-WsmInstallerSideEffects $desired $baseline;if($result.Quarantined.Count -ne 1 -or $script:stopCalls -ne 1 -or $script:installerObjects[1].Running){throw 'Reviewed installer consumer not quarantined'}
     [void](Test-WsmInstallerConsumers $desired $result Staged)
+    $emptyDesired=[pscustomobject]@{Name='FixtureFeatureWithoutSideEffects';IsolationEvidence='fixture isolated servicing window';SideEffects=@()}
+    $script:installerObjects=@($baseline.Items[0]);$emptyResult=Protect-WsmInstallerSideEffects $emptyDesired $baseline
+    if(@($emptyResult.Quarantined).Count -ne 0){throw 'Empty installer side-effect list produced a phantom quarantined consumer'}
+    [void](Test-WsmInstallerConsumers $emptyDesired $emptyResult Staged);[void](Test-WsmInstallerConsumers $emptyDesired $emptyResult Final)
+    $script:installerObjects=@($baseline.Items[0],[pscustomobject]@{Kind='Service';ConfigHash=('b'*64);Name='Created';Mode='Disabled';Running=$false})
     function script:Set-Service {param($Name,$StartupType,$ErrorAction)$object=@($script:installerObjects | Where-Object Name -EQ $Name)[0];$object.Mode=$StartupType;if($StartupType -ceq 'Automatic'){$object.Mode='Auto'}}
     function script:Start-Service {param($Name,$ErrorAction)@($script:installerObjects | Where-Object Name -EQ $Name)[0].Running=$true}
     function script:Stop-Service {param($Name,$ErrorAction)@($script:installerObjects | Where-Object Name -EQ $Name)[0].Running=$false}

@@ -20,6 +20,7 @@ try {
     $shared=Join-Path $root 'shared-pool.config';[IO.File]::WriteAllText($shared,'prior configuration')
     $physical=(Resolve-WsmAssistivePhysicalResource $shared '').PhysicalIdentity
     Reject {Resolve-WsmAssistivePhysicalResource '\\server.example\share\pool.config' 'untrusted-provider-string'} 'Provider string alone was accepted as SMB physical identity proof.'
+    Check ((Get-WsmAssistiveTypedResourceIdentity ('a'*64) ScheduledTask '\RootTask') -ceq ('TypedTarget|'+('a'*64)+'|ScheduledTask|\roottask')) 'Root-level scheduled task resource identity was rejected or gained a duplicate separator.'
     $folderKey1=Get-WsmAssistiveTypedResourceIdentity ('a'*64) TaskFolder '\Microsoft\WSM'
     $folderKey2=Get-WsmAssistiveTypedResourceIdentity ('a'*64) TaskFolder '\microsoft/WSM/'
     Check ($folderKey1 -ceq $folderKey2) 'Task-folder resource identity did not canonicalize separators/case.'
