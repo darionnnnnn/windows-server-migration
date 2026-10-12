@@ -5,6 +5,7 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
  . $console
  $pair=$null
  if($Seed){
+  Initialize-WsmWizardWorkspace $Workspace 'Manager' | Out-Null
   Initialize-WsmWorkspace $Workspace | Out-Null
   $existing=Get-WsmFleet $Workspace
   if(@($existing.Pairs).Count){$pair=[string]$existing.Pairs[0].PairId}

@@ -2,11 +2,13 @@
 
 PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目標 Server 2016 → 2025、約十台主機。各台本機執行，管理端彙整文件與結果，不要求 WinRM。
 
-## 目前狀態（2026-10-11）
+## 目前狀態（2026-10-12）
 
-第四輪 A–E 已提供八頁工作台、角色任務與完整操作清單、繁中教學、跨頁資料一致性及提交結果恢復。Source／Target 可從常用任務建立本機盤點；Manager 核對可信材料、記錄目標快照並發布比較。操作仍使用既有 PowerShell 核心與核准流程。
+第五輪加入白話操作精靈、保存的選取進度、雙擊啟動器及獨立開發者環境探測。真 Edge 與正式本機 PowerShell handler 已驗證用途選擇、步驟版本檢查，以及 Manager 對隔離盤點資料的分組選取、保存與返回。這些有限旅程不代表備份封裝、非 C 槽交接或目標還原已完成；這些 E／F 後端與完整使用旅程仍在實作。
 
-能力與外部待辦見[實作狀態](docs/IMPLEMENTATION-0.1.md)，逐 Phase、修正及分版本驗證見[第四輪 PLAN](docs/plans/MIGRATION-4-PLAN.md)。原始傳輸仍為 **NotPassed**：保留 AdGuard 設定的本機環境可顯示初始 HTML，但動態工作台尚未通過完整旅程。外部 Server／產品／帳號／業務／PKI／規模驗收仍為 NotTested；ProductionVerified=false、ProductionExecutionEnabled=false，發行包未簽署。操作限制見[操作契約](docs/OPERATIONS.md)。
+一般使用者可從工具首頁按「開始／繼續操作」，選擇這台電腦的用途，再依「下一步」完成目前可用步驟。已驗證材料會帶入路徑、雜湊及版本等值；工具用途不等於權限或核准。另有左側「開發者環境探測」入口，以及不依賴網頁的本機命令列備援；探測只讀本機資訊，建立 ZIP、JSON、HTML，不會上傳。
+
+本工具處理受支援的網站、排程、服務、軟體設定及資料檔案；不備份或還原整機映像、作業系統、System State 或軟體本體。非 C 槽資料仍須走已核准通道。外部 Server／產品／帳號／業務／PKI／規模驗收仍為 NotTested；ProductionVerified=false、ProductionExecutionEnabled=false，發行包未簽署。詳見[實作狀態](docs/IMPLEMENTATION-0.1.md)、[第五輪計畫與逐段證據](docs/plans/MIGRATION-5-PLAN.md)及[操作契約](docs/OPERATIONS.md)。
 
 ## 專案用途與現行契約
 
@@ -55,13 +57,17 @@ PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目
 
 ## 操作
 
-以企業允許的方式部署同一份工具，使用系統管理員的 64 位元 Windows PowerShell 5.1：
+一般使用者可雙擊資料夾中的 `Start-ServerMigration.cmd` 啟動 x64 Windows PowerShell 5.1 和工作台；按畫面上的「開始／繼續操作」並依「下一步」前進。若存取被拒，請依企業程序以系統管理員身分重新啟動。啟動器不會繞過執行政策；政策封鎖時請管理員核准工具。
+
+資訊人員可用 PowerShell 命令啟動工作台：
 
 ```powershell
 powershell.exe -NoProfile -File C:\MigrationTools\Start-ServerMigration.ps1 -Action Html -Role Manager -Workspace D:\MigrationWork
 ```
 
-預設啟動本機 HTML 操作介面，僅綁定 127.0.0.1，關閉工具即停止。先選 Source／Manager／Target 與配對，再依盤點、匯入、審核、比較、封裝、還原及驗證步驟操作。操作需用本機 Windows PowerShell 5.1，沒有瀏覽器時加 `-Action Menu` 使用共用核心的文字選單。工作區含受控材料，必須依企業政策設權限及保留期限。
+預設啟動本機 HTML 操作介面，僅綁定 127.0.0.1，關閉工具即停止。一般流程以「舊主機」「新主機」「整理搬移資料的電腦」顯示用途；技術參數由有效工作材料推導，缺少可信輸入或核准時會停下說明。一般使用者無需手改 JSON。工作區含受控材料，必須依企業政策設權限及保留期限。沒有瀏覽器時，資訊人員可使用既有 `-Action Menu` 文字選單。
+
+開發者環境探測可由工作台左側入口一鍵執行；網頁不可用時可在本機執行 `powershell.exe -NoProfile -File .\Start-ServerMigration.ps1 -Action DeveloperProbe`。輸出位於工作區的 `developer-probes`，包含 ZIP、`probe.json` 及 HTML 摘要；匿名化 ZIP 不自動上傳，受保護原始盤點只保存在本機探測目錄。它是唯讀診斷，不是搬移備份或生產資格證明。
 
 測試主機無法連線给代理時，角色精靈 6 或 `-Action LabReport -Role Source／Target -Path D:\MigrationLabReports` 產生可複製貼回的文字驗證報告及完整 JSON；先跑環境檢查，再提供可信搬移包驗證本機逐項 readback。操作步驟見手冊的「測試主機結果複製貼回」。
 

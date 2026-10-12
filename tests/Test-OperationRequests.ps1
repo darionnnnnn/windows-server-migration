@@ -2,6 +2,9 @@
 $ErrorActionPreference='Stop'
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
 & $module {foreach($action in (Get-WsmOperationActions).GetEnumerator()){if($action.Value -isnot [string] -or @(Get-Command -Name $action.Value -CommandType Function -ErrorAction Stop).Count -ne 1){throw ('Operation action does not resolve to exactly one local function: '+$action.Key)}}}
+$worker=[Management.Automation.PowerShell]::Create()
+[void]$worker.AddScript('param($modulePath) Import-Module $modulePath -Force -DisableNameChecking; $module=Get-Module WindowsServerMigration; & $module { foreach($action in (Get-WsmOperationActions).GetEnumerator()){ if($action.Value -isnot [string] -or @(Get-Command -Name $action.Value -CommandType Function -ErrorAction Stop).Count -ne 1){throw ("Fresh operation worker cannot resolve mapped action: "+$action.Key)} } }').AddArgument($module.Path)
+try{[void]$worker.Invoke();if($worker.HadErrors){throw ($worker.Streams.Error[0].ToString())}}finally{$worker.Dispose()}
 $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-requests-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($root);$path=Join-Path $root 'request.json'
 foreach($request in @(
     @{SchemaVersion=1;ToolVersion='0.3.0';Kind='OperationRequest';Action='Invoke-Expression';Arguments=@{Command='bad'}},

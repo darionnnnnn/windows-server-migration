@@ -375,3 +375,10 @@ H01 的完整性清單擴充為原始七項需求、第 1／9 節定案、F01–
 - 驗證中修正實際核心缺陷：非 final package 不應登錄不存在的 freeze.json、材料批次需要 SHA256 欄位、新 FileScope 不具有 Desired 且 Prior／Undo 合法為 null、取消後需要耐久 Cancelled 狀態及停止 worker 的材料鎖釋放。第一次還原造成檔案系統改變，完成重試須核對已保存的 WizardPreviewHash 與精確材料／世代／收據／snapshot／選取綁定，不以改變後的 live rows 再次要求原預覽；第一次真正写入仍保留兩次新鮮預覽核對。
 - 本輪完整性仍未通過：Target 一般 UI 的 ZIP／Directory 匯入接線與取消 token scope 追加驗修中；F0 全 adapter 白話欄位、E 實際兩種備份 UI、NonC 正向 transfer／import 契約及結果、最終五條瀏覽器旅程與全專案體檢尚待完成。不得將 focused core PASS、沒有第二顆固定磁碟的 SKIP 或已有 payload bytes 當作整輪完成。
 - 主代理根據實際核心 TypedFields／Submit allowlist 補上 PrincipalUser、ConfigOverrides、IisConfigChanges、DesiredChanges 與 ActivationPolicyFieldPointer 白話表單，來源 row identity 維持唯讀；目前追加測試中，尚未以欄位存在代替各 adapter 真實 Submit 消費驗證。
+### 2026-10-12 B/C/G/H 基礎段落：原生旅程修正後通過
+
+- 精簡交付 JavaScript 最初漏帶 adoptWizardWriteProjection，主代理原生逐項及來源交接測試均明確失敗；補齊函式與 saveWizardState 的權威回應重用後，在相同受控 foundation runtime 快照重跑：Test-WizardJourney（9.3 秒）、Test-NativeWizardJourney（167.9 秒）、Test-NativeSourceHandoffJourney（57.5 秒）全部 exit 0。正式本機 HTML handler／耐久核心選擇／游標 CAS／來源匯出與管理匯入均被執行，沒有以 mocked API PASS 代替。
+- 修正精靈自行寫入的上下文確認：實際重新讀取 session，核對 contextId／用途／搬移工作與正確核心版本；catalog、沒有 catalog 的已接收計畫、未指定搬移工作的來源盤點，各自使用既有核心對應語意。inventoryRevision 不當作 session decisionRevision。其他視窗變更仍拒絕過期寫入。
+- 同步降低背景負荷：精靈讀取同時只進行一份；一般頁先載入主要操作，其餘展開時才取得預設值。主代理檢視 320px 原生審閱及管理交接畫面，控制項分隔／長文字換行正常；已綁定工作名稱的摘要與重複開啟提示另列下一 UI 段補強。
+- 新的精簡 runtime bytes 在 Windows PowerShell 5.1／PowerShell 7 Test-Qualification 再次通過（26.2／19.1 秒），實際發行清單、包含 CMD 的索引與雜湊一致。仍未企业簽署、ProductionVerified／ProductionExecutionEnabled=false。
+- E/F 完整編排、NonC 正向旅程、全 adapter 白話審閱及完整 UI 結果仍在後續相依段；本段不宣稱完整備份／還原精靈或整輪完成。

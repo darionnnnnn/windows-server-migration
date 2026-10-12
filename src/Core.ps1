@@ -184,11 +184,25 @@ function New-WsmInventory {
 }
 function Import-WsmInventory {
     [CmdletBinding()] param([Parameter(Mandatory)][string]$Workspace, [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)][string]$ExpectedHash, [string]$TargetName)
+        [Parameter(Mandatory)][string]$ExpectedHash, [string]$TargetName,
+        [Parameter(DontShow)][object[]]$SourceReviewIntent=@(),
+        [Parameter(DontShow)][string]$SourceReviewHandoffHash='')
     $inventory = Read-WsmTrustedJson $Path $ExpectedHash
     Assert-WsmInventory $inventory
     if ($inventory.PSObject.Properties['SoftwareCatalog']) { Assert-WsmSoftwareCatalog $inventory.SoftwareCatalog -SourceInventory $inventory | Out-Null }
     $sourceSnapshot=Read-WsmFileSnapshot $Path $ExpectedHash
+    $hasSourceReviewIntent=$PSBoundParameters.ContainsKey('SourceReviewIntent')
+    if($hasSourceReviewIntent -and ($SourceReviewHandoffHash -notmatch '^[a-fA-F0-9]{64}$')){throw 'Source review handoff artifact hash is required.'}
+    $validatedSourceIntent=@();$validatedIntentIndex=@{}
+    if($hasSourceReviewIntent){
+        $inventoryItemsById=@{};foreach($sourceItem in @($inventory.Items)){$inventoryItemsById[[string]$sourceItem.ItemId]=$sourceItem}
+        foreach($intent in @($SourceReviewIntent)){
+            Assert-WsmFields $intent @('ItemId','SettingsHash','Selected','Reason','Confirmed','InventoryHash','InventoryRevision') @('ItemId','SettingsHash','Selected','Reason','Confirmed','InventoryHash','InventoryRevision')
+            $id=[string]$intent.ItemId;if(-not $id -or $validatedIntentIndex.ContainsKey($id) -or -not $inventoryItemsById.ContainsKey($id) -or $intent.Selected -isnot [bool] -or $intent.Confirmed -isnot [bool] -or -not $intent.Confirmed -or [string]$intent.InventoryHash -ine $ExpectedHash -or [int]$intent.InventoryRevision -ne [int]$inventory.Revision -or [string]$intent.SettingsHash -ine [string]$inventoryItemsById[$id].SettingsHash -or [string]$intent.Reason -notmatch '^.{0,512}$'){throw 'Source review handoff choice is invalid or bound to a different inventory.'}
+            if(-not $intent.Selected -and [string]::IsNullOrWhiteSpace([string]$intent.Reason)){throw 'Source exclusion requires a clear review reason.'}
+            $validatedIntentIndex[$id]=$true;$validatedSourceIntent+=,$intent
+        }
+    }
     Invoke-WsmLocked $Workspace {
         $fleet = Get-WsmFleet $Workspace
         $existing = @($fleet.Pairs | Where-Object { $_.SourceHostId -ceq $inventory.Source.HostId })
@@ -225,10 +239,24 @@ function Import-WsmInventory {
             }
             $items.Add($item)
         }
+        $intentIndex=@{};$beforeHandoff=New-Object 'System.Collections.Generic.List[object]';$appliedHandoff=New-Object 'System.Collections.Generic.List[string]';$skippedHandoff=New-Object 'System.Collections.Generic.List[string]'
+        foreach($intent in $validatedSourceIntent){$intentIndex[[string]$intent.ItemId]=$intent}
+        foreach($item in @($items.ToArray())){
+            $id=[string]$item.ItemId;if(-not $intentIndex.ContainsKey($id)){continue};$intent=$intentIndex[$id];$sourceItem=@($inventory.Items|Where-Object ItemId -CEQ $id)
+            if($sourceItem.Count -ne 1 -or [string]$sourceItem[0].SettingsHash -ine [string]$intent.SettingsHash -or [string]$item.SettingsHash -ine [string]$intent.SettingsHash){throw 'Source review handoff item binding does not match the imported inventory.'}
+            if(-not $intent.Confirmed){$skippedHandoff.Add($id);continue}
+            if($intent.Selected -and ($item.Status -cne 'Success' -or $item.Kind -in @('DiscoveryGap','CollectorFailure','UnsupportedCollector') -or ($item.PSObject.Properties['Classification'] -and $item.Classification.Disposition -in @('SpecialProduct','Preparation','Unknown')))){$skippedHandoff.Add($id);continue}
+            $priorDecision=[string]$item.Decision
+            if($intent.Selected -and $priorDecision -ceq 'Exclude' -and [string]$item.RuleId -cne 'SourceReviewHandoff'){throw ('A source include conflicts with an existing Manager exclusion: '+$id)}
+            $beforeHandoff.Add([pscustomobject]@{ItemId=$id;Decision=[string]$item.Decision;Reason=[string]$item.Reason;ReviewedBy=[string]$item.ReviewedBy;ReviewedUtc=[string]$item.ReviewedUtc;RuleId=[string]$item.RuleId;SettingsHash=[string]$item.SettingsHash})
+            $item.Decision=if($intent.Selected){'Include'}else{'Exclude'};$item.Reason=if($intent.Selected){''}else{[string]$intent.Reason};$item.ReviewedBy=[Environment]::UserName;$item.ReviewedUtc=Get-WsmUtc;$item.RuleId='SourceReviewHandoff';$appliedHandoff.Add($id)
+        }
         foreach ($prior in $previous.Values) { if (-not $prior.ManualEntry) { $prior.Present=$false; $prior.Decision='Pending'; $prior.Reason='No longer observed; investigate before approval.' }; $items.Add($prior) }
         $decisionRevision=0
         if ($old) { $decisionRevision=$old.DecisionRevision+1 }
+        elseif($appliedHandoff.Count){$decisionRevision=1}
         $history=@(); if ($old) { $history=@($old.History)+@([pscustomobject]@{ Revision=$decisionRevision; Action='Inventory'; Utc=(Get-WsmUtc) }) }
+        if($appliedHandoff.Count){$history+=@([pscustomobject]@{Actor=(Get-WsmExecutionActor);Revision=$decisionRevision;Action='SourceReviewHandoff';Before=$beforeHandoff.ToArray();ItemIds=@($appliedHandoff.ToArray());InventoryHash=$ExpectedHash.ToLowerInvariant();SkippedItemIds=@($skippedHandoff.ToArray());Utc=(Get-WsmUtc)})}
         $pair.SourceName=$inventory.Source.Name
         $snapshotDirectory=Join-Path (Join-Path $Workspace 'assistive') 'snapshots'
         if(-not [IO.Directory]::Exists($snapshotDirectory)){[void][IO.Directory]::CreateDirectory($snapshotDirectory);Protect-WsmDirectory $snapshotDirectory}
@@ -245,6 +273,14 @@ function Import-WsmInventory {
         if ($old -and $old.PSObject.Properties['Assistive']) {
             $catalog | Add-Member NoteProperty Assistive (New-WsmAssistiveCatalogContract $pair.PairId ('assistive/snapshots/'+$ExpectedHash.ToLowerInvariant()+'.json') $ExpectedHash.ToLowerInvariant() ([int]$inventory.Revision) @($items.ToArray()) $old.Assistive)
             $catalog.SchemaVersion=3;$catalog.ToolVersion='0.4.0'
+        }
+        if($hasSourceReviewIntent){
+            if(-not $catalog.PSObject.Properties['Assistive']){$catalog | Add-Member NoteProperty Assistive (New-WsmAssistiveCatalogContract $pair.PairId ('assistive/snapshots/'+$ExpectedHash.ToLowerInvariant()+'.json') $ExpectedHash.ToLowerInvariant() ([int]$inventory.Revision) @($items.ToArray()) $null)}
+            $decisionIndex=@{};foreach($row in @($catalog.Items)){$decisionIndex[[string]$row.ItemId]=$row};$appliedIndex=@{};foreach($id in @($appliedHandoff.ToArray())){$appliedIndex[[string]$id]=$true};$changedSelection=$false
+            foreach($selection in @($catalog.Assistive.Selections.Items)){if(-not $appliedIndex.ContainsKey([string]$selection.ItemId)){continue};$item=$decisionIndex[[string]$selection.ItemId];$selected=($item.Decision -ceq 'Include');if([bool]$selection.Selected -ne $selected){$selection.Selected=$selected;$selection.Reason=if($selected){''}else{$item.Reason};$selection.UpdatedUtc=Get-WsmUtc;$changedSelection=$true}}
+            if($changedSelection){$catalog.Assistive.Selections.Revision++;$catalog.Assistive.Revision++;$catalog.History+=@([pscustomobject]@{Actor=(Get-WsmExecutionActor);Action='AssistiveSelections';AssistiveRevision=[int]$catalog.Assistive.Revision;ItemIds=@($catalog.Items|Where-Object {$_.Decision -ceq 'Include'}|ForEach-Object {[string]$_.ItemId});Selected=$true;Reason='Imported confirmed Source review handoff';Utc=(Get-WsmUtc)})}
+            $catalog.SchemaVersion=3;$catalog.ToolVersion='0.4.0'
+            $catalog | Add-Member NoteProperty SourceReviewHandoff ([pscustomobject][ordered]@{HandoffHash=$SourceReviewHandoffHash.ToLowerInvariant();InventoryHash=$ExpectedHash.ToLowerInvariant();ToolFingerprint=(Get-WsmToolFingerprint);ConfirmedChoiceIds=@($validatedSourceIntent|ForEach-Object {[string]$_.ItemId});ImportedUtc=(Get-WsmUtc);AuthoritativeApproval=$false}) -Force
         }
         if ($old -and $old.PSObject.Properties['GeneralHost']) {
             if(-not $catalog.PSObject.Properties['Assistive']){$catalog.SchemaVersion=2};$priorSoftwareDecisions=@($old.GeneralHost.SoftwareDecisions);$general=$old.GeneralHost;$validIds=@{};foreach($item in @($items.ToArray())){$validIds[$item.ItemId]=$true}

@@ -1,18 +1,34 @@
-# 0.4 操作契約
+# 操作契約與第五輪精靈
 
-## 第四輪 HTML 工作台（實作與可驗證範圍完成；傳輸例外保留）
+## 一般使用者：從用途開始
+
+雙擊套件中的 `Start-ServerMigration.cmd` 開啟工作台，按「開始／繼續操作」，再依畫面按「下一步」。選擇這台電腦的用途：**舊主機**、**新主機**，或**整理搬移資料的電腦**。已登記用途會在下次啟動時恢復；工作區用途只是操作上下文，不能改變 Windows 權限、核心角色 gate、材料信任或核准。啟動器使用 x64 Windows PowerShell 5.1，不加執行政策繞過參數；遇到政策封鎖，請管理員依組織程序核准。
+
+一般步驟會從目前有效的工作與可信材料帶入可確認的路徑、雜湊、版本及 revision。使用者只需提供工具無法可靠推導的意圖或外部責任證據。舊主機可掃描並逐組決定支援項目；目前持久保存的精靈選取不等於已建立備份。E 段自動封裝、C／非 C 成果核驗，以及 F 段材料交接、目標還原與續作尚未完成，不要以盤點成功或畫面顯示選取完成判定備份／還原成功。
+
+支援範圍是工具已實作的網站、排程、服務、軟體設定與資料檔案；**不包含整機映像、作業系統、System State 或軟體本體**。非 C 槽資料仍受既有核准及跳板通道限制。自動選取只影響搬移項目選擇；開始備份前仍須符合 sealed plan、真實目標身分及有效核准。還原與正式啟用需要不同的明確確認和核心 gate；按「下一步」或選擇自動模式不會代替它們。
+
+左側「開發者環境探測」是獨立的一鍵唯讀診斷入口，不是一般備份步驟。網頁不可用時，可在本機執行 `powershell.exe -NoProfile -File .\Start-ServerMigration.ps1 -Action DeveloperProbe`。探測把 ZIP、匿名化 JSON 與 HTML 摘要寫入工作區 `developer-probes`；原始盤點留在受保護本機目錄，不自動上傳。權限或環境不適用的 collector 會列出狀態與缺口；探測不執行還原、服務啟動或其他寫入，也不代表 Server 資格或業務驗收通過。
+
+第五輪的真 Edge／正式本機 handler 證據涵蓋用途選擇及隔離盤點資料的分組選取、保存與返回；完整真實備份、非 C 傳輸及目標還原旅程尚未驗收。原始傳輸 **NotPassed** 狀態保留，不以 mock 或 fixture 改寫。外部 Server／產品／帳號／業務／PKI／規模仍為 NotTested；`ProductionVerified=false`、`ProductionExecutionEnabled=false`，發行包未簽署。最新逐段證據見[實作狀態](IMPLEMENTATION-0.1.md)及[第五輪計畫](plans/MIGRATION-5-PLAN.md)。
+
+## 進階操作與既有核心契約
+
+以下既有詳細契約適用於資訊人員使用的進階工具及核心操作；當前 UI 精靈尚未把每個進階核心操作接成一般使用者旅程。
+
+## 第四輪 HTML 工作台基線（歷史說明）
 
 工作台已實作八個頁面：工作總覽、盤點與選取、軟體差異、檔案與路徑、操作中心、作業與交接、說明與教學、文件中心；以 hash 連結導覽，可使用瀏覽器上一頁／下一頁及有效直接連結。教學經本機資源 `/ui/guide.html` 提供，完整手冊與文件中心可另開；文件中心按起步、角色操作、差異與清單、設定／路徑、驗證／交接、恢復／疑難分類。請先閱讀[主機搬移操作指引](../src/ui/guide.html)及[完整操作手冊](ASSISTIVE-OPERATIONS.html)；離線文件頁不能替代工作台當下的資料、核心檢查或核准。
 
 Source、Manager、Target 是操作上下文，不是登入身分或權限授予。各主機本機執行；Manager 匯入可信材料並審閱，不能以 Manager 角色遠端操作 Target。Owner 欄位是責任聲明，不驗證填寫者。
 
-常用任務只導向既有具名 action 與 typed 表單，完整進階 allowlist 仍可搜尋。`Inventory` 在 Source 或 Target 本機的 Windows Server／管理員／64 位 FullLanguage PowerShell 執行，需提供該主機專屬輸出目錄；`ImportInventory` 僅匯入來源盤點，需選擇盤點檔並核對其獨立可信 SHA-256；`AssistiveEnable` 使用目前配對／角色上下文；選取保存時每個未選項目都必須附原因。目標端先取得可信目標盤點，再由 Manager 提交 `TargetSnapshot`（目標材料路徑及其可信 SHA-256）並 `PublishComparison`；重新載入舊比較不會重新探測目標。核准後才可選擇封包、還原及後續驗證。表單欄位說明尚未涵蓋所有專業證據欄位；不確定欄位用途時先查手冊及核准流程，不以空值或自填路徑繞過檢查。
+第四輪常用任務以具名 action 與 typed 表單呈現，完整進階 allowlist 可搜尋。第五輪增加用途導引與保存的精靈選取，但 E／F 的真實封裝、非 C 核驗及目標還原尚未完成。以下 action 說明是進階操作契約，不表示新精靈已接好該操作。`Inventory` 在 Source 或 Target 本機的 Windows Server／管理員／64 位 FullLanguage PowerShell 執行；`ImportInventory` 匯入來源盤點並核對獨立可信 SHA-256；`AssistiveEnable` 使用目前配對／角色上下文。目標端先取得可信目標盤點，再由 Manager 提交 `TargetSnapshot`（目標材料路徑及其可信 SHA-256）並 `PublishComparison`；重新載入舊比較不會重新探測目標。只有有效核准後才可進入封包、還原及後續驗證。表單欄位不涵蓋所有專業證據欄位；不確定時查手冊及核准流程，不以空值或自填路徑繞過檢查。
 
 操作結果請回到「作業與交接」按權威 OperationId 檢查。提交逾時或回應中斷時，先查是否已有該工作紀錄，不要盲目重送。關閉瀏覽器、停止本機 PowerShell 程序及要求取消是不同動作；取消要求不代表工作已停止。報告以經驗證的路徑與 hash 交由 Windows 預設應用程式開啟，可能另開視窗或程式，不保證是瀏覽器新分頁。
 
 功能與驗證範圍見[實作狀態](IMPLEMENTATION-0.1.md)，分版本證據集中於開發 PLAN。提交等待期間再次保存會被阻擋；保留第一筆 OperationId，先查清其權威結果再決定後續操作。
 
-原始傳輸完整性為 **NotPassed**：保留 AdGuard 設定的本機環境能顯示初始 HTML，但動態工作台完整旅程尚未通過。靜態 guide 可另頁閱讀，必要時使用文字選單／CLI。Node mock 或隔離 fixture 通過不能代替真實傳輸、企業主機及業務驗收；ProductionVerified=false、ProductionExecutionEnabled=false，發行包未簽署。
+原始傳輸完整性仍為 **NotPassed**：保留 AdGuard 設定的本機環境曾觀察到回應差異。後續真 Edge／正式 handler 已驗證有限的讀取、可逆保存及隔離資料精靈選取；不代表原始傳輸差異已解決，也不代表完整備份／還原旅程通過。Node mock 或隔離 fixture 不能代替尚未驗收的真實路徑、企業主機及業務驗收。`ProductionVerified=false`、`ProductionExecutionEnabled=false`，發行包未簽署。
 
 本版目前僅供明確批准的隔離 pilot。來源、目標與管理工作區各自本機執行。不得用此文件宣稱實際十台已完成遷移。
 

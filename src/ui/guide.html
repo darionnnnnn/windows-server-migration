@@ -1,114 +1,19 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-Hant">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light">
-  <title>Windows Server Migration｜說明與教學</title><link rel="stylesheet" href="console.css">
-</head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>主機搬移｜一步一步使用指引</title><link rel="stylesheet" href="console.css"></head>
 <body>
-  <a class="skip-link" href="#main">跳至主要內容</a>
-  <header class="topbar"><a class="brand" href="guide.html"><span class="brand-mark" aria-hidden="true">W</span><span>說明與教學 <small>Windows Server Migration</small></span></a><span class="session-line">可離線閱讀 · 本頁不執行操作</span><a class="quiet-button" href="index.html">返回操作工作台</a></header>
-  <main id="main" class="guide-main" tabindex="-1">
-    <p class="eyebrow">起步 · 任務 · 狀態 · 恢復</p><h1>主機搬移操作指引</h1>
-    <p class="lede">依角色找到下一步，再回到工作台的具名操作表單執行。教學只說明現有流程，不代替審閱、預覽、核准、目標主機操作或業務接受。</p>
-
-    <nav class="panel guide-section guide-index" aria-label="本頁章節">
-      <h2>本頁導覽</h2><ul>
-        <li><a href="#first-run">第一次使用</a></li><li><a href="#roles">三種角色與主機位置</a></li><li><a href="#pages">工作台八個頁面</a></li>
-        <li><a href="#journeys">常用任務</a></li><li><a href="#terms">重要名詞與狀態</a></li><li><a href="#uncertain">提交結果不明</a></li>
-        <li><a href="#lifecycle">分清頁面、程序與取消</a></li><li><a href="#evidence">快照與即時事實</a></li><li><a href="#reports">報告與文件</a></li><li><a href="#help">常見問題與安全恢復</a></li>
-      </ul>
-    </nav>
-
-    <section id="first-run" class="panel guide-section"><p class="eyebrow">起步</p><h2>第一次使用：先確認主機與工作區</h2>
-      <ol><li>在本次指定的來源、管理或目標主機，使用核准版本的工具與 Windows 執行身分。一般入口使用 Windows PowerShell 5.1 或已受驗的 PowerShell 7。</li>
-        <li>指定固定的 WorkRoot，並依工作建立或選擇 PairId。畫面應清楚顯示目前主機、角色、工作區與配對；有任何一項不符就停止操作。</li>
-        <li>使用入口提供的本機 loopback 網址開啟工作台。網址只供該台主機當次程序使用，不轉寄、不公開，也不從其他電腦連入。</li>
-        <li>先看工作總覽，再從盤點與選取、軟體差異或檔案與路徑進入相符任務。沒有配對或資料時，依畫面列出的初始化與匯入步驟取得第一份可信材料。</li>
-      </ol>
-      <p>以下是虛構的啟動格式示例；每台主機使用自己的固定 WorkRoot。這些命令只啟動本機工作台，不略過政策、不輸入核准或秘密，也不會自行執行移轉。</p>
-      <pre><code>.\Start-ServerMigration.ps1 -Workspace 'C:\MigrationDemo\source' -Role Source
-.\Start-ServerMigration.ps1 -Workspace 'C:\MigrationDemo\manager' -Role Manager
-.\Start-ServerMigration.ps1 -Workspace 'C:\MigrationDemo\target' -Role Target</code></pre>
-      <p>開始工作：<a href="index.html#inventory">前往「盤點與選取」</a> · <a href="index.html#operations">前往「操作中心」</a>。</p>
-      <p>Windows Server Core、沒有可用瀏覽器或政策禁止 loopback 時，可使用同一版本提供的文字選單。它沿用相同核心與核准要求；不需要安裝瀏覽器、開啟防火牆或新增服務。</p>
-    </section>
-
-    <section id="roles" class="panel guide-section"><p class="eyebrow">角色與責任</p><h2>三種角色：操作位置由主機決定</h2>
-      <div class="guide-cards">
-        <article><h3>Source｜來源主機</h3><p>盤點來源、補充必要發現、核對原始路徑與設定，產生受信任的來源材料。保留原始 bytes 與證據，不在來源端代替目標操作。</p></article>
-        <article><h3>Manager｜管理主機</h3><p>建立配對、匯入來源與目標證據、比較差異、審閱選取與相依、處理責任分工、核准及產生交接材料。Manager 角色本身不代表可遠端執行目標主機操作。</p></article>
-        <article><h3>Target｜目標主機</h3><p>在目標本機取得最新盤點、準備軟體與路徑、檢查收據與預覽、執行獲准還原、讀回結果並提交階段證據。原生寫入必須在正確目標及權限下完成。</p></article>
-      </div>
-      <p class="guide-note">角色是操作上下文與導引，不是 Windows 登入或權限系統。真正可執行範圍仍由執行者身分、核心檢查與本次核准決定。多個瀏覽器視窗共用同一個本機程序的角色、配對與工作區。</p>
-    </section>
-
-    <section id="pages" class="panel guide-section"><p class="eyebrow">頁面導覽</p><h2>工作台八個頁面各自回答一個問題</h2>
-      <dl class="guide-page-list">
-        <div><dt>工作總覽</dt><dd>目前是哪台主機、哪個角色與配對？資料何時更新？真實階段、阻擋及可採取的下一步是什麼？</dd></div>
-        <div><dt>盤點與選取</dt><dd>發現了哪些內容、哪些已選、哪些未選及原因？選取、相依與核准各自如何影響範圍？</dd></div>
-        <div><dt>軟體差異</dt><dd>來源版本、使用者選用版本、目標端觀測分別是什麼？誰負責手動補裝，何時需要重查？</dd></div>
-        <div><dt>檔案與路徑</dt><dd>原始路徑、保存位置與目標生效路徑是否一致？有哪些衝突、scope 限制或逐項人工重試？</dd></div>
-        <div><dt>操作中心</dt><dd>要做哪個常用任務或進階操作？在哪台主機、需要什麼欄位？預覽、確認及結果如何檢查？</dd></div>
-        <div><dt>作業與交接</dt><dd>OperationId 對應哪項工作？目前是執行中、部分完成、失敗、等待或取消要求？有哪些報告與恢復證據？</dd></div>
-        <div><dt>說明與教學</dt><dd>如何起步、依角色走流程、理解狀態並處理疑難？本頁可在新瀏覽器頁面離線閱讀。</dd></div>
-        <div><dt>文件中心</dt><dd>如何找到完整操作手冊、參考清單、報告及復原說明？文件中心只提供使用者文件與離線快照。</dd></div>
-      </dl>
-    </section>
-
-    <section id="journeys" class="panel guide-section"><p class="eyebrow">常用任務</p><h2>沿用具名操作逐步完成工作</h2>
-      <h3>來源：取得並保存可信材料</h3><ol><li>在來源主機執行 <code>Inventory</code>，指定輸出目錄並盤點主機、軟體、服務及工作負載；對無法可靠辨識的項目補充發現與責任說明。</li><li>檢查完整 IIS 設定、排程 XML 與安全設定、檔案範圍、C／非 C 分流和共享相依。未支援或無法解析的內容保留人工處置。</li><li>按畫面要求輸出受控材料並記錄路徑、SHA-256、來源主機與時間。Hash 用於確認 bytes 未變，不單獨證明製作者身分。<a href="index.html#inventory">回到盤點與選取</a>。</li></ol>
-      <h3>管理：比較、審閱並核准</h3><ol><li>以 <code>ImportInventory</code> 匯入來源盤點檔及其必要的 ExpectedHash，依來源身分與 TargetName 建立配對；此動作只建立來源 catalog，不匯入目標盤點。目標人員另取得可信盤點並交給 Manager，由 Manager 以 <code>TargetSnapshot</code> 的 Path 與 ExpectedHash 更新該配對，再執行 <code>PublishComparison</code>。之後以 <code>AssistiveEnable</code> 初始化輔助盤點／選取，分開核對來源版本、選用版本與目標觀測。</li><li>透過 <code>SaveSelection</code> 保存選取；每個未選項目都要提供原因，再逐項處理相依影響、檔案 scope、生效路徑、帳號／SID、IIS／排程 typed 設定與人工責任。預設選取不代表核准。</li><li>預覽整個有效集合；核對必要項、共享資源與目標阻擋，再由有權責任人依既有流程核准。保存核准材料與交接所需證據。<a href="index.html#operations">在操作中心執行具名操作</a>。</li></ol>
-      <h3>目標：準備、還原與讀回</h3><ol><li>目標人員先在目標主機取得可信盤點，透過受控離線材料交給 Manager。Manager 在自己的工作區以 <code>TargetSnapshot</code> 提供檔案路徑與獨立 ExpectedHash 記錄目標快照，再執行 <code>PublishComparison</code> 發布比較；這不是目標主機本機操作，也不需先以來源 <code>ImportInventory</code> 匯入。僅重新載入舊比較不會重新盤點主機。</li><li>軟體須由責任人手動安裝；安裝或改版後重新盤點、比較並檢查相關收據是否仍有效。等待補裝不是安裝工作，也不是還原成功。</li><li>逐檔預覽衝突與原路徑／生效路徑，確認本次範圍及核准。明確確認後執行，再檢查 durable job、階段結果與實際目標讀回。</li><li>檔案成功、C 通道完成、非 C 通道完成、原生設定 readback、業務 staged、切換核准、啟用與 BusinessFinal 各自記錄。未取得證據的階段保持未知或待處理。<a href="index.html#operations">查看操作表單與作業狀態</a>。</li></ol>
-      <p>對話式說明不會替你填核准、Owner、證據或確認欄位；不得以角色選擇代替執行者權限。進階操作仍可由完整清單到達。</p>
-    </section>
-
-    <section id="terms" class="panel guide-section"><p class="eyebrow">名詞與狀態</p><h2>用狀態文字判斷下一步，不猜成功</h2>
-      <dl class="guide-page-list">
-        <div><dt>已觀測／快照</dt><dd>在指定時間取得的來源或目標資料。Assistive.Revision、DecisionRevision、currentSelectionRevision 是三個獨立原生 revision，不可相加成一個數字；dataVersion 是 fleet／catalog 實際 bytes 的摘要。sourceSelectionRevision 另供來源 SpecReview 綁定；current-selection revision 則供 UI CAS 使用。共同核對這些值、配對、主機指紋與取得時間，才能判斷是否為同一份目前資料。</dd></div>
-        <div><dt>選取／核准</dt><dd>選取表達本次意願；核准綁定特定來源、選取與材料。兩者不同，選取不能授權執行。</dd></div>
-        <div><dt>Pending／Deferred</dt><dd>仍有責任或條件未完成。Pending 不等於失敗或成功；Deferred 代表此刻保留處理，須依下一步重查。</dd></div>
-        <div><dt>Partial／Interrupted</dt><dd>部分項目已有結果或作業中斷。保留同一工作區、journal 與證據，先查權威工作紀錄和恢復預覽。</dd></div>
-        <div><dt>NotObserved／Unknown</dt><dd>目前沒有足夠的可信資料。不得由空白推論「沒有問題」或把未知轉成成功。</dd></div>
-        <div><dt>Activated／BusinessFinal</dt><dd>啟用與業務接受是不同階段。完成啟用不代表業務已接受；BusinessFinal 必須在啟用後由責任人提供實際證據。</dd></div>
-        <div><dt>ProductionVerified</dt><dd>產品及環境資格由獨立證據建立。fixture、隔離測試或單次檔案讀回不能代替企業實機與業務驗收。</dd></div>
-      </dl>
-      <p>只有指標有明確分子、分母、計數單位與涵蓋範圍時才可讀成比例。項目數、檔案數、C／非 C 結果和業務驗收不可混成單一成功百分比。</p>
-    </section>
-
-    <section id="uncertain" class="panel guide-section"><p class="eyebrow">結果不明</p><h2>提交逾時或斷線時，先查同一筆作業</h2>
-      <ol><li>記下畫面顯示的 OperationId、時間、配對與當時動作；不要重新建立相同操作或因逾時連按提交。</li><li>在建立作業的同一瀏覽器分頁重新載入後，回到「作業與交接」查詢 pending 工作與權威紀錄。這個分頁的 sessionStorage 只保存非秘密的作業 metadata，不保存表單草稿、token 或秘密；其他分頁不會共用這份 sessionStorage。</li><li>如果本機程序重啟後使用了不同 port，網址 origin 也已改變；瀏覽器不會自動帶回舊 origin 的追蹤 metadata。手動輸入已記下的 OperationId，或在完整作業歷史中尋找該工作。</li><li>若結果仍不確定，保留 WorkRoot、journal、輸出材料及錯誤識別碼，交由具權限者查核；不要猜測「沒有執行」後另送新 operation。只有權威紀錄確認可安全重試並依核心流程重新檢查後，才重新預覽。</li></ol>
-      <p class="guide-note">讀取請求逾時可依提示重載；寫入請求逾時代表結果可能尚未確認。取消前端等待不會取消伺服端作業。不要把失去瀏覽器連線當作操作失敗或完成。</p>
-    </section>
-
-    <section id="lifecycle" class="panel guide-section"><p class="eyebrow">生命週期</p><h2>關閉頁面、停止程序與取消工作是三件事</h2>
-      <ul><li><strong>關閉或重新載入瀏覽器頁面：</strong>只關閉或重新載入頁面，不會自動取消工作。表單草稿只存在記憶體，reload 後會失去；sessionStorage 僅保存非秘密的作業追蹤 metadata，不保存草稿、token 或秘密。建立作業的同一分頁重新載入後，可用它查 pending 工作；其他分頁不共用該資料。</li>
-        <li><strong>停止本機 PowerShell 程序：</strong>會停止該程序提供的本機工作台服務。執行中的工作可能記錄為 Interrupted；重啟後需先查 journal、操作紀錄及恢復預覽，不能假設背景服務仍在運作。若重啟後換了 port，請以 OperationId 或完整歷史找回工作，不會自動沿用舊 origin 的追蹤資料。</li>
-        <li><strong>取消工作：</strong>是向核心送出取消要求。只有工作到達安全取消點並記錄實際停止狀態，才代表取消完成；CancelRequested 仍是要求中。</li>
-      </ul>
-      <p>共用程序是前提：同一台主機的多個工作台視窗共用角色、配對及工作區。追蹤 metadata 保存在建立作業的瀏覽器分頁 sessionStorage；同一分頁重新載入且仍使用相同 origin 時可用它查 pending，其他分頁及不同 origin 不會自動取得。草稿一律只在記憶體中，reload 後不保留。執行中已封存核准的作業須沿用核准時的原版工具 bytes，不可在作業中熱換工具；完成或安全結案後才依更新流程重新審閱。</p>
-    </section>
-
-    <section id="evidence" class="panel guide-section"><p class="eyebrow">時間與證據</p><h2>快照呈現取得當時事實，不會持續更新主機狀態</h2>
-      <p>來源盤點、目標快照、軟體比較、核准、收據與階段結果都有範圍與版本。Assistive.Revision、DecisionRevision、currentSelectionRevision 是三個獨立原生 revision，不可相加成單一數值；dataVersion 是 fleet／catalog 實際 bytes 的摘要。sourceSelectionRevision 另供來源 SpecReview 綁定；current-selection revision 則供 UI CAS 使用。共同核對配對、主機指紋、取得時間、三個 revision 與 dataVersion，才能判斷是否仍是同一份目前資料。</p>
-      <ul><li>「重新載入比較」只重讀或推導已保存材料，不會登入目標或重新盤點實機。</li><li>更新目標觀測必須由目標人員在正確主機取得可信盤點，再以受控離線材料交給 Manager；Manager 在自己的工作區以 Path 與 ExpectedHash 執行 TargetSnapshot，然後 PublishComparison。ImportInventory 僅用於來源 catalog。</li><li>更新軟體選用版本不改寫來源盤點事實；受影響的 comparison、receipt 或準備證據可能需要重新核驗。</li><li>Hash 可發現 bytes 改變；它不單獨證明來源可信、操作者身分、原生設定已生效或業務已接受。</li></ul>
-    </section>
-
-    <section id="reports" class="panel guide-section"><p class="eyebrow">報告與文件</p><h2>報告會交由 Windows 預設程式開啟</h2>
-      <p>工作台先核對報告參照及 hash，再把該檔案交給 Windows 預設程式。作業狀態 `Opened` 只表示已交由 Windows 開啟，不證明報告內容已顯示；預設程式可能另開視窗、使用既有視窗或其他關聯應用程式。若沒有看到報告，從受控工作區的報告位置重新開啟並確認 hash，不要把任意檔案路徑貼給 web 頁面。</p>
-      <p>教學頁與文件中心可另開瀏覽器頁面，提供離線閱讀；它們不建立新的角色或配對。可攜報告及證據資料夾需整份一起移動，保護來源清單、原始 XML、密碼與其他受控材料。</p>
-      <p><a href="../../docs/ASSISTIVE-OPERATIONS.html" target="_blank" rel="noopener">另開完整操作手冊</a> · <a href="../../docs/html/index.html" target="_blank" rel="noopener">另開文件中心</a></p>
-    </section>
-
-    <section id="help" class="panel guide-section"><p class="eyebrow">常見問題</p><h2>遇到問題時保留證據，再採取下一步</h2>
-      <h3>工作台顯示錯誤主機或配對</h3><p>停止提交。確認本機入口、角色、PairId 與 WorkRoot；若多視窗共用程序，先確認是否有其他視窗切換了上下文。</p>
-      <h3>軟體版本不符或比較過期</h3><p>由負責人手動準備軟體，取得新目標盤點，再發布比較。不要只更改畫面中的版本值就當成已安裝。</p>
-      <h3>檔案或設定無法放置</h3><p>查看逐項衝突、scope、consumer 與舊／新路徑。保留目的端既有內容，安排責任人檢查，不清空共用目錄、不合併既有文件，也不盲目改寫不透明 Arguments。</p>
-      <h3>工作中斷或讀回失敗</h3><p>保留同一工作區、journal、manifest 與來源材料。檢查失敗細節及恢復預覽後再選續跑、回復或交接；讀回未通過不能標成成功。</p>
-      <h3>報告連結無法開啟</h3><p>確認工作仍可存取、受控檔案存在且 hash 一致，再使用 Windows 預設程式開啟。不要編輯證據 JSON 讓 hash 通過。</p>
-      <h3>業務仍無法使用</h3><p>檔案與原生設定結果只是階段證據。由業務責任人確認身分、連線、排程、整合、監控、備份與實際流程，另行記錄 BusinessFinal 接受。</p>
-      <p class="guide-note">工具不自動安裝軟體、不新增遠端或常駐服務、不替你隱藏執行核准操作。遇到權限、正式資格或外部業務條件時，按組織的變更與交接流程升級處理。</p>
-    </section>
-    <footer class="page-footer"><span>離線操作指引</span><span>以目前工作區的權威紀錄與責任人決策為準</span><a href="index.html">返回操作工作台</a></footer>
-  </main>
-</body>
-</html>
+<a class="skip-link" href="#main">跳至主要內容</a>
+<header class="topbar"><a class="brand" href="guide.html"><span class="brand-mark" aria-hidden="true">W</span><span>使用指引 <small>主機搬移工具</small></span></a><span class="session-line">可離線閱讀 · 本頁不執行操作</span><a class="quiet-button" href="index.html#wizard">返回操作工作台</a></header>
+<main id="main" class="guide-main" tabindex="-1">
+<p class="eyebrow">開始 · 下一步 · 查看結果</p><h1>跟著畫面，一次完成一件事</h1>
+<p class="lede">從左側「開始／繼續操作」進入。看完目前這一步，選擇要搬移的內容，再按「下一步」。可以按「上一步」檢查已保存的選擇。</p>
+<nav class="panel guide-section guide-index" aria-label="本頁章節"><h2>本頁導覽</h2><ul><li><a href="#first-run">第一次開啟</a></li><li><a href="#roles">這台電腦的用途</a></li><li><a href="#journeys">三台電腦各自做什麼</a></li><li><a href="#choices">逐項詢問與自動備份</a></li><li><a href="#results">如何判斷完成</a></li><li><a href="#recovery">關閉、取消與重試</a></li><li><a href="#probe">開發者環境探測</a></li><li><a href="#help">遇到問題</a></li></ul></nav>
+<section id="first-run" class="panel guide-section"><h2>第一次開啟</h2><ol><li>在指定的電腦開啟整份工具資料夾，執行 <code>Start-ServerMigration.cmd</code>。它會開啟本機操作頁面；依公司允許的方式取得必要權限。</li><li>確認畫面上的電腦名稱。選擇「舊主機」、「新主機」或「整理搬移資料的電腦」。不確定時先向本次搬移負責人確認。</li><li>依畫面確認儲存位置。每台電腦使用自己的固定工作資料夾，交接材料與進度都保存在這裡。</li><li>從「開始／繼續操作」前進。工具會帶入可驗證的既有資料；需要你決定的欄位會說明原因。</li></ol><p>本機網址只供這台電腦當次操作使用。跨電腦請傳遞交接材料。沒有瀏覽器時，可由支援人員使用同版工具的文字選單。</p></section>
+<section id="roles" class="panel guide-section"><h2>這台電腦的用途</h2><div class="guide-cards"><article><h3>舊主機</h3><p>找出原有網站、排程、服務、資料與設定，記錄你要搬哪些內容。收到核准材料後，在這台電腦建立備份。</p></article><article><h3>整理搬移資料的電腦</h3><p>接收舊主機與新主機資料，核對差異、相依與責任，完成必要審閱及核准，再交付材料。</p></article><article><h3>新主機</h3><p>提供目前環境資料，接收核准備份，檢查可還原內容。由你單獨確認還原，之後驗證並另行確認啟用。</p></article></div><p>「這次要搬移的主機」顯示舊主機 → 新主機，代表目前這件工作。用途選擇不授予 Windows 權限，也不會遠端控制其他電腦。</p></section>
+<section id="journeys" class="panel guide-section"><h2>跟著各自的步驟操作</h2><h3>在舊主機</h3><ol><li>掃描這台電腦。</li><li>逐項決定是否加入，或選擇自動加入工具支援的內容。</li><li>匯出盤點與已確認選擇，交給整理資料的人員。這份交接檔還不是備份，也不是核准。</li><li>收到核准材料後，檢查備份範圍與儲存位置，再明確開始備份。</li><li>查看實際結果及尚未完成內容，再交付備份材料。</li></ol><h3>在整理資料的電腦</h3><ol><li>匯入舊主機交接檔。檔案核對碼須由獨立可信管道取得，不能只相信檔案自己聲稱的值。</li><li>接收新主機身分與最新環境資料，確認目前工作。</li><li>核對差異、必要相依與設定範圍。實際責任人與外部證據仍由有權人員提供。</li><li>完成必要審閱與核准，交付給正確的舊主機及新主機。</li></ol><h3>在新主機</h3><ol><li>掃描目前環境，交給整理資料的人員。</li><li>接收核准材料與備份，檢查可還原項目及軟體準備狀態。</li><li>選擇先處理具備條件的內容，或等待補裝後再檢查。工具不會替你安裝軟體。</li><li>看完還原預覽，再單獨確認還原。檢查結果與待處理內容，必要時依同一工作續作。</li><li>驗證結果；正式啟用另有確認。還原完成不代表業務已可使用。</li></ol><p class="guide-note">執行功能仍限定明確核准的隔離試行。目前沒有 Server 2016／2025 生產資格；本機測試與環境探測不會解除此限制。</p></section>
+<section id="choices" class="panel guide-section"><h2>逐項詢問與自動備份</h2><p>每一步以網站、排程、服務、軟體設定或資料夾為單位。展開明細查看相關項目與檔案，不需要每個檔案都回答一次。未列舉的資料夾會明示範圍尚未列出完整檔案；明細不是備份成功證明。</p><p>預設加入已發現內容。選擇不加入時，工具提供可修改的白話理由並保存。一次確認剩餘項目時，先前排除的內容會保留；重新掃描後變更或新增內容需重新確認。</p><p>「自動加入所有可備份項目，不再逐項詢問」只用於本次備份。缺核准、容量、權限或必要資料時，仍停在「需要處理」，不會忽略後宣稱完整。它不授權還原或啟用。</p><p>備份包含工具支援並核准的資料與設定，不含整機映像、作業系統、System State 或軟體本體。非 C 槽依原有受控交接通道處理；需要另一台電腦時依畫面交接。</p></section>
+<section id="results" class="panel guide-section"><h2>如何判斷完成</h2><p>左側取得有效盤點後才出現「掃描結果」，有持久備份或還原紀錄後才出現對應結果。結果屬於目前工作；換工作後重新核對。</p><dl class="guide-page-list"><div><dt>需要處理</dt><dd>缺條件、證據或確認，依下一步補齊。</dd></div><div><dt>部分完成</dt><dd>已有部分結果，仍有缺項。查看明細，不當作完整成功。</dd></div><div><dt>已取消／失敗</dt><dd>保留工作資料夾與紀錄，查看停止位置及恢復方式。</dd></div><div><dt>完成</dt><dd>只代表所列階段完成。掃描、備份、還原、啟用及業務接受是各自不同階段。</dd></div></dl><p>步驟進度不是備份覆蓋率。C 槽與非 C 槽、檔案與設定、軟體準備與業務結果須分別核對。</p></section>
+<section id="recovery" class="panel guide-section"><h2>關閉、取消與重試</h2><ul><li>重新整理或關閉頁面不會取消作業。已保存的選擇與進度可以繼續；尚未提交的輸入可能需要重填。</li><li>關閉 PowerShell 視窗會停止本機工具。重啟後保留同一工作資料夾，先查原作業及中斷紀錄。</li><li>按取消只是提出要求。等顯示實際已取消，才代表已到安全停止點。</li><li>提交後逾時或斷線，先查同一筆作業，不連按開始建立重複作業。無法確認結果時，保留作業編號交給支援人員。</li><li>其他視窗更改工作或資料時，依提示重讀，不忽略過期提示。</li></ul><p>執行中的核准材料綁定當時整份工具內容。不要在工作途中替換工具，也不要自行編輯內部 JSON 或清空工作資料夾。</p></section>
+<section id="probe" class="panel guide-section"><h2>開發者環境探測</h2><p>左側「開發者環境探測」可單獨一鍵執行，不必先建立搬移工作。它收集全部適用的本機資料，產生報告及資料包供後續開發查問題，不會自動上傳。</p><p>報告明列完成、部分完成、失敗與不適用項目。資料包中的敏感識別資料會遮罩；本機原始證據保存在受保護資料夾。探測不是核准或備份；交付資料仍遵循公司資料處理規則。</p></section>
+<section id="help" class="panel guide-section"><h2>遇到問題</h2><h3>電腦或搬移工作不對</h3><p>先停止提交，確認電腦與工作資料夾。多個視窗共用同一程序，工作可能被其他視窗切換。</p><h3>軟體未安裝或版本不同</h3><p>由負責人準備，再重新掃描。只修改選用版本不代表已安裝；舊設定保存成功也不代表新版能直接讀取。</p><h3>檔案位置有衝突</h3><p>查看原位置、目的位置與原因。工具不合併既有文件；不要清空共用目錄或盲目覆寫新主機內容。</p><h3>無法開啟或權限不足</h3><p>保留錯誤識別碼，交由公司支援人員檢查權限、部署與執行政策。不要自行關閉防護、修改政策或開放遠端連線。</p><p><a href="../../docs/ASSISTIVE-OPERATIONS.html" target="_blank" rel="noopener">完整操作與交接手冊（另開頁）</a> · <a href="../../docs/html/index.html" target="_blank" rel="noopener">文件中心（另開頁）</a></p></section>
+</main></body></html>

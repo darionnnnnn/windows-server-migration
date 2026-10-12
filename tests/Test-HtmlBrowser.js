@@ -82,6 +82,7 @@ const server = http.createServer((request, response) => {
         { name: 'Fields', type: 'object', schema: fieldsSchema }
       ];
     page.on('pageerror', error => errors.push(error.message));
+    page.on('request', request => { if (request.url().includes('/api/jobs/fixture-job/reports/')) diagnostics.push(`${request.method()} ${request.url()}`); });
     page.route('https://local.adguard.org/**', route => route.abort());
     page.route(/\/api\/.*/, async route => {
       const request = route.request(), parsed = new URL(request.url()), pathname = parsed.pathname;
@@ -89,6 +90,7 @@ const server = http.createServer((request, response) => {
       if (pathname === '/api/session' && request.method() === 'GET') return json({ token: 'memory-only-test-token', sessionId: 'fixture-session', contextId, hostName: 'fixture-host', role, workspace: root, pairId: 'fixture-pair', revision, decisionRevision, selectionRevision, sourceSelectionRevision, dataVersion, principal: 'fixture-user' });
       if (pathname === '/api/context' && request.method() === 'GET') return json({ roles: ['Manager', 'Source', 'Target'], pairs: [{ pairId: 'fixture-pair', label: 'Fixture pair' }], role, pairId: 'fixture-pair', revision, decisionRevision, selectionRevision, sourceSelectionRevision, dataVersion });
       if (pathname === '/api/context' && request.method() === 'POST') { const body = request.postDataJSON(); if (body.expectedDecisionRevision !== decisionRevision || body.expectedSelectionRevision !== selectionRevision || body.expectedDataVersion !== dataVersion) return json({ code:'stale_revision', message:'Fixture context changed.', nextStep:'Reload context.', correlationId:'fixture-context-conflict' }, 409); role = body.role; contextId = `fixture-context-${Date.now()}`; return json({ role, pairId: 'fixture-pair', contextId, revision, decisionRevision, selectionRevision, sourceSelectionRevision, dataVersion }); }
+      if (pathname === '/api/wizard' && request.method() === 'GET') return json({ kind:'WizardProjection',intentRequired:false,legacy:false,role,workspaceRole:role,roleMatchesWorkspace:true,pairId:'fixture-pair',state:{CurrentStep:'prepare',Mode:'ItemByItem'},revision,currentStep:'prepare',reviewGroupIndex:0,groups:[],gates:[],actions:[],missingFields:[],scan:{status:'Succeeded',hasResult:true,itemCount:125,incompleteCount:0},results:{scan:{status:'Succeeded',hasDurableRecord:true},backup:{status:'Succeeded',hasDurableRecord:true},restore:{status:'Succeeded',hasDurableRecord:true},hasAny:true},context:{catalogRevision:decisionRevision,selectionRevision,inventoryRevision:1} });
       if (pathname === '/api/view' && request.method() === 'GET') {
         const action = parsed.searchParams.get('action');
         viewReads.push(action);
@@ -141,6 +143,7 @@ const server = http.createServer((request, response) => {
 
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
     try { await page.waitForFunction(() => window.WsmConsole && window.WsmConsole.state.session && window.WsmConsole.state.token, { timeout:15000 }); } catch (error) { throw new Error(`${error.message}; pageerror=${JSON.stringify(errors)}; diagnostics=${JSON.stringify(diagnostics)}; text=${(await page.locator('body').innerText()).slice(0,1000)}`); }
+    await page.evaluate(() => window.WsmConsole.navigate('overview'));
     await page.waitForFunction(() => !document.querySelector('#view-overview').hidden);
     assert.equal(await page.locator('#workflow-steps .step-title').first().textContent(), '來源盤點');
     assert.deepEqual(await page.locator('#metrics .metric-value').allTextContents(), ['125 項', '125 項', '未知', '未測試']);
@@ -160,7 +163,10 @@ const server = http.createServer((request, response) => {
     assert.equal(await page.locator('#param-0').inputValue(), '7');
     assert.equal(await page.locator('#param-0').getAttribute('readonly'), '');
     assert.match(await page.locator('#action-description').textContent(), /角色只是操作上下文/);
-    await page.locator('[data-view="inventory"]').first().click();
+    await page.evaluate(() => window.WsmConsole.refreshWizard());
+    const inventoryNavigation=await page.evaluate(()=>({hidden:document.querySelector('#navigation-inventory').hidden,scan:window.WsmConsole.state.wizard&&window.WsmConsole.state.wizard.scan}));
+    assert.equal(inventoryNavigation.hidden,false,`successful native-projection fixture should reveal its inventory result: ${JSON.stringify(inventoryNavigation)}`);
+    await page.locator('#navigation-inventory').click();
     try { await page.waitForFunction(() => window.WsmConsole.state.inventory.length === 125, { timeout:5000 }); } catch (error) { throw new Error(`${error.message}; hash=${await page.evaluate(()=>location.hash)}; state=${JSON.stringify(await page.evaluate(()=>({currentView:window.WsmConsole.state.currentView,inventory:window.WsmConsole.state.inventory.length,context:window.WsmConsole.state.session,errors:document.querySelector('#error-summary').innerText,notice:document.querySelector('#notice').innerText})))}`); }
     assert.equal(await page.locator('#inventory-rows tr').count(), 50);
     assert.equal(await page.locator('#inventory-rows img').count(), 0);
@@ -213,6 +219,7 @@ const server = http.createServer((request, response) => {
     await page.waitForTimeout(100);
     assert.equal(await page.locator('#inventory-rows input[type="checkbox"]').first().isChecked(), false);
 
+    await page.locator('.nav-advanced').first().evaluate(node => { node.open = true; });
     await page.locator('[data-view="operations"]').first().click();
     await page.waitForFunction(() => window.WsmConsole.state.actions.length > 90);
     assert.equal(await page.locator('#action-picker optgroup').count(), 3);
@@ -241,6 +248,7 @@ const server = http.createServer((request, response) => {
     await page.locator('#operation-confirm').check();
     assert.equal(await page.locator('#submit-operation').isEnabled(), true);
 
+    await page.locator('.context-advanced').evaluate(node => { node.open = true; });
     for (const nextRole of ['Source', 'Manager', 'Target']) {
       const oldContext = await page.evaluate(() => window.WsmConsole.state.session.contextId);
       await page.locator('#context-role').selectOption(nextRole);
@@ -268,7 +276,9 @@ const server = http.createServer((request, response) => {
     assert.match(fileCells[3], /讀回 SHA-256：producer-readback-hash/);
     assert.match(fileCells[3], /衝突 SHA-256：producer-conflict-hash/);
 
-    await page.locator('[data-view="jobs"]').first().click();
+    await page.locator('.nav-advanced').evaluate(node => { node.open = true; });
+    await page.locator('.nav-advanced [data-view="jobs"]').click();
+    await page.evaluate(() => { if (window.WsmConsole.state.globalJobPoll) clearInterval(window.WsmConsole.state.globalJobPoll); window.WsmConsole.state.globalJobPoll = null; });
     await page.waitForFunction(() => location.hash === '#jobs');
     await page.waitForFunction(() => document.querySelector('#job-id-lookup'));
     await page.locator('#job-id-lookup').focus();
@@ -282,15 +292,16 @@ const server = http.createServer((request, response) => {
     assert.match(await page.locator('#notice').textContent(), /背景讀取作業狀態暫時失敗/);
     jobsPollFailure = false;
     await page.evaluate(() => {
+      window.WsmConsole.state.showAllJobs = true;
       window.WsmConsole.state.jobs.clear();
       window.WsmConsole.state.jobs.set('fixture-job', { jobId: 'fixture-job', workspace: window.WsmConsole.state.session.workspace, pairId: 'fixture-pair', role:'Manager', sessionId:'fixture-session', contextId:'fixture-context-1', startedRevision:1, startedUtc:'2026-10-11T00:00:00Z', completedUtc:'2026-10-11T00:01:00Z', status: 'Succeeded', action: 'AssistiveReport', outputs: [{ Path: 'C:\\very\\long\\migration\\report.html' }], reportArtifacts: [{ Path: 'C:\\very\\long\\migration\\report.html', Label: 'fixture report', SHA256: 'report-hash' }] });
       window.WsmConsole.renderJobs();
     });
+    jobsSnapshot = await page.evaluate(() => [...window.WsmConsole.state.jobs.values()]);
     assert.equal(await page.locator('#job-list .job-output dd').first().textContent(), 'C:\\very\\long\\migration\\report.html');
     assert.match(await page.locator('#job-list').textContent(), /管理報告/);
-    const reportOpened = page.waitForResponse(response => /\/api\/jobs\/fixture-job\/reports\/0\/open$/.test(response.url()));
-    await page.locator('#job-list button').filter({ hasText: '開啟報告' }).click();
-    await reportOpened;
+    const reportOpened = page.waitForResponse(response => /\/api\/jobs\/fixture-job\/reports\/0\/open$/.test(response.url()),{timeout:7000});
+    try { await Promise.all([reportOpened,page.locator('#job-list button').filter({ hasText: '開啟報告' }).click()]); } catch(error) { throw new Error(`${error.message}; reportOpenRequest=${JSON.stringify(reportOpenRequest)}; diagnosticRequests=${JSON.stringify(diagnostics)}; notice=${await page.locator('#notice').textContent()}; errors=${await page.locator('#error-summary').textContent()}`); }
     await page.waitForFunction(() => window.WsmConsole.state.jobs.size === 1);
     assert.equal(reportOpenRequest.method, 'POST');
     assert.ok(reportOpenRequest.headers['x-wsm-token']);
@@ -366,8 +377,14 @@ const server = http.createServer((request, response) => {
 
     decisionRevision = 24;
     await page.evaluate(() => window.WsmConsole.refreshSession(false));
-    await page.locator('[data-view="jobs"]').first().click();
+    await page.locator('.nav-advanced').evaluate(node => { node.open = true; });
+    await page.evaluate(async() => { await window.WsmConsole.navigate('jobs',{force:true}); });
     await page.evaluate(() => {
+      if (window.WsmConsole.state.globalJobPoll) clearInterval(window.WsmConsole.state.globalJobPoll);
+      if (window.WsmConsole.state.jobPoll) clearInterval(window.WsmConsole.state.jobPoll);
+      window.WsmConsole.state.globalJobPoll = null;
+      window.WsmConsole.state.jobPoll = null;
+      window.WsmConsole.state.showAllJobs = true;
       window.WsmConsole.state.jobs.clear();
       window.WsmConsole.state.jobs.set('fixture-empty-settings-preview', { jobId: 'fixture-empty-settings-preview', workspace:window.WsmConsole.state.session.workspace, pairId:'fixture-pair', role:'Manager', sessionId:'fixture-session', contextId:window.WsmConsole.state.session.contextId, startedRevision:1, status: 'Succeeded', action: 'WindowsSettingsPreviewExport', outputs: [{
         Kind: 'AssistiveWindowsSettingsPreviewOutput', PairId: 'fixture-pair', SourceInventoryPath: 'C:\\WSM\\source.json', SourceInventoryHash: 'c'.repeat(64),
@@ -376,8 +393,9 @@ const server = http.createServer((request, response) => {
       }] });
       window.WsmConsole.renderJobs();
     });
-    await page.locator('#job-list button').filter({ hasText: '使用此預覽準備設定審閱' }).click();
-    await page.waitForFunction(() => window.WsmConsole.state.activeAction === 'WindowsSettingsSubmit' && document.querySelector('[data-parameter="PreviewPath"]')?.value === 'C:\\WSM\\empty-preview.json' && document.querySelector('[data-parameter="ExpectedRevision"]')?.value === '24' && document.querySelector('[data-parameter="ReviewWindowsSettings"]')?.value === 'false');
+    jobsSnapshot = await page.evaluate(() => [...window.WsmConsole.state.jobs.values()]);
+    try{await page.locator('#job-list .job-card').filter({ hasText: 'fixture-empty-settings-preview' }).getByRole('button', { name: '使用此預覽準備設定審閱' }).click();}catch(error){const diagnostic=await page.evaluate(()=>({view:window.WsmConsole.state.currentView,pair:window.WsmConsole.state.session.pairId,showAll:window.WsmConsole.state.showAllJobs,filter:window.WsmConsole.state.jobResultFilter,jobs:[...window.WsmConsole.state.jobs.values()],dom:document.querySelector('#job-list')?.innerText}));throw new Error(`${error.message}; empty-settings diagnostic=${JSON.stringify(diagnostic)}`);}
+    try { await page.waitForFunction(() => window.WsmConsole.state.activeAction === 'WindowsSettingsSubmit' && document.querySelector('[data-parameter="PreviewPath"]')?.value === 'C:\\WSM\\empty-preview.json' && document.querySelector('[data-parameter="ExpectedRevision"]')?.value === '24' && document.querySelector('[data-parameter="ReviewWindowsSettings"]')?.value === 'false'); } catch (error) { const diagnostic=await page.evaluate(()=>({activeAction:window.WsmConsole.state.activeAction,session:{pairId:window.WsmConsole.state.session.pairId,role:window.WsmConsole.state.session.role,decisionRevision:window.WsmConsole.state.session.decisionRevision},fields:Object.fromEntries(['PreviewPath','ExpectedRevision','ReviewWindowsSettings'].map(name=>[name,document.querySelector(`[data-parameter="${name}"]`)?.value])),notice:document.querySelector('[aria-live="polite"]')?.innerText,alert:document.querySelector('.error-summary')?.innerText,actionPicker:document.querySelector('#action-picker')?.value})); throw new Error(`${error.message}; prefill diagnostic=${JSON.stringify(diagnostic)}`); }
     assert.equal(await page.locator('[data-parameter="ReviewWindowsSettings"]').inputValue(), 'false');
     assert.equal(await page.locator('#parameter-fields [data-parameter="SettingId"]').count(), 0);
     await page.locator('[data-parameter="Ack"]').selectOption('true');
@@ -397,12 +415,14 @@ const server = http.createServer((request, response) => {
     assert.equal(settingsSubmitRequest.args.Ack, true);
     assert.equal(settingsSubmitRequest.args.PreviewHash, '4'.repeat(64));
 
-    await page.locator('[data-view="jobs"]').first().click();
+    await page.locator('.nav-advanced').evaluate(node => { node.open = true; });
+    await page.evaluate(async() => { await window.WsmConsole.navigate('jobs',{force:true}); });
     await page.evaluate(() => {
       window.WsmConsole.state.jobs.clear();
       window.WsmConsole.state.jobs.set('fixture-preparation-preview', { jobId: 'fixture-preparation-preview', workspace:window.WsmConsole.state.session.workspace, pairId:window.WsmConsole.state.session.pairId, role:window.WsmConsole.state.session.role, sessionId:window.WsmConsole.state.session.sessionId, contextId:window.WsmConsole.state.session.contextId, startedRevision:window.WsmConsole.state.session.revision, status: 'Succeeded', action: 'PreparationPreview', outputs: [{ Kind: 'AssistivePreparationPreview', RowCount: 1, Rows: [{ RequirementId: 'requirement-one', ProviderSoftwareId: 'runtime-one', ExpectedVersion: '9.4', Architecture: 'x64', RequiredPhase: 'BeforeRestore', Decision: 'External', Certainty: 'High', ConsumerItemIds: ['consumer-one'], ContextHash: '3'.repeat(64), SecretValue: 'DO-NOT-RENDER' }] }] });
       window.WsmConsole.renderJobs();
     });
+    jobsSnapshot = await page.evaluate(() => [...window.WsmConsole.state.jobs.values()]);
     assert.match(await page.locator('#job-list').textContent(), /runtime-one/);
     assert.match(await page.locator('#job-list').textContent(), /BeforeRestore/);
     assert.doesNotMatch(await page.locator('#job-list').textContent(), /DO-NOT-RENDER/);
@@ -451,6 +471,7 @@ const server = http.createServer((request, response) => {
     if (process.env.WSM_SCREENSHOT_DIR) await page.screenshot({ path:path.join(process.env.WSM_SCREENSHOT_DIR,'inventory-2501-320.png'), fullPage:true });
     await page.keyboard.press('Tab');
     assert.ok(await page.evaluate(() => document.activeElement !== document.body));
+    await page.locator('.nav-advanced').first().evaluate(node => { node.open = true; });
     await page.locator('[data-view="operations"]').first().click();
     await page.waitForFunction(() => window.WsmConsole.state.actions.length > 90);
     await page.locator('#action-picker').selectOption('HttpIntegrityProbe');
@@ -461,7 +482,7 @@ const server = http.createServer((request, response) => {
     assert.ok(viewReads.includes('files'));
     assert.equal(viewReads.includes('overview'),false,'a deep link loads only its selected view');
     await page.goto(`${url}#invalid-route`, { waitUntil:'domcontentloaded' });
-    await page.waitForFunction(() => location.hash==='#overview' && window.WsmConsole.state.currentView==='overview');
+    await page.waitForFunction(() => location.hash==='#wizard' && window.WsmConsole.state.currentView==='wizard');
     await page.locator('[data-view="inventory"]').first().click();
     await page.locator('[data-view="files"]').first().click();
     await page.goBack(); await page.waitForFunction(() => location.hash==='#inventory');
@@ -475,16 +496,24 @@ const server = http.createServer((request, response) => {
     await page.reload({waitUntil:'domcontentloaded'});
     await page.waitForFunction(id => window.WsmConsole.state.pendingOperation && window.WsmConsole.state.pendingOperation.operationId===id,pendingId);
     assert.equal(unknownOperationCount,1,'same-origin reload performs a lookup only, never a second write');
-    await page.locator('[data-view="jobs"]').first().click();
+    await page.locator('.nav-advanced').evaluate(node => { node.open = true; });
+    await page.locator('.nav-advanced [data-view="jobs"]').click();
     await page.waitForFunction(() => location.hash==='#jobs');
-    assert.match(await page.locator('#job-list').textContent(),new RegExp(pendingId));
+    const pendingJobView=await page.evaluate(()=>({pending:window.WsmConsole.state.pendingOperation,currentView:window.WsmConsole.state.currentView,hash:location.hash,jobCount:window.WsmConsole.state.jobs.size,showAllJobs:window.WsmConsole.state.showAllJobs,list:document.querySelector('#job-list')?.innerText}));
+    assert.match(await page.locator('#job-list').textContent(),new RegExp(pendingId),JSON.stringify(pendingJobView));
     await page.setViewportSize({width:1280,height:900});
     await page.goto(`${url}ui/guide.html`, { waitUntil: 'domcontentloaded' });
     if (process.env.WSM_SCREENSHOT_DIR) await page.screenshot({ path:path.join(process.env.WSM_SCREENSHOT_DIR,'operation-guide-desktop.png'), fullPage:true });
-    assert.match(await page.locator('main').textContent(), /Start-ServerMigration\.ps1/);
-    assert.match(await page.locator('main').textContent(), /固定的 WorkRoot/);
-    assert.match(await page.locator('main').textContent(), /Windows Server Core/);
-    assert.match(await page.locator('main').textContent(), /文字選單/);
+    const guideText=await page.locator('main').textContent();
+    assert.match(guideText, /Start-ServerMigration\.cmd/);
+    assert.match(guideText, /固定工作資料夾/);
+    assert.match(guideText, /依公司允許的方式取得必要權限/);
+    assert.match(guideText, /文字選單/);
+    assert.match(guideText, /隔離試行/);
+    assert.match(guideText, /不會解除此限制/);
+    const guideReadability=await page.evaluate(()=>({textSizes:[...document.querySelectorAll('.guide-section p,.guide-section li,.guide-section dt,.guide-section dd')].map(node=>parseFloat(getComputedStyle(node).fontSize)),navTargets:[...document.querySelectorAll('.guide-index a')].map(node=>({height:node.getBoundingClientRect().height,margin:getComputedStyle(node).marginTop}))}));
+    assert.ok(guideReadability.textSizes.length>0&&guideReadability.textSizes.every(size=>size>=18),`guide body text must be at least 18px: ${JSON.stringify(guideReadability)}`);
+    assert.ok(guideReadability.navTargets.length>0&&guideReadability.navTargets.every(target=>target.height>=48&&parseFloat(target.margin)>=4),`guide navigation links need 48px targets and spacing: ${JSON.stringify(guideReadability.navTargets)}`);
     assert.deepEqual(errors, []);
     console.log('PASS: Edge UI fixture with mocked APIs; 2,501-item pagination, eight routes and deep links, stale context/cache guards, pending-write reload lookup, typed review prefill, report-open POST, actor provenance, 320px reflow, and background poll focus/scroll preservation. Actual loopback bridge transport: NotTested; main must verify separately.');
   } finally {

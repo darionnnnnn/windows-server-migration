@@ -10,10 +10,26 @@ function Get-WsmHtmlActionMap {
         @('PairPlan','Set-WsmPairPlan'),@('CrossHostDependency','Set-WsmCrossHostDependency'),@('Report','Export-WsmReport'),
         @('FleetReport','Export-WsmFleetReport'),@('SaveSelection','Set-WsmHtmlSelection'),@('SetRestoreChoice','Set-WsmHtmlRestoreChoice')
     )){$map[$entry[0]]=$entry[1]}
-    foreach($entry in @(@('SpecReview','Get-WsmAssistiveSpecReview'),@('SaveSpecReview','Submit-WsmAssistiveSpecReview'),@('TargetReceipt','Export-WsmAssistiveTargetDecisionReceipt'),@('AssistiveReport','Export-WsmAssistiveReport'),@('SetSoftwareVersion','Set-WsmAssistiveSoftwareVersion'),@('TargetSnapshot','Update-WsmAssistiveTargetSnapshot'),@('PublishComparison','Update-WsmAssistiveComparison'),@('EnvironmentProbe','Export-WsmAssistiveEnvironmentProbe'),@('ProbeImport','Import-WsmAssistiveEnvironmentProbe'))){
+    foreach($entry in @(@('SpecReview','Get-WsmAssistiveSpecReview'),@('SaveSpecReview','Submit-WsmAssistiveSpecReview'),@('TargetReceipt','Export-WsmAssistiveTargetDecisionReceipt'),@('AssistiveReport','Export-WsmAssistiveReport'),@('SetSoftwareVersion','Set-WsmAssistiveSoftwareVersion'),@('TargetSnapshot','Update-WsmAssistiveTargetSnapshot'),@('PublishComparison','Update-WsmAssistiveComparison'),@('EnvironmentProbe','Export-WsmAssistiveEnvironmentProbe'),@('ProbeImport','Import-WsmAssistiveEnvironmentProbe'),@('DeveloperProbe','Export-WsmDeveloperProbe'))){
         if(Get-Command $entry[1] -CommandType Function -ErrorAction SilentlyContinue){$map[$entry[0]]=$entry[1]}
     }
     $map
+}
+
+function Get-WsmHtmlWizardJobs([hashtable]$Jobs,[string]$Workspace) {
+    @($Jobs.Values | ForEach-Object {$_.Record} | Where-Object {$_.workspace -and [IO.Path]::GetFullPath([string]$_.workspace) -ieq [IO.Path]::GetFullPath($Workspace)})
+}
+
+function Get-WsmHtmlWizardProjection([string]$Workspace,[string]$PairId,[string]$Role,[hashtable]$Jobs) {
+    if($Role -cnotin @('Source','Target','Manager')){throw 'Invalid role.'}
+    if($PairId){Assert-WsmId $PairId}
+    Get-WsmWizardProjection $Workspace $PairId $Role (Get-WsmHtmlWizardJobs $Jobs $Workspace)
+}
+
+function Assert-WsmHtmlWizardRevision($Body,[string]$Field) {
+    if(-not $Body.PSObject.Properties[$Field]){throw 'Malformed wizard revision.'}
+    $value=$Body.$Field
+    if(($value -isnot [int] -and $value -isnot [long]) -or [long]$value -lt 0 -or [long]$value -gt [int]::MaxValue){throw 'Malformed wizard revision.'}
 }
 
 function Set-WsmHtmlSelection {
@@ -137,7 +153,8 @@ function Get-WsmHtmlActionMetadata {
         $readOnly=$entry.Value -match '^(Get|Test|Assert|Read)-'
         $previewAction=if($entry.Key -eq 'Restore'){'RestorePreview'}elseif($entry.Key -eq 'Rollback'){'RollbackPreview'}elseif($entry.Key -eq 'SpecBundleImport'){'SpecBundlePreview'}else{$null}
         $requiredRole=Get-WsmTextActionGroup $entry.Key
-        $supportedRoles=@($requiredRole);if($entry.Key -ceq 'Inventory'){$supportedRoles=@('Source','Target')}
+        $supportedRoles=@($requiredRole);if($entry.Key -ceq 'Inventory'){$supportedRoles=@('Source','Target')};if($entry.Key -ceq 'ImportApprovedPlan'){$requiredRole='SourceOrTarget';$supportedRoles=@('Source','Target')};if($entry.Key -ceq 'InspectWizardFiles'){$requiredRole='Source';$supportedRoles=@('Source')};if($entry.Key -ceq 'DeveloperProbe'){$requiredRole='Any';$supportedRoles=@('Source','Manager','Target')}
+        if($entry.Key -ceq 'InspectWizardFiles'){$parameters=@([pscustomobject]@{name='ItemId';label='核准計畫中的檔案範圍';type='string';required=$true;allowEmpty=$false;options=@();sensitive=$false;description='只顯示目前有效核准計畫中的檔案範圍。'})}
         [pscustomobject]@{action=$entry.Key;label=(Get-WsmTextActionLabel $entry.Key);description=(Get-WsmTextActionGuidance $entry.Key);role=$Role;requiredRole=$requiredRole;supportedRoles=$supportedRoles;roleAvailable=($supportedRoles -contains $Role);readOnly=$readOnly;impact=@($(if($readOnly){'Read local state'}else{'Write local state or approved system resources'}));previewAction=$previewAction;parameters=$parameters}
     }
 }
@@ -152,7 +169,7 @@ function Get-WsmHtmlRevision([string]$Workspace,[string]$PairId) {
 function Get-WsmHtmlRevisionVector([string]$Workspace,[string]$PairId) {
     Invoke-WsmLocked $Workspace {
         $catalog=$null;$revision=0;$decisionRevision=$null;$selectionRevision=$null;$sourceSelectionRevision=$null;$actualPair=$null
-        if($PairId){$catalog=Get-WsmCatalog $Workspace $PairId;$actualPair=[string]$catalog.PairId;$revision=if($catalog.PSObject.Properties['Assistive']){[int]$catalog.Assistive.Revision}else{[int]$catalog.DecisionRevision};$decisionRevision=[int]$catalog.DecisionRevision;if($catalog.PSObject.Properties['Assistive'] -and $catalog.Assistive.PSObject.Properties['Selections']){$sourceSelectionRevision=[int]$catalog.Assistive.Selections.Revision;$selectionRevision=[int](Get-WsmAssistiveCurrentSelections $catalog).Revision}}
+        if($PairId){$catalogPath=Get-WsmCatalogPath $Workspace $PairId;if([IO.File]::Exists($catalogPath)){$catalog=Get-WsmCatalog $Workspace $PairId;$actualPair=[string]$catalog.PairId;$revision=if($catalog.PSObject.Properties['Assistive']){[int]$catalog.Assistive.Revision}else{[int]$catalog.DecisionRevision};$decisionRevision=[int]$catalog.DecisionRevision;if($catalog.PSObject.Properties['Assistive'] -and $catalog.Assistive.PSObject.Properties['Selections']){$sourceSelectionRevision=[int]$catalog.Assistive.Selections.Revision;$selectionRevision=[int](Get-WsmAssistiveCurrentSelections $catalog).Revision}}else{$profile=Read-WsmOutputProfile $Workspace;if($profile -and $profile.Role -in @('Source','Target') -and (Get-WsmWizardReceivedApprovedPlan $Workspace $PairId $profile)){$actualPair=$PairId;$state=Get-WsmWizardState $Workspace $PairId $profile.Role;$revision=[int]$state.Revision;$decisionRevision=[int]$state.Revision;$selectionRevision=[int]$state.Revision}else{throw 'Selected pair catalog is unavailable.'}}}
         $dataVersion=Get-WsmHtmlDataVersion $Workspace $PairId
         [pscustomobject]@{revision=$revision;decisionRevision=$decisionRevision;selectionRevision=$selectionRevision;sourceSelectionRevision=$sourceSelectionRevision;dataVersion=$dataVersion;pairId=$actualPair}
     }
@@ -173,7 +190,7 @@ function Test-WsmHtmlExpectedVector($Body,$Current) {
 function Get-WsmHtmlDataVersion([string]$Workspace,[string]$PairId) {
     $fleetPath=Join-Path $Workspace 'fleet.json';$fleetHash='missing'
     if([IO.File]::Exists($fleetPath)){Assert-WsmNoReparse $fleetPath;$fleetHash=(Get-FileHash -LiteralPath $fleetPath -Algorithm SHA256).Hash.ToLowerInvariant()}
-    $catalogHash='none';if($PairId){$catalogPath=Get-WsmCatalogPath $Workspace $PairId;Assert-WsmNoReparse $catalogPath;$catalogHash=(Get-FileHash -LiteralPath $catalogPath -Algorithm SHA256).Hash.ToLowerInvariant()}
+    $catalogHash='none';if($PairId){$catalogPath=Get-WsmCatalogPath $Workspace $PairId;if([IO.File]::Exists($catalogPath)){Assert-WsmNoReparse $catalogPath;$catalogHash=(Get-FileHash -LiteralPath $catalogPath -Algorithm SHA256).Hash.ToLowerInvariant()}else{$profile=Read-WsmOutputProfile $Workspace;if($profile -and $profile.Role -in @('Source','Target')){$received=Get-WsmWizardReceivedApprovedPlan $Workspace $PairId $profile;if($received){$catalogHash=[string]$received.SHA256}else{throw 'Selected pair has no current trusted catalog or received-plan material.'}}else{throw 'Selected pair catalog is unavailable.'}}}
     Get-WsmHashText ([string]$PairId+'|'+$fleetHash+'|'+$catalogHash)
 }
 
@@ -319,9 +336,10 @@ function Get-WsmHtmlOverviewProjection($Catalog,$Stage,$Selected,[string]$Role,[
 
 function Get-WsmHtmlContext([string]$Workspace,[string]$PairId,[string]$Role,[string]$ContextId) {
     Invoke-WsmLocked $Workspace {
-        $pairs=@();if([IO.File]::Exists((Join-Path $Workspace 'fleet.json'))){$pairs=@((Get-WsmFleet $Workspace).Pairs|ForEach-Object {[pscustomobject]@{pairId=$_.PairId;label=$_.PairId}})}
+        $pairs=@();if([IO.File]::Exists((Join-Path $Workspace 'fleet.json'))){$pairs=@((Get-WsmFleet $Workspace).Pairs|ForEach-Object {$catalogPath=Get-WsmCatalogPath $Workspace ([string]$_.PairId);$provenance='Imported source inventory';if([IO.File]::Exists($catalogPath)){try{$pairCatalog=Get-WsmCatalog $Workspace ([string]$_.PairId);if($pairCatalog.PSObject.Properties['SourceReviewHandoff'] -and $pairCatalog.SourceReviewHandoff.HandoffHash -match '^[a-fA-F0-9]{64}$' -and -not $pairCatalog.SourceReviewHandoff.AuthoritativeApproval){$provenance='Source review handoff; choices are suggestions, no approval.'}}catch{}};[pscustomobject]@{pairId=$_.PairId;label=([string]$_.SourceName+' → '+[string]$_.TargetName);provenance=$provenance}})}
+        $profile=Read-WsmOutputProfile $Workspace;if($profile -and $profile.Role -in @('Source','Target')){$receivedPairs=@(Get-WsmWizardReceivedPlanChoices $Workspace $profile);foreach($received in $receivedPairs){if(-not @($pairs|Where-Object pairId -CEQ $received.pairId).Count){$pairs+=,[pscustomobject]@{pairId=[string]$received.pairId;label=([string]$received.sourceName+' → '+[string]$received.targetName);provenance='Verified received approved plan'}}}}
         $catalog=$null;$revision=0;$decisionRevision=$null;$selectionRevision=$null;$sourceSelectionRevision=$null
-        if($PairId){$catalog=Get-WsmCatalog $Workspace $PairId;$revision=if($catalog.PSObject.Properties['Assistive']){[int]$catalog.Assistive.Revision}else{[int]$catalog.DecisionRevision};$decisionRevision=[int]$catalog.DecisionRevision;if($catalog.PSObject.Properties['Assistive'] -and $catalog.Assistive.PSObject.Properties['Selections']){$sourceSelectionRevision=[int]$catalog.Assistive.Selections.Revision;$selectionRevision=[int](Get-WsmAssistiveCurrentSelections $catalog).Revision}}
+        if($PairId){$catalogPath=Get-WsmCatalogPath $Workspace $PairId;if([IO.File]::Exists($catalogPath)){$catalog=Get-WsmCatalog $Workspace $PairId;$revision=if($catalog.PSObject.Properties['Assistive']){[int]$catalog.Assistive.Revision}else{[int]$catalog.DecisionRevision};$decisionRevision=[int]$catalog.DecisionRevision;if($catalog.PSObject.Properties['Assistive'] -and $catalog.Assistive.PSObject.Properties['Selections']){$sourceSelectionRevision=[int]$catalog.Assistive.Selections.Revision;$selectionRevision=[int](Get-WsmAssistiveCurrentSelections $catalog).Revision}}else{if(-not $profile -or $profile.Role -cnotin @('Source','Target') -or -not (Get-WsmWizardReceivedApprovedPlan $Workspace $PairId $profile)){throw 'Selected pair catalog is unavailable.'};$state=Get-WsmWizardState $Workspace $PairId $profile.Role;$revision=[int]$state.Revision;$decisionRevision=[int]$state.Revision;$selectionRevision=[int]$state.Revision}}
         $dataVersion=Get-WsmHtmlDataVersion $Workspace $PairId
         [pscustomobject]@{workspace=$Workspace;pairId=$PairId;role=$Role;contextId=$ContextId;revision=$revision;decisionRevision=$decisionRevision;selectionRevision=$selectionRevision;sourceSelectionRevision=$sourceSelectionRevision;dataVersion=$dataVersion;pairs=$pairs;roles=@('Source','Target','Manager')}
     }
@@ -340,25 +358,28 @@ function ConvertTo-WsmHtmlPreview($Result,[string]$Action,[int]$Revision,[string
 }
 
 function Get-WsmHtmlResultProjection($Output) {
-    $fields=@('Status','Stage','Path','SHA256','Hash','ReportPath','HtmlPath','ManifestPath','ManifestHash','Archive','ArchiveSHA256','RunId','PairId','Generation','Revision','ObservedChecks','PendingChecks','SpecPath','SpecHash','ReceiptPath','ReceiptHash','DecisionRevision','AssistiveRevision','SelectionRevision','TargetPhysicalId','RegistryRevision','ResourceKey','DocumentManifestPath','DocumentManifestHash','DocumentId','BundlePath','MemberCount','Valid','ProbeStatus','IndexPath','Kind','ExpectedRevision','PreviewPath','PreviewFileHash','PreviewHash','ReviewWindowsSettings','RowCount','SourceInventoryPath','SourceInventoryHash','TargetInventoryPath','TargetInventoryHash','GeneratedDecisionsPath','GeneratedDecisionsHash','GeneratedRequirementsPath','GeneratedRequirementsHash','FailureCode','ReviewHash','Role','HostFingerprint','TaskPath','TaskName','TaskXmlSHA256','TaskSecuritySHA256','CapturedUtc','RawDefinitionReturned','RawDefinitionsReturned','RawDefinitionsIncluded','ProductionVerified','VendorVerified','ReadinessProof','BusinessAcceptance','ProviderId','Owner','SourceOS','TargetOS','TargetFingerprint','TargetSnapshotHash','TargetSnapshotUtc','SourceTaskXmlSHA256','SourceTaskSecuritySHA256','TargetTaskXmlSHA256','TargetTaskSecuritySHA256','SourceProviderProvenanceReference','TargetProviderProvenanceReference','TrustedBaselinePath','TrustedBaselineHash','TrustedBaselineOwner','SourceBaselineMatched','TargetBaselineMatched','DefinitionsDiffer','OSProvidedEligible','ValuesWithheld','EvidencePath','EvidenceHash','Disposition')
-    @(foreach($row in @($Output)){$safe=[ordered]@{};foreach($field in $fields){if($row -and $row.PSObject.Properties[$field]){$value=$row.$field;if($value -is [string] -or $value -is [ValueType]){$safe[$field]=$value}}};if($row -and $row.PSObject.Properties['ManualReasons']){$safe.ManualReasons=@($row.ManualReasons | Where-Object {$_ -is [string]})};if($row -and $row.PSObject.Properties['Kind'] -and $row.Kind -cin @('AssistiveWindowsSettingsPreviewOutput','AssistivePreparationPreview','AssistiveRequirementReview')){
+    $fields=@('Status','Stage','Path','SHA256','Hash','ReportPath','HtmlPath','ManifestPath','ManifestHash','Archive','ArchiveSHA256','RunId','PairId','Generation','Revision','ObservedChecks','PendingChecks','SpecPath','SpecHash','ReceiptPath','ReceiptHash','DecisionRevision','AssistiveRevision','SelectionRevision','TargetPhysicalId','RegistryRevision','ResourceKey','DocumentManifestPath','DocumentManifestHash','DocumentId','BundlePath','MemberCount','Valid','ProbeStatus','IndexPath','Kind','ExpectedRevision','PreviewPath','PreviewFileHash','PreviewHash','ReviewWindowsSettings','RowCount','ItemId','EntryCount','GapCount','ContentRead','BackupVerified','AuthoritativeApproval','SourceInventoryPath','SourceInventoryHash','SourceInventoryRevision','SourceIntentHash','ConfirmedChoiceCount','IncludedChoiceCount','ExcludedChoiceCount','AppliedChoiceCount','HandoffStatus','ImportPath','TargetInventoryPath','TargetInventoryHash','GeneratedDecisionsPath','GeneratedDecisionsHash','GeneratedRequirementsPath','GeneratedRequirementsHash','FailureCode','ReviewHash','Role','HostFingerprint','TaskPath','TaskName','TaskXmlSHA256','TaskSecuritySHA256','CapturedUtc','RawDefinitionReturned','RawDefinitionsReturned','RawDefinitionsIncluded','ProductionVerified','VendorVerified','ReadinessProof','BusinessAcceptance','ProviderId','Owner','SourceOS','TargetOS','TargetFingerprint','TargetSnapshotHash','TargetSnapshotUtc','SourceTaskXmlSHA256','SourceTaskSecuritySHA256','TargetTaskXmlSHA256','TargetTaskSecuritySHA256','SourceProviderProvenanceReference','TargetProviderProvenanceReference','TrustedBaselinePath','TrustedBaselineHash','TrustedBaselineOwner','SourceBaselineMatched','TargetBaselineMatched','DefinitionsDiffer','OSProvidedEligible','ValuesWithheld','EvidencePath','EvidenceHash','Disposition')
+    @(foreach($row in @($Output)){$safe=[ordered]@{};foreach($field in $fields){if($row -and $row.PSObject.Properties[$field]){$value=$row.$field;if($value -is [string] -or $value -is [ValueType] -or $field -eq 'CollectorCounts'){$safe[$field]=$value}}};if($row -and $row.PSObject.Properties['CollectorResults']){$safe.CollectorResults=@(foreach($collector in @($row.CollectorResults)){[pscustomobject]@{Id=[string]$collector.Id;Status=[string]$collector.Status;StartedUtc=$collector.StartedUtc;CompletedUtc=$collector.CompletedUtc;DurationMs=[long]$collector.DurationMs;ReasonCode=$collector.ReasonCode;Data=$collector.Data}})};if($row -and $row.PSObject.Properties['ManualReasons']){$safe.ManualReasons=@($row.ManualReasons | Where-Object {$_ -is [string]})};if($row -and $row.PSObject.Properties['Kind'] -and $row.Kind -cin @('AssistiveWindowsSettingsPreviewOutput','AssistivePreparationPreview','AssistiveRequirementReview')){
             $rowFields=if($row.Kind -ceq 'AssistiveWindowsSettingsPreviewOutput'){@('SettingId','SourceItemId','Category','Kind','SettingName','SourceValueHash','TargetValueHash','TargetDiff','ControlSource','SupportedActions','DefaultAction','RequiredConsumerItemIds')}else{@('RequirementId','Type','ProviderItemId','ExternalId','ProviderSoftwareId','ExpectedVersion','Architecture','RequiredPhase','Decision','Certainty','ConsumerItemIds','ContextHash')}
             $safe.Rows=@(foreach($entry in @($row.Rows)){$record=[ordered]@{};foreach($field in $rowFields){if($entry.PSObject.Properties[$field]){$value=$entry.$field;if($value -is [string] -or $value -is [ValueType]){$record[$field]=$value}elseif($value -is [array]){$record[$field]=@($value | Where-Object {$_ -is [string]})}}};[pscustomobject]$record})
         };if($safe.Count){[pscustomobject]$safe}})
 }
 
-function Get-WsmHtmlReportArtifacts([string]$Action,$Outputs) {
-    if($Action -notin @('Report','FleetReport','AssistiveReport','EnvironmentProbe','HttpIntegrityProbe','LabReport','MigrationReport','DeliveryDocument','MaterialJobStatus')){return}
+function Get-WsmHtmlReportArtifacts([string]$Action,$Outputs,[string]$Workspace='') {
+    if($Action -notin @('Report','FleetReport','AssistiveReport','EnvironmentProbe','HttpIntegrityProbe','LabReport','MigrationReport','DeliveryDocument','MaterialJobStatus','DeveloperProbe')){return}
     $artifacts=@();$seen=@{}
     foreach($output in @($Outputs)){foreach($field in @('ReportPath','HtmlPath','Path')){
         if($output.PSObject.Properties[$field] -and $output.$field -is [string]){
             $path=[IO.Path]::GetFullPath([string]$output.$field)
-            if([IO.Path]::GetExtension($path) -ieq '.html' -and [IO.File]::Exists($path) -and -not $seen.ContainsKey($path)){
+            $extension=[IO.Path]::GetExtension($path);$allowedExtension=($extension -ieq '.html')
+            if($Action -ceq 'DeveloperProbe' -and $Workspace){$probeRoot=[IO.Path]::GetFullPath((Join-Path $Workspace 'developer-probes')).TrimEnd('\')+'\';$allowedExtension=($extension -in @('.html','.zip') -and $path.StartsWith($probeRoot,[StringComparison]::OrdinalIgnoreCase))}
+            if($allowedExtension -and [IO.File]::Exists($path) -and -not $seen.ContainsKey($path)){
                 Assert-WsmNoReparse $path;$seen[$path]=$true
-                $artifacts+=@([pscustomobject]@{Path=$path;SHA256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();Label=[IO.Path]::GetFileName($path)})
+                $artifacts+=@([pscustomobject]@{Path=$path;SHA256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();Label=[IO.Path]::GetFileName($path);Kind=$(if($extension -ieq '.zip'){'Download'}else{'Open'});ContentType=$(if($extension -ieq '.zip'){'application/zip'}elseif($extension -ieq '.json'){'application/json'}else{'text/html; charset=utf-8'})})
             }
         }
     }}
+    if($Action -ceq 'DeveloperProbe' -and $artifacts.Count){$zip=@($artifacts|Where-Object {$_.Kind -eq 'Download'}|Select-Object -First 1);if($zip.Count){$jsonPath=Join-Path ([IO.Path]::GetDirectoryName($zip[0].Path)) 'probe.json';if([IO.File]::Exists($jsonPath)){Assert-WsmNoReparse $jsonPath;$artifacts+=@([pscustomobject]@{Path=$jsonPath;SHA256=(Get-FileHash -LiteralPath $jsonPath -Algorithm SHA256).Hash.ToLowerInvariant();Label='probe.json';Kind='Open';ContentType='application/json'})};$artifacts+=@([pscustomobject]@{Path=[IO.Path]::GetDirectoryName($zip[0].Path);SHA256='';Label='Probe folder';Kind='Folder';ContentType='inode/directory'})}}
     return $artifacts
 }
 
@@ -496,7 +517,8 @@ function Write-WsmHtmlErrorRecord([string]$ErrorRoot,$SafeError,[string]$Route,[
 
 function ConvertTo-WsmHtmlPublicJobRecord($Record) {
     $public=[ordered]@{}
-    foreach($property in $Record.PSObject.Properties){if($property.Name -notin @('idempotencyKey','RequestHash')){$public[$property.Name]=$property.Value}}
+    foreach($property in $Record.PSObject.Properties){if($property.Name -notin @('idempotencyKey','RequestHash','reportArtifacts')){if($Record.action -ceq 'DeveloperProbe' -and $property.Name -eq 'outputs'){$public.outputs=@(foreach($output in @($property.Value)){$safe=[ordered]@{};foreach($field in @('Status','SHA256','RunId','ArchiveBytes','CollectorCounts','CollectorResults','ProductionQualified','BusinessValidated')){if($output -and $output.PSObject.Properties[$field]){$safe[$field]=$output.$field}};[pscustomobject]$safe})}else{$public[$property.Name]=$property.Value}}}
+    if($Record.PSObject.Properties['reportArtifacts']){$public.artifacts=@(for($i=0;$i -lt @($Record.reportArtifacts).Count;$i++){$item=$Record.reportArtifacts[$i];[pscustomobject]@{index=$i;label=$item.Label;sha256=$item.SHA256;kind=$item.Kind;contentType=$item.ContentType}})}
     [pscustomobject]$public
 }
 
@@ -616,6 +638,7 @@ function Start-WsmHtmlConsole {
     $consoleRoot=Join-Path $Workspace 'console-jobs';Assert-WsmNoReparse $consoleRoot;if(-not [IO.Directory]::Exists($consoleRoot)){[void][IO.Directory]::CreateDirectory($consoleRoot);Protect-WsmDirectory $consoleRoot};Assert-WsmNoReparse $consoleRoot
     $errorRoot=Join-Path $Workspace 'console-errors';Assert-WsmNoReparse $errorRoot;if(-not [IO.Directory]::Exists($errorRoot)){[void][IO.Directory]::CreateDirectory($errorRoot)};Assert-WsmNoReparse $errorRoot;Protect-WsmDirectory $errorRoot
     Import-WsmHtmlJobHistory $consoleRoot $jobs $keys
+    [void](Sync-WsmWizardOperationJobs $Workspace (Get-WsmHtmlWizardJobs $jobs $Workspace))
     try{
         if($ReadyPath){Write-WsmJson $ReadyPath ([pscustomobject]@{Url=$origin;SessionId=$sessionId;Pid=$PID})}
         Write-Host ('Local migration console: '+$origin)
@@ -626,7 +649,8 @@ function Start-WsmHtmlConsole {
                 if($job.Handle -and $job.Handle.IsCompleted){
                     $output=@();try{$output=@($job.PowerShell.EndInvoke($job.Handle));$code=Get-WsmOperationStatusCode $output;$job.Record.Status=if($code -eq 0){'Succeeded'}elseif($code -eq 3){'Cancelled'}elseif($code -eq 1){'Failed'}else{'ReviewRequired'};if($code -eq 1){$workerError=Get-WsmHtmlSafeError 'WorkerReportedFailure';$job.Record|Add-Member NoteProperty error $workerError -Force;try{Write-WsmHtmlErrorRecord $errorRoot $workerError '/worker' ([string]$job.Record.pairId)}catch{}}}catch{$job.Record.Status='Failed';$workerError=Get-WsmHtmlSafeError $_.Exception.Message $_.Exception.GetType().FullName;$job.Record|Add-Member NoteProperty error $workerError -Force;try{Write-WsmHtmlErrorRecord $errorRoot $workerError '/worker' ([string]$job.Record.pairId)}catch{}}
                     $job.Record|Add-Member NoteProperty outputs @(Get-WsmHtmlResultProjection $output) -Force
-                    $job.Record|Add-Member NoteProperty reportArtifacts @(Get-WsmHtmlReportArtifacts $job.Record.action $job.Record.outputs) -Force
+                    if($job.Record.action -ceq 'ImportApprovedPlan' -and @($job.Record.outputs).Count -eq 1){$importResult=$job.Record.outputs[0];if($importResult.PairId -and $importResult.Status -ceq 'ImportedVerified'){$job.Record|Add-Member NoteProperty result ([pscustomobject][ordered]@{Status=[string]$importResult.Status;PairId=[string]$importResult.PairId;SHA256=[string]$importResult.SHA256;ProductionVerified=$false}) -Force}}
+                    $job.Record|Add-Member NoteProperty reportArtifacts @(Get-WsmHtmlReportArtifacts $job.Record.action $job.Record.outputs $Workspace) -Force
                     $job.Record.canCancel=$false
                     $job.Record.CompletedUtc=Get-WsmUtc;$job.Handle=$null;$job.PowerShell.Dispose();$job.PowerShell=$null;Write-WsmJson $job.Path $job.Record
                 }
@@ -664,8 +688,64 @@ function Start-WsmHtmlConsole {
                         elseif(@($jobs.Values|Where-Object {$_.Handle -and -not $_.Handle.IsCompleted}).Count){$status=409;$response=New-WsmHtmlError 'A local operation is still active.' 'active_operation' 'Check operation history and wait for the active operation to finish.'}
                         else{
                             if($change.role -cnotin @('Source','Target','Manager')){throw 'Invalid role.'}
-                            if($change.pairId){Assert-WsmId $change.pairId;[void](Get-WsmCatalog $Workspace $change.pairId)}
+                            if($change.pairId){Assert-WsmId $change.pairId;$catalogPath=Get-WsmCatalogPath $Workspace ([string]$change.pairId);if([IO.File]::Exists($catalogPath)){[void](Get-WsmCatalog $Workspace $change.pairId)}else{$profile=Read-WsmOutputProfile $Workspace;if($change.role -cnotin @('Source','Target') -or -not $profile -or $profile.Role -cne [string]$change.role -or -not (Get-WsmWizardReceivedApprovedPlan $Workspace ([string]$change.pairId) $profile)){throw 'Selected pair is not a verified catalog or received-plan binding.'}}}
                             $PairId=[string]$change.pairId;$Role=[string]$change.role;$contextId=[Guid]::NewGuid().ToString();$response=Get-WsmHtmlContext $Workspace $PairId $Role $contextId
+                        }
+                    }
+                    elseif($route -ceq '/api/wizard' -and $request.Method -ceq 'GET'){
+                        if($query.ContainsKey('contextId') -and $query.contextId -cne $contextId){$status=409;$response=New-WsmHtmlError 'The console context changed before this wizard was read.' 'stale_context' 'Refresh the current workflow and request its projection again.'}
+                        else{$wizardRole=if($query.ContainsKey('role')){[string]$query.role}else{$Role};$wizardPair=if($query.ContainsKey('pairId')){[string]$query.pairId}else{$PairId};$response=Get-WsmHtmlWizardProjection $Workspace $wizardPair $wizardRole $jobs}
+                    }
+                    elseif($route -ceq '/api/wizard/defaults' -and $request.Method -ceq 'GET'){
+                        if($query.ContainsKey('contextId') -and $query.contextId -cne $contextId){$status=409;$response=New-WsmHtmlError 'The console context changed before this step was prepared.' 'stale_context' 'Refresh the current workflow and request its fields again.'}
+                        else{if(-not $query.ContainsKey('action')){throw 'Unknown action.'};$wizardRole=if($query.ContainsKey('role')){[string]$query.role}else{$Role};$wizardPair=if($query.ContainsKey('pairId')){[string]$query.pairId}else{$PairId};$response=Get-WsmWizardActionDefaults $Workspace $wizardPair $wizardRole $query.action (Get-WsmHtmlWizardJobs $jobs $Workspace)}
+                    }
+                    elseif($route -ceq '/api/wizard' -and $request.Method -ceq 'POST'){
+                        if(-not $request.Headers.ContainsKey('content-type') -or $request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw 'JSON body required.'}
+                        $body=ConvertFrom-WsmJson $request.Body;if(-not $body.PSObject.Properties['operation']){throw 'Unsupported operation.'};$op=[string]$body.operation
+                        switch($op){
+                            chooseIntent {
+                                Assert-WsmFields $body @('operation','role','expectedWizardRevision','contextId') @('operation','role','expectedWizardRevision','contextId')
+                                Assert-WsmHtmlWizardRevision $body 'expectedWizardRevision'
+                                if($body.contextId -cne $contextId -or [int]$body.expectedWizardRevision -ne 0){throw 'Review changed: first-use intent context.'}
+                                if(@($jobs.Values|Where-Object {$_.Handle -and -not $_.Handle.IsCompleted}).Count){throw 'A local operation is still active.'}
+                                $existingProfile=Read-WsmOutputProfile $Workspace;if($existingProfile -and $existingProfile.Role -cne [string]$body.role){throw 'This workspace is already enrolled for another role; its role cannot be changed.'}
+                                [void](Initialize-WsmWizardWorkspace $Workspace ([string]$body.role));$Role=[string]$body.role;$PairId='';[void](Sync-WsmWizardOperationJobs $Workspace (Get-WsmHtmlWizardJobs $jobs $Workspace));$contextId=[Guid]::NewGuid().ToString();$response=@{saved=$true;contextId=$contextId;projection=(Get-WsmHtmlWizardProjection $Workspace '' $Role $jobs)}
+                            }
+                            saveState {
+                                Assert-WsmFields $body @('operation','role','pairId','expectedWizardRevision','changes','contextId') @('operation','role','pairId','expectedWizardRevision','changes','contextId')
+                                Assert-WsmHtmlWizardRevision $body 'expectedWizardRevision'
+                                if($body.contextId -cne $contextId -or $body.role -cne $Role -or $body.pairId -cne $PairId){throw 'Review changed: wizard context.'}
+                                $saved=Set-WsmWizardState $Workspace $PairId $Role ([int]$body.expectedWizardRevision) $body.changes
+                                $response=@{saved=$true;state=$saved;projection=(Get-WsmHtmlWizardProjection $Workspace $PairId $Role $jobs)}
+                            }
+                            selectInventory {
+                                Assert-WsmFields $body @('operation','role','pairId','jobId','expectedWizardRevision','contextId') @('operation','role','pairId','jobId','expectedWizardRevision','contextId')
+                                Assert-WsmHtmlWizardRevision $body 'expectedWizardRevision'
+                                if($body.contextId -cne $contextId -or $body.role -cne $Role -or $body.pairId -cne $PairId -or $PairId){throw 'Review changed: inventory selection context.'}
+                                $saved=Set-WsmWizardInventoryBinding $Workspace $Role ([string]$body.jobId) ([int]$body.expectedWizardRevision) (Get-WsmHtmlWizardJobs $jobs $Workspace)
+                                $response=@{saved=$true;state=$saved;projection=(Get-WsmHtmlWizardProjection $Workspace $PairId $Role $jobs)}
+                            }
+                            {$_ -in @('applyAutomaticChoices','confirmRemainingChoices')} {
+                                Assert-WsmFields $body @('operation','role','pairId','expectedWizardRevision','expectedDecisionRevision','expectedSelectionRevision','expectedAssistiveRevision','contextId') @('operation','role','pairId','expectedWizardRevision','expectedDecisionRevision','expectedSelectionRevision','contextId')
+                                if($body.contextId -cne $contextId -or $body.role -cne $Role -or $body.pairId -cne $PairId){throw 'Review changed: wizard context.'}
+                                foreach($revisionField in @('expectedWizardRevision','expectedDecisionRevision','expectedSelectionRevision')){Assert-WsmHtmlWizardRevision $body $revisionField}
+                                $assistiveRevision=-1;if($body.PSObject.Properties['expectedAssistiveRevision']){Assert-WsmHtmlWizardRevision $body 'expectedAssistiveRevision';$assistiveRevision=[int]$body.expectedAssistiveRevision}
+                                $confirmRemainder=($op -ceq 'confirmRemainingChoices');$saved=Invoke-WsmWizardAutomaticChoices -Workspace $Workspace -PairId $PairId -Role $Role -ExpectedWizardRevision ([int]$body.expectedWizardRevision) -ExpectedDecisionRevision ([int]$body.expectedDecisionRevision) -ExpectedSelectionRevision ([int]$body.expectedSelectionRevision) -ExpectedAssistiveRevision $assistiveRevision -Jobs (Get-WsmHtmlWizardJobs $jobs $Workspace) -ConfirmRemainingChoices:$confirmRemainder
+                                $response=@{saved=$true;result=$saved;projection=(Get-WsmHtmlWizardProjection $Workspace $PairId $Role $jobs)}
+                            }
+                            saveChoice {
+                                Assert-WsmFields $body @('operation','role','pairId','itemId','groupId','selected','reason','expectedWizardRevision','expectedDecisionRevision','expectedSelectionRevision','expectedAssistiveRevision','contextId') @('operation','role','pairId','itemId','selected','expectedWizardRevision','expectedDecisionRevision','expectedSelectionRevision','contextId')
+                                if($body.contextId -cne $contextId -or $body.role -cne $Role -or $body.pairId -cne $PairId){throw 'Review changed: wizard context.'}
+                                if($body.selected -isnot [bool]){throw 'Malformed selection flag.'}
+                                foreach($revisionField in @('expectedWizardRevision','expectedDecisionRevision','expectedSelectionRevision')){Assert-WsmHtmlWizardRevision $body $revisionField}
+                                if($body.PSObject.Properties['expectedAssistiveRevision']){Assert-WsmHtmlWizardRevision $body 'expectedAssistiveRevision'}
+                                $assistiveRevision=-1;if($body.PSObject.Properties['expectedAssistiveRevision']){$assistiveRevision=[int]$body.expectedAssistiveRevision}
+                                $groupId='';if($body.PSObject.Properties['groupId']){$groupId=[string]$body.groupId};$reason='';if($body.PSObject.Properties['reason']){$reason=[string]$body.reason}
+                                $saved=Set-WsmWizardChoice -Workspace $Workspace -PairId $PairId -Role $Role -ItemId ([string]$body.itemId) -GroupId $groupId -Selected $body.selected -Reason $reason -ExpectedWizardRevision ([int]$body.expectedWizardRevision) -ExpectedDecisionRevision ([int]$body.expectedDecisionRevision) -ExpectedSelectionRevision ([int]$body.expectedSelectionRevision) -ExpectedAssistiveRevision $assistiveRevision -Jobs (Get-WsmHtmlWizardJobs $jobs $Workspace)
+                                $response=@{saved=$true;result=$saved;projection=(Get-WsmHtmlWizardProjection $Workspace $PairId $Role $jobs)}
+                            }
+                            default {throw 'Unsupported operation.'}
                         }
                     }
                     elseif($route -ceq '/api/jobs' -and $request.Method -ceq 'GET'){$response=@{items=@($jobs.Values|ForEach-Object {ConvertTo-WsmHtmlPublicJobRecord $_.Record})}}
@@ -677,17 +757,27 @@ function Start-WsmHtmlConsole {
                             Start-Process -FilePath $artifact.Path | Out-Null;$response=@{status='Opened';SHA256=$artifact.SHA256}
                         }catch{throw 'ReportUnavailable'}
                     }
+                    elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/artifacts/([0-9]+)$' -and $request.Method -ceq 'GET'){
+                        $id=$Matches[1];$index=[int]$Matches[2];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};$record=$jobs[$id].Record;if($record.action -cne 'DeveloperProbe' -or -not $record.PSObject.Properties['reportArtifacts'] -or $index -ge @($record.reportArtifacts).Count){throw 'ReportUnavailable'};$artifact=$record.reportArtifacts[$index];if($artifact.Kind -eq 'Folder' -or -not [IO.File]::Exists($artifact.Path)){throw 'ReportUnavailable'};Assert-WsmNoReparse $artifact.Path;Assert-WsmTrustedFile $artifact.Path $artifact.SHA256;$bytes=[IO.File]::ReadAllBytes($artifact.Path);$type=[string]$artifact.ContentType
+                    }
+                    elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/artifacts/([0-9]+)/open$' -and $request.Method -ceq 'POST'){
+                        $id=$Matches[1];$index=[int]$Matches[2];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};try{$record=$jobs[$id].Record;if($record.action -cne 'DeveloperProbe' -or -not $record.PSObject.Properties['reportArtifacts'] -or $index -ge @($record.reportArtifacts).Count){throw 'Unavailable'};$artifact=$record.reportArtifacts[$index];$open=ConvertFrom-WsmJson $request.Body;Assert-WsmFields $open @('SHA256') @('SHA256');if([string]$open.SHA256 -cne [string]$artifact.SHA256){throw 'Unavailable'}
+                            if($artifact.Kind -eq 'Folder'){$probeRoot=[IO.Path]::GetFullPath((Join-Path $Workspace 'developer-probes')).TrimEnd('\')+'\';$folder=[IO.Path]::GetFullPath($artifact.Path);if(-not $folder.StartsWith($probeRoot,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.Directory]::Exists($folder)){throw 'Unavailable'};Assert-WsmNoReparse $folder;Start-Process -FilePath $folder | Out-Null}
+                            else{Assert-WsmNoReparse $artifact.Path;Assert-WsmTrustedFile $artifact.Path $artifact.SHA256;Start-Process -FilePath $artifact.Path | Out-Null};$response=@{status='Opened';kind=$artifact.Kind;SHA256=$artifact.SHA256}
+                        }catch{throw 'ReportUnavailable'}
+                    }
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})(/cancel)?$'){
                         $id=$Matches[1];$cancel=$Matches[2];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};$job=$jobs[$id]
                         if($cancel -and $request.Method -ceq 'POST'){
                             if(-not $job.Handle -or $job.Handle.IsCompleted){throw 'Job has already stopped; inspect its authoritative journal before recovery.'}
-                            if($job.CancellationToken){Request-WsmCancellation -Token $job.CancellationToken -Owner ([Environment]::UserName) -Evidence 'User requested cancellation from local HTML console' | Out-Null;$job.Record.Status='CancelRequested'}else{throw 'NoSafeCancellationBoundary'}
+                            if($job.Record.action -ceq 'DeveloperProbe' -and $job.CancellationToken){Request-WsmDeveloperProbeCancellation -CancellationToken $job.CancellationToken | Out-Null;$job.Record.Status='CancelRequested'}
+                            elseif($job.CancellationToken){Request-WsmCancellation -Token $job.CancellationToken -Owner ([Environment]::UserName) -Evidence 'User requested cancellation from local HTML console' | Out-Null;$job.Record.Status='CancelRequested'}else{throw 'NoSafeCancellationBoundary'}
                         }
                         $response=ConvertTo-WsmHtmlPublicJobRecord $job.Record
                     }
                     elseif($route -ceq '/api/spec-review' -and $request.Method -ceq 'GET'){
                         if($query.ContainsKey('contextId') -and $query.contextId -cne $contextId){$status=409;$response=New-WsmHtmlError 'The console context changed before this review was read.' 'stale_context' 'Refresh the current context and request the review again.'}
-                        else{$response=Get-WsmHtmlSpecReviewSnapshot $Workspace $PairId $query.itemId $Role $sessionId $contextId $query.dataVersion}
+                        else{if(-not $query.ContainsKey('itemId')){throw 'Unknown action.'};$specDataVersion=if($query.ContainsKey('dataVersion')){[string]$query['dataVersion']}else{''};$response=Get-WsmHtmlSpecReviewSnapshot $Workspace $PairId $query['itemId'] $Role $sessionId $contextId $specDataVersion}
                     }
                     elseif($route -ceq '/api/view' -and $request.Method -ceq 'GET'){
                         if($query.ContainsKey('contextId') -and $query.contextId -cne $contextId){$status=409;$response=New-WsmHtmlError 'The console context changed before this view was read.' 'stale_context' 'Refresh the context and request the view again.'}
@@ -705,7 +795,7 @@ function Start-WsmHtmlConsole {
                             $requestHash=Get-WsmHtmlRequestHashForBody $Workspace $PairId $Role $body.action $body
                         }
                         $currentVector=Get-WsmHtmlRevisionVector $Workspace $PairId;$revision=[int]$currentVector.revision
-                        if([int]$body.expectedRevision -ne $revision -or -not (Test-WsmHtmlExpectedVector $body $currentVector)){
+                        if($body.action -cne 'DeveloperProbe' -and ([int]$body.expectedRevision -ne $revision -or -not (Test-WsmHtmlExpectedVector $body $currentVector))){
                             $replayed=$false
                             if($route -ceq '/api/operations' -and $body.PSObject.Properties['operationId'] -and $body.PSObject.Properties['idempotencyKey']){
                                 Assert-WsmId ([string]$body.operationId);Assert-WsmId ([string]$body.idempotencyKey)
@@ -719,7 +809,10 @@ function Start-WsmHtmlConsole {
                         }
                         else{
                             $command=Get-Command $map[$body.action] -CommandType Function
-                            foreach($binding in @(@('Workspace',$Workspace),@('PairId',$PairId))){if($command.Parameters.ContainsKey($binding[0]) -and -not $body.args.PSObject.Properties[$binding[0]]){$body.args | Add-Member NoteProperty $binding[0] $binding[1]}}
+                            if($body.action -ceq 'DeveloperProbe'){
+                                if(@($body.args.PSObject.Properties).Count -gt 0){throw 'Developer probe accepts no caller-supplied arguments; role and local origin are supplied by this console.'}
+                                $body.args | Add-Member NoteProperty Workspace $Workspace;$body.args | Add-Member NoteProperty Role $Role;$body.args | Add-Member NoteProperty Origin $origin;$body.args | Add-Member NoteProperty PairId ''
+                            }else{foreach($binding in @(@('Workspace',$Workspace),@('PairId',$PairId))){if($command.Parameters.ContainsKey($binding[0]) -and -not $body.args.PSObject.Properties[$binding[0]]){$body.args | Add-Member NoteProperty $binding[0] $binding[1]}}}
                             $nativeRevisionParameter=switch([string]$body.action){
                                 'OsProvidedCapture' {'DecisionRevision'}
                                 'OsProvidedBaseline' {'ExpectedDecisionRevision'}
@@ -739,11 +832,16 @@ function Start-WsmHtmlConsole {
                                 if($PairId -and ($command.Name -notmatch 'Assistive|Set-WsmHtml' -or $command.Name -in @('Submit-WsmAssistiveWindowsSettingsReview','Submit-WsmAssistiveGeneralHostDispositions','Submit-WsmAssistiveGeneralHostRequirements','Submit-WsmAssistiveGeneralHostRequirementDecisions'))){$nativeRevision=[int]$currentVector.decisionRevision}
                                 $body.args | Add-Member NoteProperty ExpectedRevision $nativeRevision
                             }
-                            $arguments=ConvertTo-WsmHtmlArguments $command $body.args
+                            if($body.action -ceq 'InspectWizardFiles'){
+                                Assert-WsmFields $body.args @('ItemId') @('ItemId');if($Role -cne 'Source' -or -not $PairId){throw 'File details require the Source role and a selected received plan.'}
+                                $receivedPlan=Get-WsmWizardReceivedApprovedPlan $Workspace $PairId (Read-WsmOutputProfile $Workspace);if(-not $receivedPlan){throw 'Current received approved plan is unavailable.'}
+                                $plannedItems=@($receivedPlan.Plan.Items|Where-Object {$_.ItemId -ceq [string]$body.args.ItemId -and $_.Decision -ceq 'Include' -and $_.MigrationSpec -and $_.MigrationSpec.Adapter -ceq 'FileScope'});if($plannedItems.Count -ne 1){throw 'Choose one included FileScope item from the current approved plan.'}
+                                $arguments=@{Item=$plannedItems[0];OutputDirectory=(Join-Path (Join-Path $Workspace 'workspace-control') 'wizard-file-details');ExcludedRoot=@($Workspace,$PSScriptRoot)}
+                            }else{$arguments=ConvertTo-WsmHtmlArguments $command $body.args}
                             if($route -ceq '/api/operations' -and $body.action -ceq 'SetSoftwareVersion'){
                                 $arguments.BeforeWrite=New-WsmHtmlSoftwareBeforeWrite $Workspace $PairId $currentVector
                             }
-                            foreach($binding in @(@('Workspace',$Workspace),@('PairId',$PairId))){if($command.Parameters.ContainsKey($binding[0]) -and -not $arguments.ContainsKey($binding[0])){$arguments[$binding[0]]=$binding[1]}}
+                            if($body.action -eq 'DeveloperProbe'){$arguments.Workspace=$Workspace;$arguments.Role=$Role;$arguments.Origin=$origin;$arguments.PairId=''}else{foreach($binding in @(@('Workspace',$Workspace),@('PairId',$PairId))){if($command.Parameters.ContainsKey($binding[0]) -and -not $arguments.ContainsKey($binding[0])){$arguments[$binding[0]]=$binding[1]}}};if($body.action -ceq 'ImportApprovedPlan'){$arguments.Role=$Role;$arguments.OperationId=[string]$body.operationId};if($body.action -ceq 'ExportSourceReviewHandoff'){$arguments.Jobs=Get-WsmHtmlWizardJobs $jobs $Workspace}
                             if($arguments.ContainsKey('Workspace') -and [IO.Path]::GetFullPath($arguments.Workspace) -ine [IO.Path]::GetFullPath($Workspace)){throw 'Session workspace mismatch.'}
                             if($arguments.ContainsKey('PairId') -and $arguments.PairId -cne $PairId){throw 'Session pair mismatch.'}
                             if($route -ceq '/api/view'){
@@ -762,11 +860,14 @@ function Start-WsmHtmlConsole {
                                 if($keys.ContainsKey($body.idempotencyKey)){
                                     $prior=$keys[$body.idempotencyKey];if($prior.Hash -cne $hash -or $prior.Id -cne $body.operationId){throw 'Idempotency key was reused with different input.'};$response=Get-WsmHtmlReplayResponse $jobs[$prior.Id].Record
                                 }
-                                elseif($jobs.ContainsKey($body.operationId)){throw 'Operation ID already used.'} elseif(@($jobs.Values | Where-Object {$_.Record.status -in @('Running','CancelRequested')}).Count -ge 8){$status=409;$response=New-WsmHtmlError 'The local worker limit is reached.' 'worker_limit' 'Check operation history and wait for an active operation to finish.'}
+                                elseif($jobs.ContainsKey($body.operationId)){throw 'Operation ID already used.'}
+                                elseif($body.action -ceq 'DeveloperProbe' -and @($jobs.Values|Where-Object {$_.Record.action -ceq 'DeveloperProbe' -and $_.Record.status -in @('Running','CancelRequested') -and [IO.Path]::GetFullPath([string]$_.Record.workspace) -ieq [IO.Path]::GetFullPath($Workspace)}).Count){$activeProbe=@($jobs.Values|Where-Object {$_.Record.action -ceq 'DeveloperProbe' -and $_.Record.status -in @('Running','CancelRequested') -and [IO.Path]::GetFullPath([string]$_.Record.workspace) -ieq [IO.Path]::GetFullPath($Workspace)}|Select-Object -First 1)[0];$status=409;$response=New-WsmHtmlError 'A developer probe is already running in this workspace.' 'active_probe' 'Join the existing diagnostic job before starting another.';$response|Add-Member NoteProperty existingJobId ([string]$activeProbe.Record.jobId) -Force}
+                                elseif(@($jobs.Values | Where-Object {$_.Record.status -in @('Running','CancelRequested')}).Count -ge 8){$status=409;$response=New-WsmHtmlError 'The local worker limit is reached.' 'worker_limit' 'Check operation history and wait for an active operation to finish.'}
                                 elseif($body.action -in @('SaveSelection','SetRestoreChoice','SetSoftwareVersion')){
-                                    $record=[pscustomobject]@{jobId=$body.operationId;action=$body.action;idempotencyKey=[string]$body.idempotencyKey;RequestHash=$hash;Actor=(Get-WsmExecutionActor);workspace=$Workspace;pairId=$PairId;role=$Role;sessionId=$sessionId;contextId=$contextId;startedRevision=$revision;startedDecisionRevision=$currentVector.decisionRevision;startedSelectionRevision=$currentVector.selectionRevision;startedDataVersion=$currentVector.dataVersion;status='Running';StartedUtc=(Get-WsmUtc);CompletedUtc=$null;canCancel=$false}
+                                    $record=[pscustomobject]@{jobId=$body.operationId;action=$body.action;idempotencyKey=[string]$body.idempotencyKey;RequestHash=$hash;Actor=(Get-WsmExecutionActor);workspace=$Workspace;pairId=$(if($body.action -ceq 'DeveloperProbe'){''}else{$PairId});role=$Role;sessionId=$sessionId;contextId=$contextId;startedRevision=$revision;startedDecisionRevision=$currentVector.decisionRevision;startedSelectionRevision=$currentVector.selectionRevision;startedDataVersion=$currentVector.dataVersion;status='Running';StartedUtc=(Get-WsmUtc);CompletedUtc=$null;canCancel=$false}
                                     $recordPath=Join-Path $consoleRoot ($body.operationId+'.json');Write-WsmJson $recordPath $record;$jobs[$body.operationId]=@{Record=$record;Path=$recordPath;Handle=$null;PowerShell=$null;CancellationToken=$null};$keys[$body.idempotencyKey]=@{Hash=$hash;Id=$body.operationId}
                                     try{
+                                        $wizardOperation=Register-WsmWizardOperationJob $Workspace $record
                                         $arguments.ExpectedRevision=[int]$body.expectedRevision
                                         if($body.action -in @('SaveSelection','SetRestoreChoice')){
                                             if($body.PSObject.Properties['expectedDecisionRevision']){$arguments.ExpectedDecisionRevision=$body.expectedDecisionRevision}
@@ -783,12 +884,13 @@ function Start-WsmHtmlConsole {
                                 else{
                                     $record=[pscustomobject]@{jobId=$body.operationId;action=$body.action;idempotencyKey=[string]$body.idempotencyKey;RequestHash=$hash;Actor=(Get-WsmExecutionActor);workspace=$Workspace;pairId=$PairId;role=$Role;sessionId=$sessionId;contextId=$contextId;startedRevision=$revision;startedDecisionRevision=$currentVector.decisionRevision;startedSelectionRevision=$currentVector.selectionRevision;startedDataVersion=$currentVector.dataVersion;status='Running';StartedUtc=(Get-WsmUtc);CompletedUtc=$null;canCancel=$false}
                                     $recordPath=Join-Path $consoleRoot ($body.operationId+'.json')
-                                    $cancellation=New-WsmHtmlCancellation $command $arguments $body.operationId
+                                    $cancellation=if($body.action -ceq 'DeveloperProbe'){New-WsmDeveloperProbeCancellationToken -Workspace $Workspace -OperationId $body.operationId}elseif($body.action -ceq 'InspectWizardFiles'){New-WsmCancellationToken -StateDirectory (Join-Path $Workspace 'pairs') -PairId $PairId -PlanHash $receivedPlan.SHA256 -OperationId $body.operationId}else{New-WsmHtmlCancellation $command $arguments $body.operationId}
                                     if($command.Parameters.ContainsKey('CancellationToken') -and @($command.Parameters['CancellationToken'].Attributes | Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.Mandatory}).Count -and -not $cancellation){throw 'This operation requires a hash-bound safe cancellation context before submission.'}
                                     if($cancellation){$arguments.CancellationToken=$cancellation}
                                     $worker=[Management.Automation.PowerShell]::Create()
                                     [void]$worker.AddScript('param($modulePath,$commandName,$arguments) Import-Module $modulePath -Force -DisableNameChecking; $ConfirmPreference="None"; $ErrorActionPreference="Stop"; $command=Get-Command $commandName -CommandType Function; if($command.Parameters.ContainsKey("Confirm")){$arguments.Confirm=$false}; & $command @arguments').AddArgument($modulePath).AddArgument($command.Name).AddArgument($arguments)
                                     $record.canCancel=($null -ne $cancellation);Write-WsmJson $recordPath $record
+                                    if($body.action -cne 'DeveloperProbe'){try{[void](Register-WsmWizardOperationJob $Workspace $record)}catch{$record.status='Failed';$record.CompletedUtc=Get-WsmUtc;Write-WsmJson $recordPath $record;throw}}
                                     $handle=$worker.BeginInvoke();$jobs[$body.operationId]=@{Record=$record;Path=$recordPath;PowerShell=$worker;Handle=$handle;CancellationToken=$cancellation};$keys[$body.idempotencyKey]=@{Hash=$hash;Id=$body.operationId};$status=202;$response=@{job=(ConvertTo-WsmHtmlPublicJobRecord $record)}
                                     $arguments=$null
                                 }
@@ -802,7 +904,7 @@ function Start-WsmHtmlConsole {
                 if($null -eq $bytes){$jsonResponse=$response|ConvertTo-Json -Depth 30 -Compress;$bytes=[Text.Encoding]::UTF8.GetBytes($jsonResponse)}
                 Write-WsmLocalHttpResponse $client $status $type $bytes
             }catch{
-                $status=400;if($_.Exception.Message -match '^Rejected'){$status=403}elseif($_.Exception.Message -match 'Review changed|Context changed'){$status=409}elseif($_.Exception.Message -match 'UnknownJob|Unknown route'){$status=404}
+                $status=400;if($_.Exception.Message -match '^Rejected'){$status=403}elseif($_.Exception.Message -match 'Review changed|Context changed|Wizard progress changed'){$status=409}elseif($_.Exception.Message -match 'UnknownJob|Unknown route'){$status=404}
                 $safeError=$requestSafeError;if(-not $safeError){$safeError=Get-WsmHtmlSafeError $_.Exception.Message $_.Exception.GetType().FullName}
                 try{Write-WsmHtmlErrorRecord $errorRoot $safeError $route $PairId}catch{}
                 try{$errorBytes=[Text.Encoding]::UTF8.GetBytes(($safeError|ConvertTo-Json -Compress));Write-WsmLocalHttpResponse $client $status 'application/json; charset=utf-8' $errorBytes}catch{}

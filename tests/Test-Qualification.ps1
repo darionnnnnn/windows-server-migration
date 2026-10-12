@@ -65,6 +65,11 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
         if(@($releaseProjection.Index.Files | Where-Object {$_.Path -match '^docs/(html/)?MIGRATION-.*-PLAN\.html$'}).Count){throw 'Offline release includes a migration-plan HTML document.'}
         if(@($releaseProjection.Index.Files | Where-Object Path -Like 'src/ui/*').Count -gt 0 -and 'src/ui/index.html' -cnotin @($releaseProjection.Index.Files.Path)){throw 'Offline release includes UI resources but omits the live UI entry point.'}
         if(@($releaseProjection.Index.Files | Where-Object Path -Like 'docs/archive/*').Count){throw 'Offline release must exclude archived documentation.'}
+        $launcherPath=Join-Path (Split-Path $PSScriptRoot -Parent) 'Start-ServerMigration.cmd'
+        if([IO.File]::Exists($launcherPath)){
+            $launcherRows=@($releaseProjection.Index.Files|Where-Object Path -CEQ 'Start-ServerMigration.cmd')
+            if($launcherRows.Count -ne 1 -or $launcherRows[0].SHA256 -ine (Get-FileHash -LiteralPath $launcherPath -Algorithm SHA256).Hash){throw 'Release must include the exact double-click launcher bytes.'}
+        }
         $tuple | Add-Member NoteProperty ReleaseArtifact ([pscustomobject]@{ArchiveSHA256=$releaseHash.ToLowerInvariant();SignatureSHA256=$sigHash.ToLowerInvariant();ToolFingerprint=$release.ToolFingerprint;SignerThumbprint=('3'*40);TrustPolicyHash=$policyHash.ToLowerInvariant()}) -Force
         $fixtureRuntime=[pscustomobject]@{PowerShellVersion='5.1.14393.1000';Edition='Desktop';ProcessArchitecture='x64';LanguageMode='FullLanguage';CLRVersion='4.0.30319.42000';DotNetFrameworkRelease='528040'}
         $tuple | Add-Member NoteProperty Runtime ([pscustomobject]@{Source=$fixtureRuntime;Target=$fixtureRuntime})

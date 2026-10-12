@@ -5,8 +5,25 @@
     [string]$Workspace,[string]$Path,[string]$ExpectedHash,[string]$TargetName,[string]$PairId,
     [string]$Category,[string]$Search,[string]$Decision='Pending',[string]$Reason,[int]$ExpectedRevision=-1,[string]$ItemId,[string]$Name,[string]$NaturalKey,[string]$Owner,[string]$Evidence,[string]$Mapping,[ValidateSet('Path','Account','Endpoint')][string]$MappingType='Path')
 $ErrorActionPreference='Stop'
+# Windows PowerShell launched from pwsh can inherit incompatible inbox modules.
+# Remove only a PowerShell Core installation's Modules directory in this child process.
+if($PSVersionTable.PSVersion.Major -le 5){
+    $compatibleModulePaths=@()
+    foreach($modulePath in [string]$env:PSModulePath -split ';'){
+        if(-not $modulePath){continue}
+        $parent=[IO.Path]::GetDirectoryName($modulePath.TrimEnd('\'))
+        if($parent -and [IO.File]::Exists([IO.Path]::Combine($parent,'pwsh.exe'))){continue}
+        $compatibleModulePaths+=@($modulePath)
+    }
+    $env:PSModulePath=$compatibleModulePaths -join ';'
+}
+if($Action -ceq 'Html'){
+    Write-Host '工具啟動後會開啟操作網頁，請依畫面按下一步。使用期間請保持這個視窗開啟。'
+    Write-Host '無法開啟瀏覽器時，可由資訊人員執行文字備援：Start-ServerMigration.ps1 -Action Menu'
+    Write-Host '開發者環境探測備援：Start-ServerMigration.ps1 -Action DeveloperProbe'
+}
 if (-not $Workspace) { $Workspace=Join-Path $PSScriptRoot 'migration-workspace' }
-Import-Module (Join-Path $PSScriptRoot 'src\WindowsServerMigration.psd1') -Force -DisableNameChecking
+$migrationModule=Import-Module (Join-Path $PSScriptRoot 'src\WindowsServerMigration.psd1') -Force -DisableNameChecking -PassThru
 function Read-MenuValue([string]$Label) {
     $value=Read-Host ($Label+'（0 取消；literal:0 表示文字 0）')
     if($null -eq $value){throw (New-Object IO.EndOfStreamException('Console input ended.'))}
@@ -59,8 +76,16 @@ function Review-Pair([string]$SelectedPair) {
 try {
     if($Action -ceq 'Html'){
         $consoleRole=$Role;if(-not $PSBoundParameters.ContainsKey('Role')){$consoleRole='Manager'}
+        if(-not $PSBoundParameters.ContainsKey('Role')){$profile=& $migrationModule {param($root) Read-WsmOutputProfile $root} $Workspace;if($profile){$consoleRole=[string]$profile.Role}}
         Start-WsmHtmlConsole -Workspace $Workspace -Role $consoleRole -PairId $PairId -Port $Port -NoBrowser:$NoBrowser
         exit 0
+    }
+    if($Action -ceq 'DeveloperProbe'){
+        $probeRole=$Role
+        if(-not $PSBoundParameters.ContainsKey('Role')){$profile=& $migrationModule {param($root) Read-WsmOutputProfile $root} $Workspace;$probeRole=if($profile){[string]$profile.Role}else{'Manager'}}
+        $result=Export-WsmDeveloperProbe -Workspace $Workspace -Role $probeRole
+        $result | Select-Object Status,Path,SHA256,HtmlPath,CollectorCounts,FormatVersion | Format-List
+        exit (Get-WsmOperationStatusCode $result)
     }
     if ($Action -eq 'Operation') { $result=Invoke-WsmOperationRequest $Path $ExpectedHash; $result; exit (Get-WsmOperationStatusCode $result) }
     if ($Action -cnotin @('Menu','LabReport','Inventory','Initialize','Import','ImportZip','Report','FleetReport','ExportCsv','ImportCsvPreview','ImportCsv','Issues','RulePreview','ApplyRule','ManualItem','Mapping','Evidence','Approve','FleetGraph','ImportResult','Capabilities','ConsistencyGroup','TemplatePreview','ApplyTemplate','ExportTemplate','ScopeAssessment','OperationRequest')) { throw (New-Object IO.InvalidDataException('Unknown action.')) }

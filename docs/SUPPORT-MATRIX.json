@@ -46,7 +46,7 @@
     {
       "scope": "HTML console / Server Core typed text menu",
       "runtime": "Loopback TcpListener with native PowerShell command metadata; local browser",
-      "status": "Isolated parser, authorization, typed forms, durable jobs and browser rendering tests; local HTTP transport is ModifiedTransport and native Server remains NotTested",
+      "status": "Limited real Edge and formal PowerShell handler read/write and wizard-selection journeys passed with isolated inventory data; original AdGuard transport remains NotPassed, complete backup/restore journey and native Server remain NotTested",
       "qualificationRequired": true
     },
     {
