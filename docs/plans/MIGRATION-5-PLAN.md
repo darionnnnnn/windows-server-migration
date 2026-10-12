@@ -329,3 +329,49 @@ H01 的完整性清單擴充為原始七項需求、第 1／9 節定案、F01–
 - 主代理於自建空目錄重現 Protect-WsmDirectory 重複 Set-Acl 的 SeSecurityPrivilege 錯誤；改為只持久保存已修改的擁有者／DACL，不改電腦政策或稽核設定。
 - 新增 Test-DirectoryProtection.ps1，Windows PowerShell 5.1 與 PowerShell 7 均 PASS：反覆設定後原生讀回擁有者、限定 SID、FullControl、繼承保護及原檔內容。
 - 此窄修由主代理實作與驗證；gpt-6-luna high 子代理另行核對 API／權限語意。主代理的精確模型名稱未由本輪可信設定揭露，不推測或冒稱已完成特定模型切換。
+- ACL 修正後，主代理重新執行 Test-HtmlBridge.js：33 PASS，包含正式 handler 重啟、token／Origin、過期資料拒絕、重播及作業來源；先前的 restart 缺口已解決。修正提交 a4c19c2，遠端 codex/migration-5 已核對相同 SHA。
+
+### 2026-10-12 實作完整性核對（進行中，非完成驗收）
+
+- B/C/D：狀態、用途註冊、可信盤點綁定、逐組／批次保存及基本導覽已接線。主代理目前獨立驗得 Test-WizardFlow.ps1 27 項；原生瀏覽器證據僅涵蓋空工作、用途選擇及步驟 CAS，fixture UI 與原生完整交接旅程不混稱。
+- 補實作清單仍含可展開檔案明細、重新掃描保留排除、混合共享相依、完整管理準備／來源意圖交接、實際備份與非 C 結果、目標還原及單獨啟用。逐段完整性核對通過後才接受相應階段。
+- G：兩引擎的去識別化、ZIP 讀回及資源／取消證據已有基礎；深度盤點可能讀取 UNC／reparse 的既有路徑已找到，正在加入探測專用讀取範圍限制，尚不標 G 完成。
+- H 入口：主代理加入雙擊 x64 啟動器、已註冊用途恢復及同收集器 DeveloperProbe CLI。Test-Launcher.ps1 實際 CMD 於含空白路徑啟動 x64 fixture PASS；此 fixture 只證明啟動命令，不能代替正式備份流程。新啟動器須納入發行 manifest／工具指紋及最後檔案核驗。
+
+### 2026-10-12 C/D：補齊中的真實接線證據
+
+- 主代理獨立重跑 Test-NativeWizardJourney.js 通過：實際 Edge → Start-WsmHtmlConsole handler → Manager core 決策與精靈 CAS，保存排除／原因、下一組、返回、輪詢保留未保存欄位與焦點、其餘項目批次保存及保留排除。盤點集合為隔離 fixture，未執行備份／還原；不能以此宣稱 E/F 通過。先前批次回應測試誤讀 appliedCount，改核對真實 appliedItemIds，修正後重跑通過。
+- 主代理實作 src/WizardDetails.ps1 與 Test-WizardDetails.ps1；Windows PowerShell 5.1／PowerShell 7 本機實際檔案驗證通過。純投影不碰來源檔案系統；獨立明細操作只讀已審閱 FileScope 的本機 metadata，受時間／數量／路徑／排除界線限制。具名 JSON／SHA256、規格雜湊及受控目錄驗證；錯雜湊、規格變更、UNC、device／ADS、輸出重疊及 junction 不跨越。此 helper 的正式 worker／UI 接線仍須驗證，尚未宣稱 D01 完成。
+- 本段由主代理自行實作並驗證明細 helper，不冒稱此修正已經獨立換模型體檢。其餘精靈實作為 gpt-6-luna high；逐段狀態仍以實際呼叫端與產物核對為準。
+
+### 2026-10-12 跨段核對新增缺陷與處理中證據
+
+- G 的 fixture 測試通過後，主代理在不可變快照執行未注入 CollectorAdapter 的完整 Export-WsmDeveloperProbe。實際 PlatformIdentity／LocalVolumes 因隔離 runspace 停用自動載入而找不到 Get-CimInstance，兩項 Failed。此缺陷列為 G 完成阻擋，要求修正安全 CIM 載入，並以兩引擎未模擬完整探測核對本機 OS/build／固定磁碟 readback；fixture PASS 不代替這項證據。
+- 主代理檢查 SourceReviewIntent 核心合併發現：部分交接會按 Decision 同步全部 Assistive selections，連帶取消未確認項目的預選。要求只更新實際套用的交接項目，並加入部分交接與既有選擇保留回歸；仍未接受完整 F0。
+- 主代理新增 Test-WizardReceivedPlan.ps1，以真實核心核准及可信計畫讀取檢查 Source／Target 接收材料、投影及自動參數，僅本機身分觀察使用明示 fixture。不可變快照 PowerShell 7 通過；Windows PowerShell 5.1 暴露過長產物路徑，縮短隔離測試目錄後通過。正式路徑需另有預先檢查與白話處置，不能以縮短 fixture 代替修正使用者情境。
+- H 啟動器在 PowerShell 7 啟動 Windows PowerShell 5.1 時發現繼承的模組路徑導致不相容 Security 模組；入口加入僅排除 pwsh 安裝模組的相容處理。兩引擎實際 CMD／入口前置處理 fixture 通過，不更改執行政策。UTF-8 CMD 在真實跨引擎啟動出現解析問題，改成 ASCII CRLF；正式 PowerShell 入口提供中文指引。
+- 主代理改寫離線 guide.html，以用途、開始／下一步、交接、結果與恢復說明為主，不要求一般人先選內部操作名称。實際 Edge 離線載入於 320／768／1280 CSS px 無水平溢出，章節連結有效；文字大小的舊 CSS 規則需同步補齊，完整 E/F 內容仍需最終逐條核對。
+
+- H 的發行回歸在不可變快照執行 Test-Qualification.ps1：Windows PowerShell 5.1／PowerShell 7 均通過（38.0／33.8 秒），新增核對啟動器於發行索引恰有一列且 SHA256 與實際 CMD bytes 一致。涵蓋 release manifest／payload、工具指紋及不可信簽章／錯雜湊拒絕；目前工具未企業簽署，ProductionVerified=false。快照的測試檔追加了此斷言及較短 received-plan fixture 路徑，索引相應兩列重新記錄；runtime bytes 未變。最終 runtime 仍需依整輪完成狀態核驗。
+
+- G 主代理在子代理不可變快照 developer-probe-final-85456ec276b14eaaaae01f4276f1de06 獨立執行 Test-DeveloperProbe.ps1，Windows PowerShell 5.1（132.5 秒）及 PowerShell 7（101.3 秒）均 exit 0。核對兩個 G 檔案 SHA256 與現行相同；包含不注入 adapter 的完整探測，OS/version/build 與固定磁碟組合對照直接 CIM，先前 Get-CimInstance 缺載入缺陷已驗修。NativeInventory 在本機 Windows 11 為 NotApplicable，不冒稱 Server 深度盤點實測；本機路徑／UNC／reparse 限制另以明示 fixture 驗證。
+
+- 文件子代理回報初始搜尋曾因 glob 排除錯誤列出並讀到封存檔片段，違反本輪略過 docs/archive 的指示；已立即停止該搜尋，不引用其內容、不修改或納入快照及發行。本輪不可宣稱完全沒有讀取封存；後續改用明確現行檔案清單與正確路徑排除。此為流程偏差紀錄，不以它增列使用者驗收工作。
+
+- H 主代理獨立執行 Test-HtmlDocumentation.ps1，Windows PowerShell 5.1／PowerShell 7 各 24 PASS；測試使用自行建立的文件 fixture，不碰專案封存內容。另核對現行產生的 12 頁 HTML，89 個本地相對檔案連結均存在，排除外部 URL／頁內片段；頁內片段不算已驗證。
+
+### 2026-10-12 B/C、來源交接、G 與 H 入口：相依完整提交前核對
+
+- 本段交付精靈基礎、既有核心來源意圖交接、一鍵開發探測、受控檔案明細及啟動／文件相依；E/F 完整備份與還原編排仍在下一相依段實作，不以本段通過冒稱整輪完成。
+- 主代理以 foundation-b6a73dc501b24488a16e11cd9869de4e 不可變 runtime 快照分別測 Windows PowerShell 5.1／PowerShell 7：WizardFlow（新增取消標記情境後 45）、WizardDetails、ReceivedPlan、OperationRequests、Launcher、Qualification、InventoryFixture、AdvancedReview、HtmlConsole、ScriptEncoding 均有通過證據。初次 ReceivedPlan 過長 fixture、非 ASCII 無 BOM 及新版 JSON 日期自動轉型均曾失敗，修正後重跑相應檢查；不能把初次失敗寫成通過。
+- 既有實際核心回歸：Test-MigrationPipeline 兩引擎各 16 PASS（253.9／191.6 秒），Test-AssistiveNonC 兩引擎 exit 0（51.3／37.0 秒）；不是企業 SMB 或正式 Server 環境驗收。最後 Qualification 兩引擎 exit 0（91.2／83.3 秒），核對包含 CMD 的實際發行 bytes／索引；ProductionVerified／ProductionExecutionEnabled 仍 false。
+- 主代理實際 Edge 檢查：WizardLayout／WizardJourney 隔離 API fixture 通過；Test-HtmlBrowser 修正輪詢測試同步及 guide 48px／間距後通過（48.9 秒）。Test-WizardHttp（98.7 秒）及 NativeHtmlBridge（77.6 秒）正式 handler 通過。NativeSourceHandoff 實際 Source → 正式 worker 匯出 → Manager 核對雜湊匯入通過（137.6 秒），另查看畫面確認舊匯入表單及 stale 提示已消失，下一步可操作。
+- 原生一鍵探測旅程已驗得空工作區完整收集、真 ZIP 受控下載與用途註冊。新增 .cancellations 的合法取消標記曾阻擋首次設定，改為檢查確切格式／身分／時間／路徑；未知探測內容仍拒絕。新版 JSON 日期保持原始字串，避免跨引擎誤拒絕。
+- 最後完整 NativeWizard 逐項選擇曾在等待游標前進時逾時；診斷已核對實際非同步 handler 結束及耐久游標 CAS。測試追加精確 request／response／獨立 GET 斷言後重跑中，未提前記為通過。
+- 主代理逐檔核對 Git index 與測試快照的正規化 bytes 相同；後續 E/F 新 helper 及核心修正不納入此基礎提交，避免推送未完成相依。規劃／文件只記已得到的證據。
+### 2026-10-12 F1：實際還原追加缺陷與獨立複驗（整輪仍進行中）
+
+- 主代理在不可變 target-wizard-cancel-20261012-1545 快照獨立跑 Test-WizardRestore（24）、Test-AssistiveRestore（116）及 Test-AssistiveResources（34），Windows PowerShell 5.1 與 PowerShell 7 全部 exit 0。實際 ZIP／Directory 接收、schema 3 收據、等待與取消不寫入、明確新收據續作、原檔不覆寫、成功項內容／ACL／attributes／時間 readback、同次已完成結果重播，以及 staged validation／非最終封存啟用阻擋均有證據。服務／IIS／企業業務啟用未作本機實測。
+- 驗證中修正實際核心缺陷：非 final package 不應登錄不存在的 freeze.json、材料批次需要 SHA256 欄位、新 FileScope 不具有 Desired 且 Prior／Undo 合法為 null、取消後需要耐久 Cancelled 狀態及停止 worker 的材料鎖釋放。第一次還原造成檔案系統改變，完成重試須核對已保存的 WizardPreviewHash 與精確材料／世代／收據／snapshot／選取綁定，不以改變後的 live rows 再次要求原預覽；第一次真正写入仍保留兩次新鮮預覽核對。
+- 本輪完整性仍未通過：Target 一般 UI 的 ZIP／Directory 匯入接線與取消 token scope 追加驗修中；F0 全 adapter 白話欄位、E 實際兩種備份 UI、NonC 正向 transfer／import 契約及結果、最終五條瀏覽器旅程與全專案體檢尚待完成。不得將 focused core PASS、沒有第二顆固定磁碟的 SKIP 或已有 payload bytes 當作整輪完成。
+- 主代理根據實際核心 TypedFields／Submit allowlist 補上 PrincipalUser、ConfigOverrides、IisConfigChanges、DesiredChanges 與 ActivationPolicyFieldPointer 白話表單，來源 row identity 維持唯讀；目前追加測試中，尚未以欄位存在代替各 adapter 真實 Submit 消費驗證。
