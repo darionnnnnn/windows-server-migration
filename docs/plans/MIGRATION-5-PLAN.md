@@ -323,3 +323,9 @@ H01 的完整性清單擴充為原始七項需求、第 1／9 節定案、F01–
 - 前端辨識非 JSON、斷線與逾時，提供錯誤識別碼；不將不明寫入結果當失敗重送。測試服務首次種資料後可重用既有工作。
 - 主代理獨立執行 Test-HtmlConsole.ps1：60 PASS；Test-NativeHtmlBridge.js：真 Edge／正式 PowerShell handler 載入資源、125 項盤點及一次可逆保存 PASS，錯誤情境為明示的回應注入。
 - Test-HtmlBridge.js restart 遇現有 Protect-WsmDirectory／Set-Acl 權限問題，另列本輪待修，不能宣稱 restart 已驗收。A 通訊修正可独立復原；後續精靈與ACL問題尚未完成。
+
+### 2026-10-12 A 補修：重啟時受控目錄權限
+
+- 主代理於自建空目錄重現 Protect-WsmDirectory 重複 Set-Acl 的 SeSecurityPrivilege 錯誤；改為只持久保存已修改的擁有者／DACL，不改電腦政策或稽核設定。
+- 新增 Test-DirectoryProtection.ps1，Windows PowerShell 5.1 與 PowerShell 7 均 PASS：反覆設定後原生讀回擁有者、限定 SID、FullControl、繼承保護及原檔內容。
+- 此窄修由主代理實作與驗證；gpt-6-luna high 子代理另行核對 API／權限語意。主代理的精確模型名稱未由本輪可信設定揭露，不推測或冒稱已完成特定模型切換。

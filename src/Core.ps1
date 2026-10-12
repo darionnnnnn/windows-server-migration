@@ -112,7 +112,14 @@ function Protect-WsmDirectory([string]$Path) {
         $rule = New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)), 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
         [void]$acl.AddAccessRule($rule)
     }
-    Set-Acl -LiteralPath $Path -AclObject $acl
+    # Persist only modified owner/access sections. Set-Acl can request the audit
+    # section on an existing directory, requiring SeSecurityPrivilege on reopen.
+    $directory = New-Object IO.DirectoryInfo($Path)
+    if ('System.IO.FileSystemAclExtensions' -as [type]) {
+        [IO.FileSystemAclExtensions]::SetAccessControl($directory, $acl)
+    } else {
+        $directory.SetAccessControl($acl)
+    }
 }
 function Invoke-WsmLocked([string]$Workspace, [scriptblock]$Action) {
     if(Get-Command Assert-WsmOutputWorkspaceNotMigrated -ErrorAction SilentlyContinue){Assert-WsmOutputWorkspaceNotMigrated $Workspace}
