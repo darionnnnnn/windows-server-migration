@@ -484,7 +484,7 @@ function Get-WsmHtmlSafeError([string]$ExceptionMessage,[string]$ExceptionType='
 
 function Get-WsmHtmlReplayResponse($Record) {
     if($Record.action -in @('SaveSelection','SetRestoreChoice','SetSoftwareVersion') -and $Record.status -ceq 'Succeeded' -and $Record.PSObject.Properties['revision']){return @{jobId=$Record.jobId;status='Saved';revision=[int]$Record.revision}}
-    return @{job=$Record}
+    return @{job=(ConvertTo-WsmHtmlPublicJobRecord $Record)}
 }
 
 function Write-WsmHtmlErrorRecord([string]$ErrorRoot,$SafeError,[string]$Route,[string]$PairId) {
@@ -492,6 +492,12 @@ function Write-WsmHtmlErrorRecord([string]$ErrorRoot,$SafeError,[string]$Route,[
     if([IO.File]::Exists($path)){Assert-WsmNoReparse $path}
     $entry=[pscustomobject]@{utc=(Get-WsmUtc);correlationId=$SafeError.correlationId;code=$SafeError.code;route=$Route;pairId=$PairId}
     [IO.File]::AppendAllText($path,(($entry|ConvertTo-Json -Compress)+[Environment]::NewLine),(New-Object Text.UTF8Encoding($false)))
+}
+
+function ConvertTo-WsmHtmlPublicJobRecord($Record) {
+    $public=[ordered]@{}
+    foreach($property in $Record.PSObject.Properties){if($property.Name -notin @('idempotencyKey','RequestHash')){$public[$property.Name]=$property.Value}}
+    [pscustomobject]$public
 }
 
 function Get-WsmHtmlViewSnapshot([string]$Workspace,[string]$PairId,[string]$View,[string]$Role,[string]$SessionId,[string]$ContextId,[string]$ExpectedDataVersion) {
@@ -662,7 +668,7 @@ function Start-WsmHtmlConsole {
                             $PairId=[string]$change.pairId;$Role=[string]$change.role;$contextId=[Guid]::NewGuid().ToString();$response=Get-WsmHtmlContext $Workspace $PairId $Role $contextId
                         }
                     }
-                    elseif($route -ceq '/api/jobs' -and $request.Method -ceq 'GET'){$response=@{items=@($jobs.Values|ForEach-Object Record)}}
+                    elseif($route -ceq '/api/jobs' -and $request.Method -ceq 'GET'){$response=@{items=@($jobs.Values|ForEach-Object {ConvertTo-WsmHtmlPublicJobRecord $_.Record})}}
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/reports/([0-9]+)/open$' -and $request.Method -ceq 'POST'){
                         $id=$Matches[1];$index=[int]$Matches[2];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'}
                         try{$record=$jobs[$id].Record;if(-not $record.PSObject.Properties['reportArtifacts'] -or $index -ge @($record.reportArtifacts).Count){throw 'Unavailable'}
@@ -677,7 +683,7 @@ function Start-WsmHtmlConsole {
                             if(-not $job.Handle -or $job.Handle.IsCompleted){throw 'Job has already stopped; inspect its authoritative journal before recovery.'}
                             if($job.CancellationToken){Request-WsmCancellation -Token $job.CancellationToken -Owner ([Environment]::UserName) -Evidence 'User requested cancellation from local HTML console' | Out-Null;$job.Record.Status='CancelRequested'}else{throw 'NoSafeCancellationBoundary'}
                         }
-                        $response=$job.Record
+                        $response=ConvertTo-WsmHtmlPublicJobRecord $job.Record
                     }
                     elseif($route -ceq '/api/spec-review' -and $request.Method -ceq 'GET'){
                         if($query.ContainsKey('contextId') -and $query.contextId -cne $contextId){$status=409;$response=New-WsmHtmlError 'The console context changed before this review was read.' 'stale_context' 'Refresh the current context and request the review again.'}
@@ -685,7 +691,7 @@ function Start-WsmHtmlConsole {
                     }
                     elseif($route -ceq '/api/view' -and $request.Method -ceq 'GET'){
                         if($query.ContainsKey('contextId') -and $query.contextId -cne $contextId){$status=409;$response=New-WsmHtmlError 'The console context changed before this view was read.' 'stale_context' 'Refresh the context and request the view again.'}
-                        else{$response=Get-WsmHtmlViewSnapshot $Workspace $PairId $query.action $Role $sessionId $contextId $query.dataVersion}
+                        else{$viewDataVersion=if($query.ContainsKey('dataVersion')){[string]$query['dataVersion']}else{''};$response=Get-WsmHtmlViewSnapshot $Workspace $PairId $query.action $Role $sessionId $contextId $viewDataVersion}
                     }
                     elseif($route -in @('/api/operations','/api/view') -and $request.Method -ceq 'POST'){
                         if(-not $request.Headers.ContainsKey('content-type') -or $request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw 'JSON body required.'}
@@ -783,7 +789,7 @@ function Start-WsmHtmlConsole {
                                     $worker=[Management.Automation.PowerShell]::Create()
                                     [void]$worker.AddScript('param($modulePath,$commandName,$arguments) Import-Module $modulePath -Force -DisableNameChecking; $ConfirmPreference="None"; $ErrorActionPreference="Stop"; $command=Get-Command $commandName -CommandType Function; if($command.Parameters.ContainsKey("Confirm")){$arguments.Confirm=$false}; & $command @arguments').AddArgument($modulePath).AddArgument($command.Name).AddArgument($arguments)
                                     $record.canCancel=($null -ne $cancellation);Write-WsmJson $recordPath $record
-                                    $handle=$worker.BeginInvoke();$jobs[$body.operationId]=@{Record=$record;Path=$recordPath;PowerShell=$worker;Handle=$handle;CancellationToken=$cancellation};$keys[$body.idempotencyKey]=@{Hash=$hash;Id=$body.operationId};$status=202;$response=@{job=$record}
+                                    $handle=$worker.BeginInvoke();$jobs[$body.operationId]=@{Record=$record;Path=$recordPath;PowerShell=$worker;Handle=$handle;CancellationToken=$cancellation};$keys[$body.idempotencyKey]=@{Hash=$hash;Id=$body.operationId};$status=202;$response=@{job=(ConvertTo-WsmHtmlPublicJobRecord $record)}
                                     $arguments=$null
                                 }
                             }
@@ -796,7 +802,7 @@ function Start-WsmHtmlConsole {
                 if($null -eq $bytes){$jsonResponse=$response|ConvertTo-Json -Depth 30 -Compress;$bytes=[Text.Encoding]::UTF8.GetBytes($jsonResponse)}
                 Write-WsmLocalHttpResponse $client $status $type $bytes
             }catch{
-                $status=400;if($_.Exception.Message -match '^Rejected'){$status=403}elseif($_.Exception.Message -match 'Review changed|Context changed'){$status=409}
+                $status=400;if($_.Exception.Message -match '^Rejected'){$status=403}elseif($_.Exception.Message -match 'Review changed|Context changed'){$status=409}elseif($_.Exception.Message -match 'UnknownJob|Unknown route'){$status=404}
                 $safeError=$requestSafeError;if(-not $safeError){$safeError=Get-WsmHtmlSafeError $_.Exception.Message $_.Exception.GetType().FullName}
                 try{Write-WsmHtmlErrorRecord $errorRoot $safeError $route $PairId}catch{}
                 try{$errorBytes=[Text.Encoding]::UTF8.GetBytes(($safeError|ConvertTo-Json -Compress));Write-WsmLocalHttpResponse $client $status 'application/json; charset=utf-8' $errorBytes}catch{}
