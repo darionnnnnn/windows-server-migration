@@ -1,6 +1,13 @@
 # 第 5 輪規劃：逐步備份與還原精靈、易讀介面及開發者探測
 
 > 日期：2026-10-12（Asia/Taipei）。狀態：實作中。2026-10-12 使用者授權完整實作、逐段驗證及 commit/push；Q01 依既有搬移核心建議執行。功能驗收依下方執行紀錄，不提前宣稱通過。
+
+### 2026-10-13 本次續作驗證補充（仍未全數完成）
+
+- 檔案範圍段落：主代理不可變快照 `root-scope-segment-19481a351e424ea892e7897431d45615` 兩引擎均通過 NonC 34、邊界 11 及 Qualification；與先前 `93b50e0de97c4759b0e44a9f7415498f` 的程式差異僅 NonC 實作與測試，故其 Guard 36、Files 32、Restore 120、Pipeline 16 及後補 StageResults 40 證據仍適用。提交使用該快照的完整核心與模組相依檔案；後續精靈整合及新增 peer 觀察 seam 另行驗證，不宣稱本輪全部完成。
+- 主代理在不可變 `root-scope-segment-93b50e0de97c4759b0e44a9f7415498f` 執行 `Test-AssistiveStageResults.ps1`：Windows PowerShell 5.1／PowerShell 7 均 exit 0，各 40 項結果綁定檢查。此證據涵蓋該快照，不代替後續 NonC 修改及完整精靈整合驗證。
+- 整體檢查另確認準備表單未投影部分 adapter 的 `Desired` 欄位，列入本輪補實作與真實 Save／Submit 回歸；不把僅產生 draft 當作成功。WindowsFeature 的人工準備限制另以實際決策拒絕驗證。
+- F1 補修重複匯入相同已驗證封裝造成結果不可見、取消結果被過濾及取消後需要明確新決策的路線；主代理正在不可變快照執行兩引擎的真實封裝、取消及結果投影回歸，尚不標通過。
 > 基準：dev / a5fd425cbaf8ad9ef704505b0e31c8ce7f944264。
 > 來源：使用者七項介面／流程需求、第一輪評估發現及本輪明確定案。
 > 執行方式：規劃由主代理完成。實作依使用者授權委派 gpt-6-luna high／medium／low，由主模型直接核對與驗證；本輪分支 codex/migration-5，實作起點 62f0becfe3bdb68e402e08f218ef7b8f73e05774。
@@ -9,7 +16,7 @@
 
 1. 以不熟悉電腦的人員也能循序操作為設計目標；主流程一次一件事，以「上一步／下一步」完成，取消把選操作名稱及填技術參數當作一般使用者必要流程。
 2. 逐項詢問以網站、排程、服務、軟體設定、資料夾為單位，可展開檔案明細；不是每個檔案都詢問。已發現項目預設加入，可排除。
-3. 自動模式涵蓋工具支援的資料與設定，包含非 C 槽；明列不支援及未完成的內容。不做整機映像、作業系統、System State 或軟體本體備份，不新增專業產品還原 adapter。
+3. 自動模式涵蓋工具支援的資料與設定，包含非 C 槽；明列不支援及未完成的內容。不做整機映像、作業系統、System State 或安裝軟體本體備份，不新增專業產品還原 adapter。2026-10-13 使用者明確定案：保留已確認的公司網站／排程業務程式檔（含 DLL／EXE），排除 Windows、IIS、Oracle Client、runtime 等安裝軟體本體；不以副檔名一律排除業務程式。
 4. 舊主機備份、新主機還原、管理端交接都採相同導引。自動模式只適用備份；還原及正式啟用仍須明確確認，不能藉由下一步或勾選自動備份取得啟用授權。
 5. 已提出的排版、複雜表單、過早顯示選單、術語、進度保存、取消與重試、相依、C／非 C 完整性及既有動態載入問題，全部納入本輪。
 6. **環境探測供後續開發使用**：左側始終保留獨立「開發者環境探測」按鈕，不混入一般使用者備份步驟，也不以已有盤點／配對為顯示條件。使用者點一次即可收集全部適用的探測資料，產生可交付資料包。
@@ -397,4 +404,15 @@ H01 的完整性清單擴充為原始七項需求、第 1／9 節定案、F01–
 - 新增回查缺陷已重現：尚未產生 file bytes 的檔案位置被資料夾佔用時，舊修復分支誤以空雜湊當作沒有變動並刪除 intent。新增 Test-AssistiveRecoveryBoundaries 在修正前明確失敗於 TargetDirectory。修正後，目標／staging／backup 位置若為資料夾或原 owned 檔案 metadata 已漂移均拒絕並保留；真正未變動的 absent／owned 案例以實際 journal／checkpoint 核對放棄操作。
 - 主代理不可變 root-core-restore-607db1e19c354e71908927b67894a941：兩引擎 Test-AssistiveRestore 116、Test-AssistiveResources 34、Test-MigrationPipeline SmallFiles=16 全部 exit 0；實際封裝／ACL／分卷／重試／漂移／最終世代與竄改拒絕，Windows PowerShell 5.1 Pipeline 320.6 秒、PowerShell 7 219.9 秒。
 - 最後 Recovery 修改使用新不可變 root-core-recovery-fixed 快照，兩引擎 Test-AssistiveRecoveryBoundaries 6、Test-AssistiveRestore 116、Test-Qualification 均 exit 0。逐一核对本段五個實際檔案 bytes 与已驗快照相同。原生 metadata／檔案／journal 僅使用測試專有 TEMP 範圍，沒有實際業務環境驗收；production 仍 false。
-- 先前 TargetRestore 31 項 PowerShell 7 完整核心取消／續作證據可支持相同核心產物；本次追加 Windows PowerShell 5.1 31 項仍執行中，不提前記為通過。E/F 一般 UI 及 NonC 完整性仍在下一相依段補齊。
+- 先前 TargetRestore 31 項 PowerShell 7 完整核心取消／續作證據可支持相同核心產物；本次主代理追加 Windows PowerShell 5.1 31 項已 exit 0（1065.7 秒），使用 target-wizard-final-20261012-1716 不可變快照。該快照未包含本次新增範圍防護或最新 Recovery 邊界修正，不能以此代替兩者最終驗收。E/F 一般 UI 及 NonC 完整性仍在下一相依段補齊。
+
+### 2026-10-13 軟體範圍追加定案與回查
+
+- 使用者回覆已定案保留業務程式檔、排除安裝軟體本體。先前依既有網站／排程範圍採用的建議不再只是未回覆假設。防護依可信盤點的安裝位置及固定系統邊界判斷；缺少或未完成軟體盤點時結果明列覆蓋缺口，不宣稱完整辨識所有安裝軟體。
+- 主代理回查發現短檔案的 CAB 判斷錯用只有八位元組以上才建立的字串，四到七位元組一般業務檔案可能遭誤拒絕，已列本輪修正及長度零到八的回歸。Manager 不得將自己磁碟的實體路徑當成 Source／Target 的實體證據；實際執行端才做本機別名核對。
+- 非 C 正向編排回查發現 Source 與 Target 的共享證據各曾在必要欄位迴圈中重複讀取三次，造成正常證據誤判歧義；保留精確唯一性檢查，修正讀取位置。主代理另以實際 AST 提取三處 TargetStateDirectory 的正規表示式，對標準 UNC 路徑均重現 False，而既有正確 endpoint 表示式為 True；列入核心修正與正反例，不以修改 fixture 或放寬證據條件掩蓋。
+- 正式 HTML handler 的 StartBackup 原本額外傳入函式未宣告的 Role 參數；主代理以實際模組重現 ParameterBindingException。修正 handler 參數綁定後仍須由正式瀏覽器／worker 旅程複驗，不能以直接函式測試替代。首次不可變原生備份旅程停在測試專有 TargetIdentity 路徑建置錯誤，尚未進入正式 handler；已要求修正測試路徑，不列為產品通過證據。
+- 非 C 帳號觀測共用 topology 防護時可能讀取檔案簽章，與 ContentRead=false 契約不符；新增 metadata-only 路徑供 ACL／owner 觀測，內容收集及實際傳輸仍保留簽章防護。UNC 實體路徑必須由已核驗且唯一的 peer share proof 映射，不能直接略過實體邊界；已核准 ExactFiles 設定檔與必要父目錄須沿用白名單語意。
+
+- 主代理補查 RAR 判斷的前綴長度錯誤：七位元組讀值與六位元組常數永遠不相等，偽裝成設定檔的 RAR 被錯誤接受。先追加回歸並重現失敗，再修正共同 RAR 前綴；合法業務資料夾中的 RAR 仍可收集。不可變 root-native-journeys-fourth 快照兩引擎 Test-FileScopeGuard 36、Test-AssistiveFiles 32、Test-NonCFileScopeBoundaries 11 均 exit 0。其後 NonC helper 仍有修改，該項不能代替最終相依段複驗。
+- 相同快照正式瀏覽器旅程未通過：NativeWizardBackup 停在 start 投影等待逾時；NativeWizardRestore 在測試資料接收階段遭核心拒絕不同本機身分；WizardDurableResultsUi 在結果更新等待逾時。均保留失敗證據並繼續修正，不以 node 語法檢查或其他 fixture PASS 替代。非 C 單一檔案的 RelativePath／核准目標根路徑形狀另列實際傳輸回歸，仍在處理中。

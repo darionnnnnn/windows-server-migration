@@ -213,6 +213,69 @@ function Get-WsmAssistiveNonCResultRows($Package,[string]$TransferPlanPath,[stri
     $byItem
 }
 
+function Assert-WsmAssistiveTargetScopeTopology {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)]$Spec,[Parameter(Mandatory)][string]$TargetRoot,[Parameter()][AllowNull()]$Artifact,[ValidateSet('Root','Directory','File','Staging','Backup')][string]$Kind='File',[string]$Destination='',[string]$TrustedExistingHash='')
+    if(-not ($Spec.PSObject.Properties['ContentSelection'] -and [string]$Spec.ContentSelection -ceq 'ExactFiles')){
+        if($Kind -eq 'Root'){Assert-WsmFileScopeGuard -Path $Path -Mode Root;Assert-WsmFileScopeGuard -Path (Get-WsmPhysicalPath $Path) -Mode Root;if([IO.File]::Exists($Path) -or [IO.Directory]::Exists($Path)){Assert-WsmAssistiveFileTopology $Path};return}
+        Assert-WsmAssistiveFileTopology $Path;return
+    }
+    if($Kind -eq 'Root'){
+        if([IO.Path]::GetFullPath($Path) -ine [IO.Path]::GetFullPath($TargetRoot)){throw 'Exact target root does not match the sealed TargetPath.'}
+        Assert-WsmFileScopeGuard -Path $Path -Mode Root -AllowProtectedExactRoot
+        Assert-WsmFileScopeGuard -Path (Get-WsmPhysicalPath $Path) -Mode Root -AllowProtectedExactRoot
+        Assert-WsmNoReparse $Path
+        return
+    }
+    if($null -eq $Artifact -or -not $Artifact.PSObject.Properties['RelativePath']){throw 'Target config exception requires one validated package artifact row.'}
+    $relative=[string]$Artifact.RelativePath
+    $configured=@(Get-WsmConfigSpecEntries $Spec 'ConfigFiles' | Where-Object {[string]$_.RelativePath -ceq $relative})
+    if($Kind -eq 'Directory'){
+        if($configured.Count -eq 1 -and $Artifact.PSObject.Properties['Data'] -and $Artifact.Data.PSObject.Properties['Hash'] -and [string]$configured[0].SHA256 -ieq [string]$Artifact.Data.Hash){
+            $configForTopology=$relative
+        }else{
+            $descendants=@(if($relative){Get-WsmConfigSpecEntries $Spec 'ConfigFiles' | Where-Object {[string]$_.RelativePath -like ($relative.TrimEnd('\')+'\*')}}else{Get-WsmConfigSpecEntries $Spec 'ConfigFiles'})
+            if($descendants.Count -eq 0){throw 'Target directory is not a parent of an approved exact config file.'}
+            $configForTopology=[string]$descendants[0].RelativePath
+        }
+    }else{
+        if(-not $Artifact.PSObject.Properties['Data'] -or -not $Artifact.Data.PSObject.Properties['Hash'] -or $configured.Count -ne 1 -or [string]$configured[0].SHA256 -notmatch '^[a-fA-F0-9]{64}$' -or [string]$configured[0].SHA256 -ine [string]$Artifact.Data.Hash){throw 'Target config artifact is not the exact hash-bound member of the approved ConfigFiles whitelist.'}
+        $configForTopology=$relative
+    }
+    if($relative){Assert-WsmRelativePath $relative}
+    $expected=if($relative){Join-Path $TargetRoot $relative}else{$TargetRoot}
+    $destinationPath=if($Destination){$Destination}else{$expected}
+    if([IO.Path]::GetFullPath($expected) -ine [IO.Path]::GetFullPath($destinationPath)){throw 'Expected config destination differs from the reviewed target-relative artifact path.'}
+    switch($Kind){
+        Directory {
+            $candidate=[IO.Path]::GetFullPath($Path).TrimEnd('\');$root=[IO.Path]::GetFullPath($TargetRoot).TrimEnd('\');$target=[IO.Path]::GetFullPath($expected).TrimEnd('\')
+            if(($candidate -ine $root -and -not $candidate.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)) -or ($target -ine $candidate -and -not $target.StartsWith($candidate+'\',[StringComparison]::OrdinalIgnoreCase))){throw 'Target directory exception is outside the reviewed root or is not an ancestor of the approved config artifact.'}
+            Assert-WsmAssistiveFileTopology -Path $Path -ExactConfig -SourceRoot $TargetRoot -RelativePath $configForTopology
+            Assert-WsmFileScopeGuard -Path (Get-WsmPhysicalPath $Path) -Mode ExactConfig -SourceRoot (Get-WsmPhysicalPath $TargetRoot) -RelativePath $configForTopology -IsDirectory -CheckPhysicalAlias
+        }
+        File {
+            if([IO.Path]::GetFullPath($Path) -ine [IO.Path]::GetFullPath($expected)){throw 'Target file exception is not the exact reviewed config destination.'}
+            Assert-WsmAssistiveFileTopology -Path $Path -ExactConfig -SourceRoot $TargetRoot -RelativePath $relative
+            Assert-WsmFileScopeGuard -Path (Get-WsmPhysicalPath $Path) -Mode ExactConfig -SourceRoot (Get-WsmPhysicalPath $TargetRoot) -RelativePath $relative -CheckPhysicalAlias
+            if([IO.File]::Exists($Path)){$actual=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant();if($actual -ine [string]$Artifact.Data.Hash -and (-not $TrustedExistingHash -or $actual -ine $TrustedExistingHash)){throw 'Existing target config bytes are neither the approved artifact nor the durably owned prior version.'}}
+        }
+        Staging {
+            $dest=[IO.Path]::GetFullPath($expected);$stage=[IO.Path]::GetFullPath($Path)
+            if($stage -notmatch ('^'+[regex]::Escape($dest)+'\.wsm-[a-f0-9]{32}\.tmp$')){throw 'Staging file is not the operation-generated sibling of the exact approved destination.'}
+            Assert-WsmAssistiveFileTopology -Path $Path -ExactConfig -SourceRoot $TargetRoot -RelativePath $relative
+            Assert-WsmFileScopeGuard -Path (Get-WsmPhysicalPath $Path) -Mode ExactConfig -SourceRoot (Get-WsmPhysicalPath $TargetRoot) -RelativePath $relative -CheckPhysicalAlias
+            if([IO.File]::Exists($Path) -and (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash -ine [string]$Artifact.Data.Hash){throw 'Staged config bytes differ from the exact approved artifact.'}
+        }
+        Backup {
+            $dest=[IO.Path]::GetFullPath($expected);$backup=[IO.Path]::GetFullPath($Path);$itemPrefix=[string]$Artifact.ItemId
+            if(-not $TrustedExistingHash -or $TrustedExistingHash -notmatch '^[a-fA-F0-9]{64}$' -or $backup -notmatch ('^'+[regex]::Escape($dest)+'\.wsm-assistive-backup-'+[regex]::Escape($itemPrefix.Substring(0,12))+'-[a-f0-9]{32}$')){throw 'Backup file is not the operation-generated sibling of the exact approved config destination.'}
+            Assert-WsmAssistiveFileTopology -Path $Path -ExactConfig -SourceRoot $TargetRoot -RelativePath $relative
+            Assert-WsmFileScopeGuard -Path (Get-WsmPhysicalPath $Path) -Mode ExactConfig -SourceRoot (Get-WsmPhysicalPath $TargetRoot) -RelativePath $relative -CheckPhysicalAlias
+            if([IO.File]::Exists($Path) -and (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash -ine $TrustedExistingHash){throw 'Backup bytes differ from the durably owned prior file hash.'}
+        }
+    }
+}
+
 function Get-WsmAssistiveRestorePreview {
     [CmdletBinding()]param([Parameter(Mandatory)][string]$ManifestPath,[Parameter(Mandatory)][string]$ExpectedHash,[Parameter(Mandatory)][string]$StateDirectory,[hashtable]$Secrets=@{},$CancellationToken=$null,[object[]]$GeneralHostEvidence=@(),[Parameter(Mandatory)][string]$AssistiveDecisionReceiptPath,[Parameter(Mandatory)][string]$AssistiveDecisionReceiptHash,[string]$AssistiveTargetSnapshotPath='',[string]$NonCTransferPlanPath='',[string]$NonCTransferPlanHash='',[string]$NonCResultPath='',[string]$NonCResultHash='')
     $package=Test-WsmMigrationPackage $ManifestPath $ExpectedHash $CancellationToken
@@ -238,8 +301,8 @@ function Get-WsmAssistiveRestorePreview {
                 $target=ConvertTo-WsmCanonicalPath $spec.TargetPath
                 try{
                     Assert-WsmNoReparse $target;$artifactRows=@(Read-WsmArtifactLines (Join-Path $package.Root 'artifacts.jsonl') $package.Manifest.ArtifactsHash $CancellationToken | Where-Object ItemId -CEQ $item.ItemId);$singleFileScope=($artifactRows.Count -eq 1 -and -not $artifactRows[0].Directory -and [string]::IsNullOrEmpty([string]$artifactRows[0].RelativePath))
-                    if([IO.File]::Exists($target) -or [IO.Directory]::Exists($target)){Assert-WsmAssistiveFileTopology $target}
-                    foreach($artifact in $artifactRows){$artifactTarget=$target;if(-not $singleFileScope -and $artifact.RelativePath){$artifactTarget=Join-Path $target ([string]$artifact.RelativePath)};if([IO.File]::Exists($artifactTarget) -or [IO.Directory]::Exists($artifactTarget)){Assert-WsmAssistiveFileTopology $artifactTarget}}
+                    Assert-WsmAssistiveTargetScopeTopology -Path $target -Spec $spec -TargetRoot $target -Kind Root
+                    foreach($artifact in $artifactRows){$artifactTarget=$target;if(-not $singleFileScope -and $artifact.RelativePath){$artifactTarget=Join-Path $target ([string]$artifact.RelativePath)};if([IO.File]::Exists($artifactTarget) -or [IO.Directory]::Exists($artifactTarget)){if($artifact.Directory){Assert-WsmAssistiveTargetScopeTopology -Path $artifactTarget -Spec $spec -TargetRoot $target -Artifact $artifact -Kind Directory -Destination $artifactTarget}else{$trustedExistingHash='';$priorItems=@($state.Items|Where-Object ItemId -CEQ $item.ItemId);if($priorItems.Count -eq 1 -and $priorItems[0].PSObject.Properties['OwnedFiles']){$priorOwners=@($priorItems[0].OwnedFiles|Where-Object {$_.RelativePath -ceq [string]$artifact.RelativePath -and $_.TargetPath -ieq $artifactTarget});if($priorOwners.Count -eq 1){$trustedExistingHash=[string]$priorOwners[0].SHA256}};Assert-WsmAssistiveTargetScopeTopology -Path $artifactTarget -Spec $spec -TargetRoot $target -Artifact $artifact -Kind File -Destination $artifactTarget -TrustedExistingHash $trustedExistingHash}}}
                     if($singleFileScope){
                         if([IO.Directory]::Exists($target)){$action='BlockedConflict';$status='BlockedConflict';$reason='A directory occupies the approved single-file target.'}
                         elseif([IO.File]::Exists($target)){$prior=@($state.Items|Where-Object ItemId -CEQ $item.ItemId);$owner=$null;if($prior.Count -eq 1 -and $prior[0].PSObject.Properties['OwnedFiles']){$matches=@($prior[0].OwnedFiles|Where-Object {$_.RelativePath -ceq '' -and $_.TargetPath -ieq $target});if($matches.Count -eq 1){$owner=$matches[0]}};$current=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant();if(-not $owner -or $current -ine [string]$owner.SHA256){$action='BlockedConflict';$status='BlockedConflict';$reason='Existing single-file target is not owned by an exact prior generation.'}elseif($current -ceq [string]$artifactRows[0].Data.Hash){$map=Resolve-WsmIdentityMap $package.Plan @{};$aclPolicy='Exact';if($spec.PSObject.Properties['AclControlPolicy']){$aclPolicy=[string]$spec.AclControlPolicy};[void](Assert-WsmAssistiveMetadataReadback $target $artifactRows[0].Metadata $map $aclPolicy);$action='VerifyOwnedSingleFile';$status='Ready';$reason='Exact owned single-file bytes and required metadata match the approved artifact.'}else{$action='ReplaceOwnedSingleFile';$status='Ready';$reason='Exact prior single-file ownership is verified; preserve a rollback copy before replacement.'}}
@@ -487,11 +550,11 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
 }
 
 function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hashtable]$SidMap,$CancellationToken,[string]$Workspace='') {
-    $spec=$Item.MigrationSpec;$target=ConvertTo-WsmCanonicalPath $spec.TargetPath;Assert-WsmNoReparse $target;if([IO.File]::Exists($target) -or [IO.Directory]::Exists($target)){Assert-WsmAssistiveFileTopology $target}
+    $spec=$Item.MigrationSpec;$target=ConvertTo-WsmCanonicalPath $spec.TargetPath;Assert-WsmNoReparse $target;Assert-WsmAssistiveTargetScopeTopology -Path $target -Spec $spec -TargetRoot $target -Kind Root
     $index=Join-Path $Package.Root 'artifacts.jsonl';$entries=@(Read-WsmArtifactLines $index $Package.Manifest.ArtifactsHash $CancellationToken | Where-Object {$_.ItemId -ceq $Item.ItemId});if(-not $entries.Count){throw 'Approved FileScope has no package artifacts.'}
     $singleFileScope=($entries.Count -eq 1 -and -not $entries[0].Directory -and [string]::IsNullOrEmpty([string]$entries[0].RelativePath));$restoreRoot=$target;$createdDirs=New-Object 'System.Collections.Generic.List[string]'
     if($singleFileScope){if([IO.Directory]::Exists($target)){throw 'A directory occupies the approved single-file target.'};$restoreRoot=[IO.Path]::GetDirectoryName($target);Assert-WsmNoReparse $restoreRoot;if(-not [IO.Directory]::Exists($restoreRoot)){[void][IO.Directory]::CreateDirectory($restoreRoot)}}
-    else{if([IO.File]::Exists($target)){throw 'A file occupies the approved FileScope directory.'};if(-not [IO.Directory]::Exists($target)){[void][IO.Directory]::CreateDirectory($target);$createdDirs.Add($target)}}
+    else{if([IO.File]::Exists($target)){throw 'A file occupies the approved FileScope directory.'};if(-not [IO.Directory]::Exists($target)){[void][IO.Directory]::CreateDirectory($target);$createdDirs.Add($target)};Assert-WsmAssistiveTargetScopeTopology -Path $target -Spec $spec -TargetRoot $target -Kind Root}
     $prior=@($State.Items | Where-Object ItemId -CEQ $Item.ItemId);$ownedFiles=@();$ownedDirectories=@()
     if($prior.Count){if($prior.Count -ne 1 -or -not $prior[0].PSObject.Properties['OwnedFiles']){throw 'Prior schema 3 FileScope ownership data is incomplete; preserve and reconcile.'};$ownedFiles=@($prior[0].OwnedFiles);if($prior[0].PSObject.Properties['OwnedDirectories']){$ownedDirectories=@($prior[0].OwnedDirectories)}}
     $results=New-Object 'System.Collections.Generic.List[object]';$nextFiles=New-Object 'System.Collections.Generic.List[object]';foreach($f in $ownedFiles){$nextFiles.Add($f)}
@@ -502,7 +565,7 @@ function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hasht
         $path=$target;if($entry.RelativePath){$path=Join-Path $target $entry.RelativePath};Assert-WsmNoReparse $path
         if([IO.File]::Exists($path)){ $results.Add([pscustomobject]@{RelativePath=$entry.RelativePath;Status='BlockedConflict';Reason='A file occupies the required directory path.'});continue }
         $directoryOwner=@($nextDirectories | Where-Object RelativePath -CEQ ([string]$entry.RelativePath));if($directoryOwner.Count -gt 1){throw 'Duplicate per-directory ownership record.'}
-        $newDirectory=($createdDirs -contains $path) -or -not [IO.Directory]::Exists($path);if(-not [IO.Directory]::Exists($path)){[void][IO.Directory]::CreateDirectory($path);$createdDirs.Add($path)};Assert-WsmAssistiveFileTopology $path
+        $newDirectory=($createdDirs -contains $path) -or -not [IO.Directory]::Exists($path);if(-not [IO.Directory]::Exists($path)){[void][IO.Directory]::CreateDirectory($path);$createdDirs.Add($path)};Assert-WsmAssistiveTargetScopeTopology -Path $path -Spec $spec -TargetRoot $target -Artifact $entry -Kind Directory -Destination $path
         $ownedDirectory=($newDirectory -or $directoryOwner.Count -eq 1)
         $priorDirectoryMetadata=$null
         if($directoryOwner.Count -eq 1 -and -not $newDirectory){
@@ -515,12 +578,12 @@ function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hasht
         Assert-WsmCancellationBoundary $CancellationToken 'AssistiveFileWrite'
         $dest=$target;if($entry.RelativePath){$dest=Join-Path $restoreRoot $entry.RelativePath};$parent=[IO.Path]::GetDirectoryName($dest);Assert-WsmNoReparse $parent
         $blockedParent=@($blockedDirectoryPaths | Where-Object {$parent -ieq $_ -or $parent.StartsWith($_.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)});if($blockedParent.Count){$results.Add([pscustomobject]@{RelativePath=$entry.RelativePath;Status='BlockedConflict';Reason='A containing directory has unresolved ownership or metadata drift.'});continue}
-        if(-not [IO.Directory]::Exists($parent)){[void][IO.Directory]::CreateDirectory($parent);$createdDirs.Add($parent)}
+        if(-not [IO.Directory]::Exists($parent)){[void][IO.Directory]::CreateDirectory($parent);$createdDirs.Add($parent)};if($spec.PSObject.Properties['ContentSelection'] -and $spec.ContentSelection -ceq 'ExactFiles'){Assert-WsmAssistiveTargetScopeTopology -Path $parent -Spec $spec -TargetRoot $target -Artifact $entry -Kind Directory -Destination $dest}
         $owners=@($nextFiles | Where-Object RelativePath -CEQ $entry.RelativePath);if($owners.Count -gt 1){throw 'Duplicate per-file ownership record.'};$owner=$null;if($owners.Count){$owner=$owners[0]}
         $priorMetadataForBackup=$null
         if([IO.Directory]::Exists($dest)){$results.Add([pscustomobject]@{RelativePath=$entry.RelativePath;Status='BlockedConflict';Reason='A directory occupies the required file path.'});continue}
         if([IO.File]::Exists($dest)){
-            try{Assert-WsmAssistiveFileTopology $dest}catch{$results.Add([pscustomobject]@{RelativePath=$entry.RelativePath;Status='BlockedConflict';Reason='Existing file topology is unsupported or could not be verified safely.'});continue}
+            try{Assert-WsmAssistiveTargetScopeTopology -Path $dest -Spec $spec -TargetRoot $target -Artifact $entry -Kind File -Destination $dest -TrustedExistingHash:$(if($owner){[string]$owner.SHA256}else{''})}catch{$results.Add([pscustomobject]@{RelativePath=$entry.RelativePath;Status='BlockedConflict';Reason='Existing file topology is unsupported or could not be verified safely.'});continue}
             if(-not $owner){$results.Add([pscustomobject]@{RelativePath=$entry.RelativePath;Status='BlockedConflict';Reason='Existing external file is preserved; matching bytes do not grant tool ownership.'});continue}
             $current=(Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash.ToLowerInvariant()
             if($current -ine [string]$owner.SHA256){$results.Add([pscustomobject]@{RelativePath=$entry.RelativePath;Status='BlockedConflict';Reason='Owned file drifted since its last verified generation.'});continue}
@@ -533,19 +596,20 @@ function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hasht
         $State.PendingOperations=@($State.PendingOperations | Where-Object ItemId -CNE $Item.ItemId)+@($pending);Add-WsmJournal $Paths $State 'AssistiveFileIntent' $Item.ItemId $pending
         try{
             Restore-WsmPayloadBytes $entry $Package.Root $staging $CancellationToken
-            Assert-WsmAssistiveFileTopology $staging
+            Assert-WsmAssistiveTargetScopeTopology -Path $staging -Spec $spec -TargetRoot $target -Artifact $entry -Kind Staging -Destination $dest
             if((Get-FileHash -LiteralPath $staging -Algorithm SHA256).Hash -ine $expectedHash){throw 'Staged file hash differs from the sealed artifact.'}
             Set-WsmFileMetadata $staging $entry.Metadata $SidMap
             [void](Assert-WsmAssistiveMetadataReadback $staging $entry.Metadata $SidMap $aclPolicy)
             $backupMaterialId=''
             if($owner){
                 $previousHash=(Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash.ToLowerInvariant();$backup=$dest+'.wsm-assistive-backup-'+$Item.ItemId.Substring(0,12)+'-'+[Guid]::NewGuid().ToString('N');$pending.PreviousHash=$previousHash;$pending.Backup=$backup;Add-WsmJournal $Paths $State 'AssistiveFilePrepared' $Item.ItemId $pending
-                Assert-WsmAssistiveFileTopology $dest;$preMoveMetadata=Get-WsmFileMetadata $dest $entry.Metadata.MetadataMode;if($previousHash -ine [string]$owner.SHA256 -or (Get-WsmAssistiveMetadataHash $preMoveMetadata) -ine [string]$owner.MetadataHash){throw 'Owned file changed after preflight; do not move or replace it.'}
+                Assert-WsmAssistiveTargetScopeTopology -Path $dest -Spec $spec -TargetRoot $target -Artifact $entry -Kind File -Destination $dest -TrustedExistingHash $previousHash;$preMoveMetadata=Get-WsmFileMetadata $dest $entry.Metadata.MetadataMode;if($previousHash -ine [string]$owner.SHA256 -or (Get-WsmAssistiveMetadataHash $preMoveMetadata) -ine [string]$owner.MetadataHash){throw 'Owned file changed after preflight; do not move or replace it.'}
                 [IO.File]::Move($dest,$backup)
+                Assert-WsmAssistiveTargetScopeTopology -Path $backup -Spec $spec -TargetRoot $target -Artifact $entry -Kind Backup -Destination $dest -TrustedExistingHash $previousHash
                 if($Workspace -and (Get-Command Register-WsmAssistiveMaterialReference -ErrorAction SilentlyContinue)){$material=Register-WsmAssistiveMaterialReference -Workspace $Workspace -PairId $Package.Manifest.PairId -Generation ([int]$Package.Manifest.Generation) -Path $backup -SHA256 $previousHash -Kind 'AssistiveOwnedFilePriorBackup' -ConsumerRefs @([string]$Item.ItemId);$backupMaterialId=[string]$material.MaterialId;$pending | Add-Member NoteProperty BackupMaterialId $backupMaterialId -Force;Add-WsmJournal $Paths $State 'AssistiveFileBackupRetained' $Item.ItemId ([pscustomobject]@{Backup=$backup;SHA256=$previousHash;MaterialId=$backupMaterialId;Generation=$Package.Manifest.Generation})}
                 try{[IO.File]::Move($staging,$dest)}catch{if([IO.File]::Exists($backup) -and -not [IO.File]::Exists($dest)){[IO.File]::Move($backup,$dest)};throw}
             }else{[IO.File]::Move($staging,$dest)}
-            Assert-WsmAssistiveFileTopology $dest
+            Assert-WsmAssistiveTargetScopeTopology -Path $dest -Spec $spec -TargetRoot $target -Artifact $entry -Kind File -Destination $dest
             if((Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash -ine $expectedHash){throw 'Target file readback hash differs after replacement.'}
             $actualMetadata=Assert-WsmAssistiveMetadataReadback $dest $entry.Metadata $SidMap $aclPolicy
             $record=[pscustomobject]@{RelativePath=[string]$entry.RelativePath;TargetPath=$dest;SHA256=$expectedHash;MetadataHash=(Get-WsmAssistiveMetadataHash $actualMetadata);Backup=$backup;BackupHash=$previousHash;BackupMetadata=$priorMetadataForBackup;BackupMetadataHash=$(if($owner){[string]$owner.MetadataHash}else{''});BackupMaterialId=$backupMaterialId;Generation=[long]$Package.Manifest.Generation}
@@ -574,7 +638,7 @@ function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hasht
         $ownedCollection=if($fileEntry.Directory){$nextDirectories}else{$nextFiles};$finalOwned=@($ownedCollection | Where-Object RelativePath -CEQ ([string]$fileEntry.RelativePath))
         if($finalOwned.Count -ne 1 -or [long]$finalOwned[0].Generation -ne [long]$Package.Manifest.Generation){continue}
         try{
-            $finalPath=[string]$finalOwned[0].TargetPath;Assert-WsmAssistiveFileTopology $finalPath
+            $finalPath=[string]$finalOwned[0].TargetPath;if($fileEntry.Directory){Assert-WsmAssistiveFileTopology $finalPath}else{Assert-WsmAssistiveTargetScopeTopology -Path $finalPath -Spec $spec -TargetRoot $target -Artifact $fileEntry -Kind File -Destination $finalPath}
             if(-not $fileEntry.Directory -and (Get-FileHash -LiteralPath $finalPath -Algorithm SHA256).Hash -ine [string]$fileEntry.Data.Hash){throw 'File bytes changed while parent directory metadata was applied.'}
             $finalMetadata=Assert-WsmAssistiveMetadataReadback $finalPath $fileEntry.Metadata $SidMap $aclPolicy
             $finalOwned[0].MetadataHash=Get-WsmAssistiveMetadataHash $finalMetadata;if($fileEntry.Directory){$finalOwned[0].CurrentMetadata=$finalMetadata}

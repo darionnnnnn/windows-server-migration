@@ -34,7 +34,21 @@ function Assert-WsmAssistiveCollectionProofs($Manifest,$Plan) {
     if($seen.Count -ne $scopes.Count){throw 'Source collection proof does not cover all reviewed local scopes.'}
 }
 
-function Assert-WsmAssistiveFileTopology([string]$Path) {
+function Assert-WsmAssistiveFileTopology {
+    param([Parameter(Mandatory)][string]$Path,[switch]$ExactConfig,[switch]$MetadataOnly,[string]$SourceRoot='', [string]$RelativePath='',[string]$TrustedPeerRoot='',[string]$TrustedPeerPhysicalRoot='',[string]$TrustedPeerPhysicalPath='')
+    $trustedPeer=([bool]$TrustedPeerRoot -or [bool]$TrustedPeerPhysicalRoot -or [bool]$TrustedPeerPhysicalPath)
+    if($trustedPeer){
+        if(-not $TrustedPeerRoot -or -not $TrustedPeerPhysicalRoot -or -not $TrustedPeerPhysicalPath -or $TrustedPeerRoot -notmatch '^\\\\[^\\]+\\[^\\]+(?:\\|$)'){throw 'Trusted peer topology requires the exact reviewed UNC root, physical root and resolved physical path.'}
+        $uncRoot=$TrustedPeerRoot.TrimEnd('\');$uncPath=[IO.Path]::GetFullPath($Path)
+        if($uncPath -ine $uncRoot -and -not $uncPath.StartsWith($uncRoot+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'UNC topology path is outside the exact reviewed peer share root.'}
+        $peerRelative=if($uncPath.Length -gt $uncRoot.Length){$uncPath.Substring($uncRoot.Length).TrimStart('\')}else{''}
+        $physicalRoot=$TrustedPeerPhysicalRoot.TrimEnd('\');$expectedPhysical=if($peerRelative){$physicalRoot+'\'+$peerRelative}else{$physicalRoot}
+        if([IO.Path]::GetFullPath($TrustedPeerPhysicalPath).TrimEnd('\') -ine [IO.Path]::GetFullPath($expectedPhysical).TrimEnd('\')){throw 'Resolved peer physical path does not preserve the exact reviewed share-relative mapping.'}
+        if($physicalRoot -notmatch '^\\Device\\HarddiskVolume[^\\]+(?:\\|$)' -and $physicalRoot -notmatch '^[A-Za-z]:\\'){throw 'Reviewed peer physical root is not a canonical local volume path.'}
+        if($ExactConfig){Assert-WsmFileScopeGuard -Path $Path -Mode ExactConfig -SourceRoot $SourceRoot -RelativePath $RelativePath -IsDirectory:([IO.Directory]::Exists($Path)) -MetadataOnly:$MetadataOnly;Assert-WsmFileScopeGuard -Path $TrustedPeerPhysicalPath -Mode ExactConfig -SourceRoot $TrustedPeerPhysicalRoot -RelativePath $RelativePath -IsDirectory:([IO.Directory]::Exists($Path)) -MetadataOnly:$MetadataOnly -PathOnly}
+        else{Assert-WsmFileScopeGuard -Path $Path -Mode Collected -IsDirectory:([IO.Directory]::Exists($Path)) -MetadataOnly:$MetadataOnly;Assert-WsmFileScopeGuard -Path $TrustedPeerPhysicalPath -Mode Root}
+    }elseif($ExactConfig){Assert-WsmFileScopeGuard -Path $Path -Mode ExactConfig -SourceRoot $SourceRoot -RelativePath $RelativePath -IsDirectory:([IO.Directory]::Exists($Path)) -MetadataOnly:$MetadataOnly -CheckPhysicalAlias}
+    else{Assert-WsmFileScopeGuard -Path $Path -Mode Collected -IsDirectory:([IO.Directory]::Exists($Path)) -MetadataOnly:$MetadataOnly -CheckPhysicalAlias}
     Assert-WsmNoReparse $Path
     $attributes=[IO.File]::GetAttributes($Path)
     foreach($flag in @([IO.FileAttributes]::Encrypted,[IO.FileAttributes]::SparseFile,[IO.FileAttributes]::Compressed)){
@@ -87,7 +101,7 @@ function Get-WsmExactConfigEntries {
         Assert-WsmRelativePath $relative -AllowRoot
         $path=if($relative){Join-Path $root $relative}else{$root}
         Assert-WsmNoReparse $path
-        Assert-WsmAssistiveFileTopology $path
+        Assert-WsmAssistiveFileTopology -Path $path -ExactConfig -SourceRoot $root -RelativePath $relative
         if($path.Length -gt 239){throw 'Exact configuration exceeds the verified path limit.'}
         if(-not [IO.File]::Exists($path)){throw ('Approved configuration file is absent: '+$relative)}
         foreach($excluded in @($Spec.ExcludedRelativePaths)){if($relative -ieq $excluded -or $relative.StartsWith(([string]$excluded).TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'An exact configuration file is excluded by the reviewed scope.'}}
@@ -134,14 +148,24 @@ function Get-WsmFilePlacementPreview {
                 Assert-WsmNoReparse $destination
                 if([IO.File]::Exists($destination) -or [IO.Directory]::Exists($destination)){
                     $topologyVerified=$true
-                    try{Assert-WsmAssistiveFileTopology $destination}catch{$topologyVerified=$false}
+                    $key=$item.ItemId+'|'+$relative
+                    try{
+                        if($spec.PSObject.Properties['ContentSelection'] -and [string]$spec.ContentSelection -ceq 'ExactFiles'){
+                            if($row.Directory -and [string]::IsNullOrEmpty($relative)){
+                                Assert-WsmAssistiveTargetScopeTopology -Path $destination -Spec $spec -TargetRoot $spec.TargetPath -Kind Root
+                            }else{
+                                $kind=if($row.Directory){'Directory'}else{'File'}
+                                $ownedHash=if($ownership.ContainsKey($key)){[string]$ownership[$key].SHA256}else{''}
+                                Assert-WsmAssistiveTargetScopeTopology -Path $destination -Spec $spec -TargetRoot $spec.TargetPath -Artifact $row -Kind $kind -Destination $destination -TrustedExistingHash $ownedHash
+                            }
+                        }else{Assert-WsmAssistiveFileTopology $destination}
+                    }catch{$topologyVerified=$false}
                     if(-not $topologyVerified){$status='BlockedConflict';$reason='Destination has special file topology such as alternate data streams; preserve it for manual review.'}
                     else{
                         $status='BlockedConflict';$reason='Destination exists; external data is not merged or overwritten.'
                         if($row.Directory -and [IO.Directory]::Exists($destination)){$status='DirectoryAlreadyExists';$reason='Existing directory is retained. New nonconflicting files may be placed individually; no directory ownership is claimed.'}
                         if(-not $row.Directory -and [IO.File]::Exists($destination)){$observed=(Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant();if($observed -ieq $row.Data.Hash){$reason='Same bytes already exist; this does not grant tool ownership.'}}
                     }
-                    $key=$item.ItemId+'|'+$relative
                     if($topologyVerified -and -not $row.Directory -and $ownership.ContainsKey($key)){
                         if($observed -ieq $ownership[$key].SHA256){$status='VerifiedOwned';$reason='Current bytes match journal ownership. Restore must preserve a verified backup before changing them.'}
                         else{$status='OwnedFileDrift';$reason='Journal-owned file changed outside its recorded generation; preserve and reconcile it.'}

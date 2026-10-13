@@ -27,11 +27,12 @@ function Get-WsmScopeEntries($Spec,[string]$PackageRoot,$CancellationToken=$null
     if($Spec.PSObject.Properties['ContentSelection'] -and $Spec.ContentSelection -ceq 'ExactFiles'){Get-WsmExactConfigEntries $Spec $PackageRoot $CancellationToken;return}
     if([IO.Path]::GetFullPath($Spec.SourcePath).Length -gt 239){throw 'FileScope exceeds the verified 239-character path limit; use a dedicated long-path workflow.'}
     $root=ConvertTo-WsmCanonicalPath $Spec.SourcePath; Assert-WsmNoReparse $root
+    Assert-WsmFileScopeGuard -Path $root -Mode Root -CheckPhysicalAlias
     $package=[IO.Path]::GetFullPath($PackageRoot).TrimEnd('\'); if($package -ieq $root -or $package.StartsWith($root.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($package+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Scope overlaps package workspace.'}
     if(Test-WsmPathOverlap (Get-WsmPhysicalPath $root) (Get-WsmPhysicalPath $package)){throw 'Scope overlaps package workspace through physical aliases.'}
     if(-not [IO.File]::Exists($root) -and -not [IO.Directory]::Exists($root)){throw 'Approved scope is absent.'}
     $stack=New-Object 'System.Collections.Generic.Stack[string]'; $stack.Push($root)
-    while($stack.Count){Assert-WsmCancellationBoundary $CancellationToken 'ScopeTraversal';$path=$stack.Pop(); $relative=$path.Substring($root.Length).TrimStart('\'); $exclude=$false; foreach($p in $Spec.ExcludedRelativePaths){if($relative -ieq $p -or $relative.StartsWith($p.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){$exclude=$true;break}}; if($exclude){continue}; Assert-WsmRelativePath $relative -AllowRoot;if($path.Length -gt 239){throw 'FileScope exceeds the verified 239-character path limit; no payload is sealed.'}; Assert-WsmNoReparse $path;if($Spec.PSObject.Properties['TransferChannel']){Assert-WsmAssistiveFileTopology $path}; $directory=[IO.Directory]::Exists($path); [pscustomobject]@{SourcePath=$path; RelativePath=$relative; Directory=$directory}; if($directory){foreach($child in [IO.Directory]::EnumerateFileSystemEntries($path)){$stack.Push($child)}}}
+    while($stack.Count){Assert-WsmCancellationBoundary $CancellationToken 'ScopeTraversal';$path=$stack.Pop(); $relative=$path.Substring($root.Length).TrimStart('\'); $exclude=$false; foreach($p in $Spec.ExcludedRelativePaths){if($relative -ieq $p -or $relative.StartsWith($p.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){$exclude=$true;break}}; if($exclude){continue}; Assert-WsmRelativePath $relative -AllowRoot;if($path.Length -gt 239){throw 'FileScope exceeds the verified 239-character path limit; no payload is sealed.'}; Assert-WsmNoReparse $path;if($Spec.PSObject.Properties['TransferChannel']){Assert-WsmAssistiveFileTopology $path}else{Assert-WsmFileScopeGuard -Path $path -Mode Collected -IsDirectory:([IO.Directory]::Exists($path))}; $directory=[IO.Directory]::Exists($path); [pscustomobject]@{SourcePath=$path; RelativePath=$relative; Directory=$directory}; if($directory){foreach($child in [IO.Directory]::EnumerateFileSystemEntries($path)){$stack.Push($child)}}}
 }
 function Get-WsmAvailableBytes([string]$Path) { Get-WsmAssistiveAvailableBytes $Path }
 function Get-WsmPackageEstimate {
@@ -69,8 +70,13 @@ function Export-WsmMigrationPackageCore {
     Assert-WsmSourceWorkspaceSeparation $plan $SourceStateDirectory
     Assert-WsmSourceWorkspaceSeparation $plan $OutputDirectory
     # Refresh the real local collector before any payload work; revision alone is not a configuration check.
-    $freshResult=Export-WsmInventory $SourceStateDirectory -DeepDiscovery:($plan.Source.PSObject.Properties['DiscoveryDepth'] -and $plan.Source.DiscoveryDepth -eq 'Deep'); $fresh=Read-WsmTrustedJson $freshResult.Path $freshResult.SHA256; $current=@{};foreach($i in $fresh.Items){$current[$i.ItemId]=$i}
+    $freshResult=Export-WsmInventory $SourceStateDirectory -DeepDiscovery:($plan.Source.PSObject.Properties['DiscoveryDepth'] -and $plan.Source.DiscoveryDepth -eq 'Deep') -IncludeSoftwareCatalog; $fresh=Read-WsmTrustedJson $freshResult.Path $freshResult.SHA256; $current=@{};foreach($i in $fresh.Items){$current[$i.ItemId]=$i}
     if($fresh.Source.HostId -cne $plan.Source.HostId){throw 'Fresh inventory source identity mismatch.'}
+    $softwareScopeCoverage=@(foreach($scopeItem in @($plan.Items | Where-Object {$_.Decision -ceq 'Include' -and $_.MigrationSpec.Adapter -ceq 'FileScope'})){
+        Assert-WsmCancellationBoundary $CancellationToken 'BeforeInstalledSoftwareScopeCheck'
+        $scopeCheck=Assert-WsmFileScopeInstalledRoots -Spec $scopeItem.MigrationSpec -SourceInventory $fresh -NativeSource
+        [pscustomobject]@{ItemId=[string]$scopeItem.ItemId;Status=[string]$scopeCheck.Status;RootsChecked=[int]$scopeCheck.RootsChecked;SourceInventoryHash=[string]$freshResult.SHA256;Diagnostics=@($scopeCheck.Diagnostics)}
+    })
     $base=$null;$generation=1;$freeze=$null
     if($BaseManifestPath){$base=Read-WsmTrustedJson $BaseManifestPath $BaseManifestHash;Assert-WsmEnvelope $base 'MigrationPackage';if($base.PairId -cne $plan.PairId -or $base.PlanHash -ine $ExpectedHash){throw 'Delta base plan/pair mismatch.'};$generation=$base.Generation+1}
     $needsFreeze=@($plan.Items | Where-Object {$_.Decision -eq 'Include' -and $_.MigrationSpec.Adapter -eq 'FileScope' -and $_.MigrationSpec.Consistency -ne 'Immutable'}).Count -gt 0
@@ -98,7 +104,7 @@ function Export-WsmMigrationPackageCore {
         $candidate=Join-Path $root 'manifest.pending.json';Write-WsmJson $candidate $manifest;$hash=(Get-FileHash -LiteralPath $candidate).Hash
         Test-WsmMigrationPackage $candidate $hash $CancellationToken | Out-Null
         [IO.File]::Move($candidate,$manifestPath)
-        [pscustomobject]@{Directory=$root;ManifestPath=$manifestPath;SHA256=$hash;Generation=$generation;Files=$files;Bytes=$bytes;Sealed=$true;Final=$manifest.Final;ProductionVerified=$false}
+        [pscustomobject]@{Directory=$root;ManifestPath=$manifestPath;SHA256=$hash;Generation=$generation;Files=$files;Bytes=$bytes;Sealed=$true;Final=$manifest.Final;SoftwareScopeCoverage=$softwareScopeCoverage;ProductionVerified=$false}
     }
 }
 function Assert-WsmArtifactRecord($Row,$Item) {

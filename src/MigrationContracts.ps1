@@ -1,4 +1,6 @@
-﻿function Get-WsmMachineIdentity {
+﻿. (Join-Path $PSScriptRoot 'FileScopeGuard.ps1')
+
+function Get-WsmMachineIdentity {
     if ([string]$ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { throw 'Migration requires FullLanguage under the approved enterprise deployment policy.' }
     $pre=Get-WsmPreflight
     $machine=(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Cryptography').MachineGuid
@@ -178,6 +180,18 @@ function Assert-WsmAssistiveMigrationSpec($Spec) {
     if($Spec.PSObject.Properties['ContentSelection']){
         if($Spec.Adapter -cne 'FileScope' -or [string]$Spec.ContentSelection -cnotin @('WholeScope','ExactFiles')){throw (New-WsmContractError 'ContentSelection is only valid on a schema 3 FileScope and must be WholeScope or ExactFiles.')}
         if($Spec.ContentSelection -ceq 'ExactFiles' -and @($Spec.ConfigFiles).Count -eq 0){throw (New-WsmContractError 'ExactFiles requires a nonempty approved ConfigFiles whitelist.')}
+        $exact=($Spec.ContentSelection -ceq 'ExactFiles')
+        # These paths describe remote source/target hosts at Manager approval time;
+        # local drive letters are not evidence about either remote host's aliases.
+        Assert-WsmFileScopeGuard -Path ([string]$Spec.SourcePath) -Mode Root -AllowProtectedExactRoot:$exact
+        Assert-WsmFileScopeGuard -Path ([string]$Spec.TargetPath) -Mode Root -AllowProtectedExactRoot:$exact
+        if($exact){
+            foreach($entry in (Get-WsmConfigSpecEntries $Spec 'ConfigFiles')){
+                $relative=[string]$entry.RelativePath
+                $configPath=if($relative){Join-Path ([string]$Spec.SourcePath) $relative}else{[string]$Spec.SourcePath}
+                Assert-WsmFileScopeGuard -Path $configPath -Mode ExactConfig -SourceRoot ([string]$Spec.SourcePath) -PathOnly
+            }
+        }
     }
     if($Spec.Adapter -eq 'FileScope' -and (-not $Spec.PSObject.Properties['TransferChannel'] -or -not $Spec.PSObject.Properties['ContentSelection'])){throw (New-WsmContractError 'Schema 3 FileScope requires reviewed TransferChannel and ContentSelection fields.')}
     foreach($field in @('SourceXml','ActivationPolicyFieldPointer')){if($Spec.PSObject.Properties[$field] -and [string]$Spec.$field -match '[\x00-\x08\x0b\x0c\x0e-\x1f]'){throw (New-WsmContractError ($field+' contains control characters.'))}}
@@ -232,6 +246,9 @@ function Assert-WsmMigrationSpec($Spec,[switch]$Assistive) {
         Assert-WsmConfigArtifactSpec $Spec
         foreach ($f in @('SourcePath','TargetPath','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy')) { if (-not $Spec.PSObject.Properties[$f]) { throw ('FileScope requires '+$f) } }
         [void](ConvertTo-WsmCanonicalPath $Spec.SourcePath); [void](ConvertTo-WsmCanonicalPath $Spec.TargetPath)
+        $allowProtectedExactRoot=($Assistive -and $Spec.PSObject.Properties['ContentSelection'] -and [string]$Spec.ContentSelection -ceq 'ExactFiles')
+        Assert-WsmFileScopeGuard -Path ([string]$Spec.SourcePath) -Mode Root -AllowProtectedExactRoot:$allowProtectedExactRoot
+        Assert-WsmFileScopeGuard -Path ([string]$Spec.TargetPath) -Mode Root -AllowProtectedExactRoot:$allowProtectedExactRoot
         if($Spec.SourcePath.StartsWith('\\') -or $Spec.TargetPath.StartsWith('\\')){throw (New-WsmContractError 'UNC/DFS/NAS scope requires an owner-reviewed dedicated provider identity, alias/ownership and consistency workflow; generic FileScope cannot approve an unresolved remote scope.')}
         if (@('Immutable','OwnerFreeze','ProductBackup') -cnotcontains $Spec.Consistency -or @('DaclOwner','DaclOwnerSacl') -cnotcontains $Spec.Metadata -or @('Block','ReplaceOwned') -cnotcontains $Spec.ConflictPolicy) { throw 'Invalid file scope policy.' }
         foreach ($p in $Spec.ExcludedRelativePaths) { Assert-WsmRelativePath $p }
@@ -273,6 +290,13 @@ function Approve-WsmMigrationPlan {
         if ($target.Fingerprint -ceq $c.Source.Fingerprint) { throw 'Source and target must be different machines.' }
         $selectionIndex=@{};if($c.SchemaVersion -eq 3){foreach($selection in @($c.Assistive.Selections.Items)){$selectionIndex[[string]$selection.ItemId]=$selection}}
         $included=@($c.Items | Where-Object { $_.Decision -ceq 'Include' -and ($c.SchemaVersion -ne 3 -or ($selectionIndex.ContainsKey([string]$_.ItemId) -and $selectionIndex[[string]$_.ItemId].Selected)) }); if (-not $included.Count) { throw 'No selected migration items.' }
+        if($c.SchemaVersion -eq 3 -and @($included | Where-Object {$_.PSObject.Properties['MigrationSpec'] -and $_.MigrationSpec.Adapter -ceq 'FileScope'}).Count){
+            $sourceInventory=Get-WsmAssistiveSnapshotInventory $Workspace $c.Assistive.SourceSnapshot Source
+            if($sourceInventory.Source.HostId -cne $c.Source.HostId -or $sourceInventory.Source.Fingerprint -ine $c.Source.Fingerprint){throw 'Hash-bound Source inventory does not identify the catalog Source host; FileScope approval cannot verify installed-software roots.'}
+            foreach($fileItem in @($included | Where-Object {$_.PSObject.Properties['MigrationSpec'] -and $_.MigrationSpec.Adapter -ceq 'FileScope'})){
+                [void](Assert-WsmFileScopeInstalledRoots $fileItem.MigrationSpec $sourceInventory)
+            }
+        }
         foreach($item in $included){if($item.PSObject.Properties['MigrationSpec']){$spec=$item.MigrationSpec;if($spec.PSObject.Properties['SettingTransition'] -and -not $c.PSObject.Properties['GeneralHost']){throw 'SettingTransition is supported only in an explicitly reviewed GeneralHost plan.'};if($c.PSObject.Properties['GeneralHost'] -and $spec.Adapter -in @('MachineEnvironment','TimeZone') -and -not $spec.PSObject.Properties['SettingTransition']){throw 'GeneralHost machine settings require a reviewed typed SettingTransition.'}}}
         if ($c.PSObject.Properties['GeneralHost']) { foreach($item in $included){if($item.Category -in @('Roles','Runtime')){throw ('GeneralHost scope cannot install or automatically migrate a prepared role/runtime: '+$item.ItemId)};if($item.PSObject.Properties['MigrationSpec'] -and $item.MigrationSpec.Adapter -ceq 'WindowsFeature'){throw 'GeneralHost scope does not install new Windows Features; prepare and verify them manually on the target.'}} }
         [void](Assert-WsmRemoteStorageScopes $included)

@@ -67,6 +67,10 @@ try{
         $targetStreams=@(Get-Item -LiteralPath $adsTarget -Stream * -ErrorAction Stop)
         Check (@($targetStreams|Where-Object Stream -CEQ 'wsm-review-fixture').Count -eq 1) 'The physical target ADS fixture was not created on this filesystem.'
         Reject {Assert-WsmAssistiveFileTopology $adsTarget} 'Current target topology accepted a physical alternate data stream.'
+        $metadataOnlyProbe=Join-Path $output 'metadata-only-image.bin';[byte[]]$metadataOnlyImage=New-Object byte[] 64;[Text.Encoding]::ASCII.GetBytes("MSWIM`0`0`0").CopyTo($metadataOnlyImage,0);[IO.File]::WriteAllBytes($metadataOnlyProbe,$metadataOnlyImage)
+        Reject {Assert-WsmAssistiveFileTopology $metadataOnlyProbe} 'Ordinary topology verification stopped enforcing OS image content signatures.'
+        Assert-WsmAssistiveFileTopology $metadataOnlyProbe -MetadataOnly
+        Check $true 'Metadata-only peer observation did not retain metadata topology checks while avoiding content inspection.'
         # Isolate package and Server privilege authentication; exercise the public
         # placement consumer against real files. This is not Server qualification.
         $placement=Join-Path $root 'placement';[void][IO.Directory]::CreateDirectory($placement)
@@ -91,6 +95,21 @@ try{
         Check ($adsPlacementRow.PlacementStatus -eq 'BlockedConflict' -and $adsPlacementRow.Reason -match 'special file topology|alternate data streams') 'Current ADS destination topology was not surfaced as a manual placement conflict.'
         Check (@($preview.Rows|Where-Object {$_.EffectivePath -or $_.EffectivePathStatus -cne 'NotObserved'}).Count -eq 0) 'Preservation was falsely reported as an effective configuration path.'
         Check (@($preview.Rows|Where-Object {$_.OriginalPathStatus -cne 'Missing' -or -not $_.OriginalPathChangedByApprovedMapping}).Count -eq 0) 'Original-path observations or explicit mapping are lost.'
+        $exactPlacementRoot=Join-Path $placement 'exact-programfiles-target';[void][IO.Directory]::CreateDirectory($exactPlacementRoot)
+        $exactPlacementText='{"site":"fixture"}';$exactPlacementFile=Join-Path $exactPlacementRoot 'appsettings.json';[IO.File]::WriteAllText($exactPlacementFile,$exactPlacementText)
+        $exactPlacementHash=(Get-FileHash -LiteralPath $exactPlacementFile -Algorithm SHA256).Hash.ToLowerInvariant()
+        $placementItem.MigrationSpec=[pscustomobject]@{Adapter='FileScope';SourcePath=(Join-Path $placement 'source');TargetPath=$exactPlacementRoot;ContentSelection='ExactFiles';Evidence='Reviewed exact config placement';ConfigFiles=@([pscustomobject]@{RelativePath='appsettings.json';SHA256=$exactPlacementHash;Owner='Fixture owner';Evidence='reviewed exact configuration hash'})}
+        $artifactRows=@([pscustomobject]@{ItemId=$placementItem.ItemId;RelativePath='';Directory=$true;Data=$null},[pscustomobject]@{ItemId=$placementItem.ItemId;RelativePath='appsettings.json';Directory=$false;Data=[pscustomobject]@{Hash=$exactPlacementHash}})
+        [IO.File]::WriteAllLines($index,@($artifactRows|ForEach-Object {ConvertTo-Json $_ -Compress -Depth 5}),(New-Object Text.UTF8Encoding($false)))
+        $script:placementFixture.Manifest.ArtifactsHash=(Get-FileHash -LiteralPath $index -Algorithm SHA256).Hash.ToLowerInvariant()
+        & $module {param($target) $script:exactPlacementRoot=$target} $exactPlacementRoot
+        $physicalResolver=(Get-Command Get-WsmPhysicalPath -CommandType Function).ScriptBlock
+        try{
+            Set-Item Function:\script:Get-WsmPhysicalPath -Value {param([string]$Path)$base='\Device\HarddiskVolume123\Program Files\Fixture\Target';$full=[IO.Path]::GetFullPath($Path);$targetRoot=[IO.Path]::GetFullPath($script:exactPlacementRoot);if($full -ieq $targetRoot){return $base};if($full.StartsWith($targetRoot.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){return ($base+'\'+$full.Substring($targetRoot.TrimEnd('\').Length).TrimStart('\'))};'\Device\HarddiskVolume123\Users\Fixture\Unrelated'}
+            $exactPlacement=Get-WsmFilePlacementPreview -ManifestPath (Join-Path $placement 'manifest.json') -ExpectedHash ('b'*64)
+            $exactPlacementRow=@($exactPlacement.Rows|Where-Object RelativePath -CEQ 'appsettings.json')[0]
+            Check ($exactPlacementRow.PlacementStatus -ceq 'BlockedConflict' -and $exactPlacementRow.ObservedHash -ceq $exactPlacementHash) 'An exact hash-bound config in a physically protected target root was misreported as a topology failure or granted ownership.'
+        }finally{Set-Item Function:\script:Get-WsmPhysicalPath -Value $physicalResolver}
         Write-Host ('PASS: '+$script:checks+' physical C / exact configuration / topology / native placement checks.')
     } $root $helper
 }finally{if([IO.Directory]::Exists($root)){Remove-Item -LiteralPath $root -Recurse -Force}}
