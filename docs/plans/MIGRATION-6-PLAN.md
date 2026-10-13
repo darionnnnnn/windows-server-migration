@@ -18,12 +18,12 @@
 - 已提交核心基準：`01ca31978b342fd7e4ee3158725579ddd99ec532`；實際開工以第五輪收尾後分支 HEAD 為基準，先核對後續窄修。
 - 本機 Git stash：`185feab72af1cdfcad41e9b6ead77f4e761a1aa6`，名稱 `R6 preserved incomplete wizard integration before R5 closeout 2026-10-13`，包含 48 個待收尾路徑。這是本機保存點，沒有宣稱已推送 GitHub。
 - 本機完整快照：`work/r5-verification/r6-handoff-4dfd18e93d1a4ad4a2a52bf506f7f84f`，275 檔；`snapshot-index.json` SHA256：`1845cf72e1d7f47a8e6566574e7b130953c6f6b93b32e5ab9c9fa8a1a0ed71e9`。排除 docs/archive 與私人 prototype。
-- 開工先驗 stash／快照存在及雜湊，逐段移植，不直接 `stash pop` 覆蓋第五輪收尾修正。保存材料不可用時依本計畫重建，不假稱已恢复。
+- 開工先驗 stash／快照存在及雜湊，逐段移植，不直接 `stash pop` 覆蓋第五輪收尾修正。保存材料不可用時依本計畫重建，不假稱已恢復。
 - 部分 helper 曾有獨立核心 PASS（尤其 F1 真實小檔還原／取消／續作），仍可重用；修改後依相依 bytes 決定哪些證據有效。未交付 helper 的 PASS 不能成為第五輪發行能力聲明。
 
 | 承接項目 | 實作狀態／缺口 | 原第五輪條款 | 本輪段落 |
 |---|---|---|---|
-| 原生 HTML／CSS／session 載入可靠性 | 已有診斷與有限正式 handler PASS；完整 NativeBackup 有 CSS connection reset、載入／盤點逾時，原因未確定，不能歸咎安全軟體 | A01–03、F09、R12、R-A12 | P0 |
+| 原生 HTML／CSS／session 載入可靠性 | 已有診斷與有限正式 handler PASS；本次 NativeHtmlBridge DOM 載入逾時、HtmlBridge spec-review／submission socket reset，先前完整 NativeBackup 亦有 CSS reset／盤點逾時；正式 handler 擷取測試不代表傳輸 PASS，原因未確定 | A01–03、F09、R12、R-A12 | P0 |
 | 全角色簡單操作、鍵盤與畫面覆蓋 | 基礎版面已交付；完整 Manager／Target 及新表單旅程未完成，不能以 Source 部分路徑代替 | B01–04、F01–05、R01、R-A01 | P1、P5、P6 |
 | 最新備份／還原結果導覽 | 新 durable attempt／材料綁定投影有部分實作；最新 running／missing CompletedUtc／取消／過期世代回歸未齊 | C01–05、R06、R-A05–06 | P3、P5 |
 | 分組與相依、200 項模式切換 | 基礎選取已交付，增強 grouping helper／循環／未知／跨組完整性未完成整合驗收 | D01–04、R04、R-A04 | P2 |
@@ -88,7 +88,7 @@
 
 ## 4. 執行順序與收尾規則
 
-P0 → P1 → P2 → P3 → P4 → P5 → P6；可平行唯讀審查，但共享檔單一寫入者。模組 import/export、ActionMap、defaults、projection、UI、測試必須成套；無法独立交付時合併相依提交，不能只推孤立 helper。禁止未使用的新框架、第二套權威状态、遠端服務或過度抽象。
+P0 → P1 → P2 → P3 → P4 → P5 → P6；可平行唯讀審查，但共享檔單一寫入者。模組 import/export、ActionMap、defaults、projection、UI、測試必須成套；無法獨立交付時合併相依提交，不能只推孤立 helper。禁止未使用的新框架、第二套權威狀態、遠端服務或過度抽象。
 
 每段主代理獨立驗證後 commit／push 當輪分支並核對遠端 SHA；不自行 force、merge 或推預設分支。大包和原生平台驗證只跑安全小資料，不重跑無效規模測試。實作／驗證模型與 effort 如實記錄；目前只有 gpt-6-luna low／medium／high 可委派，未能證明不同模型的檢查不能稱獨立換模型簽核。
 

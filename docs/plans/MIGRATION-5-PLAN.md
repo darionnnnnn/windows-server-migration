@@ -1,6 +1,6 @@
 # 第 5 輪規劃：逐步備份與還原精靈、易讀介面及開發者探測
 
-> 日期：2026-10-12（Asia/Taipei）；2026-10-13 範圍調整。狀態：已完成範圍收尾中。使用者明確要求先收尾本輪已實作部分，未完成項目移入 [第六輪規劃](MIGRATION-6-PLAN.md)。這項新指示取代先前「全部補齊才停止」要求，不表示原 A–H 全數完成；原始規格保留作追溯。
+> 日期：2026-10-12（Asia/Taipei）；2026-10-13 範圍調整。狀態：已完成範圍已收尾；原規劃未完成項目由第六輪承接。使用者明確要求先收尾本輪已實作部分，未完成項目移入 [第六輪規劃](MIGRATION-6-PLAN.md)。這項新指示取代先前「全部補齊才停止」要求，不表示原 A–H 全數完成；原始規格保留作追溯。
 
 ## 收尾範圍與全部 Phase 盤點（2026-10-13）
 
@@ -24,6 +24,28 @@
 
 後文為原規劃與逐次執行歷史；其中「仍在進行」「納入本輪補實作」依本段新的使用者定案，改由第六輪承接。
 
+### 本次收尾結論與最終證據（2026-10-13）
+
+本次只收尾上表界定的已完成範圍，沒有把原 A–H 或「年長同仁全流程獨立完成」標為通過。未完成實作、完整鍵盤／原生 200% 縮放及五條完整旅程集中第六輪，不另建重複待辦清單。
+
+- `0140b15`：本輪範圍調整與第六輪 P0–P6 計畫，已推送。
+- `7d48c35`：修正不存在目標路徑的預覽保護，以及已匯入結果的世代／manifest／最新終態投影，已推送。沿用既有保護與 StageResults，不引入第二套執行引擎或新的備份格式。
+- `a983b94`：確定未接受的提交才清除 pending；已有記錄或回應不明時查詢同一 operation，不重送。補正文、按鈕間距、白話動作名稱與可收合技術識別碼，已推送。
+- 本次文件段落同步 README、入口、實作狀態、操作／一般主機／企業覆蓋／環境確認文件與兩份 HTML 指引；13 份非 archive Markdown 均已檢視，有效歷史／復原／資格契約保留，不為改日期重複敘述。正式產生器重建 11 份 HTML 及索引；27 份來源／HTML 的 160 個本機連結無缺檔。
+
+| 驗證範圍 | 主代理實際結果與證據界線 |
+|---|---|
+| 窄修核心，雙引擎 | `r5-closeout-core-1e5ea9c018504e8c9e1b91c96fea7ba7`：ResultGeneration 12、AssistiveFiles 35、WizardFlow 45、StageResults 40、FileScopeGuard 36、OperationRequests，全部 exit 0。不存在目標別名及舊世代誤顯示先重現再修正。 |
+| 最後 UI bytes | `r5-closeout-final-793f171274e64e26ab04b1978525b69e`：AssistiveUi 47/47，PendingUi、WizardLayout、WizardJourney 全 exit 0。真 Edge 使用隔離 API fixture，涵蓋明確拒絕／未標記 400/422／非 JSON／斷線只送一次及查同一紀錄；不冒稱真備份或原生傳輸通過。 |
+| 正式 handler 拒絕界線 | `Test-HtmlSubmission.js` 五項通過：未知動作、過期版本、已持久化 Failed、查回相同錯誤及重用既有 operation。測試只在 TEMP 建工作區；於正式 writer 前擷取回應，仍呼叫原 writer，沒有替換 handler／核心。原生 socket 結果獨立列失敗。最終刪除未使用的測試 helper 後再次 exit 0，證據 `r5-closeout-submission-final.json`。 |
+| 版面 | 主代理檢視桌面、320px 窄螢幕、640 CSS px 重排及未知結果截圖。主要選項／按鈕未重疊；640px 只代表 1280px/200% 等效重排，不冒稱真實瀏覽器 200% 操作已驗收。 |
+| HTTP／文件／發行 | `r5-closeout-release-48214f2542734939bd9ada6b46df9f8c` 兩引擎 HtmlConsole 64、HtmlDocumentation、Qualification、ScriptEncoding 全 exit 0。最後調整提示文字後，`r5-closeout-final-*` 兩引擎重跑 Qualification／Encoding 全 exit 0；Qualification 實際產生 ZIP、核對 manifest/payload bytes，保留未簽署／不具生產資格的限制。測試檔整理不改發行內容。 |
+| 開發者探測 | `r5-closeout-http-fixed-5779cfe26d5e44c1867275670d861a8f` 兩引擎 DeveloperProbe exit 0；未注入 OS／磁碟 readback 與原生 CIM 相符，16 項命令及 5 項模組、遮蔽、ZIP hashes／預算／失敗／逾時／取消通過。這台 Win11 的 NativeInventory 為 NotApplicable，不代替 Server 環境能力。 |
+| 不可變證據 | 核心、HTTP、UI、發行、handler、最終快照的已索引來源於測後 hash 核對未變；最終 runtime 與提交前來源逐檔核對。詳細 JSON／截圖保留在本機 `work/r5-verification`，不發布現場探測資料。 |
+
+**保留失敗，不覆蓋成 PASS：** `Test-NativeHtmlBridge.js` 在正式頁面 DOM 載入逾時；`Test-HtmlBridge.js` 在 `/api/spec-review` 連線重設；窄範圍原生 submission 測試也在已產生 Failed 記錄後遇 socket reset。這些與本輪既有 raw transport NotPassed 一併交給第六輪 P0，沒有重送請求、改安全軟體或放寬 timeout 取得通過。先前編碼錯誤快照也保留為失敗紀錄，修正 BOM 後已重驗雙引擎。
+
+全部 branch 差異以起點至最終提交檢視；既有核心、取消／修復、檔案範圍及 G 探測的有效同 bytes 證據沿用。原 F0／E／F1 大型未完成整合保持本機保存，不混入發行；本輪範圍調整並非宣稱完整產品或無缺陷。
 ### 2026-10-13 本次續作驗證補充（仍未全數完成）
 
 - 檔案範圍段落：主代理不可變快照 `root-scope-segment-19481a351e424ea892e7897431d45615` 兩引擎均通過 NonC 34、邊界 11 及 Qualification；與先前 `93b50e0de97c4759b0e44a9f7415498f` 的程式差異僅 NonC 實作與測試，故其 Guard 36、Files 32、Restore 120、Pipeline 16 及後補 StageResults 40 證據仍適用。提交使用該快照的完整核心與模組相依檔案；後續精靈整合及新增 peer 觀察 seam 另行驗證，不宣稱本輪全部完成。

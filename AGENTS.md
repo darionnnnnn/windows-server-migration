@@ -1,6 +1,6 @@
 # Windows Server Migration 專案入口
 
-- 流程：完整。第五輪已定案的逐步備份／還原精靈、版面修正、結果導覽及獨立一鍵開發者環境探測，見 [MIGRATION-5-PLAN.md](docs/plans/MIGRATION-5-PLAN.md)；2026-10-12 已授權完整實作與逐段驗證推送；工具先自動處理可推導項目，Q01 依既有目標綁定與核准建議執行，本輪分支 codex/migration-5。驗收僅限主代理可於本機執行的項目，外部資格限制保留。第四輪 A–E 定案、逐項實作、體檢與分版本驗證集中 [MIGRATION-4-PLAN.md](docs/plans/MIGRATION-4-PLAN.md)。使用者已定案工作台內資訊分頁、教學／報告可另開、常用任務導引＋完整進階操作。從本輪起點核對完整差異，不能把前輪 PASS 或空遠端 diff 當成完成證據。第三輪契約／歷史驗收見 [MIGRATION-3-PLAN.md](docs/MIGRATION-3-PLAN.md)。
+- 流程：完整。2026-10-13 使用者改為先收尾第五輪已完成範圍，未完成實作／整合驗收移至 [MIGRATION-6-PLAN.md](docs/plans/MIGRATION-6-PLAN.md)，本次不接續第六輪實作。第五輪原始規格、全部 Phase 盤點及證據見 [MIGRATION-5-PLAN.md](docs/plans/MIGRATION-5-PLAN.md)。第六輪保留工具先處理、白話逐步操作、目標綁定核准、不做整機／OS／安裝軟體備份，保留業務 DLL／EXE。目前分支 codex/migration-5；收尾不代表原 A–H 全數完成。
 - 現況：0.4。A–E 現行能力、既有核心 Phase 與外部待驗收以 [IMPLEMENTATION-0.1.md](docs/IMPLEMENTATION-0.1.md) 為準，不在入口重複各次測試時間／checkpoint。原始傳輸 NotPassed、本機動態完整旅程未通過依使用者保留 AdGuard 設定的決策保留；外部 Server／Oracle／企業 PKI／業務／規模驗收仍 NotTested，ProductionVerified=false、ProductionExecutionEnabled=false。
 - 使用範圍：一般內部網站／Windows排程及支援服務主機，主要 Server 2016 → 2025；不做資料庫、load balancer等專業服務主機搬移。R3是輔助使用者盡可能還原內容，企業TS可操作／交接、兩機差異及新版軟體下原設定舊路徑可取。全部已發現項目預選／可自訂，選取與核准分離，不支援項出列處置。所有使用者功能／文件以HTML入口＋本機PowerShell呈現，文字備援，共用核心／無遠端或常駐服務，JSON內部資料庫；開發README／PLAN／AGENTS仍為Markdown來源。使用者可選新版，取代強制同版本；來源／選用／觀測版本分開，不承諾自動轉格式／新版相容。全新Windows基準、還原前重查、直接還原／等補裝、逐項deferred／續跑仍適用；純檔案不被全域軟體gate阻擋，真正條件及業務驗證保留。不協助合併既有文件，HTML逐檔列無法放置／scope影響／原檔來源／人工重試，不新增外部覆寫按鈕；受控delta／回復仍遵原契約。非IIS完整盤點／檔案設定保存／人工處置，不新增產品adapter。前輪完整範圍與驗收保留於第三輪 PLAN。主C／非C跳板機、完整相依及未知版本名稱保留；軟體本體人工安裝、不擴整機備份。
 - 操作與契約：[README.md](README.md)、[GENERAL-HOST-WORKFLOW.md](docs/GENERAL-HOST-WORKFLOW.md)、[OPERATIONS.md](docs/OPERATIONS.md)。現況規格保留有效行為及限制，執行過程與驗收放既有 PLAN。完整軟體確認模板不是實際 Server 清單；外部驗收與使用者每次操作檢查表不可代勾或刪除。
@@ -13,5 +13,5 @@
 - 分層驗證：Pipeline16小檔、取消8檔、報告2501列、Fleet十台各200、Spec200；保留跨5000索引及64-bit邊界fixture；2026-10-10使用者改採小範圍測試，實體4GiB／企業規模由環境探測與後續實機證據補齊，不重跑無效的一萬小檔全故障劇本。同程式、依賴、環境及覆蓋範圍的有效證據可沿用。
 - 實際來源／目標主機須另有指派；隔離主機可用角色6／CLI LabReport回傳JSON與TXT。fixture、命令成功或報告摘要不能代替原生readback及業務接受。
 - 現況文件及當期 PLAN 留在 docs；修改 Markdown 後用正式產生器同步 HTML，不手改投影。本輪略過 docs/archive，不搜尋、讀取、搬移、產生或打包封存內容。新包保留既有頂層 Markdown 契約，排除 PLAN HTML／docs/plans；文件變更仍需核驗發行 bytes 並重新簽署。公開 repo 不納入真實盤點、秘密、私鑰；個人未追蹤 `Get-ServerMigrationInventory.ps1` 不讀、不改、不 stage，也不進測試快照或發行包。
-- GitHub 每段完整相依驗證後 commit／push 並核對遠端 SHA。2026-10-11 使用者授權收尾推送 dev 及刪除本輪已整合開發分支；先查實際分支與整合關係。不得刪 dev／main、改 main、force push 或破壞他人工作；不存在的分支不另建。本輪原開發分支已無本機／遠端殘留。
-- 委派遵循使用者當輪指定與可用模型；本次收尾指定 Opus low，但工具沒有此選項，由主代理直接體檢，不用其他子代理替代。第四輪 runtime／測試／使用者文件原實作者為 gpt-6-luna high／medium，前次主代理為 gpt-6.1-sol／medium；本次可信 turn_context 為 gpt-6-astra／low，符合原實作的不同模型體檢。主代理本次修正的並行保存及文件範圍只稱自行實作與驗證，不冒稱該修正已獲獨立換模型簽核。完整範圍與歷史身分保留於 PLAN；模型身分不明時不猜測。
+- GitHub 每段完整相依驗證後 commit／push 至本輪 codex/migration-5，並核對遠端 SHA。不得自行改推 dev／main、merge、force push 或刪分支。第四輪整合歷史保留在第四輪 PLAN，不沿用其舊刪分支授權到本輪。
+- 本輪委派僅 gpt-6-luna low／medium／high，由主代理按複雜度選擇；此次審查與窄修用 high。主代理獨立核對實際diff／consumer及測試，不把代理摘要當完成證明。當前主代理確切版本無可信可區分身分，不宣稱與全部實作者不同模型的獨立簽核；第四輪模型／體檢歷史保留於其 PLAN。

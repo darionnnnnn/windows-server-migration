@@ -2,13 +2,13 @@
 
 PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目標 Server 2016 → 2025、約十台主機。各台本機執行，管理端彙整文件與結果，不要求 WinRM。
 
-## 目前狀態（2026-10-12）
+## 目前狀態（2026-10-13）
 
-第五輪加入白話操作精靈、保存的選取進度、雙擊啟動器及獨立開發者環境探測。真 Edge 與正式本機 PowerShell handler 已驗證用途選擇、步驟版本檢查，以及 Manager 對隔離盤點資料的分組選取、保存與返回。這些有限旅程不代表備份封裝、非 C 槽交接或目標還原已完成；這些 E／F 後端與完整使用旅程仍在實作。
+第五輪交付白話操作基礎、保存的選取進度、雙擊啟動器、獨立開發者環境探測，以及業務檔案範圍和還原取消／修復防護。正式本機 handler 的隔離旅程已驗證用途、選取保存及來源意圖交接。完整自動備份、管理準備、非 C 槽交接及目標還原精靈尚未交付，依使用者指示移入[第六輪規劃](docs/plans/MIGRATION-6-PLAN.md)；目前需由資訊人員使用既有進階受控流程。
 
 一般使用者可從工具首頁按「開始／繼續操作」，選擇這台電腦的用途，再依「下一步」完成目前可用步驟。已驗證材料會帶入路徑、雜湊及版本等值；工具用途不等於權限或核准。另有左側「開發者環境探測」入口，以及不依賴網頁的本機命令列備援；探測只讀本機資訊，建立 ZIP、JSON、HTML，不會上傳。
 
-本工具處理受支援的網站、排程、服務、軟體設定及資料檔案；不備份或還原整機映像、作業系統、System State 或軟體本體。非 C 槽資料仍須走已核准通道。外部 Server／產品／帳號／業務／PKI／規模驗收仍為 NotTested；ProductionVerified=false、ProductionExecutionEnabled=false，發行包未簽署。詳見[實作狀態](docs/IMPLEMENTATION-0.1.md)、[第五輪計畫與逐段證據](docs/plans/MIGRATION-5-PLAN.md)及[操作契約](docs/OPERATIONS.md)。
+本工具保留已核准的業務 DLL／EXE、網站、排程、設定及資料，排除 Windows、IIS、Oracle Client、runtime 等安裝軟體本體、整機映像及 System State。可信安裝目錄與系統路徑受防護；軟體盤點不完整時明列缺口，不宣稱完整識別。非 C 槽資料仍須走已核准通道。外部 Server／產品／帳號／業務／PKI／規模驗收仍為 NotTested；ProductionVerified=false、ProductionExecutionEnabled=false，發行包未簽署。詳見[實作狀態](docs/IMPLEMENTATION-0.1.md)、[第五輪計畫與逐段證據](docs/plans/MIGRATION-5-PLAN.md)及[操作契約](docs/OPERATIONS.md)。
 
 ## 專案用途與現行契約
 

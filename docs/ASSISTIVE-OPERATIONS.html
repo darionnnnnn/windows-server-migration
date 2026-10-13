@@ -20,7 +20,7 @@
 <main>
 <section id="status"><h2>目前能做什麼</h2>
 <p>第五輪已提供易讀的用途選擇、精靈步驟與保存的項目選擇。真 Edge 連接正式本機 PowerShell handler，已驗證空工作用途選擇、步驟版本檢查，以及使用隔離盤點資料進行分組選取、保存、返回和排除理由。</p>
-<div class="callout caution"><h3>完整備份與還原仍在實作</h3><p>真實備份封裝、C 槽及非 C 槽成果核驗、交接後的新主機還原旅程（E／F）尚未完成驗收。盤點或選取已保存，不表示備份已建立。使用前先查看<a href="IMPLEMENTATION-0.1.md">目前實作狀態與待驗項目</a>。</p></div>
+<div class="callout caution"><h3>完整精靈移至下一輪</h3><p>第五輪先交付已完成基礎，完整自動備份、管理準備、C／非 C 成果核驗及新主機還原導引由第六輪接續，目前尚未交付。盤點或選取已保存，不表示備份已建立。使用前先查看<a href="html/IMPLEMENTATION-0.1.html">目前實作狀態與待驗項目</a>。</p></div>
 <p>第四輪在特定 AdGuard 環境記錄的原始傳輸完整性仍是 <strong>NotPassed</strong>；第五輪有限的正式 handler／Edge 操作證據不代表該傳輸差異已解決，也不代表完整備份或還原旅程通過。隔離測試、fixture 及 mock 結果只證明其明列範圍。</p>
 </section>
 <section id="start"><h2>啟動與選擇用途</h2>
@@ -39,7 +39,7 @@
 <section id="manager"><h2>整理搬移資料的電腦：核對交接材料</h2>
 <p>管理端在自己的工作區整理來源材料、目標觀測及比較結果。它不是遠端控制台，不會代替新主機上的操作者。舊主機交來的材料必須核對可信來源及獨立 SHA-256；材料內自帶的雜湊不能單獨證明製作者或批准者身分。</p>
 <ul><li>以已登記的工作與主機識別綁定材料；不要只靠檔名、時間或文字標籤判定對應關係。</li><li>目標觀測、比較與計畫必須對應同一組來源／目標身分、目前世代及核准範圍。</li><li>責任人欄位是責任聲明，不會驗證填寫者身分；缺少外部可信證據時應顯示待確認。</li><li>管理端整理選項不會授權還原、啟用服務、切換或來源退役。</li></ul>
-<p>第五輪目前沒有完成真實備份交付到新主機還原的完整導引。需使用進階核心時，資訊人員應按[操作契約](OPERATIONS.md)及組織程序逐步處理，並依[復原指引](RECOVERY-RUNBOOK.md)保存 journal、封包、收據及讀回證據。</p>
+<p>第五輪目前沒有完成真實備份交付到新主機還原的完整導引。需使用進階核心時，資訊人員應按<a href="html/OPERATIONS.html">操作契約</a>及組織程序逐步處理，並依<a href="html/RECOVERY-RUNBOOK.html">復原指引</a>保存 journal、封包、收據及讀回證據。</p>
 </section>
 <section id="target"><h2>新主機：還原、驗證與啟用</h2>
 <p>新主機須在自己的本機工作區取得可信目標身分及目前狀態。還原流程應重查來源封包、目標快照、比較 revision、選取範圍與核准，再顯示可還原、衝突及待準備內容。</p>
@@ -58,7 +58,7 @@
 <p>此備援使用預設工作區的同一收集器，不要求另外手填路徑或角色。DeveloperProbe 只描述觀測，不改寫權威搬移計畫、不做還原／啟用，也不代表 Server 資格或業務驗證已通過。</p>
 </section>
 <section id="limits"><h2>支援範圍與排除項目</h2>
-<div class="status-grid"><div><b>支援方向</b><span>工具已實作的網站、Windows 排程、服務、軟體設定與資料檔案。</span></div><div><b>非 C 槽資料</b><span>遵循既有核准、來源／目標身分及跳板通道；不複製成任意磁碟備份。</span></div><div><b>不包含</b><span>整機映像、作業系統、System State、軟體本體及未實作的產品專用 adapter。</span></div></div>
+<div class="status-grid"><div><b>支援方向</b><span>工具已實作的網站、Windows 排程、服務、軟體設定與資料檔案。</span></div><div><b>非 C 槽資料</b><span>遵循既有核准、來源／目標身分及跳板通道；不複製成任意磁碟備份。</span></div><div><b>不包含</b><span>整機映像、作業系統、System State、Windows／IIS／Oracle Client／runtime 等安裝軟體本體及未實作的產品專用 adapter。已核准的業務 DLL／EXE 保留。</span></div></div>
 <p>Oracle、資料庫及其他專業產品的軟體本體、授權和產品特有程序由負責人依產品文件處理；工具可列出已支援的設定或差異，但不因此宣稱支援完整產品還原。實際 Server 2016／2025、IIS、排程、帳號、PKI、規模與業務驗收仍需代表性企業證據。</p>
 </section>
 <section id="recovery"><h2>中斷、取消與續作</h2>
