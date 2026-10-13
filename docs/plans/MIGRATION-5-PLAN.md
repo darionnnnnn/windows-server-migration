@@ -54,6 +54,7 @@
 第六輪補明 P0 未過不得標整輪通過、P3 真實進度／取消清理、P4 帳號審閱及本機／UNC 證據邊界與精確 EntryId／ItemId 對應、P6 五條旅程名稱；開工以整合後 dev 的確切 commit 建立新分支，禁止舊 stash 覆蓋已交付修正。28 份文件／166 個本機連結無缺檔，正式 HTML 產生器沒有新增差異；275 檔接手快照、256 檔最後驗證快照及本機 stash 的身分／hash 均重核。有效歷史與現況文件保留，沒有為清理而刪契約或讀取 archive。
 
 Skill 回顧：現行 project-lifecycle 已明訂只有使用者定案才可變更範圍，且同 bytes 的有效證據可沿用；本次無需為單一專案新增重複規則或放寬驗收。沒有修改或同步 skills repository。專案整合採 fast-forward，核對 origin/dev 與整合 commit 後，才刪 codex/migration-5 的遠端與本機分支；保留 main、未追蹤私人檔、stash 及本機快照。
+整合結果：`74418af43b14354c633d14b6cc64a152f8042da4` 已 fast-forward 至 dev 並推送，遠端 SHA 核對一致；本機與遠端 codex/migration-5 均已刪除，stash／快照／私人檔保留。切換 checkout 後有 9 個 runtime 檔重新套用換行格式；逐檔移除 CRLF／LF 差異後內容完全一致，沒有程式語意修改，但不再沿用舊的原始 bytes 雜湊證據。已用整合後不可變快照 `r5-dev-integrated-5df35d71bacc404f97c65bb2c99f6a39` 補跑兩引擎實際 Qualification／ScriptEncoding，全部 exit 0；來源與快照測後核對一致。此段紀錄只改不入發行包的計畫文件，既有功能驗證及已知 NotPassed 邊界保留。
 ### 2026-10-13 本次續作驗證補充（仍未全數完成）
 
 - 檔案範圍段落：主代理不可變快照 `root-scope-segment-19481a351e424ea892e7897431d45615` 兩引擎均通過 NonC 34、邊界 11 及 Qualification；與先前 `93b50e0de97c4759b0e44a9f7415498f` 的程式差異僅 NonC 實作與測試，故其 Guard 36、Files 32、Restore 120、Pipeline 16 及後補 StageResults 40 證據仍適用。提交使用該快照的完整核心與模組相依檔案；後續精靈整合及新增 peer 觀察 seam 另行驗證，不宣稱本輪全部完成。
