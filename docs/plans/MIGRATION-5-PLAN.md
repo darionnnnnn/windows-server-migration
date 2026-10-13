@@ -47,6 +47,13 @@
 **保留失敗，不覆蓋成 PASS：** `Test-NativeHtmlBridge.js` 在正式頁面 DOM 載入逾時；`Test-HtmlBridge.js` 在 `/api/spec-review` 連線重設；窄範圍原生 submission 測試也在已產生 Failed 記錄後遇 socket reset。這些與本輪既有 raw transport NotPassed 一併交給第六輪 P0，沒有重送請求、改安全軟體或放寬 timeout 取得通過。先前編碼錯誤快照也保留為失敗紀錄，修正 BOM 後已重驗雙引擎。
 
 全部 branch 差異以起點至最終提交檢視；既有核心、取消／修復、檔案範圍及 G 探測的有效同 bytes 證據沿用。原 F0／E／F1 大型未完成整合保持本機保存，不混入發行；本輪範圍調整並非宣稱完整產品或無缺陷。
+### 整合前再次核對（2026-10-13）
+
+使用者再次明確授權：先核對第六輪規劃與本輪全部 Phase，無新阻擋後整合／推送 dev，刪除本輪開發分支。對照起點 `a5fd425` 到 `b11f0f2` 的 72 個異動檔與上述 Phase 表，既有修正及測試證據仍適用；runtime 全部與最後不可變快照相同，沒有新程式異動或需重跑同一完整測試的差異。原始 A–H 未完成部分仍按已定範圍移交，不把 raw transport NotPassed 改成通過，也不宣稱獨立換模型簽核。本次主代理核對及 luna high 唯讀計畫覆核未發現新的本輪整合阻擋。
+
+第六輪補明 P0 未過不得標整輪通過、P3 真實進度／取消清理、P4 帳號審閱及本機／UNC 證據邊界與精確 EntryId／ItemId 對應、P6 五條旅程名稱；開工以整合後 dev 的確切 commit 建立新分支，禁止舊 stash 覆蓋已交付修正。28 份文件／166 個本機連結無缺檔，正式 HTML 產生器沒有新增差異；275 檔接手快照、256 檔最後驗證快照及本機 stash 的身分／hash 均重核。有效歷史與現況文件保留，沒有為清理而刪契約或讀取 archive。
+
+Skill 回顧：現行 project-lifecycle 已明訂只有使用者定案才可變更範圍，且同 bytes 的有效證據可沿用；本次無需為單一專案新增重複規則或放寬驗收。沒有修改或同步 skills repository。專案整合採 fast-forward，核對 origin/dev 與整合 commit 後，才刪 codex/migration-5 的遠端與本機分支；保留 main、未追蹤私人檔、stash 及本機快照。
 ### 2026-10-13 本次續作驗證補充（仍未全數完成）
 
 - 檔案範圍段落：主代理不可變快照 `root-scope-segment-19481a351e424ea892e7897431d45615` 兩引擎均通過 NonC 34、邊界 11 及 Qualification；與先前 `93b50e0de97c4759b0e44a9f7415498f` 的程式差異僅 NonC 實作與測試，故其 Guard 36、Files 32、Restore 120、Pipeline 16 及後補 StageResults 40 證據仍適用。提交使用該快照的完整核心與模組相依檔案；後續精靈整合及新增 peer 觀察 seam 另行驗證，不宣稱本輪全部完成。

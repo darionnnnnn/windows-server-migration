@@ -15,7 +15,7 @@
 
 「已寫程式」不等於「已交付」。第五輪未提交的大型整合因跨 F0／E／F1／NonC／UI 相依且完整使用端未通過，已從本輪發行工作樹移出，完整保存供本輪重用，不刪除已投入的工作。
 
-- 已提交核心基準：`01ca31978b342fd7e4ee3158725579ddd99ec532`；實際開工以第五輪收尾後分支 HEAD 為基準，先核對後續窄修。
+- 已提交核心與窄修基準：`b11f0f234f8aa88e825eaec486ac921556dd83e3`。第五輪整合至 `dev` 後，實際開工先 fetch 並記下 `origin/dev` 的確切 commit，再建立第六輪分支；不得從舊 stash 的父提交直接開工。保留已交付的預覽防護、世代投影、pending 與註冊失敗 replay 修正。
 - 本機 Git stash：`185feab72af1cdfcad41e9b6ead77f4e761a1aa6`，名稱 `R6 preserved incomplete wizard integration before R5 closeout 2026-10-13`，包含 48 個待收尾路徑。這是本機保存點，沒有宣稱已推送 GitHub。
 - 本機完整快照：`work/r5-verification/r6-handoff-4dfd18e93d1a4ad4a2a52bf506f7f84f`，275 檔；`snapshot-index.json` SHA256：`1845cf72e1d7f47a8e6566574e7b130953c6f6b93b32e5ab9c9fa8a1a0ed71e9`。排除 docs/archive 與私人 prototype。
 - 開工先驗 stash／快照存在及雜湊，逐段移植，不直接 `stash pop` 覆蓋第五輪收尾修正。保存材料不可用時依本計畫重建，不假稱已恢復。
@@ -30,7 +30,7 @@
 | 管理端白話準備表單 | 已寫 Preparation helper、Desired 欄位／自動值來源／Submit；全部 adapter 真 Save→Submit 尚待最後雙引擎核驗與瀏覽器接線 | F0、R03、R-A02–03、R-A07 | P1 |
 | 自動排除可信安裝軟體子樹與 CER hash | 核心範圍防護已交付；安全預填、使用者覆寫優先、未知安裝位置及公用憑證匯入的整體使用端未完成 | E02、E05、R08、R-A03、R-A08 | P1、P3 |
 | 逐項／自動 UI 到真封裝 | Backup helper 有程式；Directory／ZIP 原生兩模式旅程未通過，缺資料／容量／漂移／取消閉環未齊 | E01–05、R02、R05、R08 | P3 |
-| 非 C 帳號、計畫、傳輸及匯入 | metadata-only 帳號觀察與 opaque choice 已寫；真正 constructor→worker→import 正向未過，peer UNC 觀察与實際 I/O 的隔離測試尚缺 | E03–04、R-A03、R-A06–09 | P4 |
+| 非 C 帳號、計畫、傳輸及匯入 | metadata-only 帳號觀察與 opaque choice 已寫；真正 constructor→worker→import 正向未過，peer UNC 觀察與實際 I/O 的隔離測試尚缺 | E03–04、R-A03、R-A06–09 | P4 |
 | Manager 全流程 UI 核准 | 原生測試仍用核心直接建立部分核准，不能算使用者 UI 到真 consumer | F01、F0、R-A07、H02 | P1、P5 |
 | Target 匯入、比較、收據、還原與續作 | F1 helper 有雙引擎核心證據；正式 UI 全旅程、取消後新決策、斷線恢復、鍵盤及跨階段組合未完成 | F01–05、F1、C04、R-A05–07 | P5 |
 | 可信結果進度 | Progress worker 部分有真實證據；統一 UI／未知總量／關頁重連與清理尚需整合 | R05、R-A05、H03 | P3、P5 |
@@ -40,9 +40,9 @@
 
 ### P0：可重現的本機傳輸
 
-先保存初始頁、CSS／JS、session／API 的狀態碼、類型、大小、時序及測試專屬 listener／程序資訊；確認預連線、同步 accept/read/write deadline 與併發資源请求。既有證據：`root-native-http-diag-a8c06e93cf0b49418688ef14bfcedef2` 的 CSS `ERR_CONNECTION_RESET`，同一服務仍存活且後續 HTML GET 200；此觀察不足以判定第三方攔截。
+先保存初始頁、CSS／JS、session／API 的狀態碼、類型、大小、時序及測試專屬 listener／程序資訊；確認預連線、同步 accept/read/write deadline 與併發資源請求。既有證據：`root-native-http-diag-a8c06e93cf0b49418688ef14bfcedef2` 的 CSS `ERR_CONNECTION_RESET`，同一服務仍存活且後續 HTML GET 200；此觀察不足以判定第三方攔截。
 
-驗收：真 Edge 可讀取正式 handler 並做可逆保存；逾時、非 JSON、session 過期、拒絕及未知寫入不無限等待、不重送。保留安全軟體設定，不任意延長 timeout 掩蓋問題。若原生傳輸仍未通過，清楚列出可控修正及未知部分；測試替代橋接須進正式 handler，不能以 mock API 宣稱原生通過。
+驗收：真 Edge 可讀取正式 handler 並做可逆保存；逾時、非 JSON、session 過期、拒絕及未知寫入不無限等待、不重送。保留安全軟體設定，不任意延長 timeout 掩蓋問題。若原生傳輸仍未通過，P0 維持 NotPassed，不能進入 P6 的整輪通過判定；清楚列出可控修正及未知部分；測試替代橋接須進正式 handler，不能以 mock API 宣稱原生通過。
 
 ### P1：準備與核准的真實使用端
 
@@ -60,7 +60,7 @@
 
 ### P3：備份編排與成果
 
-整合 StartBackup、固定 WorkRoot、輸出預設 ZIP／512MiB、Directory 選項、128–1024MiB 整數限制、可信核准／新鮮來源盤點／容量及實體路徑重疊檢查。進度投影只來自正式 worker；Unknown 總量不製造百分比。
+整合 StartBackup、固定 WorkRoot、輸出預設 ZIP／512MiB、Directory 選項、128–1024MiB 整數限制、可信核准／新鮮來源盤點／容量及實體路徑重疊檢查。進度投影只來自正式 worker；StatusDescription、currentOperation、processedCount、updatedUtc 有真實值才顯示，PercentComplete=-1 轉為 null，不從經過時間推算。Unknown 總量不製造百分比；取消後在安全邊界停止，終態清理 worker／輪詢，關頁重連仍讀同一作業。
 
 驗收：真 UI 逐項 Directory、自動 ZIP 到核心實際 payload，逐檔 hash/readback。無目標／無核准／核准失效起步就說明。輸出與來源重疊、漂移、失敗、取消、崩潰、重送不破壞已完成材料。running 尚無 CompletedUtc 不拋錯且不出備份結果；確切失敗／取消／中斷可顯示未產生成果，不因此授權 NonC。C 成功且 NonC 未完成必須顯示部分完成。
 
@@ -68,10 +68,13 @@
 
 ### P4：非 C 可信材料到實際傳輸
 
-沿用既有核心通道。完成 metadata-only 帳號觀察與必要人工映射、停止寫入及 peer share 證據；唯一有效材料自動選，多份不同材料用名称／主機／時間區分，相同完全綁定材料去重。不要求手填 TransferPlanPath／PlanHash 或刪工作紀錄。
+沿用既有核心通道。完成 metadata-only 帳號觀察與必要人工映射、停止寫入及 peer share 證據；唯一有效材料自動選，多份不同材料用名稱／主機／時間區分，相同完全綁定材料去重。不要求手填 TransferPlanPath／PlanHash 或刪工作紀錄。
 
 驗收：本機隔離 constructor→真 worker→真 result import→合併備份結果。只允許窄型原生 UNC 觀察／I/O fixture，必須先經同一正式 peer proof 身分驗證，不能 stub 核准／防護／結果。測試錯 host、錯 UNC／path traversal、過期 manifest／generation／freeze、結果竄改、單檔 scope、取消及目的衝突。選單只用目前已核驗 package；執行前重驗全部材料，choice id 不能成為授權本體。實際企業 SMB 吞吐不列門檻。
 
+補充必測：帳號審閱的 Owner／Evidence 收據綁定精確 transfer hash、逐 Principal choices、account-observation hash 及目前 plan／generation，不能以全域一個核取方塊代替逐筆對應。只有本機 fingerprint 與實體路徑 proof 一致，Source 才能使用可信且已審閱的精確本機來源根；Manager 遠端觀察僅依 UNC peer proof，不把本機路徑當遠端證據。隔離正例需讓已核准 ExactFiles 設定檔及必要父目錄真正經過 NonC copy／stage；反例涵蓋錯 host、範圍外本機根、磁碟根別名與未核准的安裝軟體子樹。
+
+匯入結果須核對每個 EntryId 唯一，並精確對應 Transfer Entry／ItemId；malformed、duplicate 或未知引用不得以筆數相同蒙混通過。逐項核對缺失、失敗、取消及重複結果，不僅依已驗 hash 的摘要就宣稱全部 NonC 完成。
 ### P5：交接與目標還原
 
 整合 ZIP／Directory 接收、Manager TargetSnapshot→PublishComparison→ExportTargetComparison、Target 真匯入→決策收據→預覽→明確還原→等待／續作→staged validation／acceptance。既有不可變 restore journal 副本、同材料重複匯入去重及取消結果保留可重用，不建立另一套成功真相。
@@ -84,7 +87,7 @@
 
 先逐條確認 P0–P5 完整實作再整輪驗收。保留 G 已交付能力，回歸 Probe 與搬移同時操作互不污染。
 
-驗收：五條旅程及成功／部分失敗／取消／斷線／雙頁衝突；三用途完整 Tab／Shift+Tab／Enter／Space。320／768／1280／1920px、200% 縮放、長中文路徑無重疊或頁面溢出；正文 18px、主控制項 48px、群組間距 12px，文字對比 4.5:1、主控制資訊 3:1，主代理實看主要／錯誤截圖。WinPS 5.1／PS7 受影響核心、正式 handler、實際檔案與 fixture 邊界分開記錄。用正式產生器同步 HTML、核對本地連結及實際發行 ZIP bytes／索引／hash，計画／archive／私人原型不入包。不假稱已企業簽章或完美無缺陷。
+驗收：逐項備份、自動備份、Manager 審閱核准、Target 還原續作、獨立 Probe 五條旅程，並交叉涵蓋成功／部分失敗／取消／斷線／雙頁衝突；三用途完整 Tab／Shift+Tab／Enter／Space。320／768／1280／1920px、200% 縮放、長中文路徑無重疊或頁面溢出；正文 18px、主控制項 48px、群組間距 12px，文字對比 4.5:1、主控制資訊 3:1，主代理實看主要／錯誤截圖。WinPS 5.1／PS7 受影響核心、正式 handler、實際檔案與 fixture 邊界分開記錄。用正式產生器同步 HTML、核對本地連結及實際發行 ZIP bytes／索引／hash，計畫／archive／私人原型不入包。不假稱已企業簽章或完美無缺陷。
 
 ## 4. 執行順序與收尾規則
 
