@@ -145,6 +145,13 @@ public class WsmHttpFixtureStream : System.IO.MemoryStream {
     $savedReplay=Get-WsmHtmlReplayResponse ([pscustomobject]@{jobId='saved-operation';action='SaveSelection';status='Succeeded';revision=12})
     Check ($savedReplay.jobId -ceq 'saved-operation' -and $savedReplay.status -ceq 'Saved' -and $savedReplay.revision -eq 12 -and $savedReplay.Count -eq 3) 'Quick-save replay changed the stable operation result shape.'
     $historyRoot=Join-Path ([IO.Path]::GetTempPath()) ('wsm-http-history-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($historyRoot)
+    $acceptanceId=[Guid]::NewGuid().ToString('D');$acceptancePath=Join-Path $historyRoot ($acceptanceId+'.json')
+    Check (Test-WsmHtmlOperationUnaccepted $acceptanceId @{} $historyRoot) 'An absent operation did not produce authoritative rejection evidence.'
+    Check (-not (Test-WsmHtmlOperationUnaccepted $acceptanceId @{$acceptanceId=@{}} $historyRoot)) 'An in-memory accepted operation was declared unaccepted.'
+    [IO.File]::WriteAllText($acceptancePath,'{"status":"Running"}')
+    Check (-not (Test-WsmHtmlOperationUnaccepted $acceptanceId @{} $historyRoot)) 'A durable operation lost pending protection before the worker was registered.'
+    [IO.File]::Delete($acceptancePath)
+    Check (-not (Test-WsmHtmlOperationUnaccepted '../invalid' @{} $historyRoot)) 'An invalid operation identity became rejection proof.'
     try{
         $reportPath=Join-Path $historyRoot 'material-job.html';[IO.File]::WriteAllText($reportPath,'<!doctype html><title>Material status</title>')
         $reportResult=[pscustomobject]@{HtmlPath=$reportPath;Status='ReportOnly';LockStatus='Locked';Secret='not-public'}

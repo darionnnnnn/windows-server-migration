@@ -94,9 +94,47 @@ const server = http.createServer((request, response) => {
     });
     assert.ok(contrast >= 4.5, `primary button text contrast should be at least 4.5:1 (got ${contrast.toFixed(2)}:1)`);
 
+    const textMetrics = await page.evaluate(() => {
+      const ratio = (foreground, background) => {
+        const rgb = value => value.match(/[\d.]+/g).slice(0, 3).map(Number);
+        const lum = color => rgb(color).map(value => { const c=value/255; return c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4; }).reduce((sum,value,index)=>sum+value*[0.2126,0.7152,0.0722][index],0);
+        const a=lum(foreground),b=lum(background); return (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
+      };
+      const metrics = selector => { const node=document.querySelector(selector); if(!node) throw new Error(`missing ${selector}`); const style=getComputedStyle(node); let background=style.backgroundColor, parent=node.parentElement; while(background==='rgba(0, 0, 0, 0)'&&parent){background=getComputedStyle(parent).backgroundColor;parent=parent.parentElement;} return {font:parseFloat(style.fontSize),contrast:ratio(style.color,background)}; };
+      return {choice:metrics('.wizard-choice-copy strong'),choiceDescription:metrics('.wizard-choice-copy span'),lede:metrics('#wizard-title + .lede'),button:metrics('#wizard-next'),focus:metrics('.wizard-choice')};
+    });
+    for (const [name, value] of Object.entries(textMetrics)) {
+      assert.ok(value.font >= 18, `${name} should be at least 18px: ${JSON.stringify(value)}`);
+      if (name !== 'focus') assert.ok(value.contrast >= 4.5, `${name} text contrast should be at least 4.5:1: ${JSON.stringify(value)}`);
+    }
+    const controlBoundary = await page.locator('.wizard-choice').first().evaluate(node => {
+      const color=getComputedStyle(node).borderTopColor, rgb=value=>value.match(/[\d.]+/g).slice(0,3).map(Number), lum=value=>rgb(value).map(v=>{const c=v/255;return c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4;}).reduce((s,v,i)=>s+v*[0.2126,0.7152,0.0722][i],0), a=lum(color), b=lum('rgb(255,255,255)');
+      return {ratio:(Math.max(a,b)+0.05)/(Math.min(a,b)+0.05),minHeight:node.getBoundingClientRect().height};
+    });
+    assert.ok(controlBoundary.ratio >= 3, `choice boundary contrast should be at least 3:1: ${JSON.stringify(controlBoundary)}`);
+    assert.ok(controlBoundary.minHeight >= 48, `choice should provide a 48px touch target: ${JSON.stringify(controlBoundary)}`);
+    const choiceGap = await page.locator('.wizard-choice-list').evaluate(node=>parseFloat(getComputedStyle(node).rowGap));
+    assert.ok(choiceGap >= 12, `choice rows should have at least 12px separation (got ${choiceGap}px)`);
+
+    await page.evaluate(() => window.WsmConsole.navigate('help'));
+    const help = await page.locator('.help-list li').first().evaluate(node => ({font:parseFloat(getComputedStyle(node).fontSize),text:node.innerText,color:getComputedStyle(node).color,background:getComputedStyle(node).backgroundColor}));
+    assert.ok(help.font >= 18, `help text should be at least 18px: ${JSON.stringify(help)}`);
+    const helpHeadingFont = await page.locator('#help-title').evaluate(node=>parseFloat(getComputedStyle(node).fontSize));
+    assert.ok(helpHeadingFont >= 18, `help heading should be at least 18px (got ${helpHeadingFont}px)`);
+    const helpContrast = await page.locator('.help-list li').first().evaluate(node => {
+      const rgb=value=>value.match(/[\d.]+/g).slice(0,3).map(Number),lum=value=>rgb(value).map(v=>{const c=v/255;return c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4;}).reduce((s,v,i)=>s+v*[0.2126,0.7152,0.0722][i],0);
+      let bg=getComputedStyle(node).backgroundColor,parent=node.parentElement;while(bg==='rgba(0, 0, 0, 0)'&&parent){bg=getComputedStyle(parent).backgroundColor;parent=parent.parentElement;}
+      const a=lum(getComputedStyle(node).color),b=lum(bg);return (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
+    });
+    assert.ok(helpContrast >= 4.5, `help text contrast should be at least 4.5:1 (got ${helpContrast.toFixed(2)}:1)`);
+    await page.evaluate(() => window.WsmConsole.navigate('wizard'));
+
     await page.evaluate(() => document.activeElement.blur());
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.screenshot({ path: path.join(screenshotDir, 'wizard-layout-desktop.png'), fullPage: true });
+    // A 640 CSS-pixel viewport represents a 1280px desktop viewed at 200% browser zoom.
+    await page.setViewportSize({ width: 640, height: 900 });
+    await page.screenshot({ path: path.join(screenshotDir, 'wizard-layout-desktop-200-percent.png'), fullPage: true });
     await page.setViewportSize({ width: 320, height: 900 });
     await page.screenshot({ path: path.join(screenshotDir, 'wizard-layout-mobile.png'), fullPage: true });
     console.log('Wizard layout checks passed at 320, 640, 768, 1280, and 1920 CSS px. Screenshots saved under work/.');

@@ -60,6 +60,21 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .guide-main .guide-index li{margin:5px 0}
 .guide-main .guide-index a{display:flex;align-items:center;min-height:48px;padding:9px 12px;border-radius:7px}
 .guide-main .guide-index a:hover{background:#f1f6f8}
+
+/* Readable defaults for the guided flow and its help/error states. */
+body{font-size:18px}
+.wizard-panel h2,.task-guide h2,.help-list,.lede,.callout,.notice,.error-summary,.inline-note{font-size:18px}
+.help-list li{font-size:18px;line-height:1.65}
+.wizard-choice-copy strong,.wizard-choice-copy span,.wizard-related-impact h3,.wizard-related-item h3{font-size:18px}
+.form-field label,.wizard-field-label,.wizard-reason-label,.wizard-pair-choice label{font-size:18px}
+.wizard-choice-list,.wizard-mode{gap:12px}
+.wizard-choice{min-height:48px}
+.wizard-controls button,.form-actions button,.heading-actions button,.job-actions button,.error-summary button{min-height:48px;font-size:18px}
+.wizard-controls,.form-actions,.choice-actions,.job-actions{gap:12px}
+.technical-details{margin-top:10px;color:#40586a}
+.technical-details summary{cursor:pointer;min-height:44px;padding:8px 0;color:#27445a}
+.technical-details p{overflow-wrap:anywhere}
+@media(max-width:380px){.heading-actions button{font-size:18px}.hero-side{font-size:12px}}
 .wizard-related-details{margin:12px 0;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd}
 .wizard-related-details>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:700;color:#294d61}
 .wizard-related-item{padding:10px 0;border-top:1px solid #e8eef2}
@@ -71,3 +86,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .guide-main .guide-index li{margin:5px 0}
 .guide-main .guide-index a{display:flex;align-items:center;min-height:48px;margin:4px 0;padding:9px 12px;border-radius:7px}
 .guide-main .guide-index a:hover{background:#f1f6f8}
+
+/* Keep later legacy rules from shrinking ordinary headings in the guided UI. */
+.wizard-related-item h3,.wizard-related-impact h3,main h2,.docs-card h2,.task-card h3,.docs-card h3,.catalog-group h3,.job-card h2{font-size:18px}

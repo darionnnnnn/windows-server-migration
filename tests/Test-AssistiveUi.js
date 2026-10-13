@@ -1,6 +1,7 @@
 'use strict';
 
 const test = require('node:test');
+const afterEach = require('node:test').afterEach;
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -11,8 +12,36 @@ const appSource = fs.readFileSync(path.join(root, 'src/ui/console.js'), 'utf8');
 const htmlSource = fs.readFileSync(path.join(root, 'src/ui/index.html'), 'utf8');
 const operationsSource = fs.readFileSync(path.join(root, 'src/OperationRequests.ps1'), 'utf8');
 const htmlConsoleSource = fs.readFileSync(path.join(root, 'src/HtmlConsole.ps1'), 'utf8');
+const activeHarnesses = new Set();
+
+afterEach(() => {
+  for (const dispose of activeHarnesses) dispose();
+  activeHarnesses.clear();
+});
 
 function makeApp(fetchImpl, useDom = false) {
+  const intervals = new Set(), timeouts = new Set();
+  const harnessSetInterval = (callback, delay, ...args) => {
+    const handle = setInterval(callback, delay, ...args);
+    intervals.add(handle);
+    return handle;
+  };
+  const harnessClearInterval = handle => { clearInterval(handle); intervals.delete(handle); };
+  const harnessSetTimeout = (callback, delay, ...args) => {
+    let handle;
+    handle = setTimeout((...callbackArgs) => { timeouts.delete(handle); callback(...callbackArgs); }, delay, ...args);
+    timeouts.add(handle);
+    return handle;
+  };
+  const harnessClearTimeout = handle => { clearTimeout(handle); timeouts.delete(handle); };
+  const dispose = () => {
+    for (const handle of intervals) clearInterval(handle);
+    for (const handle of timeouts) clearTimeout(handle);
+    intervals.clear();
+    timeouts.clear();
+    activeHarnesses.delete(dispose);
+  };
+  activeHarnesses.add(dispose);
   const elements = new Map();
   function makeElement(tagName = 'div') {
     return {
@@ -43,12 +72,24 @@ function makeApp(fetchImpl, useDom = false) {
   };
   const window = { addEventListener() {} };
   window.__confirmResult = true; window.__confirmMessage = ''; window.confirm = message => { window.__confirmMessage = String(message || ''); return window.__confirmResult; };
-  const context = { window, document, fetch: fetchImpl, URLSearchParams, encodeURIComponent, crypto: require('node:crypto').webcrypto, Date, Math, Set, Map, Object, Array, String, Number, Promise, history: { replaceState() {}, pushState() {} }, location: { hash: '', origin: 'http://localhost' }, setInterval, clearInterval, setTimeout, clearTimeout, Option: function Option(text, value) { this.text = text; this.value = value; this.dataset = {}; this.children = []; } };
+  const browserFetch = async (input, init) => {
+    const mocked = await fetchImpl(input, init);
+    if (mocked instanceof Response) return mocked;
+    if (mocked && typeof mocked.text === 'function' && mocked.headers && typeof mocked.headers.get === 'function') return mocked;
+    const status = Number(mocked && mocked.status || 200);
+    const body = mocked && typeof mocked.json === 'function' ? await mocked.json() : mocked && mocked.body;
+    const headers = new Headers(mocked && mocked.headers || { 'Content-Type': 'application/json' });
+    const text = body == null ? '' : typeof body === 'string' ? body : JSON.stringify(body);
+    const responseBody = [204, 205, 304].includes(status) ? null : text;
+    return new Response(responseBody, { status, headers });
+  };
+  const context = { window, document, fetch: browserFetch, AbortController, Headers, Response, URLSearchParams, encodeURIComponent, crypto: require('node:crypto').webcrypto, Date, Math, Set, Map, Object, Array, String, Number, Promise, history: { replaceState() {}, pushState() {} }, location: { hash: '', origin: 'http://localhost' }, setInterval: harnessSetInterval, clearInterval: harnessClearInterval, setTimeout: harnessSetTimeout, clearTimeout: harnessClearTimeout, Option: function Option(text, value) { this.text = text; this.value = value; this.dataset = {}; this.children = []; } };
   vm.runInNewContext(appSource, context, { filename: 'console.js' });
   const app = window.WsmConsole;
   if (useDom) { app.__testElements = elements; app.__getElement = id => document.getElementById(id); }
   app.__location = context.location;
   app.__window = window;
+  app.__dispose = dispose;
   return app;
 }
 
@@ -84,6 +125,15 @@ test('selection payload keeps selected state separate and includes deselection r
   const reasons = new Map([['task-very-long-name-已排程', '新版 Windows 內建項目，待平台確認']]);
   const args = ui.buildSelectionArgs(inventory, selected, reasons);
   assert.deepEqual(JSON.parse(JSON.stringify(args)), { selectedItemIds: ['site-1'], unselectedItems: [{ itemId: 'task-very-long-name-已排程', reason: '新版 Windows 內建項目，待平台確認' }] });
+});
+
+test('fetch fixture supplies browser AbortSignal and a consumable JSON Response', async () => {
+  let signal;
+  const ui = makeApp(async (url, options) => { signal = options.signal; return { ok: true, status: 200, json: async () => ({ fixture: 'response-body' }) }; });
+  const result = await ui.endpoint('/api/jobs');
+  assert.equal(signal instanceof AbortSignal, true);
+  assert.equal(signal.aborted, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), { fixture: 'response-body' });
 });
 
 test('non-selectable rows stay out of selected payloads and keep the backend reason', () => {
@@ -393,7 +443,7 @@ test('session token is memory-only, sent on API calls, and a 401 invalidates it'
   const calls = [];
   const ui = makeApp(async (url, options) => { calls.push({ url, options }); return { ok: false, status: 401, json: async () => ({}) }; });
   ui.state.token = 'ephemeral-token';
-  await assert.rejects(ui.endpoint('/api/jobs'), /session expired/);
+  await assert.rejects(ui.endpoint('/api/jobs'), error => error.status === 401 && error.code === 'invalid_token');
   assert.equal(calls[0].options.headers['X-Wsm-Token'], 'ephemeral-token');
   assert.equal(ui.state.token, null);
   assert.doesNotMatch(appSource, /localStorage|indexedDB/);
@@ -415,7 +465,7 @@ test('server values are rendered via textContent and long jobs reconnect/cancel 
   assert.match(appSource, /\/api\/jobs\/\$\{encodeURIComponent\(id\)\}/);
   assert.doesNotMatch(appSource, /innerHTML|insertAdjacentHTML/);
   assert.match(appSource, /job\.canCancel === true/);
-  assert.match(appSource, /document\.hidden && location\.hash === '#jobs'/);
+  assert.match(appSource, /!document\.hidden&&state\.session/);
   assert.match(appSource, /filtered\.slice\(start/);
   assert.match(appSource, /RestoreNow/);
   assert.match(appSource, /contextId: state\.session\.contextId/);
@@ -647,16 +697,22 @@ test('uncertain write keeps its operation identity and never resends automatical
   }, true);
   ui.state.session = { sessionId: 's1', contextId: 'c1', pairId: 'p1', role: 'Manager', revision: 8 };
   ui.__location.hash = '#jobs';
-  await assert.rejects(ui.endpoint('/api/operations', { method: 'POST', body: JSON.stringify({ action: 'SetMigrationSpec', operationId: 'op-uncertain', idempotencyKey: 'key-uncertain', args: { Password: 'memory-only' } }) }), /connection reset/);
+  await assert.rejects(ui.endpoint('/api/operations', { method: 'POST', body: JSON.stringify({ action: 'SetMigrationSpec', operationId: 'op-uncertain', idempotencyKey: 'key-uncertain', args: { Password: 'memory-only' } }) }), error => error.code === 'connection_error');
   assert.equal(ui.state.pendingOperation.operationId, 'op-uncertain');
   assert.equal(await ui.recoverPendingOperation(), null);
   assert.equal(ui.state.pendingOperation.operationId, 'op-uncertain');
-  await assert.rejects(ui.endpoint('/api/operations', { method: 'POST', body: JSON.stringify({ action: 'SetMigrationSpec', operationId: 'op-new', idempotencyKey: 'key-new', args: {} }) }), /上一筆提交結果仍待確認/);
+  await assert.rejects(ui.endpoint('/api/operations', { method: 'POST', body: JSON.stringify({ action: 'SetMigrationSpec', operationId: 'op-new', idempotencyKey: 'key-new', args: {} }) }), /提交結果尚未確認/);
   assert.equal(calls.filter(call => call.url === '/api/operations').length, 1);
   assert.ok(calls.some(call => call.url === '/api/jobs/op-uncertain'));
   ui.state.jobs.set('old-job', { jobId: 'old-job', pairId: null, status: 'Interrupted' });
   ui.renderJobs();
-  assert.equal(ui.__getElement('job-list').children[1].children[1].textContent, '操作識別碼：op-uncertain');
+  const pendingCard = ui.__getElement('job-list').children.find(node => node.tagName === 'ARTICLE');
+  assert.ok(pendingCard, 'the pending operation is rendered as its own job card');
+  assert.equal(pendingCard.children.find(node => node.tagName === 'H2').textContent, '這次操作的結果待確認');
+  assert.equal(pendingCard.children.find(node => node.tagName === 'BUTTON').textContent, '查詢這次操作');
+  const technicalDetails = pendingCard.children.find(node => node.tagName === 'DETAILS');
+  assert.ok(technicalDetails, 'the operation identifier remains in collapsed advanced details');
+  assert.match(technicalDetails.children.map(node => node.textContent).join(' '), /操作識別碼：op-uncertain/);
   assert.doesNotMatch(JSON.stringify(ui.state.pendingOperation), /memory-only/);
 });
 
@@ -667,7 +723,7 @@ test('matching operation id with an unknown success status stays pending and blo
   await assert.rejects(ui.endpoint('/api/operations',{method:'POST',body:JSON.stringify(request)}),/伺服端未回傳/);
   assert.equal(ui.state.pendingOperation.operationId,request.operationId);
   assert.equal(calls.filter(url=>url==='/api/operations').length,1);
-  await assert.rejects(ui.endpoint('/api/operations',{method:'POST',body:JSON.stringify(ui.buildOperationRequest('SetMigrationSpec',{},7))}),/上一筆提交結果仍待確認/);
+  await assert.rejects(ui.endpoint('/api/operations',{method:'POST',body:JSON.stringify(ui.buildOperationRequest('SetMigrationSpec',{},7))}),/提交結果尚未確認/);
   assert.equal(calls.filter(url=>url==='/api/operations').length,1);
 });
 
@@ -808,7 +864,7 @@ test('concurrent write preflights preserve the first uncertain operation and sen
   assert.equal(writes[0].operationId,'first-operation');
   assert.equal(ui.state.pendingOperation.operationId,'first-operation','the original uncertain write must remain recoverable');
   assert.equal(results[0].status,'rejected');assert.equal(results[1].status,'rejected');
-  assert.match(results[1].reason.message,/上一筆提交結果仍待確認/);
-  await assert.rejects(submit('SaveSelection','third-operation'),/上一筆提交結果仍待確認/);
+  assert.match(results[1].reason.message,/提交結果尚未確認/);
+  await assert.rejects(submit('SaveSelection','third-operation'),/提交結果尚未確認/);
   assert.equal(writes.length,1);
 });

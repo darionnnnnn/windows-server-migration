@@ -1,8 +1,18 @@
-﻿param([string]$Workspace,[string]$ReadyPath,[string]$StopFile,[switch]$Seed)
+﻿param([string]$Workspace,[string]$ReadyPath,[string]$StopFile,[switch]$Seed,[string]$ResponseCapturePath)
 $ErrorActionPreference='Stop'
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru -DisableNameChecking
-& $module {param($Workspace,$ReadyPath,$StopFile,$Seed,$console)
+& $module {param($Workspace,$ReadyPath,$StopFile,$Seed,$console,$ResponseCapturePath)
  . $console
+ # Optional test-only capture of the formal handler response before socket writing.
+ # This diagnoses handler contracts without claiming that native transport passed.
+ if($ResponseCapturePath){
+  $script:FixtureResponseCapturePath=$ResponseCapturePath
+  $script:FixtureOriginalResponseWriter=${function:Write-WsmLocalHttpResponse}
+  function Write-WsmLocalHttpResponse($Client,[int]$Status,[string]$ContentType,[byte[]]$Body){
+   [IO.File]::WriteAllText($script:FixtureResponseCapturePath,(@{status=$Status;body=[Text.Encoding]::UTF8.GetString($Body)}|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
+   & $script:FixtureOriginalResponseWriter $Client $Status $ContentType $Body
+  }
+ }
  $pair=$null
  if($Seed){
   Initialize-WsmWizardWorkspace $Workspace 'Manager' | Out-Null
@@ -20,4 +30,4 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
   }
  }
  Start-WsmHtmlConsole -Workspace $Workspace -PairId $pair -Role Manager -NoBrowser -ReadyPath $ReadyPath -StopFile $StopFile
-} $Workspace $ReadyPath $StopFile $Seed (Join-Path $PSScriptRoot '..\src\HtmlConsole.ps1')
+} $Workspace $ReadyPath $StopFile $Seed (Join-Path $PSScriptRoot '..\src\HtmlConsole.ps1') $ResponseCapturePath

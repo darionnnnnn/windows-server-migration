@@ -1,4 +1,17 @@
 ﻿# Local console transport. Commands and journal authority remain in the module.
+function Test-WsmHtmlOperationUnaccepted([string]$OperationId,$Jobs,[string]$ConsoleRoot) {
+    try {
+        Assert-WsmId $OperationId
+        if($Jobs.ContainsKey($OperationId)){return $false}
+        $path=Join-Path $ConsoleRoot ($OperationId+'.json')
+        Assert-WsmNoReparse $path
+        try {[void][IO.File]::GetAttributes($path);return $false}
+        catch [IO.FileNotFoundException] {return $true}
+        catch [IO.DirectoryNotFoundException] {return $true}
+    } catch {}
+    $false
+}
+
 function Get-WsmHtmlActionMap {
     $map=Get-WsmOperationActions
     foreach($entry in @(
@@ -805,7 +818,7 @@ function Start-WsmHtmlConsole {
                                     $response=Get-WsmHtmlReplayResponse $jobs[$prior.Id].Record;$replayed=$true
                                 }
                             }
-                            if(-not $replayed){$status=409;$response=New-WsmHtmlError 'The reviewed data changed before this operation was submitted.' 'stale_revision' 'Refresh the current view, review the change, and submit a new operation if it is still needed.';$response|Add-Member NoteProperty currentRevision $revision -Force}
+                            if(-not $replayed){$status=409;$response=New-WsmHtmlError 'The reviewed data changed before this operation was submitted.' 'stale_revision' 'Refresh the current view, review the change, and submit a new operation if it is still needed.';if($route -ceq '/api/operations' -and (Test-WsmHtmlOperationUnaccepted ([string]$body.operationId) $jobs $consoleRoot)){$response|Add-Member NoteProperty submissionRejected $true -Force};$response|Add-Member NoteProperty currentRevision $revision -Force}
                         }
                         else{
                             $command=Get-Command $map[$body.action] -CommandType Function
@@ -862,7 +875,7 @@ function Start-WsmHtmlConsole {
                                 }
                                 elseif($jobs.ContainsKey($body.operationId)){throw 'Operation ID already used.'}
                                 elseif($body.action -ceq 'DeveloperProbe' -and @($jobs.Values|Where-Object {$_.Record.action -ceq 'DeveloperProbe' -and $_.Record.status -in @('Running','CancelRequested') -and [IO.Path]::GetFullPath([string]$_.Record.workspace) -ieq [IO.Path]::GetFullPath($Workspace)}).Count){$activeProbe=@($jobs.Values|Where-Object {$_.Record.action -ceq 'DeveloperProbe' -and $_.Record.status -in @('Running','CancelRequested') -and [IO.Path]::GetFullPath([string]$_.Record.workspace) -ieq [IO.Path]::GetFullPath($Workspace)}|Select-Object -First 1)[0];$status=409;$response=New-WsmHtmlError 'A developer probe is already running in this workspace.' 'active_probe' 'Join the existing diagnostic job before starting another.';$response|Add-Member NoteProperty existingJobId ([string]$activeProbe.Record.jobId) -Force}
-                                elseif(@($jobs.Values | Where-Object {$_.Record.status -in @('Running','CancelRequested')}).Count -ge 8){$status=409;$response=New-WsmHtmlError 'The local worker limit is reached.' 'worker_limit' 'Check operation history and wait for an active operation to finish.'}
+                                elseif(@($jobs.Values | Where-Object {$_.Record.status -in @('Running','CancelRequested')}).Count -ge 8){$status=409;$response=New-WsmHtmlError 'The local worker limit is reached.' 'worker_limit' 'Check operation history and wait for an active operation to finish.';$response|Add-Member NoteProperty submissionRejected $true -Force}
                                 elseif($body.action -in @('SaveSelection','SetRestoreChoice','SetSoftwareVersion')){
                                     $record=[pscustomobject]@{jobId=$body.operationId;action=$body.action;idempotencyKey=[string]$body.idempotencyKey;RequestHash=$hash;Actor=(Get-WsmExecutionActor);workspace=$Workspace;pairId=$(if($body.action -ceq 'DeveloperProbe'){''}else{$PairId});role=$Role;sessionId=$sessionId;contextId=$contextId;startedRevision=$revision;startedDecisionRevision=$currentVector.decisionRevision;startedSelectionRevision=$currentVector.selectionRevision;startedDataVersion=$currentVector.dataVersion;status='Running';StartedUtc=(Get-WsmUtc);CompletedUtc=$null;canCancel=$false}
                                     $recordPath=Join-Path $consoleRoot ($body.operationId+'.json');Write-WsmJson $recordPath $record;$jobs[$body.operationId]=@{Record=$record;Path=$recordPath;Handle=$null;PowerShell=$null;CancellationToken=$null};$keys[$body.idempotencyKey]=@{Hash=$hash;Id=$body.operationId}
@@ -906,6 +919,12 @@ function Start-WsmHtmlConsole {
             }catch{
                 $status=400;if($_.Exception.Message -match '^Rejected'){$status=403}elseif($_.Exception.Message -match 'Review changed|Context changed|Wizard progress changed'){$status=409}elseif($_.Exception.Message -match 'UnknownJob|Unknown route'){$status=404}
                 $safeError=$requestSafeError;if(-not $safeError){$safeError=Get-WsmHtmlSafeError $_.Exception.Message $_.Exception.GetType().FullName}
+                if($route -ceq '/api/operations'){
+                    try {
+                        $rejectedBody=ConvertFrom-WsmJson $request.Body
+                        if($rejectedBody.PSObject.Properties['operationId'] -and (Test-WsmHtmlOperationUnaccepted ([string]$rejectedBody.operationId) $jobs $consoleRoot)){$safeError | Add-Member NoteProperty submissionRejected $true -Force}
+                    } catch {}
+                }
                 try{Write-WsmHtmlErrorRecord $errorRoot $safeError $route $PairId}catch{}
                 try{$errorBytes=[Text.Encoding]::UTF8.GetBytes(($safeError|ConvertTo-Json -Compress));Write-WsmLocalHttpResponse $client $status 'application/json; charset=utf-8' $errorBytes}catch{}
             }finally{$client.Dispose()}
