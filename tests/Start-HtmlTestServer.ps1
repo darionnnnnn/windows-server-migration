@@ -1,7 +1,7 @@
-﻿param([string]$Workspace,[string]$ReadyPath,[string]$StopFile,[switch]$Seed,[string]$ResponseCapturePath)
+﻿param([string]$Workspace,[string]$ReadyPath,[string]$StopFile,[switch]$Seed,[string]$ResponseCapturePath,[switch]$FailWizardRegistration)
 $ErrorActionPreference='Stop'
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru -DisableNameChecking
-& $module {param($Workspace,$ReadyPath,$StopFile,$Seed,$console,$ResponseCapturePath)
+& $module {param($Workspace,$ReadyPath,$StopFile,$Seed,$console,$ResponseCapturePath,$FailWizardRegistration)
  . $console
  # Optional test-only capture of the formal handler response before socket writing.
  # This diagnoses handler contracts without claiming that native transport passed.
@@ -11,6 +11,13 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
   function Write-WsmLocalHttpResponse($Client,[int]$Status,[string]$ContentType,[byte[]]$Body){
    [IO.File]::WriteAllText($script:FixtureResponseCapturePath,(@{status=$Status;body=[Text.Encoding]::UTF8.GetString($Body)}|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
    & $script:FixtureOriginalResponseWriter $Client $Status $ContentType $Body
+  }
+ }
+ if($FailWizardRegistration){
+  $script:FixtureOriginalWizardRegistration=${function:Register-WsmWizardOperationJob}
+  function Register-WsmWizardOperationJob($Workspace,$Record){
+   if($Record.action -ceq 'Initialize'){throw 'Fixture registration failure before worker start.'}
+   & $script:FixtureOriginalWizardRegistration $Workspace $Record
   }
  }
  $pair=$null
@@ -30,4 +37,4 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
   }
  }
  Start-WsmHtmlConsole -Workspace $Workspace -PairId $pair -Role Manager -NoBrowser -ReadyPath $ReadyPath -StopFile $StopFile
-} $Workspace $ReadyPath $StopFile $Seed (Join-Path $PSScriptRoot '..\src\HtmlConsole.ps1') $ResponseCapturePath
+} $Workspace $ReadyPath $StopFile $Seed (Join-Path $PSScriptRoot '..\src\HtmlConsole.ps1') $ResponseCapturePath $FailWizardRegistration

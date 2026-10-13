@@ -903,8 +903,17 @@ function Start-WsmHtmlConsole {
                                     $worker=[Management.Automation.PowerShell]::Create()
                                     [void]$worker.AddScript('param($modulePath,$commandName,$arguments) Import-Module $modulePath -Force -DisableNameChecking; $ConfirmPreference="None"; $ErrorActionPreference="Stop"; $command=Get-Command $commandName -CommandType Function; if($command.Parameters.ContainsKey("Confirm")){$arguments.Confirm=$false}; & $command @arguments').AddArgument($modulePath).AddArgument($command.Name).AddArgument($arguments)
                                     $record.canCancel=($null -ne $cancellation);Write-WsmJson $recordPath $record
-                                    if($body.action -cne 'DeveloperProbe'){try{[void](Register-WsmWizardOperationJob $Workspace $record)}catch{$record.status='Failed';$record.CompletedUtc=Get-WsmUtc;Write-WsmJson $recordPath $record;throw}}
-                                    $handle=$worker.BeginInvoke();$jobs[$body.operationId]=@{Record=$record;Path=$recordPath;PowerShell=$worker;Handle=$handle;CancellationToken=$cancellation};$keys[$body.idempotencyKey]=@{Hash=$hash;Id=$body.operationId};$status=202;$response=@{job=(ConvertTo-WsmHtmlPublicJobRecord $record)}
+                                    $job=@{Record=$record;Path=$recordPath;PowerShell=$null;Handle=$null;CancellationToken=$null}
+                                    $jobs[$body.operationId]=$job;$keys[$body.idempotencyKey]=@{Hash=$hash;Id=$body.operationId}
+                                    try{
+                                        if($body.action -cne 'DeveloperProbe'){[void](Register-WsmWizardOperationJob $Workspace $record)}
+                                        $handle=$worker.BeginInvoke();$job.PowerShell=$worker;$job.Handle=$handle;$job.CancellationToken=$cancellation
+                                    }catch{
+                                        $requestSafeError=Get-WsmHtmlSafeError $_.Exception.Message $_.Exception.GetType().FullName
+                                        $record.status='Failed';$record.CompletedUtc=Get-WsmUtc;$record.canCancel=$false;$record|Add-Member NoteProperty error $requestSafeError -Force
+                                        $worker.Dispose();Write-WsmJson $recordPath $record;throw
+                                    }
+                                    $status=202;$response=@{job=(ConvertTo-WsmHtmlPublicJobRecord $record)}
                                     $arguments=$null
                                 }
                             }

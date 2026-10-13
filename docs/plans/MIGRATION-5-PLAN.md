@@ -43,6 +43,7 @@
 | 開發者探測 | `r5-closeout-http-fixed-5779cfe26d5e44c1867275670d861a8f` 兩引擎 DeveloperProbe exit 0；未注入 OS／磁碟 readback 與原生 CIM 相符，16 項命令及 5 項模組、遮蔽、ZIP hashes／預算／失敗／逾時／取消通過。這台 Win11 的 NativeInventory 為 NotApplicable，不代替 Server 環境能力。 |
 | 不可變證據 | 核心、HTTP、UI、發行、handler、最終快照的已索引來源於測後 hash 核對未變；最終 runtime 與提交前來源逐檔核對。詳細 JSON／截圖保留在本機 `work/r5-verification`，不發布現場探測資料。 |
 
+**最後覆核補修：** 非同步工作在 wizard 註冊失敗後，原本磁碟已有 Failed 紀錄，但同程序的 jobs／idempotency 索引尚未登錄，導致查詢 404、pending 無法恢復。以正式 handler 隔離故障注入先重現；現在持久接受後先登錄索引，註冊／worker 啟動失敗時保存安全錯誤與完成時間、關閉 worker 並禁止取消。兩引擎 `Test-HtmlSubmission.js` 各 8 項通過，包含不重啟即可查回相同失敗及同 key replay，不重新啟動。最終 runtime 快照為 `r5-register-final-dual-91603c8affe544d79712bff5ee6066fc`，snapshot-index SHA256 `bcb1bbe0eaa1f458d2fdffb5558e0254af689d0d5c9437edea5647724abd1af5`，測後核對未變；`r5-register-final-winps.json`／`r5-register-final-ps7.json` 兩引擎 HtmlConsole 64、Qualification、Encoding 均 exit 0。這是本輪已交付恢復路線的修正，不移入 R6。
 **保留失敗，不覆蓋成 PASS：** `Test-NativeHtmlBridge.js` 在正式頁面 DOM 載入逾時；`Test-HtmlBridge.js` 在 `/api/spec-review` 連線重設；窄範圍原生 submission 測試也在已產生 Failed 記錄後遇 socket reset。這些與本輪既有 raw transport NotPassed 一併交給第六輪 P0，沒有重送請求、改安全軟體或放寬 timeout 取得通過。先前編碼錯誤快照也保留為失敗紀錄，修正 BOM 後已重驗雙引擎。
 
 全部 branch 差異以起點至最終提交檢視；既有核心、取消／修復、檔案範圍及 G 探測的有效同 bytes 證據沿用。原 F0／E／F1 大型未完成整合保持本機保存，不混入發行；本輪範圍調整並非宣稱完整產品或無缺陷。
