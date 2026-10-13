@@ -95,6 +95,19 @@ try{
         Check ($adsPlacementRow.PlacementStatus -eq 'BlockedConflict' -and $adsPlacementRow.Reason -match 'special file topology|alternate data streams') 'Current ADS destination topology was not surfaced as a manual placement conflict.'
         Check (@($preview.Rows|Where-Object {$_.EffectivePath -or $_.EffectivePathStatus -cne 'NotObserved'}).Count -eq 0) 'Preservation was falsely reported as an effective configuration path.'
         Check (@($preview.Rows|Where-Object {$_.OriginalPathStatus -cne 'Missing' -or -not $_.OriginalPathChangedByApprovedMapping}).Count -eq 0) 'Original-path observations or explicit mapping are lost.'
+        # A not-yet-created destination can still alias a protected physical root.
+        # The preview must check the root before saying the artifact can be placed.
+        $missingAliasRoot=Join-Path $placement 'missing-protected-alias'
+        $placementItem.MigrationSpec=[pscustomobject]@{Adapter='FileScope';SourcePath=(Join-Path $placement 'source');TargetPath=$missingAliasRoot;ContentSelection='WholeScope';Evidence='Reviewed isolated fixture mapping'}
+        $physicalResolver=(Get-Command Get-WsmPhysicalPath -CommandType Function).ScriptBlock
+        try{
+            Set-Item Function:\script:Get-WsmPhysicalPath -Value {param([string]$Path)$full=[IO.Path]::GetFullPath($Path);$targetRoot=[IO.Path]::GetFullPath($script:missingAliasRoot);if($full -ieq $targetRoot -or $full.StartsWith($targetRoot.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){return '\Device\HarddiskVolume123\Windows\System32\missing-target'}; '\Device\HarddiskVolume123\Users\Fixture\Unrelated'}
+            & $module {param($target) $script:missingAliasRoot=$target} $missingAliasRoot
+            $missingAliasPreview=Get-WsmFilePlacementPreview -ManifestPath (Join-Path $placement 'manifest.json') -ExpectedHash ('b'*64)
+            Check (@($missingAliasPreview.Rows|Where-Object PlacementStatus -EQ 'CanPlace').Count -eq 0) 'Preview said CanPlace for a missing target whose physical alias is a protected Windows root.'
+            Check ($missingAliasPreview.Blocked -gt 0) 'Preview did not count the rejected physical target alias as blocked.'
+            Check (-not [IO.Directory]::Exists($missingAliasRoot)) 'Preview created the missing physical-alias target while checking it.'
+        }finally{Set-Item Function:\script:Get-WsmPhysicalPath -Value $physicalResolver}
         $exactPlacementRoot=Join-Path $placement 'exact-programfiles-target';[void][IO.Directory]::CreateDirectory($exactPlacementRoot)
         $exactPlacementText='{"site":"fixture"}';$exactPlacementFile=Join-Path $exactPlacementRoot 'appsettings.json';[IO.File]::WriteAllText($exactPlacementFile,$exactPlacementText)
         $exactPlacementHash=(Get-FileHash -LiteralPath $exactPlacementFile -Algorithm SHA256).Hash.ToLowerInvariant()

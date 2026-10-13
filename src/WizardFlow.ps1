@@ -222,8 +222,22 @@ function Get-WsmWizardStageResultAvailability($Catalog) {
     $scan=$null;$backup=$null;$restore=$null;$result=$null
     if(-not $Catalog){return [pscustomobject]@{scan=$scan;backup=$backup;restore=$restore;hasAny=$false}}
     $stageRows=@();if($Catalog.PSObject.Properties['StageResults']){$stageRows=@($Catalog.StageResults)}
-    foreach($row in $stageRows){
-        $current=$false;try{$current=[bool](Test-WsmStageResultCurrent $Catalog $row)}catch{}
+    $boundRows=@($stageRows | Where-Object {try{Test-WsmStageResultCurrent $Catalog $_}catch{$false}})
+    $payloadRows=@($boundRows | Where-Object {$_.Stage -cne 'Inventory' -and $_.PSObject.Properties['PayloadGeneration'] -and $_.PSObject.Properties['ManifestHash'] -and [long]$_.PayloadGeneration -ge 1 -and [string]$_.ManifestHash -match '^[a-fA-F0-9]{64}$'})
+    $latestGeneration=0L;$currentManifest=''
+    if($payloadRows.Count){
+        $latestGeneration=[long]($payloadRows | Sort-Object PayloadGeneration -Descending | Select-Object -First 1).PayloadGeneration
+        $manifests=@($payloadRows | Where-Object {[long]$_.PayloadGeneration -eq $latestGeneration} | ForEach-Object {([string]$_.ManifestHash).ToLowerInvariant()} | Sort-Object -Unique)
+        if($manifests.Count -eq 1){$currentManifest=$manifests[0]}
+    }
+    # Imported stage records are the existing Manager authority. Use only the
+    # newest record per stage and the newest known exact package generation.
+    # Source/Target attempt orchestration is separate, not inferred from this view.
+    $latestRows=@($boundRows | Group-Object Stage | ForEach-Object {$_.Group | Sort-Object Sequence -Descending | Select-Object -First 1})
+    foreach($row in $latestRows){
+        $terminal=([string]$row.Status -cin @('Succeeded','Failed','Blocked','ManualEvidenceRequired','RebootRequired','Cancelled','Partial','Deferred','DeferredSoftware','WaitForInstall','BlockedConflict'))
+        $current=$terminal
+        if($row.Stage -cne 'Inventory'){$current=($terminal -and $currentManifest -and $row.PSObject.Properties['PayloadGeneration'] -and [long]$row.PayloadGeneration -eq $latestGeneration -and $row.PSObject.Properties['ManifestHash'] -and [string]$row.ManifestHash -ieq $currentManifest)}
         $entry=[pscustomobject][ordered]@{status=[string]$row.Status;stage=[string]$row.Stage;runId=[string]$row.RunId;generation=$(if($row.PSObject.Properties['PayloadGeneration']){[long]$row.PayloadGeneration}else{$null});producedUtc=[string]$row.ProducedUtc;current=$current;hasDurableRecord=$true}
         if($row.Stage -ceq 'Inventory' -and $current){$scan=$entry}
         elseif($row.Stage -cin @('Export','FinalDelta') -and $current){if(-not $backup -or [DateTimeOffset]::Parse($entry.producedUtc) -gt [DateTimeOffset]::Parse($backup.producedUtc)){$backup=$entry}}

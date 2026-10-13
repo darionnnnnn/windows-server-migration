@@ -145,6 +145,9 @@ function Get-WsmFilePlacementPreview {
             $destination=if($relative){Join-Path $spec.TargetPath $relative}else{$spec.TargetPath}
             $status='CanPlace';$reason='No destination object observed; restore rechecks before writing.';$observed=''
             try{
+                # Validate the reviewed target root even when this artifact is
+                # absent. Restore performs this same check before creating it.
+                Assert-WsmAssistiveTargetScopeTopology -Path $spec.TargetPath -Spec $spec -TargetRoot $spec.TargetPath -Kind Root
                 Assert-WsmNoReparse $destination
                 if([IO.File]::Exists($destination) -or [IO.Directory]::Exists($destination)){
                     $topologyVerified=$true
