@@ -333,13 +333,26 @@ function Set-WsmAssistiveReservationEvidence($Reservations,$Item,$Package,$Prior
 
 function Register-WsmAssistivePackageMaterials($Package,$Decision,[string]$Workspace,$Preview) {
     if(-not (Get-Command Register-WsmAssistiveMaterialReference -ErrorAction SilentlyContinue) -or -not (Get-Command Set-WsmAssistiveJobLock -ErrorAction SilentlyContinue)){throw 'Assistive material retention/job-lock support is unavailable; schema 3 writes are blocked.'}
+    if(-not $Preview -or -not $Preview.PSObject -or -not $Preview.PSObject.Properties){throw 'Assistive package material registration requires the exact typed restore preview.'}
     $ids=New-Object 'System.Collections.Generic.List[string]';$consumers=@($Decision.SelectedItemIds)
     if(-not $consumers.Count){return [pscustomobject]@{MaterialIds=@();OperationId=''}}
-    $files=@([pscustomobject]@{Path=(Join-Path $Package.Root 'plan.json');Hash=$Package.Manifest.PlanHash;Kind='AssistiveSealedPlan'},[pscustomobject]@{Path=(Join-Path $Package.Root 'manifest.json');Hash=$Package.SHA256;Kind='AssistivePackageManifest'},[pscustomobject]@{Path=(Join-Path $Package.Root 'artifacts.jsonl');Hash=$Package.Manifest.ArtifactsHash;Kind='AssistiveArtifactIndex'},[pscustomobject]@{Path=(Join-Path $Package.Root 'freeze.json');Hash=$Package.Manifest.FreezeHash;Kind='AssistiveFreezeRecord'},[pscustomobject]@{Path=$Decision.ReceiptPath;Hash=$Decision.ReceiptHash;Kind='AssistiveTargetDecisionReceipt'})
+    $files=@([pscustomobject]@{Path=(Join-Path $Package.Root 'plan.json');Hash=$Package.Manifest.PlanHash;Kind='AssistiveSealedPlan'},[pscustomobject]@{Path=(Join-Path $Package.Root 'manifest.json');Hash=$Package.SHA256;Kind='AssistivePackageManifest'},[pscustomobject]@{Path=(Join-Path $Package.Root 'artifacts.jsonl');Hash=$Package.Manifest.ArtifactsHash;Kind='AssistiveArtifactIndex'},[pscustomobject]@{Path=$Decision.ReceiptPath;Hash=$Decision.ReceiptHash;Kind='AssistiveTargetDecisionReceipt'})
+    # A nonfinal immutable-scope generation has no source freeze record. It may
+    # be restored as an isolated stage, but it must not invent or retain a
+    # freeze authorization. Final packages have already passed Test-WsmMigrationPackage
+    # and bind their real freeze bytes through this explicit material reference.
+    if($Package.Manifest.Final){$freezePath=Join-Path $Package.Root 'freeze.json';$freezeHash=[string]$Package.Manifest.FreezeHash;if($freezeHash -notmatch '^[a-f0-9]{64}$' -or -not [IO.File]::Exists($freezePath) -or (Get-FileHash -LiteralPath $freezePath -Algorithm SHA256).Hash -ine $freezeHash){throw 'Final Assistive package freeze material is missing or changed.'};$files+=@([pscustomobject]@{Path=$freezePath;Hash=$freezeHash;Kind='AssistiveFreezeRecord'})}
     if($Decision.SnapshotPath){$files+=@([pscustomobject]@{Path=$Decision.SnapshotPath;Hash=[string]$Decision.Receipt.TargetSnapshotHash;Kind='AssistiveTargetSnapshot'})}
-    if($Preview.NonCTransferPlanPath -and $Preview.NonCTransferPlanHash){$files+=@([pscustomobject]@{Path=[string]$Preview.NonCTransferPlanPath;Hash=[string]$Preview.NonCTransferPlanHash;Kind='AssistiveNonCTransferPlan'})}
-    if($Preview.NonCResultPath -and $Preview.NonCResultHash){$files+=@([pscustomobject]@{Path=[string]$Preview.NonCResultPath;Hash=[string]$Preview.NonCResultHash;Kind='AssistiveNonCTransferResult'})}
+    foreach($binding in @(@{Path='NonCTransferPlanPath';Hash='NonCTransferPlanHash';Kind='AssistiveNonCTransferPlan'},@{Path='NonCResultPath';Hash='NonCResultHash';Kind='AssistiveNonCTransferResult'})){
+        $pathProperty=$Preview.PSObject.Properties[[string]$binding.Path];$hashProperty=$Preview.PSObject.Properties[[string]$binding.Hash]
+        $materialPath='';$materialHash='';if($pathProperty){$materialPath=[string]$pathProperty.Value};if($hashProperty){$materialHash=[string]$hashProperty.Value}
+        if([bool]$materialPath -xor [bool]$materialHash){throw ('Assistive preview has an incomplete immutable material binding: '+$binding.Kind)}
+        if($materialPath){$files+=@([pscustomobject]@{Path=$materialPath;Hash=$materialHash;Kind=[string]$binding.Kind})}
+    }
     foreach($file in $files){if(-not [IO.File]::Exists($file.Path) -or (Get-FileHash -LiteralPath $file.Path -Algorithm SHA256).Hash -ine [string]$file.Hash){throw ('Required immutable material is missing or drifted: '+$file.Kind)}}
+    # The batch registry contract names the byte digest SHA256. Keep Hash for
+    # the legacy single-material path and supply the explicit batch field too.
+    foreach($file in $files){if(-not $file.PSObject.Properties['SHA256']){$file | Add-Member NoteProperty SHA256 ([string]$file.Hash)}}
     if(Get-Command Register-WsmAssistiveMaterialBatch -ErrorAction SilentlyContinue){$batch=Register-WsmAssistiveMaterialBatch $Workspace $Package.Manifest.PairId ([int]$Package.Manifest.Generation) @($files) $consumers;foreach($id in @($batch.MaterialIds)){$ids.Add([string]$id)}}else{foreach($file in $files){$entry=Register-WsmAssistiveMaterialReference -Workspace $Workspace -PairId $Package.Manifest.PairId -Generation ([int]$Package.Manifest.Generation) -Path $file.Path -SHA256 $file.Hash -Kind $file.Kind -ConsumerRefs $consumers;$ids.Add([string]$entry.MaterialId)}}
     $operationId=[Guid]::NewGuid().ToString();Set-WsmAssistiveJobLock -Workspace $Workspace -OperationId $operationId -PairId $Package.Manifest.PairId -Generation ([int]$Package.Manifest.Generation) -MaterialIds @($ids.ToArray()) -Active $true | Out-Null
     [pscustomobject]@{MaterialIds=$ids.ToArray();OperationId=$operationId}
@@ -361,13 +374,13 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     if($Preview.PSObject.Properties['NonCFileResults'] -and @($Preview.NonCFileResults).Count){$state | Add-Member NoteProperty AssistiveFileResults @($Preview.NonCFileResults) -Force;Add-WsmJournal $paths $state 'AssistiveNonCFileResultsImported' '' ([pscustomobject]@{Generation=[long]$Package.Manifest.Generation;Rows=@($Preview.NonCFileResults)})}
     $job=Register-WsmAssistivePackageMaterials $Package $decision $StateDirectory $Preview
     $state.Stage='Running'
-    $attempt=[pscustomobject]@{ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviousManifest=$state.ManifestHash;OperationId=$(if($CancellationToken){$CancellationToken.OperationId}else{[Guid]::NewGuid().ToString()});DecisionReceiptPath=[string]$decision.ReceiptPath;DecisionReceiptHash=[string]$decision.ReceiptHash;TargetSnapshotPath=[string]$decision.SnapshotPath;TargetSnapshotHash=[string]$decision.Receipt.TargetSnapshotHash;SelectedItemIds=@($decision.SelectedItemIds);MaterialJobOperationId=$job.OperationId;MaterialIds=@($job.MaterialIds)}
+    $attempt=[pscustomobject]@{ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviousManifest=$state.ManifestHash;OperationId=$(if($CancellationToken){$CancellationToken.OperationId}else{[Guid]::NewGuid().ToString()});DecisionReceiptPath=[string]$decision.ReceiptPath;DecisionReceiptHash=[string]$decision.ReceiptHash;TargetSnapshotPath=[string]$decision.SnapshotPath;TargetSnapshotHash=[string]$decision.Receipt.TargetSnapshotHash;SelectedItemIds=@($decision.SelectedItemIds);WizardPreviewHash=$(if($Preview.PSObject.Properties['WizardPreviewHash']){[string]$Preview.WizardPreviewHash}else{''});MaterialJobOperationId=$job.OperationId;MaterialIds=@($job.MaterialIds);ItemResults=@()}
     $state | Add-Member NoteProperty RestoreAttempt $attempt -Force
     Add-WsmJournal $paths $state 'AssistiveRestoreStarted' '' $attempt
     Confirm-WsmOutputStateCheckpoint -StateDirectory $StateDirectory -PairId $Package.Manifest.PairId -PlanHash $Package.Manifest.PlanHash
     $itemsById=@{};foreach($item in @($Package.Plan.Items)){$itemsById[[string]$item.ItemId]=$item}
     $itemResults=New-Object 'System.Collections.Generic.List[object]'
-    foreach($row in @($Preview.Rows)){
+    try { foreach($row in @($Preview.Rows)){
         if($row.Status -ne 'Ready'){if($row.Status -notin @('Deferred','DeferredSoftware')){$itemResults.Add([pscustomobject]@{ItemId=$row.ItemId;Status=$row.Status;CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error=$row.Reason})};continue}
         Assert-WsmCancellationBoundary $CancellationToken 'AssistiveBeforeItem'
         Assert-WsmAssistiveReceiptFresh $Package $decision | Out-Null
@@ -438,7 +451,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
             if(-not $result.PSObject.Properties['AppliedManifestHash']){$result | Add-Member NoteProperty AppliedManifestHash $ManifestHash}
             if(-not $result.PSObject.Properties['AppliedGeneration']){$result | Add-Member NoteProperty AppliedGeneration ([long]$Package.Manifest.Generation)}
             if($result.Status -eq 'Succeeded' -and -not $result.PSObject.Properties['ActualHash']){$result | Add-Member NoteProperty ActualHash ([string]$result.ActualHash)}
-            if(@($reservations).Count){$desiredEvidence=$spec.Desired;if($spec.Adapter -eq 'FileScope'){$desiredEvidence=@(Read-WsmArtifactLines (Join-Path $Package.Root 'artifacts.jsonl') $Package.Manifest.ArtifactsHash $CancellationToken | Where-Object ItemId -CEQ $item.ItemId | Select-Object RelativePath,Directory,Data,Metadata)};$readback=$result;if($result.PSObject.Properties['OwnedFiles']){$readback=[pscustomobject]@{OwnedFiles=$result.OwnedFiles;OwnedDirectories=$result.OwnedDirectories;ActualHash=$result.ActualHash}};Set-WsmAssistiveReservationEvidence $reservations $item $Package $undo $desiredEvidence $readback $undo $StateDirectory;$result | Add-Member NoteProperty ResourceReservations @($reservations | ForEach-Object {$_.Preview.ResourceKey}) -Force}
+            if(@($reservations).Count){$desiredEvidence=$null;if($spec.Adapter -eq 'FileScope'){$desiredEvidence=@(Read-WsmArtifactLines (Join-Path $Package.Root 'artifacts.jsonl') $Package.Manifest.ArtifactsHash $CancellationToken | Where-Object ItemId -CEQ $item.ItemId | Select-Object RelativePath,Directory,Data,Metadata)}else{$desiredEvidence=$spec.Desired};$readback=$result;if($result.PSObject.Properties['OwnedFiles']){$readback=[pscustomobject]@{OwnedFiles=$result.OwnedFiles;OwnedDirectories=$result.OwnedDirectories;ActualHash=$result.ActualHash}};Set-WsmAssistiveReservationEvidence $reservations $item $Package $undo $desiredEvidence $readback $undo $StateDirectory;$result | Add-Member NoteProperty ResourceReservations @($reservations | ForEach-Object {$_.Preview.ResourceKey}) -Force}
             $state.PendingOperations=@($state.PendingOperations | Where-Object ItemId -CNE $item.ItemId)
             $state.Items=@($state.Items | Where-Object ItemId -CNE $item.ItemId)+@($result)
             $itemResults.Add($result)
@@ -449,8 +462,22 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
             # Keep an ambiguous intent durable for repair; never erase it just because a native call threw.
             if(-not @($state.PendingOperations | Where-Object ItemId -CEQ $item.ItemId).Count){Add-WsmJournal $paths $state 'AssistiveItemFailed' $item.ItemId $failed}else{Add-WsmJournal $paths $state 'AssistiveItemNeedsRepair' $item.ItemId ([pscustomobject]@{Error=$failed.Error;Pending=@($state.PendingOperations | Where-Object ItemId -CEQ $item.ItemId)})}
         }
+    }} catch [OperationCanceledException] {
+        # A cancellation is a terminal worker outcome, but any completed item or
+        # unresolved native intent remains authoritative in the state and journal.
+        # Releasing the material lock records that this worker has stopped; it
+        # does not repair or discard a pending operation.
+        $state.ManifestHash=$ManifestHash;$state.Generation=[long]$Package.Manifest.Generation;$state.Stage='Cancelled'
+        $attempt.ItemResults=@($itemResults.ToArray())
+        $cancel=[ordered]@{Status='Cancelled';ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;OperationId='';Boundary='';PendingOperationCount=[int]@($state.PendingOperations).Count}
+        if($_.Exception.Data['OperationId']){$cancel.OperationId=[string]$_.Exception.Data['OperationId']}
+        if($_.Exception.Data['CancellationBoundary']){$cancel.Boundary=[string]$_.Exception.Data['CancellationBoundary']}
+        Add-WsmJournal $paths $state 'AssistiveRestoreCancelled' '' ([pscustomobject]$cancel)
+        Complete-WsmAssistivePackageJob $Package $job $StateDirectory
+        return [pscustomobject]@{PairId=$Package.Manifest.PairId;ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;Stage='Cancelled';Items=$state.Items;Results=$itemResults.ToArray();Deferred=@($Preview.Rows | Where-Object Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired'));PendingOperations=@($state.PendingOperations);JournalHash=$state.JournalHash;BusinessValidationRequired=$true;ProductionVerified=$false}
     }
     $state.ManifestHash=$ManifestHash;$state.Generation=[long]$Package.Manifest.Generation
+    $attempt.ItemResults=@($itemResults.ToArray())
     $remaining=@($Preview.Rows | Where-Object {$_.Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired')})
     $failedCount=@($itemResults | Where-Object Status -in @('Failed','BlockedConflict','Blocked','ManualEvidenceRequired')).Count
     $state.Stage='Succeeded';if($remaining.Count -or $failedCount -or @($state.PendingOperations).Count){$state.Stage='Partial'};if(@($itemResults | Where-Object Status -EQ RebootRequired).Count){$state.Stage='RebootRequired'}
@@ -526,7 +553,7 @@ function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hasht
             $State.PendingOperations=@($State.PendingOperations | Where-Object ItemId -CNE $Item.ItemId)
             Add-WsmJournal $Paths $State 'AssistiveFileCompleted' $Item.ItemId ([pscustomobject]@{ItemId=$Item.ItemId;Record=$record;Target=$dest})
             $results.Add([pscustomobject]@{RelativePath=$entry.RelativePath;Status='Applied';MetadataStatus='Verified';Reason=''})
-        }catch{
+        }catch [OperationCanceledException] {throw}catch{
             $results.Add([pscustomobject]@{RelativePath=$entry.RelativePath;Status='Failed';MetadataStatus='NotVerified';Reason=$_.Exception.GetType().FullName})
             # Clear only a proven no-effect intent. Any backup, missing prior target, changed target,
             # or target containing the expected new bytes remains durable for explicit repair.

@@ -96,7 +96,7 @@ function Reserve-WsmAssistiveResource {
 
 function Set-WsmAssistiveResourceEvidence {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$ResourceKey,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ItemId,[Parameter(Mandatory)][string]$Channel,[Parameter(Mandatory)][int]$ExpectedRevision,[Parameter(Mandatory)]$Prior,[Parameter(Mandatory)]$Desired,[Parameter(Mandatory)]$Readback,[Parameter(Mandatory)]$Undo,[Parameter(Mandatory)][ValidateSet('Match','Drifted','Unknown')][string]$DriftStatus)
+    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$ResourceKey,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ItemId,[Parameter(Mandatory)][string]$Channel,[Parameter(Mandatory)][int]$ExpectedRevision,[Parameter(Mandatory)][AllowNull()]$Prior,[Parameter(Mandatory)]$Desired,[Parameter(Mandatory)]$Readback,[Parameter(Mandatory)][AllowNull()]$Undo,[Parameter(Mandatory)][ValidateSet('Match','Drifted','Unknown')][string]$DriftStatus)
     Invoke-WsmLocked $Workspace {
         $registry=Get-WsmAssistiveResourceRegistry $Workspace;if($registry.Revision -ne $ExpectedRevision){throw 'Resource ownership changed; refresh before recording evidence.'}
         $record=@($registry.Resources|Where-Object ResourceKey -CEQ $ResourceKey);if($record.Count -ne 1){throw 'Reserved resource not found uniquely.'}

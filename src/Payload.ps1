@@ -135,7 +135,9 @@ function Test-WsmMigrationPackage {
     foreach($configItem in $plan.Items){if((Test-WsmAssistivePackageScope $plan $configItem)){Assert-WsmApprovedConfigArtifacts -Spec $configItem.MigrationSpec -ArtifactsPath $index -ExpectedHash $m.ArtifactsHash -ItemId $configItem.ItemId -CancellationToken $CancellationToken | Out-Null}}
     foreach($i in $included.Values){if(($i.MigrationSpec.Adapter -ceq 'Certificate' -or (Test-WsmAssistivePackageScope $plan $i)) -and -not $seenItems.ContainsKey($i.ItemId)){throw 'Selected payload item has no artifacts.'}}
     if($m.Final){[void](Read-WsmFreezeRecord (Join-Path $root 'freeze.json') $m.FreezeHash $plan $m.PlanHash)}
-    [pscustomobject]@{Manifest=$m;Plan=$plan;Root=$root;SHA256=$ExpectedHash;Valid=$true}
+    # Expose the verified plan hash directly for consumers that bind a validated
+    # package object. Keep it derived from the already trusted manifest bytes.
+    [pscustomobject]@{Manifest=$m;Plan=$plan;PlanHash=[string]$m.PlanHash;Root=$root;ManifestPath=[IO.Path]::GetFullPath($ManifestPath);SHA256=$ExpectedHash;Valid=$true}
 }
 function Restore-WsmPayloadBytes($Row,[string]$PackageRoot,[string]$Destination,$CancellationToken=$null) {
     Assert-WsmCancellationBoundary $CancellationToken 'BeforePayloadRestore'

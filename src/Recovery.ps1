@@ -58,6 +58,9 @@ function Complete-WsmAssistiveOperationRepair($Item,$Operation,$Package,$Paths,$
     if($target -ine [IO.Path]::GetFullPath($expectedTarget) -or ($target -ine $root -and -not $target.StartsWith($targetPrefix,[StringComparison]::OrdinalIgnoreCase)) -or [IO.Path]::GetDirectoryName($staging) -ine [IO.Path]::GetDirectoryName($target) -or [IO.Path]::GetFileName($staging) -notmatch '\.wsm-[a-f0-9]{32}\.tmp$'){throw 'Assistive file recovery path escaped its approved scope or generated sibling pattern.'}
     if($backup -and ([IO.Path]::GetDirectoryName($backup) -ine [IO.Path]::GetDirectoryName($target) -or [IO.Path]::GetFileName($backup) -notmatch ('\.wsm-assistive-backup-'+[regex]::Escape($Item.ItemId.Substring(0,12))+'-[a-f0-9]{32}$'))){throw 'Assistive backup recovery path is not the exact generated sibling.'}
     foreach($path in @($root,$target,$staging,$backup)){if($path){Assert-WsmNoReparse $path}}
+    foreach($filePath in @($target,$staging,$backup)){
+        if($filePath -and [IO.Directory]::Exists($filePath)){throw 'Assistive file recovery found a directory in a file transaction path; retain the pending intent and all material.'}
+    }
     $hashAt={param([string]$Path) if($Path -and [IO.File]::Exists($Path)){(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()}else{''}}
     $targetHash=& $hashAt $target;$stageHash=& $hashAt $staging;$backupHash=& $hashAt $backup
     $expected=[string]$Operation.ExpectedHash;$previous=[string]$Operation.PreviousHash
@@ -65,6 +68,13 @@ function Complete-WsmAssistiveOperationRepair($Item,$Operation,$Package,$Paths,$
     $aclPolicy='Exact';if($spec.PSObject.Properties['AclControlPolicy']){$aclPolicy=[string]$spec.AclControlPolicy}
     if($targetHash -ne $expected){
         if($targetHash -and $targetHash -ne $previous){throw 'Assistive target file drifted from both prior and desired hashes; preserve all transaction material.'}
+        if($targetHash -ceq $previous -and -not $backupHash -and -not $stageHash){
+            if($Operation.WasOwned){
+                $priorReadback=Get-WsmFileMetadata $target ([string]$Operation.ExpectedMetadata.MetadataMode)
+                if((Get-WsmAssistiveMetadataHash $priorReadback) -ine [string]$Operation.PriorOwner.MetadataHash){throw 'Assistive prior owned file metadata drifted; preserve the pending recovery intent.'}
+            }
+            $State.PendingOperations=@($State.PendingOperations | Where-Object ItemId -CNE $Item.ItemId);Add-WsmJournal $Paths $State 'AssistiveFileRecovered' $Item.ItemId ([pscustomobject]@{Record=$null;Abandoned=$true;TargetUnchanged=$true;RelativePath=$Operation.RelativePath;Target=$target;RetainedStaging=''});return
+        }
         if($stageHash -ne $expected){throw 'Assistive target and staging file do not match a recoverable exact hash state.'}
         [void](Assert-WsmAssistiveMetadataReadback $staging $Operation.ExpectedMetadata $SidMap $aclPolicy)
         if($Operation.WasOwned -and -not $backupHash){

@@ -382,3 +382,19 @@ H01 的完整性清單擴充為原始七項需求、第 1／9 節定案、F01–
 - 同步降低背景負荷：精靈讀取同時只進行一份；一般頁先載入主要操作，其餘展開時才取得預設值。主代理檢視 320px 原生審閱及管理交接畫面，控制項分隔／長文字換行正常；已綁定工作名稱的摘要與重複開啟提示另列下一 UI 段補強。
 - 新的精簡 runtime bytes 在 Windows PowerShell 5.1／PowerShell 7 Test-Qualification 再次通過（26.2／19.1 秒），實際發行清單、包含 CMD 的索引與雜湊一致。仍未企业簽署、ProductionVerified／ProductionExecutionEnabled=false。
 - E/F 完整編排、NonC 正向旅程、全 adapter 白話審閱及完整 UI 結果仍在後續相依段；本段不宣稱完整備份／還原精靈或整輪完成。
+### 2026-10-13 接續實作：本輪邊界及完整性缺口
+
+- 使用者再次授權完成所有尚未完成的實作與本機隔離驗收；需要現場資訊時僅透過環境探測取得，不直接在實際環境做還原、啟用或正式業務驗收。每個完整相依段驗證後 commit／push 至 codex/migration-5，並核對遠端 SHA。
+- 已推送基礎段 3b5b5fab52a5da8bc5cbd55f144cd031f8ba66c1；本次開始時本機分支及 origin 追蹤紀錄一致。唯讀權限曾阻擋接續；權限恢復後重新核對工作樹，沒有將未完成工作冒稱結案。
+- 完整性核對新阻擋：WholeScope 的既有路徑檢查不足以阻止 OS／軟體本體收集；必須在 sealed spec 與實際 collector 加入防護。舊備份結果不得因具有耐久紀錄就顯示為目前成果；Target 還原結果必須由本次耐久作業及確切材料綁定導出，不能依 Manager catalog 是否存在。
+- 仍需完成 F0 全 adapter 實際白話 Submit、E 逐項／自動 schema 3 UI 到封裝、NonC 帳號觀測／選擇／搬移／結果整合、F1 一般 UI 交接及還原續作、最終版面與鍵盤量測、文件同步與整輪回查。尚未進入整輪完成驗收。
+- 接續委派：gpt-6-luna high 分別負責 scope_guard（FileScope 邊界）、backend_finish（F0/E/NonC／結果）、ui_finish（UI／瀏覽器旅程）。主代理直接檢查產物與真實 consumer，獨立執行隔離驗證；子代理回報只作查證線索。四個還原核心檔由主代理保留單一寫入者。
+
+### 2026-10-13 還原核心窄修：完整相依與隔離驗證
+
+- 本段只提交 AssistiveRestore／AssistiveResources／Payload／Recovery 與新增修復邊界測試，不包含尚未完成的精靈 helper、API 或 UI。以已提交基礎 runtime 建立獨立不可變快照，確認核心無需新精靈模組即可載入及驗證。
+- 非最終封包不虛構 freeze 材料；最終封包核對真實 freeze bytes，材料批次使用實際 SHA256 欄位。新增檔案的 Prior／Undo 可為 null，FileScope 不讀不存在的 Desired。取消保存已完成成果、待修復 intent、Cancelled 狀態與耐久 journal；停止 worker 後解除材料作業鎖，不清除未解決 intent。
+- 新增回查缺陷已重現：尚未產生 file bytes 的檔案位置被資料夾佔用時，舊修復分支誤以空雜湊當作沒有變動並刪除 intent。新增 Test-AssistiveRecoveryBoundaries 在修正前明確失敗於 TargetDirectory。修正後，目標／staging／backup 位置若為資料夾或原 owned 檔案 metadata 已漂移均拒絕並保留；真正未變動的 absent／owned 案例以實際 journal／checkpoint 核對放棄操作。
+- 主代理不可變 root-core-restore-607db1e19c354e71908927b67894a941：兩引擎 Test-AssistiveRestore 116、Test-AssistiveResources 34、Test-MigrationPipeline SmallFiles=16 全部 exit 0；實際封裝／ACL／分卷／重試／漂移／最終世代與竄改拒絕，Windows PowerShell 5.1 Pipeline 320.6 秒、PowerShell 7 219.9 秒。
+- 最後 Recovery 修改使用新不可變 root-core-recovery-fixed 快照，兩引擎 Test-AssistiveRecoveryBoundaries 6、Test-AssistiveRestore 116、Test-Qualification 均 exit 0。逐一核对本段五個實際檔案 bytes 与已驗快照相同。原生 metadata／檔案／journal 僅使用測試專有 TEMP 範圍，沒有實際業務環境驗收；production 仍 false。
+- 先前 TargetRestore 31 項 PowerShell 7 完整核心取消／續作證據可支持相同核心產物；本次追加 Windows PowerShell 5.1 31 項仍執行中，不提前記為通過。E/F 一般 UI 及 NonC 完整性仍在下一相依段補齊。
