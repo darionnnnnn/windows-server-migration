@@ -21,14 +21,17 @@ function Export-WsmEnrolledInventory {
 }
 function Export-WsmEnrolledPackageDelivery {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$WorkRoot,[Parameter(Mandatory)][string]$ManifestPath,[Parameter(Mandatory)][string]$ExpectedHash,[string]$AttemptId,[object[]]$ReportReferences=@(),$CancellationToken=$null)
+    param([Parameter(Mandatory)][string]$WorkRoot,[Parameter(Mandatory)][string]$ManifestPath,[Parameter(Mandatory)][string]$ExpectedHash,[string]$AttemptId,[ValidateSet('Zip','Directory')][string]$AttemptMode,[long]$AttemptVolumeBytes,[object[]]$ReportReferences=@(),$CancellationToken=$null)
     $package=Test-WsmMigrationPackage $ManifestPath $ExpectedHash
     $enrollment=Initialize-WsmOutputWorkspace $WorkRoot Source
     if($enrollment.Profile.Fingerprint -cne $package.Plan.Source.Fingerprint -or $enrollment.HostId -cne $package.Plan.Source.HostId){throw 'Package source differs from enrolled delivery host.'}
     if($ReportReferences.Count -gt 100){throw 'Delivery report reference budget exceeded.'}
     $documentReferences=@(Assert-WsmDeliveryReportReferences $ReportReferences)
     $safeReferences=@(foreach($reference in $documentReferences){[pscustomobject]@{DocumentId=$reference.DocumentId;Path=$reference.Path;SHA256=$reference.SHA256}})
-    $workspace=Resolve-WsmOutputWorkspace -WorkRoot $WorkRoot -Role Source -PairId $package.Manifest.PairId -PlanHash $package.Manifest.PlanHash -AttemptId $AttemptId
+    $resolveArguments=@{WorkRoot=$WorkRoot;Role='Source';PairId=[string]$package.Manifest.PairId;PlanHash=[string]$package.Manifest.PlanHash;AttemptId=$AttemptId}
+    if($PSBoundParameters.ContainsKey('AttemptMode')){$resolveArguments.AttemptMode=$AttemptMode}
+    if($PSBoundParameters.ContainsKey('AttemptVolumeBytes')){$resolveArguments.AttemptVolumeBytes=$AttemptVolumeBytes}
+    $workspace=Resolve-WsmOutputWorkspace @resolveArguments
     [void](New-WsmOutputOwnedDirectory $workspace.TransportDirectory)
     if($workspace.AttemptProfile.Mode -eq 'Directory'){
         $delivery=Export-WsmDirectoryDelivery -ManifestPath $ManifestPath -ExpectedHash $ExpectedHash -OutputDirectory (Join-Path $workspace.TransportDirectory 'delivery') -ReportReferences $safeReferences -CancellationToken $CancellationToken

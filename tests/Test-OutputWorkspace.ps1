@@ -61,6 +61,16 @@ try {
     Assert-OutputTest ($retried.AttemptId -ceq $paired.AttemptId -and $retried.PairRoot -ceq $paired.PairRoot) 'Explicit attempt retry did not preserve its durable identity.'
     $targetProfilePath=Join-Path $targetRoot 'workspace-control\output-profile.json'
     $oldProfileHash=(Get-FileHash -LiteralPath $targetProfilePath).Hash
+    $directoryAttemptId=[Guid]::NewGuid().ToString('D')
+    $directoryAttempt=Resolve-WsmOutputWorkspace -WorkRoot $targetRoot -Role Target -PairId $pair -PlanHash $planHash -AttemptId $directoryAttemptId -AttemptMode Directory -AttemptVolumeBytes 0
+    Assert-OutputTest ($directoryAttempt.AttemptProfile.Mode -ceq 'Directory' -and $directoryAttempt.AttemptProfile.VolumeBytes -eq 0 -and (Get-FileHash -LiteralPath $targetProfilePath).Hash -ceq $oldProfileHash) 'Per-attempt Directory selection changed the enrolled ZIP profile or failed to freeze its format.'
+    $directoryRetry=Resolve-WsmOutputWorkspace -WorkRoot $targetRoot -Role Target -PairId $pair -PlanHash $planHash -AttemptId $directoryAttemptId
+    Assert-OutputTest ($directoryRetry.AttemptProfile.Mode -ceq 'Directory' -and $directoryRetry.AttemptProfile.VolumeBytes -eq 0) 'Directory retry inherited the enrolled ZIP preference.'
+    try{Resolve-WsmOutputWorkspace -WorkRoot $targetRoot -Role Target -PairId $pair -PlanHash $planHash -AttemptId $directoryAttemptId -AttemptMode Zip|Out-Null;throw 'sealed attempt format changed'}catch{if($_.Exception.Message -eq 'sealed attempt format changed'){throw}}
+    try{Resolve-WsmOutputWorkspace -WorkRoot $targetRoot -Role Target -PairId $pair -PlanHash $planHash -AttemptId $paired.AttemptId -AttemptVolumeBytes 134217728|Out-Null;throw 'sealed attempt capacity changed'}catch{if($_.Exception.Message -eq 'sealed attempt capacity changed'){throw}}
+    $invalidAttemptId=[Guid]::NewGuid().ToString('D')
+    try{Resolve-WsmOutputWorkspace -WorkRoot $targetRoot -Role Target -PairId $pair -PlanHash $planHash -AttemptId $invalidAttemptId -AttemptMode Directory -AttemptVolumeBytes 134217728|Out-Null;throw 'Directory attempt accepted ZIP capacity'}catch{if($_.Exception.Message -eq 'Directory attempt accepted ZIP capacity'){throw}}
+    Assert-OutputTest (-not [IO.Directory]::Exists((Join-Path (Join-Path $paired.PairRoot 'attempts') $invalidAttemptId))) 'Rejected per-attempt format created an incomplete attempt tree.'
     Set-WsmOutputPreferences $targetRoot Target $oldProfileHash Directory | Out-Null
     $preserved=Resolve-WsmOutputWorkspace $targetRoot Target -PairId $pair -PlanHash $planHash -AttemptId $paired.AttemptId
     Assert-OutputTest ($preserved.AttemptProfile.Mode -ceq 'Zip' -and $preserved.AttemptProfile.VolumeBytes -eq 536870912) 'Preference edit changed sealed retry preferences.'

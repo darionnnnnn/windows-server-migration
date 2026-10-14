@@ -228,7 +228,7 @@ function Confirm-WsmOutputStateCheckpoint {
 }
 function Resolve-WsmOutputWorkspace {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$WorkRoot,[Parameter(Mandatory)][ValidateSet('Source','Manager','Target')][string]$Role,[string]$PairId,[string]$PlanHash,[string]$AttemptId)
+    param([Parameter(Mandatory)][string]$WorkRoot,[Parameter(Mandatory)][ValidateSet('Source','Manager','Target')][string]$Role,[string]$PairId,[string]$PlanHash,[string]$AttemptId,[ValidateSet('Zip','Directory')][string]$AttemptMode,[long]$AttemptVolumeBytes)
     $workspace=Initialize-WsmOutputWorkspace $WorkRoot $Role
     if($PairId){
         if(-not $PlanHash){throw 'Pair resolution requires the trusted plan hash.'}
@@ -242,9 +242,20 @@ function Resolve-WsmOutputWorkspace {
         $attemptRoot=Join-Path $attemptsRoot $attempt
         if([IO.File]::Exists($attemptRoot)){throw 'Attempt path is occupied by a file.'}
         if(-not [IO.Directory]::Exists($attemptRoot)){
+            $selectedMode=[string]$workspace.Profile.Mode
+            if($PSBoundParameters.ContainsKey('AttemptMode')){$selectedMode=$AttemptMode}
+            $selectedVolume=[long]$workspace.Profile.VolumeBytes
+            if($selectedMode -cne [string]$workspace.Profile.Mode){$selectedVolume=[long](Get-WsmOutputProfileDefaults).VolumeBytes}
+            if($PSBoundParameters.ContainsKey('AttemptVolumeBytes')){$selectedVolume=[long]$AttemptVolumeBytes}
+            if($selectedMode -ceq 'Directory'){
+                if($PSBoundParameters.ContainsKey('AttemptVolumeBytes') -and $selectedVolume -ne 0){throw 'Directory attempts require AttemptVolumeBytes=0.'}
+                $selectedVolume=0
+            }
+            $attemptPreferences=[pscustomobject]@{Mode=$selectedMode;VolumeBytes=$selectedVolume}
+            Assert-WsmOutputProfileValues $attemptPreferences
             [void](New-WsmOutputOwnedDirectory $attemptRoot)
             foreach($name in @('reports','packages','transport','scratch')){[void](New-WsmOutputOwnedDirectory (Join-Path $attemptRoot $name))}
-            $attemptRecord=[pscustomobject][ordered]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='OutputAttempt';AttemptId=$attempt;Role=$Role;HostId=$workspace.HostId;ProfileId=$workspace.Profile.ProfileId;PairId=$PairId;PlanHash=$(if($PlanHash){$PlanHash.ToLowerInvariant()}else{''});Mode=$workspace.Profile.Mode;VolumeBytes=$workspace.Profile.VolumeBytes;CreatedUtc=(Get-WsmUtc)}
+            $attemptRecord=[pscustomobject][ordered]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='OutputAttempt';AttemptId=$attempt;Role=$Role;HostId=$workspace.HostId;ProfileId=$workspace.Profile.ProfileId;PairId=$PairId;PlanHash=$(if($PlanHash){$PlanHash.ToLowerInvariant()}else{''});Mode=$selectedMode;VolumeBytes=$selectedVolume;CreatedUtc=(Get-WsmUtc)}
             Write-WsmJson (Join-Path $attemptRoot 'attempt.json') $attemptRecord
         }else{
             $attemptRecordPath=Join-Path $attemptRoot 'attempt.json'
@@ -252,6 +263,8 @@ function Resolve-WsmOutputWorkspace {
             Assert-WsmNoReparse $attemptRecordPath
             $attemptRecord=Read-WsmJson $attemptRecordPath;Assert-WsmEnvelope $attemptRecord 'OutputAttempt'
             if($attemptRecord.AttemptId -cne $attempt -or $attemptRecord.Role -cne $Role -or $attemptRecord.HostId -cne $workspace.HostId -or $attemptRecord.ProfileId -cne $workspace.Profile.ProfileId -or $attemptRecord.PairId -cne $PairId -or $attemptRecord.PlanHash -ine $(if($PlanHash){$PlanHash}else{''})){throw 'Attempt identity differs from this workspace/pair/plan; use a new AttemptId.'}
+            if($PSBoundParameters.ContainsKey('AttemptMode') -and [string]$attemptRecord.Mode -cne [string]$AttemptMode){throw 'Attempt transport mode is immutable; use a new AttemptId for another delivery format.'}
+            if($PSBoundParameters.ContainsKey('AttemptVolumeBytes') -and [long]$attemptRecord.VolumeBytes -ne [long]$AttemptVolumeBytes){throw 'Attempt ZIP volume limit is immutable; use a new AttemptId for another volume limit.'}
             foreach($name in @('reports','packages','transport','scratch')){[void](New-WsmOutputOwnedDirectory (Join-Path $attemptRoot $name))}
         }
         $workspace | Add-Member NoteProperty AttemptId $attempt -Force
@@ -381,7 +394,7 @@ function Assert-WsmDirectoryDeliveryPackageMembers($Package,[object[]]$DeliveryM
 }
 function Import-WsmDirectoryDelivery {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$SummaryPath,[Parameter(Mandatory)][string]$ExpectedSummaryHash,[Parameter(Mandatory)][string]$SourceDirectory,[Parameter(Mandatory)][string]$WorkRoot,[string]$AttemptId,$CancellationToken=$null)
+    param([Parameter(Mandatory)][string]$SummaryPath,[Parameter(Mandatory)][string]$ExpectedSummaryHash,[Parameter(Mandatory)][string]$SourceDirectory,[Parameter(Mandatory)][string]$WorkRoot,[string]$AttemptId,[ValidateSet('Zip','Directory')][string]$AttemptMode,[long]$AttemptVolumeBytes,$CancellationToken=$null)
     if($ExpectedSummaryHash -notmatch '^[a-fA-F0-9]{64}$'){throw 'A trusted directory delivery summary SHA256 is required.'}
     Assert-WsmCancellationBoundary $CancellationToken 'BeforeDirectoryDeliveryImport'
     $summaryFile=[IO.Path]::GetFullPath($SummaryPath);Assert-WsmNoReparse $summaryFile
@@ -436,7 +449,7 @@ function Import-WsmDirectoryDelivery {
     $currentIdentity=Get-WsmMachineIdentity
     if($currentIdentity.Fingerprint -cne $sourcePackage.Plan.Target.Fingerprint){throw 'Current Target fingerprint differs from the trusted package plan; no target enrollment, pair or incoming directory was created.'}
     $workRootFull=[IO.Path]::GetFullPath($WorkRoot);$savedProfile=Read-WsmOutputProfile $workRootFull
-    if(-not $savedProfile -or $savedProfile.Role -cne 'Target' -or $savedProfile.Mode -cne 'Directory'){throw 'Directory import requires an existing enrolled Target OutputProfile in Directory mode.'}
+    if(-not $savedProfile -or $savedProfile.Role -cne 'Target'){throw 'Directory import requires an existing enrolled Target OutputProfile.'}
     if($savedProfile.Fingerprint -cne $sourcePackage.Plan.Target.Fingerprint){throw 'Target OutputProfile fingerprint differs from the trusted package plan; no pair or incoming directory was created.'}
     $importAttemptId=Get-WsmOutputAttemptId $AttemptId
     $controlRoot=Join-Path $workRootFull 'workspace-control';$stagingRoot=Join-Path $controlRoot 'directory-imports'
@@ -474,7 +487,21 @@ function Import-WsmDirectoryDelivery {
         $copiedPackage=Test-WsmMigrationPackage (Join-Path $stage 'manifest.json') $summary.ManifestHash $CancellationToken
         if($copiedPackage.Manifest.PackageId -cne $summary.PackageId -or $copiedPackage.Manifest.PairId -cne $summary.PairId -or $copiedPackage.Manifest.PlanHash -ine $summary.PlanHash -or $copiedPackage.Plan.Target.Fingerprint -cne $workspace.Profile.Fingerprint){throw 'Copied directory package identity or target binding changed during import.'}
         Assert-WsmDirectoryDeliveryPackageMembers $copiedPackage $memberRows
-        $pairWorkspace=Resolve-WsmOutputWorkspace -WorkRoot $WorkRoot -Role Target -PairId $copiedPackage.Manifest.PairId -PlanHash $copiedPackage.Manifest.PlanHash -AttemptId $importAttemptId
+        $resolveArguments=@{WorkRoot=$WorkRoot;Role='Target';PairId=[string]$copiedPackage.Manifest.PairId;PlanHash=[string]$copiedPackage.Manifest.PlanHash;AttemptId=$importAttemptId}
+        # The validated incoming transport determines this per-attempt mode.
+        # A fresh Target may have a ZIP preference while legitimately receiving
+        # a DirectoryDelivery; keep the workspace profile unchanged and freeze
+        # the incoming format on this attempt only.
+        if($PSBoundParameters.ContainsKey('AttemptMode')){
+            if($AttemptMode -cne 'Directory'){throw 'A validated DirectoryDelivery requires AttemptMode=Directory.'}
+            $resolveArguments.AttemptMode=$AttemptMode
+        }else{$resolveArguments.AttemptMode='Directory'}
+        if($PSBoundParameters.ContainsKey('AttemptVolumeBytes')){
+            if([long]$AttemptVolumeBytes -ne 0){throw 'Directory deliveries require AttemptVolumeBytes=0.'}
+            $resolveArguments.AttemptVolumeBytes=[long]$AttemptVolumeBytes
+        }else{$resolveArguments.AttemptVolumeBytes=[long]0}
+        $pairWorkspace=Resolve-WsmOutputWorkspace @resolveArguments
+        if($pairWorkspace.AttemptProfile.Mode -cne 'Directory'){throw 'Validated DirectoryDelivery resolved to a non-Directory output attempt.'}
         $resolvedDestination=Join-Path $pairWorkspace.PackagesDirectory $deliveryGuid
         if([IO.Path]::GetFullPath($resolvedDestination) -ine [IO.Path]::GetFullPath($destinationRoot)){throw 'Resolved target package path differs from the preflighted enrolled attempt path.'}
         $destinationRoot=$resolvedDestination

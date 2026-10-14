@@ -297,3 +297,8 @@ Target 可在零備份下匯出已註冊身分及本機盤點；Manager 以獨�
 主代理從 P2 基準建立只含本段相依改動的固定副本（唯一目錄及 19 檔索引見 work/r6/p1b-final-fixed-snapshot.txt／p1b-input-index.json）。兩引擎通過 Handoff 22、Bulk 43、HtmlConsole 74、TypedText 18、ManagerApprovalJourney 23、WizardFlow 45、PreparationAdapters 88 checks，以及真封存計畫的 Source／Target 匯入與 action metadata。首次配對繼承 Mode／AutoContinue，重複匯入不重置；封存 Include 集合與來源已確認意圖一致。另補上 CLI 隱藏 OperationId 的實際注入、無 Manager catalog 的 Source／Target revision／操作入口，以及小數容量／字串 false 的入口拒絕；舊 CLI fixture 非 GUID 配對已改成合法 GUID，未放寬產品驗證。
 
 相同 runtime／UI bytes 的 Edge fixture 通過新交接、批次輸入／不自動 commit、375／390px 版面、未知提交 query-only 與既有 P1a／200 群組回歸；兩種 PowerShell 的實際 Edge → 正式 handler writer 回應擷取橋接 → 兩份真 sealed spec 檔案／SHA-256／同 operation replay，以及既有單項保存橋接均通過。橋接保留 controller、session、CAS、worker 與核心保存，但**不代表原生 HTTP、origin enforcement、真三台 Server 或生產資格通過**。P0 NotPassed 未解除；P3–P6 仍在本輪實作，不移到下一輪。
+### P3／P5 共用相依：每次交付格式凍結，已獨立驗證
+
+核心 OutputWorkspace／OutputWorkflow 支援明確的 per-attempt Directory／ZIP 與容量，既有 attempt 沿用凍結值、明確要求改格式／容量則拒絕，且不修改已登錄 OutputProfile。DirectoryDelivery 先核對摘要、完整成員、封包與 Target 身分，再以 Directory／0 bytes 建立該次 attempt；Target 的 ZIP 偏好不再誤擋資料夾接收。來源 EnrolledDelivery 轉交同一組已驗證的 attempt 值。
+
+主代理以 P1b 固定基準只覆蓋本段兩個核心檔及 OutputWorkspace 測試，獨立執行 Windows PowerShell 5.1／PowerShell 7 的 OutputWorkspace 與 OutputWorkflow；全部通過。固定副本及三檔 SHA-256 見 work/r6/output-prerequisite-snapshot.txt／stage-input-index.json；OutputWorkflow 的 transport native boundary 使用既有 fixture，不能代稱原生跨機傳輸。另在 P3 固定副本已完成兩格式真封裝、匯入與 payload hash 讀回的 PS7 子案例，但全套 P3／P5 仍有 consumer／取消／交接驗證在本輪修正中；此提交不表示完整 P3、P5 或整輪通過。原生 P0 NotPassed 不變。
