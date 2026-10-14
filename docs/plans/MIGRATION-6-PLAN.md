@@ -1,6 +1,6 @@
 # 第 6 輪規劃：完成備份、管理交接與還原精靈
 
-> 2026-10-13（Asia/Taipei）。狀態：待開始，尚未授權在本次收尾中續作。本文件依使用者明確指示，承接第五輪未完成項目；第五輪只收尾已完成且可獨立驗證的交付範圍。原始需求與歷史證據保留於 [第五輪計畫](MIGRATION-5-PLAN.md)，現行能力以 [實作狀態](../IMPLEMENTATION-0.1.md) 為準。
+> 2026-10-14（Asia/Taipei）。狀態：詳細規劃完成，待實作授權。使用者已同意本輪拆分、相依及客觀驗收調整；本次僅更新原 PLAN，不實作。本文件依使用者明確指示，承接第五輪未完成項目；第五輪只收尾已完成且可獨立驗證的交付範圍。原始需求與歷史證據保留於 [第五輪計畫](MIGRATION-5-PLAN.md)，現行能力以 [實作狀態](../IMPLEMENTATION-0.1.md) 為準。
 
 ## 1. 不變的定案
 
@@ -15,7 +15,7 @@
 
 「已寫程式」不等於「已交付」。第五輪未提交的大型整合因跨 F0／E／F1／NonC／UI 相依且完整使用端未通過，已從本輪發行工作樹移出，完整保存供本輪重用，不刪除已投入的工作。
 
-- 已提交核心與窄修基準：`b11f0f234f8aa88e825eaec486ac921556dd83e3`。第五輪整合至 `dev` 後，實際開工先 fetch 並記下 `origin/dev` 的確切 commit，再建立第六輪分支；不得從舊 stash 的父提交直接開工。保留已交付的預覽防護、世代投影、pending 與註冊失敗 replay 修正。
+- 已提交核心與窄修基準：`b11f0f234f8aa88e825eaec486ac921556dd83e3`。第五輪整合至 `dev` 後，2026-10-14 已 fetch 並核對本機／遠端 dev 為 `1dbbc713f39b85276bd6de25b61fd39e282edd53`，從此建立 `codex/migration-6` 規劃及後續實作分支；實作開始時重查工作區與分支；不得從舊 stash 的父提交直接開工。保留已交付的預覽防護、世代投影、pending 與註冊失敗 replay 修正。
 - 本機 Git stash：`185feab72af1cdfcad41e9b6ead77f4e761a1aa6`，名稱 `R6 preserved incomplete wizard integration before R5 closeout 2026-10-13`，包含 48 個待收尾路徑。這是本機保存點，沒有宣稱已推送 GitHub。
 - 本機完整快照：`work/r5-verification/r6-handoff-4dfd18e93d1a4ad4a2a52bf506f7f84f`，275 檔；`snapshot-index.json` SHA256：`1845cf72e1d7f47a8e6566574e7b130953c6f6b93b32e5ab9c9fa8a1a0ed71e9`。排除 docs/archive 與私人 prototype。
 - 開工先驗 stash／快照存在及雜湊，逐段移植，不直接 `stash pop` 覆蓋第五輪收尾修正。保存材料不可用時依本計畫重建，不假稱已恢復。
@@ -87,12 +87,141 @@
 
 先逐條確認 P0–P5 完整實作再整輪驗收。保留 G 已交付能力，回歸 Probe 與搬移同時操作互不污染。
 
-驗收：逐項備份、自動備份、Manager 審閱核准、Target 還原續作、獨立 Probe 五條旅程，並交叉涵蓋成功／部分失敗／取消／斷線／雙頁衝突；三用途完整 Tab／Shift+Tab／Enter／Space。320／768／1280／1920px、200% 縮放、長中文路徑無重疊或頁面溢出；正文 18px、主控制項 48px、群組間距 12px，文字對比 4.5:1、主控制資訊 3:1，主代理實看主要／錯誤截圖。WinPS 5.1／PS7 受影響核心、正式 handler、實際檔案與 fixture 邊界分開記錄。用正式產生器同步 HTML、核對本地連結及實際發行 ZIP bytes／索引／hash，計畫／archive／私人原型不入包。不假稱已企業簽章或完美無缺陷。
+驗收：逐項備份、自動備份、Manager 審閱核准、Target 還原續作、獨立 Probe 五條旅程，並交叉涵蓋成功／部分失敗／取消／斷線／雙頁衝突；三用途完整 Tab／Shift+Tab／Enter／Space。320／768／1280／1920px、200% 縮放、長中文路徑無重疊或頁面溢出；正文 18px、主控制項 48px、群組間距 12px，文字對比 4.5:1、主控制資訊 3:1，主代理實看主要／錯誤截圖。WinPS 5.1／PS7 受影響核心、正式 handler、實際檔案與 fixture 邊界分開記錄。用正式產生器同步 HTML、核對本地連結及實際發行 ZIP bytes／索引／hash，`docs/plans`／PLAN HTML／archive／私人原型不入包；保留既有頂層 `docs/MIGRATION-3-PLAN.md` Markdown 交付契約。不假稱已企業簽章或完美無缺陷。
 
 ## 4. 執行順序與收尾規則
 
-P0 → P1 → P2 → P3 → P4 → P5 → P6；可平行唯讀審查，但共享檔單一寫入者。模組 import/export、ActionMap、defaults、projection、UI、測試必須成套；無法獨立交付時合併相依提交，不能只推孤立 helper。禁止未使用的新框架、第二套權威狀態、遠端服務或過度抽象。
+採第 5 節子階段順序，不再以 P0–P6 編號當線性完成順序。本輪由主代理直接規劃與核對，尚未啟用委派；未來如委派另遵模型政策，共享檔單一寫入者。模組 import/export、ActionMap、defaults、projection、UI、測試必須成套；無法獨立交付時合併相依提交，不能只推孤立 helper。禁止未使用的新框架、第二套權威狀態、遠端服務或過度抽象。
 
 每段主代理獨立驗證後 commit／push 當輪分支並核對遠端 SHA；不自行 force、merge 或推預設分支。大包和原生平台驗證只跑安全小資料，不重跑無效規模測試。實作／驗證模型與 effort 如實記錄；目前只有 gpt-6-luna low／medium／high 可委派，未能證明不同模型的檢查不能稱獨立換模型簽核。
 
-完成判準是上述可執行驗收與當前證據閉合，不包含代理不能代驗的企業現場或真人主觀接受。新發現確實 bug 先重現、修正及回歸；範圍外需求先討論。交付結果逐項標明已完成、未完成或未驗證，禁止用第五輪舊 PASS 蓋過本輪新程式。
+完成判準是上述可執行驗收與當前證據閉合，不包含代理不能代驗的企業現場或真人主觀接受。本次發現與後續評估確認的問題均納入本輪：實作授權後先重現、修正及回歸，不自行延期；若修法改變既定產品或授權邊界，先討論並更新本 PLAN。本次不修程式。交付結果逐項標明已完成、未完成或未驗證，禁止用第五輪舊 PASS 蓋過本輪新程式。
+
+## 5. 已定案子階段、交付邊界與相依
+
+第 3 節全部契約保留；本節將它們拆成 12 個可驗收單位，不另開輪次或 PLAN。各段均包含必要模組 import/export、ActionMap、defaults、projection、UI、CLI／文字入口相容及正反例測試；未接正式使用端的 helper 不構成可提交交付。規模是相依複雜度，不是工時承諾。
+
+| 子階段 | 規模／範圍 | 輸入與前置 | 輸出／下一使用端 | 完成證據 |
+|---|---|---|---|---|
+| P0 本機傳輸 | 中；診斷與可定位修正 | 現行正式 listener、隔離工作目錄、Edge | 正式資源／session／API → 全部 UI | 原生資源 bytes、session、一次真保存與錯誤路徑；不得用替代橋接代過 |
+| P1a 準備表單 | 大；第 3 節全部 adapter、預填及敏感欄位 | P0；既有可信盤點與隔離材料 | 真 Get→Save→Submit sealed spec → P1b | 每 adapter 的 typed 欄位讀回、CAS、有效期、CER／SecretRef 反例 |
+| P2 選取相依 | 中；分組與兩模式 | P0；可信盤點、既有選擇 | 完整選取集合及來源意圖 → P1b | 200 項集合、模式切換、共享／循環／未知／必要相依精確斷言 |
+| P1b Manager 核准 | 中；整合選取、準備及目標信任 | P1a＋P2；真實測試工作身分 | UI 產生 sealed plan → P3a／P4a | 從匯入來源意圖到核准均走正式 UI；plan 集合與 P2 相符、spec 與 P1a 相符 |
+| P3a C 通道封裝 | 中；Directory／ZIP 及預檢 | P1b；核准、來源盤點、固定 WorkRoot | manifest／payload／freeze 材料 → P3b／P4a／P5a | 逐項 Directory、自動 ZIP 真封裝逐檔 hash；容量／漂移／重疊／核准失效阻擋 |
+| P3b 作業與成果 | 中；durable job、取消與重連 | P3a；作業與材料權威記錄 | 可恢復進度及 C 結果 → P4b 合併／P5 | running 無 CompletedUtc、未知總量、失敗／取消／中斷、單次送出與 worker 清理 |
+| P4a 非 C 準備 | 中；帳號、peer proof、可信材料選擇 | P1b＋P3a 的 final package／freeze | 精確帳號收據及 transfer plan → P4b 的既有 worker | 每 Principal 與精確 transfer hash 綁定；唯一／多候選／過期／錯 host／錯根拒絕 |
+| P4b 非 C 傳輸與合併 | 大；真 copy／stage／import | P4a＋P3b；受控 I/O 與正式 proof | 逐 Entry 結果、C／非 C 合併 → P5a | constructor→worker→import 正向；真 ExactFiles／父目錄；漏件／重複／竄改／取消／衝突反例 |
+| P5a 接收與比較 | 中；ZIP／Directory、TargetSnapshot、比較及 receipt | P4b；完整或明確部分成果、目標觀測 | 可信 target package、comparison、plan 子集 receipt → P5b | 三 workspace 真 UI 交接；錯機／hash／世代／過期比較／超出 plan 拒絕；同材料重入受控 |
+| P5b 還原與續作 | 大；預覽、明確還原、等待、取消與重播 | P5a；有效 receipt 與本機隔離目標 | 真檔案／ACL／metadata 及 journal → P5c | partial payload 後取消、明確新決策續作、同 attempt 不重做；既有檔不覆寫 |
+| P5c 結果與啟用隔離 | 中；結果排序、validation、acceptance 顯示 | P5b；耐久結果與追加日誌 | 有證據的結果及交接指引 → P6 | 缺時間欄位、Failed／Cancelled／deferred 不假成功；追加 validation 不抹去成果；獨立啟用 gate |
+| P6 整輪與交付 | 中；整合矩陣、Probe 回歸、文件及包 | 全部子階段完成完整性核對 | 可核驗離線工具與證據清單 | 第 7 節全部矩陣、雙引擎受影響測試、真 ZIP bytes、文件連結與排除契約 |
+
+建議單一寫入順序：P0 → P1a → P2 → P1b → P3a → P3b → P4a → P4b → P5a → P5b → P5c → P6。P1a／P2 在資料契約上可各自驗收，但 P1b 必須等兩者。P3b 可先用受控缺非 C 結果驗「部分完成」，C／非 C 全矩陣直到 P4b 才完成。P4a 的 final package 是已核驗封包材料，不代表非 C 已成功，禁止形成「非 C 成功才能建傳輸計畫」循環。
+
+各子階段均須連到當下可用的正式 consumer，允許後段尚未完成時明列缺口，不允許先掛不可執行按鈕。若移植時證實某子階段無法獨立建置／檢查／回復，先補齊必要相依或與相鄰段合併提交，記錄理由，不推孤立半成品。P6 只做整輪回歸與交付，不把前段漏做延至 P6。
+
+## 6. 原始需求與問題覆蓋表
+
+第五輪原始七項需求、F01–F09、第 1／9 節定案及下列 A–H／R 條款仍是完整性核對來源，不能只用本表摘要替代原文。已交付能力列回歸；未交付與本次发现列本輪完成，不自動移入未來待辦。
+
+| 原條款／需求 | 第六輪歸屬 | 必須保留的可核驗內容 |
+|---|---|---|
+| A01–03、F09、R12、R-A12 | P0、P6 | 正式 HTTP 資源／API、失敗識別、未知寫入查詢；原生／fixture 分級；本輪採 P0 未過則整輪不得過的較新契約 |
+| B01–04、R01、R-A01 | 各段 UI、P6 | 空工作只問用途一次、三角色已註冊重開、尺寸／焦點／對比／長路徑、一般流程不暴露技術必填 |
+| C01–05、R05–06、R-A05–06 | P3b、P5a–c | 零／舊／失敗結果入口、durable 恢復、雙頁 CAS、重送阻擋、舊版工作與未知版本處理 |
+| D01–04、R04、R-A04 | P2、P1b | 多頁完整集合、穩定 ID、共享一次計數、循環／未知不靜默漏件、200 項模式切換 |
+| E01–05、R02、R08、R-A02、R-A08 | P1b、P3a–b、P4a–b | 零目標／無核准起步提示；兩格式／兩模式、容量、漂移、路徑別名、安裝本體排除及所有成果組合 |
+| F01–05、F0／F1、R07、R-A07 | P1a–b、P5a–c | Manager 真 UI 核准、三 workspace 交接、receipt 子集、還原／啟用分開、HTML／CLI／報告一致 |
+| R03、R-A03、第 9.1 節逐欄規則 | P1a–b、P2、P3a、P4a、P5a | 明確覆寫→有效舊值→可信觀測→保守預設；唯一／歧義／過期／重開；摘要與實際送出一致 |
+| 第 9.2 節操作負擔 | 全部 UI 段、P6 | 一次下一步保存；自動模式不逐項重問；每停止點列原因、已保存、誰在哪台機器做什麼及續作入口；無變更不重問 |
+| G01–05、R09–11、R-A09–11 | P3b、P6 回歸 | 無工作一鍵 Probe、同 collector CLI 備援、collector manifest／讀回／時間大小限制、遮蔽與包讀取、只讀及並行隔離 |
+| H01–05 | P6 | 原文逐項實作核對、五旅程、證據版本、正式文件產生器、發行 bytes 與範圍檢查 |
+| 第五輪第 7／11／12 節 | 全部子段 | schema 相容、共享權威狀態、端到端材料鏈、目標綁定搬移備份；禁止新增 SourceOnly 格式 |
+| 業務 DLL／EXE、可信安裝根與 ExactFiles | P1a、P3a、P4b、P5b | 保留核准業務檔，排除 OS／安裝本體；非 C 及還原同受 FileScopeGuard 保護 |
+
+第五輪第 2 節「發現 F01–F09」與第 5 節「還原驗收 F01–F05」重複使用編號，核對時以下表區分，不把兩者混為同一清單。
+
+| 第五輪第 2 節發現 | 本輪位置／證據 |
+|---|---|
+| 發現 F01–02 按鈕／頂列排版 | 各段 UI＋P6：群組間距、長字換行、頂列高度及焦點遮擋實測 |
+| 發現 F03 技術操作表單 | P1a–b／P3／P5：正式精靈到核心、不要求一般操作者輸入 typed 參數 |
+| 發現 F04 導覽過早出現 | P3b／P5c：無結果／直接網址／舊結果／失效材料入口保護 |
+| 發現 F05 技術用語 | 各段 UI＋P6：畫面、錯誤、文件及報告一致；進階值仍可追查 |
+| 發現 F06 探測選項與原生限制 | P6／J5：全部適用 collector 都有紀錄，不適用／缺權限不捏造觀測 |
+| 發現 F07 盤點不等於備份 | P3a–b／P4b：真 payload 與逐通道結果，不把盤點 ZIP 當備份 |
+| 發現 F08 保存／理由／跨頁進度 | P2／P3b／P5：排除理由保守預填、durable 保存與跨頁作業狀態 |
+| 發現 F09 傳輸未通過 | P0：根因重現與原生證據；P6 保留未通過阻擋 |
+### 6.1 本次核對發現與處置
+
+下列行號以規劃基準或接手快照為準；實作後記錄新證據位置。
+
+| 編號／判定 | 證據與影響 | 本輪處置／驗收 |
+|---|---|---|
+| Q01 已確認規劃相依問題 | 原 P1 核准先於 P2，P3 完整成果先於 P4；資料集合及成果會被後段改變 | 第 5 節已拆 P1a／b、延後合併驗收；P1b 核對集合，P4b 核對全部成果 |
+| Q02 已確認文件契約衝突 | `src/ToolRelease.ps1:209` 收 docs 頂層 Markdown；`tests/Test-Qualification.ps1:64` 要求 MIGRATION-3-PLAN.md；原 P6 泛稱計畫不入包 | 本次已修 P6；P6 實際 ZIP 包含既有頂層 Markdown、排除 plans／PLAN HTML／archive／prototype |
+| Q03 已確認覆蓋表不足 | 第五輪第 9–11 節含停止點、技術欄位、CLI 備援、舊狀態及 Probe 資源邊界，原第六輪只有概括引用 | 第 6／7 節逐項落段；P6 查原文子句及真 consumer，不只勾摘要 |
+| Q04 已確認草稿危險讀取，尚未本輪動態重現 | 接手快照 `src/WizardFlow.ps1:442` 直接讀 `Job.CompletedUtc`；同檔其他位置有缺欄位防護，StrictMode 下存在風險 | P3b／P5c 對全部時間欄位讀取及排序同型回查；先缺欄位反例，再安全 fallback／穩定排序；不能冒稱現行發行已重現 |
+| Q05 已確認既有防護，不是待重做功能 | `src/AssistiveNonC.ps1:661` 的 Import-WsmAssistiveNonCResult 已核對逐 Entry 唯一性、ItemId、完整集合及 bytes/readback | P4b 讓新 consumer 實際走此匯入；回歸漏件、重複、未知、錯引用、被改摘要，不另造驗證真相 |
+| Q06 未證實根因的原生傳輸失敗 | `src/HtmlConsole.ps1:603` read deadline、`:671` 同步 accept/read；已記錄 CSS reset／DOM 逾時，但不足以歸因安全軟體 | P0 受控預連線、併發資源與 session 診斷，先重現再修可定位原因；不改 AdGuard、不放寬 timeout 取 PASS |
+
+## 7. 可執行驗收規格與證據邊界
+
+### 7.1 共通測試契約
+
+- 執行端：主代理負責本機測試、真瀏覽器操作、產物讀回及截圖判讀。不存在「等使用者覺得正常」的開發門檻。測試帳號／核准僅限隔離工作；真實搬移的責任證據、歧義決策與啟用授權不得代簽。
+- 實作前先查 WinPS 5.1／PS7、Edge、管理員權限、可用磁碟、ACL 讀寫及受控 UNC 路徑能力。前三項工具已確認存在，其餘是待執行環境探測，不能預先宣稱具備。必要本機能力不可用須留下具體阻礙並繼續其他可做項目，不改成使用者代驗或假 PASS。
+- 核心與正式 handler 在 WinPS 5.1／PS7 分別驗證。真 Edge 全旅程記錄 PowerShell host；至少兩引擎各跑原生載入／保存，及涉及引擎差異的編排案例。不能把兩引擎 helper PASS 宣稱兩引擎所有瀏覽器旅程皆通過。
+- 含核准／封裝／還原使用不可變快照，記錄 runtime／tests hashes、工具版本、命令、exit code、隔離輸入、預期、實際、材料 hash 與替代邊界；測前測後 bytes 相同。已有同 bytes／依賴／環境／覆蓋的證據可沿用，新增或受影響部分補驗。
+- 預期拒絕必須斷言原權威 revision、選取、核准、材料及既有檔案未被改動；不是只捕捉任意 exception。正向案例走正式註冊／handler／consumer，不能只直接呼叫 helper。
+- 每個已確認缺陷先取得可辨識該缺陷的失敗反例，修後同案例通過並回歸相依端。狀態競態用受控排程驗不變式，不靠大量重跑碰運氣。
+- 舊工作 fixture 分別測缺可選欄位、已知旧版本、未知版本、舊世代／不同 PairId；保留原材料，不推定已完成。無法用新精靈處理時給既有進階／文字流程入口。不得靜默把舊核准換成新工具 bytes。
+
+### 7.2 時限、取消與狀態的判準
+
+本輪不預設任意「等夠久就算成功」的時間。P0 在動手修正前，從現行 handler／client／worker／Probe 設定列出各項實際 deadline、poll interval 與取消邊界到本節執行紀錄；沒有界限的等待列為本輪缺陷。測試依該操作 deadline 加一個已記錄的輪詢週期判定錯誤投影；受控 clock／故障注入用於核心時序，真瀏覽器補接線。若需調整時限，記錄原值、理由與受影響案例，不能只延長到測試通過。
+
+取消要求與 Cancelled 終態分開。小檔測試在已讀回第一份 payload 後發送取消，驗證下一安全邊界不再開始新項；邊界內既有原子操作可完成，保留確切已完成集合。等待中的 I/O 須受既有 deadline 約束。到终態後 worker 退出、鎖釋放、頁面 job 輪詢停止；確認取消不刪已完成或被引用材料。關頁重開仍連到原 operationId，程序中斷須呈 Interrupted／待查，不產生新 ID 重送未知寫入。
+
+缺 CompletedUtc 的 running、Failed、Cancelled、Interrupted 分別測試；排序採可解析 CompletedUtc，否則有效 attempt UpdatedUtc，仍缺失／無效時明列時間未知並以穩定識別打破同值，不能捏造成功時間。排序 fallback 不得讓不同世代或錯 PairId 的舊結果變成目前成果。
+
+### 7.3 五條旅程與跨段案例矩陣
+
+以下為最小必測，不表示每個不適用組合都跑笛卡兒積。每列同時記錄 UI／handler／核心／實際檔案／fixture 邊界。其他各段明列的反例仍須完成。
+
+| 旅程 | 正向與真產物 | 失敗／恢復／衝突 |
+|---|---|---|
+| J1 逐項備份 | 空工作→來源盤點→一次下一步保存→Manager 核准→Directory；200 項選取與小檔封裝分層驗 | 排除及返回保留、重新盤點新項重審、容量／路徑別名／檔案增刪改阻擋、雙頁選取 CAS |
+| J2 自動備份 | 初始準備→唯一可信材料自動帶入→ZIP／512MiB 預設→C／非 C 合併；不逐項重問 | 真 partial payload 取消、輸出失敗、worker 中斷、關頁重連、連點不重封裝、未知總量無假百分比 |
+| J3 Manager 審閱核准 | 來源意圖→全部 typed 表單→真 Submit→目標身分→UI 核准→可重開交接摘要 | 無核准／過期 spec／錯 CER／歧義帳號不得代填；雙頁提交僅一份有效結果，失效回應不覆寫新上下文 |
+| J4 Target 還原續作 | 真 J1／J2 材料各匯入一次→比較→receipt→預覽→明確還原→讀回→續作／結果 | 錯機／hash／世代／超集合拒絕；既有檔冲突、等待補裝、partial 後取消、新決策續作、同 attempt replay、斷線待查、雙頁 receipt CAS |
+| J5 獨立 Probe | 無工作與三角色入口→全部適用 collector→真正 ZIP／HTML／JSON→讀取示例 | UI 無法載入時 CLI 同 collector；慢／失敗／大輸出／無空間／取消；敏感哨兵、reparse／UNC 邊界、與備份並行不改權威狀態 |
+
+補充跨段固定案例：
+
+1. C-only、NonC-only（零 C payload）、C 設定／憑證但無檔案、C 檔案＋設定／憑證＋NonC、缺 NonC、混合失敗、Manual／未知／不支援：逐項核對集合／計數／hash／readback，摘要、導覽、報告及 CLI 狀態一致；盤點成功不等於備份成功。
+2. 結果檔缺失或 hash 改變時撤下可用成功入口並顯示原因，保留耐久失敗紀錄；後續 validation 追加 journal 不使有效既有成果無故消失。
+3. Probe＋備份、重新盤點＋保存、不同工作同時操作及同工作雙頁：用可重現排程驗鎖、revision、job 歸屬、舊 collector 拒絕；秘密不落 localStorage／job／log／報告。
+4. 非 C 完整正例經正式 peer proof 與真 worker 寫入隔離小檔，再由 Manager 真 import。僅原生 UNC 觀察／I/O 接縫可替代；核准、scope、材料 hash、result import 不可 stub。企業遠端 SMB／ACL 行為仍 NotTested，實際本機 bytes／ACL 與 fixture 證據分開。
+5. 自動備份、下一步、還原完成均不得觸發服務啟用；BusinessStaged／CutoverReady／Activated／BusinessFinal 的既有 gate 不循環、不越權，fixture 驗服務呼叫邊界，真業務服務不啟用。
+
+### 7.4 畫面與文件交付
+
+所有三用途成功／等待／錯誤／結果主頁驗 320／768／1280／1920 CSS px，桌面另驗真正 200% 瀏覽器縮放，不能用 deviceScaleFactor 冒充。長中文路徑、空集合與多頁集合均覆蓋。DOM 量測頁面不水平溢出（必要表格限自身容器）、正文 18px、主控制項至少 48px、間距至少 12px；文字對比至少 4.5:1、主控制資訊至少 3:1。主代理查看主要／錯誤截圖並走 Tab／Shift+Tab／Enter／Space，焦點可見、無陷阱、不被固定區遮住；進度刷新不搶焦點。
+
+每個停止點核對「原因／已保存內容／下一位操作者與主機／可執行動作／續作位置」五欄；一般成功路徑不得要求 ID／revision／JSON／hash，可信值不得重抄。進階工具、文字備援及 API action 不因白話名稱修改而失效。
+
+P6 同步 README／IMPLEMENTATION／OPERATIONS／GENERAL-HOST-WORKFLOW／guide 等受影響文件與正式 HTML；只在能力實際交付後更新現況聲明。本次 PLAN 本來排除 HTML 產生與發行，僅跑正式產生器確認無漂移，不修改現況為已實作。最終發行逐檔比對 ZIP 索引／長度／SHA256／工具指紋／本地引用，保留頂層第三輪 PLAN Markdown，排除 plans、PLAN HTML、archive、私人原型及原始探測資料；沒有企業簽章就明列未簽章，不新增使用者簽章作為本輪結案門檻。
+
+## 8. 整體影響、回復與規劃複核
+
+- 影響面：WizardFlow、保留的 Preparation／Grouping／Backup／NonC／TargetPackage／Restore 草稿、AssistiveReviewForms／NonC、HtmlConsole、OperationRequests、模組清單、UI、相關測試與使用文件。既有 FileScopeGuard、sealed plan、target receipt、journal、StageResult 是共用契約，逐段核對真正 consumer，禁止精靈另造成功狀態。
+- 狀態／schema：沿用 migration schema 3；新增精靈可選資料須有舊資料讀取、版本驗證、原子保存及恢復案例。若確需破壞相容或擴大權限，先回本 PLAN 討論；不以預填替代信任、以選取替代核准。
+- 身分／資料流：來源 volume 決定 C／非 C 通道；目標磁碟位置不改分類。Source／Manager／Target 固定 WorkRoot；choice id 只是已核驗材料索引，執行前重驗；多材料不得只選最新檔名。C／非 C 共享目的 reservation／ownership／未選 consumer 影響仍適用。
+- 失敗／回復：保留來源、原 journal、已完成材料與精確 prior；不整份 rollback 使用者 workspace，不刪仍被跨 Pair／世代引用或活躍作業使用的資料。程式提交可 revert，但執行中 Pair 必須使用原核准工具，不能熱換 UI 或舊 JS。
+- 規模／成本：不新增框架、第二狀態引擎、遠端常駐服务、自動安裝或整機備份；只移植有正式 consumer 的草稿。200 項用于選取，不把全部故障乘上大量檔案；沿用小檔及既有 64-bit／跨索引 fixture，外部吞吐不列本輪門檻。
+- 逐段開工／結束：查實際 diff 與所有相依、完整性核對→補漏→再核對→正式驗收→commit／push→核對遠端 SHA。全部子段及原始子條款都有實作證據才開始 P6；NotPassed／NotTested 不可改寫成通過。本次僅規劃，所有產品驗收仍待執行。
+- 明確不做：SourceOnly 備份、OS／安裝軟體／System State、任意覆寫既有檔、真人主觀研究、企業實機搬移／業務啟用、代簽正式責任證據、修改安全軟體政策、merge 至 dev／main。企業既有外部驗收與操作檢查表保留，但不轉嫁成本輪使用者確認門檻。
+
+2026-10-14 主代理規劃複核：已回查第五輪 A–H、第 9–12 節及第六輪全部既有條款；Q01–Q06 均有處置位置，未刪原驗收。P1b 消費 P2 選取、P4b 消費 P3 材料並完成合併、P5 真匯入前段產物，依賴無反向成功 gate。文件封裝衝突已在規劃修正，既有 NonC 防護列回歸。未證實的傳輸根因、草稿動態重現及本機能力探測保留明確狀態，不能當作已修／已測。沒有未決產品選項阻礙後续實作規劃；實作授權仍未提供。
+
+本次文件驗證：原 PLAN 相對連結無缺檔、12 個子階段皆有輸入／輸出／使用端／驗收，diff whitespace 檢查通過。正式 HTML 產生器成功產出 11 份文件及索引，無語意差異；產生器造成的既有 HTML 換行差異不納入提交。未執行產品測試或宣稱產品驗收通過。
