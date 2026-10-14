@@ -106,12 +106,12 @@
 | P0 本機傳輸 | 中；診斷與可定位修正 | 現行正式 listener、隔離工作目錄、Edge | 正式資源／session／API → 全部 UI | 原生資源 bytes、session、一次真保存與錯誤路徑；不得用替代橋接代過 |
 | P1a 準備表單 | 大；第 3 節全部 adapter、預填及敏感欄位 | P0；既有可信盤點與隔離材料 | 真 Get→Save→Submit sealed spec → P1b | 每 adapter 的 typed 欄位讀回、CAS、有效期、CER／SecretRef 反例 |
 | P2 選取相依 | 中；分組與兩模式 | P0；可信盤點、既有選擇 | 完整選取集合及來源意圖 → P1b | 200 項集合、模式切換、共享／循環／未知／必要相依精確斷言 |
-| P1b Manager 核准 | 中；整合選取、準備及目標信任 | P1a＋P2；真實測試工作身分 | UI 產生 sealed plan → P3a／P4a | 從匯入來源意圖到核准均走正式 UI；plan 集合與 P2 相符、spec 與 P1a 相符 |
-| P3a C 通道封裝 | 中；Directory／ZIP 及預檢 | P1b；核准、來源盤點、固定 WorkRoot | manifest／payload／freeze 材料 → P3b／P4a／P5a | 逐項 Directory、自動 ZIP 真封裝逐檔 hash；容量／漂移／重疊／核准失效阻擋 |
+| P1b Manager 核准 | 中；整合選取、準備及目標信任 | P1a＋P2；空白 Target 註冊／盤點及可信交接（見第 9 節） | UI 產生 sealed plan → P3a／P4a | 從匯入來源意圖到核准均走正式 UI；plan 集合與 P2 相符、spec 與 P1a 相符 |
+| P3a C 通道封裝 | 中；Directory／ZIP 及預檢 | P1b；核准、來源盤點、固定 WorkRoot；需停寫者先完成預覽及獨立確認 | manifest／payload／freeze 材料 → P3b／P4a／P5a | 逐項 Directory、自動 ZIP 真封裝逐檔 hash；容量／漂移／重疊／核准失效阻擋 |
 | P3b 作業與成果 | 中；durable job、取消與重連 | P3a；作業與材料權威記錄 | 可恢復進度及 C 結果 → P4b 合併／P5 | running 無 CompletedUtc、未知總量、失敗／取消／中斷、單次送出與 worker 清理 |
-| P4a 非 C 準備 | 中；帳號、peer proof、可信材料選擇 | P1b＋P3a 的 final package／freeze | 精確帳號收據及 transfer plan → P4b 的既有 worker | 每 Principal 與精確 transfer hash 綁定；唯一／多候選／過期／錯 host／錯根拒絕 |
+| P4a 非 C 準備 | 中；帳號、peer proof、可信材料選擇 | P1b＋P3a 的 final package／freeze；Target 路徑／StateDirectory／peer proof 先備妥 | 精確帳號收據及 transfer plan → P4b 的既有 worker | 每 Principal 與精確 transfer hash 綁定；唯一／多候選／過期／錯 host／錯根拒絕 |
 | P4b 非 C 傳輸與合併 | 大；真 copy／stage／import | P4a＋P3b；受控 I/O 與正式 proof | 逐 Entry 結果、C／非 C 合併 → P5a | constructor→worker→import 正向；真 ExactFiles／父目錄；漏件／重複／竄改／取消／衝突反例 |
-| P5a 接收與比較 | 中；ZIP／Directory、TargetSnapshot、比較及 receipt | P4b；完整或明確部分成果、目標觀測 | 可信 target package、comparison、plan 子集 receipt → P5b | 三 workspace 真 UI 交接；錯機／hash／世代／過期比較／超出 plan 拒絕；同材料重入受控 |
+| P5a 接收與比較 | 中；ZIP／Directory、TargetSnapshot、比較及 receipt | P3b 的 C 成果或 P4b 的混合成果；目標最新觀測，不以無關 NonC 全域阻擋 | 可信 target package、comparison、plan 子集 receipt → P5b | 三 workspace 真 UI 交接；錯機／hash／世代／過期比較／超出 plan 拒絕；同材料重入受控 |
 | P5b 還原與續作 | 大；預覽、明確還原、等待、取消與重播 | P5a；有效 receipt 與本機隔離目標 | 真檔案／ACL／metadata 及 journal → P5c | partial payload 後取消、明確新決策續作、同 attempt 不重做；既有檔不覆寫 |
 | P5c 結果與啟用隔離 | 中；結果排序、validation、acceptance 顯示 | P5b；耐久結果與追加日誌 | 有證據的結果及交接指引 → P6 | 缺時間欄位、Failed／Cancelled／deferred 不假成功；追加 validation 不抹去成果；獨立啟用 gate |
 | P6 整輪與交付 | 中；整合矩陣、Probe 回歸、文件及包 | 全部子階段完成完整性核對 | 可核驗離線工具與證據清單 | 第 7 節全部矩陣、雙引擎受影響測試、真 ZIP bytes、文件連結與排除契約 |
@@ -151,6 +151,7 @@
 | 發現 F07 盤點不等於備份 | P3a–b／P4b：真 payload 與逐通道結果，不把盤點 ZIP 當備份 |
 | 發現 F08 保存／理由／跨頁進度 | P2／P3b／P5：排除理由保守預填、durable 保存與跨頁作業狀態 |
 | 發現 F09 傳輸未通過 | P0：根因重現與原生證據；P6 保留未通過阻擋 |
+
 ### 6.1 本次核對發現與處置
 
 下列行號以規劃基準或接手快照為準；實作後記錄新證據位置。
@@ -222,6 +223,43 @@ P6 同步 README／IMPLEMENTATION／OPERATIONS／GENERAL-HOST-WORKFLOW／guide �
 - 逐段開工／結束：查實際 diff 與所有相依、完整性核對→補漏→再核對→正式驗收→commit／push→核對遠端 SHA。全部子段及原始子條款都有實作證據才開始 P6；NotPassed／NotTested 不可改寫成通過。本次僅規劃，所有產品驗收仍待執行。
 - 明確不做：SourceOnly 備份、OS／安裝軟體／System State、任意覆寫既有檔、真人主觀研究、企業實機搬移／業務啟用、代簽正式責任證據、修改安全軟體政策、merge 至 dev／main。企業既有外部驗收與操作檢查表保留，但不轉嫁成本輪使用者確認門檻。
 
-2026-10-14 主代理規劃複核：已回查第五輪 A–H、第 9–12 節及第六輪全部既有條款；Q01–Q06 均有處置位置，未刪原驗收。P1b 消費 P2 選取、P4b 消費 P3 材料並完成合併、P5 真匯入前段產物，依賴無反向成功 gate。文件封裝衝突已在規劃修正，既有 NonC 防護列回歸。未證實的傳輸根因、草稿動態重現及本機能力探測保留明確狀態，不能當作已修／已測。沒有未決產品選項阻礙後续實作規劃；實作授權仍未提供。
+2026-10-14 主代理規劃複核：已回查第五輪 A–H、第 9–12 節及第六輪全部既有條款；Q01–Q06 均有處置位置，未刪原驗收。P1b 消費 P2 選取、P4b 消費 P3 材料並完成合併、P5 真匯入前段產物，依賴無反向成功 gate。文件封裝衝突已在規劃修正，既有 NonC 防護列回歸。未證實的傳輸根因、草稿動態重現及本機能力探測保留明確狀態，不能當作已修／已測。此為當次複核結論；後續多角度複查另見第 9 節。實作授權仍未提供。
 
 本次文件驗證：原 PLAN 相對連結無缺檔、12 個子階段皆有輸入／輸出／使用端／驗收，diff whitespace 檢查通過。正式 HTML 產生器成功產出 11 份文件及索引，無語意差異；產生器造成的既有 HTML 換行差異不納入提交。未執行產品測試或宣稱產品驗收通過。
+
+## 9. 第二次多角度複查：從使用旅程到全專案（2026-10-14）
+
+本節採尖銳但合理的使用者質疑做情境審查，並非 Reddit 訪談或外部評論研究。核對順序為首次／大量項目／中斷／新版軟體使用者 → 交接與維運管理者 → 正式程式契約 → 全專案材料與狀態生命週期。以下是已確認的規劃不足或既有契約需補的回歸，不能誤稱全部是已重現程式 bug。延續本輪既定範圍補強，不新增服務或獨立備份產品，仍不實作。
+
+### 9.1 使用者逐步走查與補強驗收
+
+| 編號／使用者的合理質疑 | 核對結果與風險 | 本輪必要補強及客觀驗收 |
+|---|---|---|
+| U01「你說先備份，卻要新主機資料；新主機畫面又要先有備份？」 | P1b 需要目標身分，但 P5a 才明列 TargetSnapshot，空工作材料生產者未完整落段。`MigrationContracts.ps1:281` 核准讀 TargetIdentity；`WizardFlow.ps1:366` 亦要求可信目標材料 | P1b 補空白 Target→註冊身分／固定 StateDirectory→本機盤點→匯出→Manager 驗證／TargetSnapshot→核准→Source 真匯入核准計畫。這段必須能在零備份材料下完成。Target 盤點不得走 Manager ImportInventory 當成來源；P5a 再做還原前新觀測／比較，不用舊盤點永久放行。J3 從三個空 workspace 開始，不預植核准或 target identity 跳過 UI |
+| U02「我按備份，為什麼舊網站停了？取消會自己開回來嗎？」 | 草稿 `WizardBackup.ps1:68–95` 對 mutable／NonC 要求 freeze 並呼叫 Export-WsmFreezeRecord；`SourceRecovery.ps1:83,138` 及 `Cutover.ps1:173` 可停用來源 producer。原規劃只概括停寫證據，未明列使用者影響 | P3a 在任何停寫前顯示精確主機、網站／服務／排程、共享影響、保存原狀態位置、缺證據及取消後處置；明確停寫確認與「開始備份」不混用。沿用既有 SourceFreezeReady／Epoch／owner，不假填。P3b 驗停寫前取消無服務變更、停寫途中失敗保留 attempt、封装失敗／取消不自動恢復來源；提供既有 SourceResume／修復途徑及必要單一寫入者證據。用受控服務呼叫 fixture／隔離狀態驗證，不停真業務 |
+| U03「非 C 備份已完成，是有一份備份檔，還是已經寫到新機器？」 | 草稿 ChannelSummary 明列 RequiresTargetTransferAndManagerResultImport；`AssistiveNonC.ps1:472` 起核驗目標 StateDirectory 並進真傳輸。非 C 不在主封包，不能以一個『備份成功』掩蓋資料所在位置 | P4a 先導引 Target 準備 StateDirectory、精確目的地及 peer proof，不等待 P5a；傳輸前顯示來源／目標與實際寫入範圍，沿用核心核准及確認，不由自動備份勾選代授權。P4b／P5c 分列 C 封包位置、NonC 目標 staged 資料、結果收據及未啟用狀態；不宣稱有獨立可攜 NonC 離線備份。J2／J4 驗取走 C 包不能假稱含 NonC、已 stage 項後續不重拷／不重新取得 ownership |
+| U04「你不讓我填 hash，卻把自己算的 hash 當可信來源？」 | `Approve-WsmMigrationPlan`／TargetSnapshot 都接收獨立 ExpectedHash；第五輪第 9.1 節要求工具推導，但亦明訂外部信任不可代造。第六輪缺少首次材料信任的正反例 | P1b／P4a／P5a 分開『從檔案算出內容 hash』與『已有可信來源的預期 hash／身分』。一般人以既有可信交接材料或一次白話材料核對完成，技術欄位由工具帶入；只有 self-hash、同包自述或檔名不得升為 Trusted。可信來源不足明列待取得材料並保留進度，不要求修改 JSON。驗合法材料一路成功、同時替換檔案與同包 hash 仍不能自我授權、預覽後材料被替換時拒絕且不動權威狀態 |
+| U05「我只搬 C 檔，為什麼還要設 SMB？某項等補裝，其他項也不能動？」 | 第 5 節原 P5a 僅列 P4b 前置，容易把開發順序誤寫成使用者全域 gate；既有契約要求獨立檔案不被無關 Pending 阻擋 | P5a 前置依實際有效集合分流：C-only 從 P3b 接收，無需 NonC／SMB 準備；混合以逐項相依判斷，缺 NonC 不阻擋真正獨立的 C 項，有共享必要相依者仍阻擋。J4 同時驗 C-only 正向、混合獨立項可還原、相依項 deferred，整體仍部分完成，不因局部成功顯示全部可啟用 |
+| U06「新機器裝新版了，我能改選嗎？是不是改一個選項就全重來？」 | `AssistiveComparison.ps1:280–303` 已有 ChosenVersion、來源 facts 保留及 comparison 失效；第六輪只概括準備／比較，缺具體版本旅程 | P1a／P5a 加來源／選用／目標觀測版本分列、封包後改選新版、還原前重查、受影響 comparison／receipt／產品資格失效與續作案例。來源 sealed facts／payload 不因版本意圖改寫，無關項目保留；同版或版本已觀測不表示相容／授權合格。真軟體安裝仍外部處理，但 UI 版本選取→核心→新比較／有效 receipt 的隔離旅程由代理驗 |
+| U07「USB 少一卷／拷到一半，畫面會不會說已收到？空間夠不夠算哪顆磁碟？」 | `GENERAL-HOST-WORKFLOW.md:29` 要求全部成員及各卷 package／副本／scratch／incoming／回復容量；原 P3 只有泛稱容量，P5 缺明確分卷破損案例 | P3a／P5a 驗逐項 ZIP、自動 Directory 的交叉格式核心接線（原完整 J1 Directory／J2 ZIP 仍保留）；多卷資料以安全小 fixture 驗缺卷、重複、跨世代混卷、truncated／hash 錯、匯入中斷及完整重入。正式 UI 的 128／512／1024MiB 與非整數／越界另驗，不靠巨大資料重跑所有故障。容量按實際各磁碟峰值與保留材料估算、不承諾壓縮率；中途 ENOSPC 保留可辨識 partial，不列已接收成功 |
+| U08「我按上一頁、關頁、重登，哪些內容真的存了？失效後叫我重做哪一步？」 | 現行計畫要求保存與 CAS，但未將草稿、已提交 spec、已核准 plan 以及失效連鎖逐一配對 | P1a／P2／P5a 顯示已保存與尚未提交差異；未保存修改離開前提醒，若已保存不重问。session 過期先保留非敏感草稿、重新載入可信上下文，寫入結果不明按原 ID 查，不重送。驗改來源盤點／選取／spec／目標觀測／版本後，只清楚標記被核心判定失效的後續材料，仍可查看舊材料但不能執行；錯誤定位對應欄位、保留其他有效填寫與焦點，不以清空整張表處理 |
+
+### 9.2 管理者與程式契約的補強
+
+| 編號 | 必要契約及驗收 | 階段 |
+|---|---|---|
+| M01 中途交班與可追查性 | 關頁／重啟後僅靠受控工作資料，另一位測試操作者可看到來源／目標、用途、目前材料、實際執行者與責任證據的差別、已做／未做／下一台主機及動作。摘要顯示易懂資訊並提供精確材料識別，不能只剩對原機有效的絕對路徑；交付副本移到另一個隔離接收目錄後由正式匯入驗 hash／身分，工作根目錄本身不偷搬。證據顯示以本機時間供閱讀、保留 UTC／時區，不以各機時鐘『最新』代替世代及材料綁定 | P1b、P4b、P5a／c |
+| M02 當機與舊鎖 | 區分瀏覽器斷線、HTTP host 結束、worker 當機、已寫檔但未寫結果。確定性故障點驗 operation／attempt／journal 對應、活躍 owner 不被第二程序接管、同 WorkRoot 第二實例不重做；修復重查實際檔案後才判完成。不能看到逾時就刪鎖或把 job 全改 Failed。僅清理本測試程序與受控檔案 | P0、P3b、P4b、P5b |
+| M03 長操作與 session 安全 | 若 P0 為解同步 listener 問題而改排程／連線处理，回歸 loopback host／origin／session／角色／typed allowlist、body 大小／deadline、CAS 與 job 存取隔離。執行備份時另一頁仍能查狀態、取消及啟動只讀 Probe；不以 UI 用途切換取得權限。測兩工作／兩 session，不讓一個工作取消或開啟另一個工作的材料 | P0、P3b、P6 |
+| M04 交付不是原始碼樹通過而已 | P6 從實際產生的發行 ZIP 解到含空白／中文的隔離路徑，使用正式啟動器啟動原生頁、載入所需新模組／UI、完成一次無破壞保存及開啟離線說明；核對不依賴 repo 的 work／tests／本機草稿路徑。環境不適用時白話阻擋，不教修改企業政策。沿用已驗核心結果，不為發行煙霧測試重跑全部故障 | P6 |
+
+### 9.3 從全專案重新走一遍的結果
+
+完整資料鏈應為：Source／Target 各自註冊與盤點 → 離線可信材料交 Manager → 選取／準備／目標身分及核准 → Source 匯入核准 → 有需要才預覽與明確停寫 → C 封裝及核驗 → 有需要才 Target 路徑／peer 準備與 NonC 真傳輸 → Manager 匯入逐項結果 → Target 接收／重新觀測／比較／決策 → 還原或按相依等待 → 結果及另行啟用 gate。Probe 是只讀旁路。開發階段先後不等同所有使用者必須經歷每個階段。
+
+- 上游目標準備補入 P1b／P4a，沒有把需要的身分／路徑留到 P5a 才產生；P5a 管的是接收後重新比較與還原決策。C-only／NonC-only／混合三路各驗，不把零 C 誤判 NoOp，不把 absent NonC 當全域門檻。
+- 既有服務停寫與 NonC 目標寫入必須在操作名稱、影響預覽、確認、結果與恢復指引全鏈一致。它們不是單純讀取或離線壓縮；自動模式不擴大授權。若實作發現核心必需新的授權契約，先提出討論，不從本節推導無限授權。
+- 所有狀態以 catalog／sealed plan／receipt／attempt／journal 的各自權威為準；畫面與交接摘要不另建可改寫成功旗標。計畫改選與 materials 失效、session 換新與 operation id 不變、source freeze 與 source resume 分別核對，避免把可恢復解讀為可重做或可自動開回來源。
+- source facts／selected version／target observation 分存；只失效有依賴的證據。不用整輪重新盤點／重新封裝逃避局部狀態契約，也不能保留應失效的 receipt 以省步驟。
+- 本節 U01–U08／M01–M04 均為本輪必做完整性條款，落在既有 12 子段，不新增輪次或框架。P6 必須逐項對照本節；U01–U08 的正式使用流程以及 M01–M03 的失敗處理在所屬段完成，不能推到 P6 才補程式。
+- 審查結論：上一版尚有材料生產者、停寫影響、NonC 語意、信任入口、分流、版本與發行使用端等規劃缺口，本節已補明。這是靜態程式核對及旅程推演，不是產品已正確運作的證據。原始 HTTP NotPassed、草稿缺欄位動態重現、本機權限／UNC 能力仍待實作階段驗證，未解除既有生產阻擋。
