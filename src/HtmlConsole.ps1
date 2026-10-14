@@ -670,7 +670,11 @@ function Start-WsmHtmlConsole {
             }
             if(-not $listener.Pending()){Start-Sleep -Milliseconds 50;continue}
             $client=$listener.AcceptTcpClient()
-            $requestSafeError=$null
+            # An accepted TCP preconnect can close or remain idle before it
+            # sends any HTTP request line. Do not let a previous request's
+            # route leak into its error handling (or trigger StrictMode when
+            # no route has been parsed yet).
+            $requestSafeError=$null;$route='/unparsed'
             try{
                 $request=Read-WsmLocalHttpRequest $client;$status=200;$type='application/json; charset=utf-8';$response=$null;$bytes=$null
                 if(-not $request.Headers.ContainsKey('host') -or $request.Headers.host -cne ('127.0.0.1:'+$actualPort)){throw 'RejectedHost'}

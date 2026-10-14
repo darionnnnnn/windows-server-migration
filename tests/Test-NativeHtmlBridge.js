@@ -57,7 +57,8 @@ async function verifyInjectedViewFailure(browser, origin, fault, expectedText, t
     await startServer();
     browser = await chromium.launch({ headless: true, executablePath: process.env.WSM_EDGE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' });
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    page.on('request', request => requests.push({ method: request.method(), url: request.url() }));
+    page.on('request', request => requests.push({ method: request.method(), url: request.url(), at: Date.now() }));
+    page.on('requestfailed', request => pageErrors.push(`requestfailed ${request.url()} ${request.failure() && request.failure().errorText}`));
     const captureResponse = response => {
       const url = new URL(response.url());
       if (url.origin === origin && (url.pathname.startsWith('/ui/') || url.pathname === '/api/session' || url.pathname === '/api/view')) {
@@ -66,7 +67,12 @@ async function verifyInjectedViewFailure(browser, origin, fault, expectedText, t
     };
     page.on('response', captureResponse);
     page.on('pageerror', error => pageErrors.push(error.message));
-    await page.goto(origin + '/ui/index.html#inventory', { waitUntil: 'domcontentloaded' });
+    try {
+      await page.goto(origin + '/ui/index.html#inventory', { waitUntil: 'domcontentloaded' });
+    } catch (error) {
+      const observed = requests.map(request => `${request.method} ${new URL(request.url).pathname} +${request.at - requests[0].at}ms`).join('\n');
+      throw new Error(`${error.message}\nRequests:\n${observed}\nFailures:\n${pageErrors.join('\n')}`);
+    }
     await page.waitForFunction(() => window.WsmConsole && window.WsmConsole.state.inventory.length === 125, null, { timeout: 30000 });
 
     const requiredRoutes = ['/ui/index.html', '/ui/console.js', '/ui/console.css', '/api/session'];

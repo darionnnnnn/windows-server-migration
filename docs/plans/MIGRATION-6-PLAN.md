@@ -1,6 +1,6 @@
 # 第 6 輪規劃：完成備份、管理交接與還原精靈
 
-> 2026-10-14（Asia/Taipei）。狀態：詳細規劃完成，待實作授權。使用者已同意本輪拆分、相依及客觀驗收調整；本次僅更新原 PLAN，不實作。本文件依使用者明確指示，承接第五輪未完成項目；第五輪只收尾已完成且可獨立驗證的交付範圍。原始需求與歷史證據保留於 [第五輪計畫](MIGRATION-5-PLAN.md)，現行能力以 [實作狀態](../IMPLEMENTATION-0.1.md) 為準。
+> 2026-10-14（Asia/Taipei）。狀態：實作中。2026-10-14 使用者授權完整實作並補齊全部項目，逐段驗證後 commit／push 本輪分支。規劃階段的「不實作」紀錄屬當時狀態；本次依最新授權執行。本文件依使用者明確指示，承接第五輪未完成項目；第五輪只收尾已完成且可獨立驗證的交付範圍。原始需求與歷史證據保留於 [第五輪計畫](MIGRATION-5-PLAN.md)，現行能力以 [實作狀態](../IMPLEMENTATION-0.1.md) 為準。
 
 ## 1. 不變的定案
 
@@ -263,3 +263,13 @@ P6 同步 README／IMPLEMENTATION／OPERATIONS／GENERAL-HOST-WORKFLOW／guide �
 - source facts／selected version／target observation 分存；只失效有依賴的證據。不用整輪重新盤點／重新封裝逃避局部狀態契約，也不能保留應失效的 receipt 以省步驟。
 - 本節 U01–U08／M01–M04 均為本輪必做完整性條款，落在既有 12 子段，不新增輪次或框架。P6 必須逐項對照本節；U01–U08 的正式使用流程以及 M01–M03 的失敗處理在所屬段完成，不能推到 P6 才補程式。
 - 審查結論：上一版尚有材料生產者、停寫影響、NonC 語意、信任入口、分流、版本與發行使用端等規劃缺口，本節已補明。這是靜態程式核對及旅程推演，不是產品已正確運作的證據。原始 HTTP NotPassed、草稿缺欄位動態重現、本機權限／UNC 能力仍待實作階段驗證，未解除既有生產阻擋。
+
+## 10. 第六輪實作紀錄
+
+2026-10-14 開工：沿用 codex/migration-6，規劃完成起點 0a2f74f60a1e0778f95401137ab3b2583d303d94，runtime 基準 1dbbc713f39b85276bd6de25b61fd39e282edd53。私人未追蹤檔保留，不讀／不改／不 stage。主代理套用 delegated-implementation 與 subagent-verification-policy；P0 原生傳輸委派 gpt-6-luna/high，接手材料唯讀盤點 gpt-6-luna/high，主代理核對實際 diff／正式 consumer 與驗收。此為啟動紀錄，不代表任何子段已完成。
+
+### P0 可控修正段：預連線錯誤路徑（整體 P0 仍 NotPassed）
+
+實作者 gpt-6-luna/high；主代理核对 src/HtmlConsole.ps1 接收連線→ReadByte 逾時→catch→finally，確認每連線 route 必須先初始化，無 HTTP route 時以 /unparsed 記錄，避免 StrictMode 結束 listener／沿用上一筆 route。主代理從規劃 HEAD 建立排除 archive 的不可變 p0-verified 隔離副本，僅加入此修正及四份傳輸測試檔；另 p0-before 使用原 handler 同反例確實失敗。Test-HtmlPreconnectRecovery.js 在 WinPS5.1／PS7 均 PASS（2146／2152ms，原 2000ms read timeout，後續 session 200）。這是可獨立回復的窄修，不稱全部 P0 完成。
+
+原生 Edge 完整 HTML／asset/session/save 仍 NotPassed：服務端回應寫完，但 Edge 觀察到 chunked／CSP local.adguard.org 改寫、ERR_CONNECTION_RESET；四資源 burst 亦有 JS body 等待超過既有 15s 的未明原因失敗。未修改安全軟體、未延長產品 timeout、未以 mock 代過。傳輸診斷及實際 deadlines 記在 work/r6-p0/notes.md；P0 未過仍阻擋 P6 整輪通過，其他獨立可控實作繼續，正式原生旅程驗收待補。
