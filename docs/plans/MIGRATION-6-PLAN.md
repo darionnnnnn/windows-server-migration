@@ -273,3 +273,11 @@ P6 同步 README／IMPLEMENTATION／OPERATIONS／GENERAL-HOST-WORKFLOW／guide �
 實作者 gpt-6-luna/high；主代理核对 src/HtmlConsole.ps1 接收連線→ReadByte 逾時→catch→finally，確認每連線 route 必須先初始化，無 HTTP route 時以 /unparsed 記錄，避免 StrictMode 結束 listener／沿用上一筆 route。主代理從規劃 HEAD 建立排除 archive 的不可變 p0-verified 隔離副本，僅加入此修正及四份傳輸測試檔；另 p0-before 使用原 handler 同反例確實失敗。Test-HtmlPreconnectRecovery.js 在 WinPS5.1／PS7 均 PASS（2146／2152ms，原 2000ms read timeout，後續 session 200）。這是可獨立回復的窄修，不稱全部 P0 完成。
 
 原生 Edge 完整 HTML／asset/session/save 仍 NotPassed：服務端回應寫完，但 Edge 觀察到 chunked／CSP local.adguard.org 改寫、ERR_CONNECTION_RESET；四資源 burst 亦有 JS body 等待超過既有 15s 的未明原因失敗。未修改安全軟體、未延長產品 timeout、未以 mock 代過。傳輸診斷及實際 deadlines 記在 work/r6-p0/notes.md；P0 未過仍阻擋 P6 整輪通過，其他獨立可控實作繼續，正式原生旅程驗收待補。
+
+### P1a 準備表單：可控實作段已驗證，原生傳輸仍待 P0
+
+完成正式模組／CLI action／HTML action／Manager 角色與配對 gate／defaults／安全結果投影／瀏覽器表單到既有 Submit sealed spec。涵蓋 FileScope、ManualWorkflow、ScheduledTask、IISSite／Pool／Section／Location、Service、SmbShare、LocalUser／Group、Certificate；WindowsFeature 保留明確人工準備拒絕。來源、XML、安全值及 transfer channel 不可由表單偽造；SecretRef 只保存參照，CER 必須為可讀的公鑰材料。草稿只在記憶體，按角色／配對／項目／SpecHash／SourceSnapshotHash 綁定；CAS 衝突先重新 Get，不重送保存、不把舊 hash 掛到新答案。
+
+主代理核對 consumer 與 15 份交付檔，建立排除 archive／私人檔／後續未完成 helper 的不可變 work/r6/p1a-final 副本，逐檔 SHA256 一致（p1a-final-index.json）。WinPS5.1／PS7 各通過 Preparation 29 checks、12 adapters 88 checks、AssistiveReviewForms 44 checks、HtmlConsole 64 checks、WizardFlow 45 checks。真 Edge fixture 通過草稿離開提醒、跨上下文隔離、source／spec 改變、hash-only refresh、SecretRef、欄位定位及保存後重新讀取。主代理發現並修正排程空 Arguments 被誤判必填，Command 仍須非空；修正 WinPS 中文來源 UTF8 BOM 相容。
+
+WinPS5.1／PS7 同一副本的實際 Edge 表單 → 正式 handler 回應擷取橋接 → 既有核心 sealed spec 檔案／SHA256 讀回均通過。橋接只擷取正式 writer 的 bytes，仍將每一請求送正式 controller 一次，保留角色、session、CAS、worker、catalog 和 Submit；並驗舊 review 拒絕及同 operation 重入不重寫。測試 fixture 使用隔離來源盤點與責任證據，不代表真實搬移核准。此為 P1a 可控使用端實作證據，**不是原生 HTTP／origin enforcement／完整三角色旅程 PASS**；P0 NotPassed 與 P1b 核准旅程仍待補，整輪未完成。日誌在 work/r6/p1a-final-*.log。

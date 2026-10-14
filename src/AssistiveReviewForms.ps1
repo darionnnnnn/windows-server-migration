@@ -11,7 +11,9 @@ function Get-WsmAssistiveReviewItem([string]$Workspace,[string]$PairId,[string]$
 }
 
 function ConvertTo-WsmAssistiveSafeValue($Value,[string]$Name='') {
-    if($Name -match '(?i)(secret|password|credential|token|privatekey|sddl|xml|arguments|script|command)'){return '[review required; value withheld]'}
+    $sensitiveBoundary='(?i)(?:^|[^A-Za-z0-9])(?:secret|password|credential|token|privatekey|sddl|xml|arguments|script|command)(?:$|[^A-Za-z0-9])'
+    $sensitiveCamel='(?:^|[a-z0-9])(?:Secret|Password|Credential|Token|PrivateKey|Sddl|Xml|Arguments|Script|Command)(?:$|[^A-Za-z0-9]|[A-Z])'
+    if($Name -imatch $sensitiveBoundary -or $Name -cmatch $sensitiveCamel){return '[review required; value withheld]'}
     if($Value -is [string] -and $Value -match '(?i)(password|passwd|secret|token|credential|api[_-]?key)\s*[:=]\s*[^\s;]+'){return '[sensitive text withheld]'}
     if($null -eq $Value -or $Value -is [string] -or $Value -is [bool] -or $Value -is [int] -or $Value -is [long] -or $Value -is [double]){return $Value}
     if($Value -is [System.Collections.IDictionary]){$out=[ordered]@{};foreach($key in $Value.Keys){$out[[string]$key]=ConvertTo-WsmAssistiveSafeValue $Value[$key] ([string]$key)};return [pscustomobject]$out}
@@ -25,9 +27,42 @@ function Get-WsmAssistiveSafeIisChanges($Changes) {
     foreach($change in @($Changes)){
         $keys=@(foreach($key in @($change.KeyAttributes)){[pscustomobject][ordered]@{Name=[string]$key.Name;Value='[withheld]'}})
         $pointer=[string]$change.FieldPointer -replace "(\[@[^=]+=')([^']*)('\])",'$1[withheld]$3'
-        $rows.Add([pscustomobject][ordered]@{FieldPointer=$pointer;Operation=[string]$change.Operation;ElementName=[string]$change.ElementName;KeyAttributes=$keys;AttributeName=[string]$change.AttributeName;BeforeValue='[withheld]';AfterValue='[withheld]';ValuesWithheld=$true})
+        # Keep protected identity and source value read-only. A target value is
+        # a human decision, so expose an empty editable placeholder.
+        $rows.Add([pscustomobject][ordered]@{FieldPointer=$pointer;Operation=[string]$change.Operation;ElementName=[string]$change.ElementName;KeyAttributes=$keys;AttributeName=[string]$change.AttributeName;BeforeValue='[withheld]';AfterValue='';ValuesWithheld=$true})
     }
     $rows.ToArray()
+}
+
+function Get-WsmAssistiveSafeDesired($Spec) {
+    if(-not $Spec.PSObject.Properties['Desired'] -or $null -eq $Spec.Desired){return $null}
+    $source=$Spec.Desired;$out=[ordered]@{}
+    $allowedByAdapter=@{
+        Service=@('Description')
+        SmbShare=@('Path','Description','EncryptData','DrainPolicy','DrainEvidence','Access')
+        LocalUser=@('FullName','Description')
+        LocalGroup=@('Description','Members')
+        Certificate=@('ArtifactPath','ArtifactHash')
+    }
+    if($allowedByAdapter.ContainsKey([string]$Spec.Adapter)){
+        foreach($name in $allowedByAdapter[[string]$Spec.Adapter]){
+            if(-not $source.PSObject.Properties[$name]){continue}
+            if($name -ceq 'Access'){
+                $out.Access=@(foreach($ace in @($source.Access)){
+                    if(-not $ace.PSObject.Properties['AccountName'] -or -not $ace.PSObject.Properties['AccessControlType'] -or -not $ace.PSObject.Properties['AccessRight']){continue}
+                    [pscustomobject][ordered]@{AccountName=[string](ConvertTo-WsmAssistiveSafeValue ([string]$ace.AccountName) 'AccountName');AccessControlType=[string]$ace.AccessControlType;AccessRight=[string]$ace.AccessRight}
+                });continue
+            }
+            if($name -ceq 'Members'){$out.Members=@(foreach($member in @($source.Members)){[string](ConvertTo-WsmAssistiveSafeValue ([string]$member) 'Members')});continue}
+            $out[$name]=ConvertTo-WsmAssistiveSafeValue $source.$name $name
+        }
+    }
+    if($Spec.Adapter -ceq 'Certificate' -and $source.PSObject.Properties['HasPrivateKey']){$out.HasPrivateKey=[bool]$source.HasPrivateKey}
+    if($Spec.Adapter -ceq 'SmbShare' -and $source.PSObject.Properties['Name']){$out.Name=[string](ConvertTo-WsmAssistiveSafeValue ([string]$source.Name) 'Name')}
+    if($Spec.Adapter -ceq 'LocalUser' -and $source.PSObject.Properties['Name']){$out.Name=[string](ConvertTo-WsmAssistiveSafeValue ([string]$source.Name) 'Name')}
+    if($Spec.Adapter -ceq 'LocalGroup' -and $source.PSObject.Properties['Name']){$out.Name=[string](ConvertTo-WsmAssistiveSafeValue ([string]$source.Name) 'Name')}
+    if($Spec.Adapter -ceq 'Service' -and $source.PSObject.Properties['Name']){$out.Name=[string](ConvertTo-WsmAssistiveSafeValue ([string]$source.Name) 'Name')}
+    [pscustomobject]$out
 }
 
 function Get-WsmAssistiveSharedReviewReasons($Spec) {
@@ -46,8 +81,12 @@ function Get-WsmAssistiveSpecReview {
     $context=Get-WsmAssistiveReviewItem $Workspace $PairId $ItemId;$spec=$context.Spec;$item=$context.Item;$catalog=$context.Catalog
     $typed=[ordered]@{}
     foreach($name in @('SourcePath','TargetPath','TransferChannel','ContentSelection','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy','ConfigFiles','ConfigOverrides','DesiredFinalState','BusinessChecks','Product','Procedure','Artifacts','CatchUpPolicy','SharedResourceImpacts')){if($spec.PSObject.Properties[$name]){$typed[$name]=ConvertTo-WsmAssistiveSafeValue $spec.$name $name}}
+    if($spec.PSObject.Properties['ReviewedActivation']){foreach($name in @('Owner','Reason')){if($spec.ReviewedActivation.PSObject.Properties[$name]){$typed['Activation'+$name]=[string](ConvertTo-WsmAssistiveSafeValue ([string]$spec.ReviewedActivation.$name) ('Activation'+$name))}}}
     if($spec.Adapter -ceq 'FileScope'){$typed.AclControlPolicy='Exact';if($spec.PSObject.Properties['AclControlPolicy']){$typed.AclControlPolicy=[string]$spec.AclControlPolicy}}
-    if($spec.PSObject.Properties['Desired']){$desired=[ordered]@{};foreach($property in $spec.Desired.PSObject.Properties){if($property.Name -ceq 'Changes'){$desired.Changes=@(Get-WsmAssistiveSafeIisChanges $property.Value)}elseif($property.Name -notmatch '(?i)(xml|secret|password|credential|token|privatekey|sddl|arguments|script|command)'){$desired[$property.Name]=ConvertTo-WsmAssistiveSafeValue $property.Value $property.Name}};$typed.Desired=[pscustomobject]$desired}
+    if($spec.PSObject.Properties['Desired']){$typed.Desired=Get-WsmAssistiveSafeDesired $spec}
+    if($spec.PSObject.Properties['Desired'] -and $spec.Desired.PSObject.Properties['Changes']){$typed.IisConfigChanges=@(Get-WsmAssistiveSafeIisChanges $spec.Desired.Changes)}
+    if($spec.PSObject.Properties['SecretRef']){$typed.SecretRef=[string]$spec.SecretRef}
+    if($spec.PSObject.Properties['AccountMode']){$typed.AccountMode=[string]$spec.AccountMode}
     $missing=New-Object 'System.Collections.Generic.List[string]'
     foreach($field in @('Owner','Evidence')){if([string]::IsNullOrWhiteSpace([string]$spec.$field)){$missing.Add($field)}}
     $opaque=@();if($spec.PSObject.Properties['WorkloadMappingReview']){$opaque=@($spec.WorkloadMappingReview | Where-Object {$_.ReviewRequired -or -not $_.Applied} | ForEach-Object {[pscustomobject]@{FieldPointer=[string]$_.FieldPointer;ReferenceKind=[string]$_.ReferenceKind;Status=[string]$_.Status;ReviewRequired=$true;Reason=[string]$_.Reason}})}
@@ -120,7 +159,14 @@ function Set-WsmAssistiveIisConfigReview($Spec,$Fields) {
     if(-not $pointer -or $pointer -notmatch '^/[A-Za-z_][A-Za-z0-9_.:-]*(?:/[A-Za-z_][A-Za-z0-9_.:-]*(?:\[@[A-Za-z_][A-Za-z0-9_.:-]*=''[^'']{1,2048}''\])?)*(?:/@(?:enabled|autoStart|serverAutoStart|startMode))$'){throw 'IIS section/location review requires one supported activation policy field pointer.'}
     $fieldName='IisConfigChanges';if($Fields.Contains('DesiredChanges')){$fieldName='DesiredChanges'}elseif($Fields.Contains('IisConfigChanges')){$fieldName='IisConfigChanges'}
     $source=Read-WsmXml ([string]$Spec.SourceXml);$sourceAuto=Get-WsmAssistiveIisSourceActivationValue $source $pointer
-    if($Fields.Contains($fieldName)){$changes=@($Fields[$fieldName])}elseif($Spec.Desired.PSObject.Properties['Changes']){$changes=@($Spec.Desired.Changes)}else{$changes=@()}
+    if($Fields.Contains($fieldName)){
+        $submittedChanges=@($Fields[$fieldName])
+        if(@($submittedChanges | Where-Object {$_.PSObject.Properties['ValuesWithheld'] -and $_.ValuesWithheld}).Count){
+            $changes=@($Spec.Desired.Changes)
+            if($submittedChanges.Count -ne $changes.Count){throw 'Protected IIS change rows do not match the current saved specification.'}
+            for($i=0;$i -lt $changes.Count;$i++){if(-not $submittedChanges[$i].PSObject.Properties['AfterValue'] -or $submittedChanges[$i].AfterValue -isnot [string]){throw 'IIS target values must be explicit text decisions.'};$value=[string]$submittedChanges[$i].AfterValue;if(-not $value -and [string]$changes[$i].FieldPointer -ceq $pointer){$attribute=([string]$pointer -split '/@')[-1];$value='false';if($attribute -ceq 'startMode'){$value='OnDemand'}};if(-not $value){throw ('Provide the target value for '+[string]$changes[$i].FieldPointer+'.')};$changes[$i].AfterValue=$value}
+        }else{$changes=$submittedChanges}
+    }elseif($Spec.Desired.PSObject.Properties['Changes']){$changes=@($Spec.Desired.Changes)}else{$changes=@()}
     foreach($change in $changes){
         $required=@('FieldPointer','Operation','ElementName','KeyAttributes','AttributeName','BeforeValue','AfterValue')
         foreach($name in $required){if(-not $change.PSObject.Properties[$name]){throw ('Typed IIS config change is missing '+$name+'.')}}
@@ -150,6 +196,31 @@ function Set-WsmAssistiveIisConfigReview($Spec,$Fields) {
     $Spec.ReviewedActivation=[pscustomobject][ordered]@{FinalState=$final;Owner=$activationOwner;Reason=$activationReason;SourceAutoStart=$sourceAuto;FieldPointer=$pointer;StagedValue=$stagedValue;FinalValue=$finalValue}
 }
 
+function Get-WsmAssistivePublicCertificateArtifactHash($Spec) {
+    if($Spec.Adapter -cne 'Certificate' -or $Spec.Desired.HasPrivateKey){throw 'Wizard preparation supports only a reviewed public-only certificate (.cer); private-key/PFX handling requires its separate credential workflow.'}
+    $path=[string]$Spec.Desired.ArtifactPath
+    if(-not $path -or [IO.Path]::GetExtension($path) -ine '.cer' -or -not [IO.File]::Exists($path)){throw 'Choose an existing public-only .cer artifact for the exact reviewed certificate.'}
+    Assert-WsmNoReparse $path
+    $file=Get-Item -LiteralPath $path -ErrorAction Stop
+    if($file.Length -lt 64 -or $file.Length -gt 16777216){throw 'Public certificate artifact must be between 64 bytes and 16 MiB.'}
+    [byte[]]$bytes=[IO.File]::ReadAllBytes($path)
+    $certificate=$null
+    try{$certificate=[Security.Cryptography.X509Certificates.X509Certificate2]::new($bytes);if($certificate.HasPrivateKey -or $certificate.Thumbprint -ine [string]$Spec.Desired.Thumbprint){throw 'The selected public certificate does not match the captured thumbprint or contains a private key.'}}
+    finally{if($certificate){$certificate.Dispose()}}
+    $sha=[Security.Cryptography.SHA256]::Create();try{([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
+}
+
+function Assert-WsmAssistiveReviewArtifactPath([string]$Workspace,[string]$PairId,[string]$ItemId) {
+    $directory=Join-Path (Join-Path $Workspace 'assistive') 'review-forms'
+    $fileName='spec-'+$PairId+'-'+$ItemId+'-'+('0'*32)+'.json'
+    $artifactCandidate=Join-Path $directory $fileName
+    $temporaryCandidate=Join-Path $directory (('0'*32)+'.tmp')
+    $longest=[Math]::Max($artifactCandidate.Length,$temporaryCandidate.Length)
+    if($longest -gt 240){throw ('The organizing workspace path is too long for a safe Windows PowerShell 5.1 review save (maximum safe path is 240 characters; staged review path would be '+$longest+'). Move the workspace to a shorter local path, then refresh the review.')}
+    $artifact=[IO.Path]::GetFullPath($artifactCandidate);$temporary=[IO.Path]::GetFullPath($temporaryCandidate)
+    [pscustomobject][ordered]@{ArtifactPath=$artifact;TemporaryPath=$temporary;MaximumLength=$longest;Limit=240}
+}
+
 function Submit-WsmAssistiveSpecReview {
     [CmdletBinding()]param(
         [Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ItemId,
@@ -162,7 +233,7 @@ function Submit-WsmAssistiveSpecReview {
     $sourceChannel='';if($spec.PSObject.Properties['TransferChannel']){$sourceChannel=[string]$spec.TransferChannel}
     if($catalog.DecisionRevision -ne $ExpectedDecisionRevision -or $catalog.Assistive.Revision -ne $ExpectedAssistiveRevision -or $catalog.Assistive.Selections.Revision -ne $ExpectedSelectionRevision){throw 'Review changed; refresh the form before saving.'}
     if(-not $context.Selection.Selected){throw 'Assistive specifications can only be assigned to currently selected items.'}
-    $allowed=@('TargetPath','TransferChannel','ContentSelection','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy','AclControlPolicy','ConfigFiles','ConfigOverrides','DesiredFinalState','BusinessChecks','Product','Procedure','Artifacts','CatchUpPolicy','WorkloadFieldReviews','IisBindings','IisApplicationPools','IisPoolSettings','IisConfigChanges','DesiredChanges','ActivationPolicyFieldPointer','SharedResourceReviewReasons','ActivationOwner','ActivationReason','PrincipalUser')
+    $allowed=@('TargetPath','TransferChannel','ContentSelection','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy','AclControlPolicy','ConfigFiles','ConfigOverrides','DesiredFinalState','BusinessChecks','Product','Procedure','Artifacts','CatchUpPolicy','WorkloadFieldReviews','IisBindings','IisApplicationPools','IisPoolSettings','IisConfigChanges','DesiredChanges','ActivationPolicyFieldPointer','SharedResourceReviewReasons','ActivationOwner','ActivationReason','PrincipalUser','Desired','SecretRef')
     if($Fields.Contains('IisConfigChanges') -and $Fields.Contains('DesiredChanges')){throw 'Supply one exact IIS Changes array, not both aliases.'}
     foreach($key in $Fields.Keys){if($allowed -cnotcontains [string]$key){throw ('Unknown typed review field: '+[string]$key)}}
     if($Fields.Contains('AclControlPolicy') -and ($spec.Adapter -cne 'FileScope' -or $Fields['AclControlPolicy'] -isnot [string] -or [string]$Fields['AclControlPolicy'] -cnotin @('Exact','AllowAutoInheritedUpgrade'))){throw 'ACL control policy is limited to FileScope and must be explicitly reviewed as Exact or AllowAutoInheritedUpgrade.'}
@@ -178,8 +249,40 @@ function Submit-WsmAssistiveSpecReview {
         'ActivationOwner' { }
         'ActivationReason' { }
         'PrincipalUser' { }
+        'Desired' { }
+        'SecretRef' { }
         default {if($spec.PSObject.Properties[$key]){$spec.$key=$value}else{$spec | Add-Member NoteProperty $key $value}}
     }}
+    if($Fields.Contains('SecretRef')){
+        if($spec.Adapter -notin @('LocalUser','Certificate','Service') -or $Fields['SecretRef'] -isnot [string] -or ([string]$Fields['SecretRef'] -and [string]$Fields['SecretRef'] -notmatch '^[A-Za-z0-9_.-]{1,128}$')){throw 'SecretRef is a reference identifier only; passwords and credential values are never accepted.'}
+        $spec.SecretRef=[string]$Fields['SecretRef']
+    }
+    if($spec.Adapter -ceq 'Service' -and [string]$spec.AccountMode -ceq 'UserPassword' -and [string]::IsNullOrWhiteSpace([string]$spec.SecretRef)){throw 'A UserPassword service account requires a SecretRef identifier; credential values are never accepted here.'}
+    if($Fields.Contains('Desired')){
+        if($Fields['Desired'] -isnot [System.Collections.IDictionary] -and $null -eq $Fields['Desired'].PSObject){throw 'Typed Desired answers must be a structured value.'}
+        $desired=$spec.Desired
+        $editable=@{Service=@('Description');SmbShare=@('Path','Description','EncryptData','DrainPolicy','DrainEvidence','Access');LocalUser=@('FullName','Description');LocalGroup=@('Description','Members');Certificate=@('ArtifactPath','ArtifactHash')}
+        if(-not $editable.ContainsKey([string]$spec.Adapter)){throw ('The '+[string]$spec.Adapter+' adapter has no plain-language Desired fields; use its supported review workflow.')}
+        $submitted=$Fields['Desired'];$submittedProperties=@();if($submitted -is [System.Collections.IDictionary]){$submittedProperties=@(foreach($name in $submitted.Keys){[pscustomobject]@{Name=[string]$name;Value=$submitted[$name]}})}else{$submittedProperties=@(foreach($property in $submitted.PSObject.Properties){if($property.MemberType -match 'NoteProperty|Property'){[pscustomobject]@{Name=[string]$property.Name;Value=$property.Value}}})}
+        foreach($submittedProperty in $submittedProperties){$fieldName=[string]$submittedProperty.Name;$original=$desired.PSObject.Properties[$fieldName]
+            if($editable[[string]$spec.Adapter] -cnotcontains $fieldName){
+                if(-not $original -or (ConvertTo-Json -InputObject $submittedProperty.Value -Depth 32 -Compress) -cne (ConvertTo-Json -InputObject $original.Value -Depth 32 -Compress)){throw ('Protected Desired identity or unsupported field cannot be changed: '+$fieldName)}
+                continue
+            }
+            $value=$submittedProperty.Value
+            switch($fieldName){
+                'EncryptData' {if($value -isnot [bool]){throw 'EncryptData requires an explicit true/false decision.'};$desired.EncryptData=[bool]$value}
+                'Access' {if($spec.Adapter -cne 'SmbShare' -or $value -isnot [array]){throw 'SMB access review must retain the captured typed row list.'};$old=@($desired.Access);if(@($value).Count -ne $old.Count){throw 'SMB access review cannot add or drop captured rows.'};for($i=0;$i -lt $old.Count;$i++){foreach($keyName in @('AccountName','AccessControlType','AccessRight')){if(-not $value[$i].PSObject.Properties[$keyName] -or $value[$i].$keyName -isnot [string]){throw 'SMB access rows require account, allow/deny and access right.'}};$old[$i].AccountName=[string]$value[$i].AccountName;$old[$i].AccessControlType=[string]$value[$i].AccessControlType;$old[$i].AccessRight=[string]$value[$i].AccessRight}}
+                'Members' {if($value -isnot [array]){throw 'LocalGroup members must be reviewed as a list.'};$desired.Members=@($value|ForEach-Object {[string]$_})}
+                default {if($value -isnot [string] -or $value.Length -gt 8192){throw ('Desired '+$fieldName+' must be bounded text.')};$desired.$fieldName=[string]$value}
+            }
+        }
+        if($spec.Adapter -ceq 'Certificate'){
+            $computedHash=Get-WsmAssistivePublicCertificateArtifactHash $spec
+            if([string]$desired.ArtifactHash -and [string]$desired.ArtifactHash -ine $computedHash){throw 'The supplied certificate hash does not match the current public certificate bytes.'}
+            $desired.ArtifactHash=$computedHash
+        }
+    }
     $spec.Owner=$Owner;$spec.Evidence=$Evidence
     if($spec.PSObject.Properties['SharedResourceImpacts'] -and (Get-Command Get-WsmWorkloadSharedConsumerImpact -ErrorAction SilentlyContinue)){
         $spec.SharedResourceImpacts=@(Get-WsmWorkloadSharedConsumerImpact $catalog ([string]$item.ItemId))
@@ -240,7 +343,9 @@ function Submit-WsmAssistiveSpecReview {
     }
     if($spec.Adapter -in @('IISSection','IISLocation')){Set-WsmAssistiveIisConfigReview $spec $Fields}
     Assert-WsmMigrationSpec $spec -Assistive
-    $directory=Join-Path (Join-Path $Workspace 'assistive') 'review-forms';if(-not [IO.Directory]::Exists($directory)){[void][IO.Directory]::CreateDirectory($directory);Protect-WsmDirectory $directory}
+    $directory=Join-Path (Join-Path $Workspace 'assistive') 'review-forms'
+    [void](Assert-WsmAssistiveReviewArtifactPath $Workspace $PairId $ItemId)
+    if(-not [IO.Directory]::Exists($directory)){[void][IO.Directory]::CreateDirectory($directory);Protect-WsmDirectory $directory}
     $name=('spec-'+$PairId+'-'+$ItemId+'-'+[Guid]::NewGuid().ToString('N')+'.json');$path=Join-Path $directory $name
     Write-WsmJson $path $spec;$hash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
     try{Set-WsmMigrationSpec -Workspace $Workspace -PairId $PairId -ItemId $ItemId -Path $path -ExpectedHash $hash -ExpectedRevision $ExpectedDecisionRevision}

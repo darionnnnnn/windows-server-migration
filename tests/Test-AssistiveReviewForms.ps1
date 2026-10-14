@@ -5,7 +5,7 @@ $script:ToolVersion='0.4.0'
 . (Join-Path $PSScriptRoot 'ExternalReadinessEvidenceFixtures.ps1')
 $formSource=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\src\AssistiveReviewForms.ps1'))
 & $module {param($path) . $path;foreach($function in @(Get-Command -CommandType Function | Where-Object {$_.Name -match '^(Get-WsmAssistiveReviewItem|ConvertTo-WsmAssistiveSafeValue|Get-WsmAssistiveSafeIisChanges|Get-WsmAssistiveSpecReview|Set-WsmAssistiveReviewXmlValue|Set-WsmAssistiveIisConfigReview|Submit-WsmAssistiveSpecReview|Export-WsmAssistiveTargetDecisionReceipt)$'})){Set-Item -Path ('Function:\script:'+ $function.Name) -Value $function.ScriptBlock}} $formSource
-$root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-review-forms-'+[Guid]::NewGuid().ToString('N'))
+$root=Join-Path ([IO.Path]::GetTempPath()) ('r-'+[Guid]::NewGuid().ToString('N').Substring(0,8))
 [void][IO.Directory]::CreateDirectory($root)
 $passed=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:passed++}
@@ -13,6 +13,8 @@ function Reject([scriptblock]$Action,[string]$Message){$rejected=$false;try{& $A
 function SaveJson($Data,[string]$Name){$path=Join-Path $root $Name;[IO.File]::WriteAllText($path,($Data|ConvertTo-Json -Depth 40),(New-Object Text.UTF8Encoding($false)));$path}
 function CallModule([scriptblock]$Block,[object[]]$Arguments=@()){& $script:module $Block @Arguments}
 try {
+    Check ((CallModule {param($value) ConvertTo-WsmAssistiveSafeValue $value 'Description'} 'Fixture description for scripts') -ceq 'Fixture description for scripts') 'The sensitive-field matcher masked ordinary Description text because its name contains the script substring.'
+    Check ((CallModule {param($value) ConvertTo-WsmAssistiveSafeValue $value 'ServicePassword'} 'never-return-this') -match 'withheld') 'A camel-case sensitive field name was not withheld.'
     $source=[pscustomobject]@{HostId=[Guid]::NewGuid().ToString();Fingerprint=('a'*64);Name='review-fixture-source'}
     $runtime=CallModule {param($host) New-WsmItem $host Runtime App 'Fixture runtime' 'fixture-runtime' @{Version='1.0'}} @($source.HostId)
     $fileScope=CallModule {param($host) New-WsmItem $host Storage PathCandidate 'Fixture file scope' 'C:\fixture\source' @{OriginalPath='C:\fixture\source';ResolvedCandidate='C:\fixture\source'}} @($source.HostId)
