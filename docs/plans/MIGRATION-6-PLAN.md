@@ -288,3 +288,12 @@ WinPS5.1／PS7 同一副本的實際 Edge 表單 → 正式 handler 回應擷取
 主代理獨立驗證 work/r6/p2-final 的實際模組 consumer：WinPS5.1／PS7 均通過 200 項 Service／ScheduledTask／IISSite 混合集合的真匯入、逐項保存、模式切換、自動閉包、排除理由、重新盤點 201 項與餘項審閱；另 Source 11 checks 驗必要鏈、循環／缺件、盤點 job 來源綁定、排除與舊 intent 無 Confirmed 欄位。受影響 WizardFlow 各 45 checks 通過。真 Edge fixture 驗 200 群組完整保留、共享具名影響、待確認標記、警示及 375px 無橫向溢出；這是 UI consumer fixture，不冒稱原生盤點／封裝或 HTTP 通過。最終交付九份程式／測試 bytes 與驗證副本逐檔一致（work/r6/p2-final-index.json）。
 
 本段核對再發現 P1a 保存 catch 僅憑 stale code 就清除 pending 的風險，已一併修正：只有 submissionRejected=true 可清除待確認作業及重新 Get；未知 409／422 保留原 ID、輸入與焦點，只查同一作業，不重送。主代理獨立跑正式 UI fixture 的正反例及 P1 表單回歸通過，日誌 p2-final-uncertain-ui.log。P1b sealed plan 集合對照與原生 HTTP 旅程仍待所屬段，未把 P2 fixture 當整輪驗收。
+### P1b 交接／批次準備與核准：可控實作段完成，原生旅程仍待 P0
+
+Target 可在零備份下匯出已註冊身分及本機盤點；Manager 以獨立預期 manifest SHA-256 核對，顯示 Source／目前 Target／收到的新 Target，明確 commit 後才更新比較與執行既有核准。來源盤點不被 Target 材料覆蓋。預覽保存、相依版本、原始與 staged bytes、主機、工具及選取均綁定；commit 的未知寫入有耐久 intent／收據核對，不重做已證實的 snapshot 更新。同份材料遇到來源選取改變可重新核對，維持原觀測時間而不偽造新盤點。
+
+批次準備由真 GetPreparationReview／SavePreparationReview 消費，先列來源預設、已有規格與缺口，再明確提供共用 Owner／Evidence／BusinessChecks 及預設採用意圖。密碼參照、公鑰、未知或不明確內容仍逐項處理，不自動製造 owner、證據、核准或業務接受。保存前／保存後中斷皆核對版本、來源、提交值及唯一規格檔的實際 hash，證明未寫才續作、已寫則恢復收據，無法證明則保留 Unknown。表單草稿仍只在記憶體；未知提交只查同一作業。
+
+主代理從 P2 基準建立只含本段相依改動的固定副本（唯一目錄及 19 檔索引見 work/r6/p1b-final-fixed-snapshot.txt／p1b-input-index.json）。兩引擎通過 Handoff 22、Bulk 43、HtmlConsole 74、TypedText 18、ManagerApprovalJourney 23、WizardFlow 45、PreparationAdapters 88 checks，以及真封存計畫的 Source／Target 匯入與 action metadata。首次配對繼承 Mode／AutoContinue，重複匯入不重置；封存 Include 集合與來源已確認意圖一致。另補上 CLI 隱藏 OperationId 的實際注入、無 Manager catalog 的 Source／Target revision／操作入口，以及小數容量／字串 false 的入口拒絕；舊 CLI fixture 非 GUID 配對已改成合法 GUID，未放寬產品驗證。
+
+相同 runtime／UI bytes 的 Edge fixture 通過新交接、批次輸入／不自動 commit、375／390px 版面、未知提交 query-only 與既有 P1a／200 群組回歸；兩種 PowerShell 的實際 Edge → 正式 handler writer 回應擷取橋接 → 兩份真 sealed spec 檔案／SHA-256／同 operation replay，以及既有單項保存橋接均通過。橋接保留 controller、session、CAS、worker 與核心保存，但**不代表原生 HTTP、origin enforcement、真三台 Server 或生產資格通過**。P0 NotPassed 未解除；P3–P6 仍在本輪實作，不移到下一輪。

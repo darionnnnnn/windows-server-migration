@@ -1,4 +1,4 @@
-function Get-WsmAssistiveReviewItem([string]$Workspace,[string]$PairId,[string]$ItemId) {
+﻿function Get-WsmAssistiveReviewItem([string]$Workspace,[string]$PairId,[string]$ItemId) {
     $catalog=Get-WsmCatalog $Workspace $PairId
     if(-not $catalog.PSObject.Properties['Assistive']){throw 'Enable Assistive mode before reviewing a specification.'}
     $rows=@($catalog.Items | Where-Object ItemId -CEQ $ItemId)
@@ -257,7 +257,7 @@ function Submit-WsmAssistiveSpecReview {
         if($spec.Adapter -notin @('LocalUser','Certificate','Service') -or $Fields['SecretRef'] -isnot [string] -or ([string]$Fields['SecretRef'] -and [string]$Fields['SecretRef'] -notmatch '^[A-Za-z0-9_.-]{1,128}$')){throw 'SecretRef is a reference identifier only; passwords and credential values are never accepted.'}
         $spec.SecretRef=[string]$Fields['SecretRef']
     }
-    if($spec.Adapter -ceq 'Service' -and [string]$spec.AccountMode -ceq 'UserPassword' -and [string]::IsNullOrWhiteSpace([string]$spec.SecretRef)){throw 'A UserPassword service account requires a SecretRef identifier; credential values are never accepted here.'}
+    if($spec.Adapter -ceq 'Service' -and $spec.PSObject.Properties['AccountMode'] -and [string]$spec.AccountMode -ceq 'UserPassword' -and (-not $spec.PSObject.Properties['SecretRef'] -or [string]::IsNullOrWhiteSpace([string]$spec.SecretRef))){throw 'A UserPassword service account requires a SecretRef identifier; credential values are never accepted here.'}
     if($Fields.Contains('Desired')){
         if($Fields['Desired'] -isnot [System.Collections.IDictionary] -and $null -eq $Fields['Desired'].PSObject){throw 'Typed Desired answers must be a structured value.'}
         $desired=$spec.Desired

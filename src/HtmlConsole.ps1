@@ -23,7 +23,7 @@ function Get-WsmHtmlActionMap {
         @('PairPlan','Set-WsmPairPlan'),@('CrossHostDependency','Set-WsmCrossHostDependency'),@('Report','Export-WsmReport'),
         @('FleetReport','Export-WsmFleetReport'),@('SaveSelection','Set-WsmHtmlSelection'),@('SetRestoreChoice','Set-WsmHtmlRestoreChoice')
     )){$map[$entry[0]]=$entry[1]}
-    foreach($entry in @(@('GetPreparationReview','Get-WsmWizardPreparationReview'),@('SavePreparationReview','Save-WsmWizardPreparationReview'),@('SpecReview','Get-WsmAssistiveSpecReview'),@('SaveSpecReview','Submit-WsmAssistiveSpecReview'),@('TargetReceipt','Export-WsmAssistiveTargetDecisionReceipt'),@('AssistiveReport','Export-WsmAssistiveReport'),@('SetSoftwareVersion','Set-WsmAssistiveSoftwareVersion'),@('TargetSnapshot','Update-WsmAssistiveTargetSnapshot'),@('PublishComparison','Update-WsmAssistiveComparison'),@('EnvironmentProbe','Export-WsmAssistiveEnvironmentProbe'),@('ProbeImport','Import-WsmAssistiveEnvironmentProbe'),@('DeveloperProbe','Export-WsmDeveloperProbe'))){
+    foreach($entry in @(@('BulkPreparationPreview','Get-WsmWizardBulkPreparationPreview'),@('BulkPreparationSave','Save-WsmWizardBulkPreparationReview'),@('ExportTargetHandoff','Export-WsmWizardTargetHandoff'),@('GetTargetHandoffPreview','Get-WsmWizardTargetHandoffPreview'),@('CommitTargetHandoff','Commit-WsmWizardTargetHandoff'),@('GetPreparationReview','Get-WsmWizardPreparationReview'),@('SavePreparationReview','Save-WsmWizardPreparationReview'),@('SpecReview','Get-WsmAssistiveSpecReview'),@('SaveSpecReview','Submit-WsmAssistiveSpecReview'),@('TargetReceipt','Export-WsmAssistiveTargetDecisionReceipt'),@('AssistiveReport','Export-WsmAssistiveReport'),@('SetSoftwareVersion','Set-WsmAssistiveSoftwareVersion'),@('TargetSnapshot','Update-WsmAssistiveTargetSnapshot'),@('PublishComparison','Update-WsmAssistiveComparison'),@('EnvironmentProbe','Export-WsmAssistiveEnvironmentProbe'),@('ProbeImport','Import-WsmAssistiveEnvironmentProbe'),@('DeveloperProbe','Export-WsmDeveloperProbe'))){
         if(Get-Command $entry[1] -CommandType Function -ErrorAction SilentlyContinue){$map[$entry[0]]=$entry[1]}
     }
     $map
@@ -142,7 +142,7 @@ function Get-WsmHtmlActionMetadata {
         $command=Get-Command $entry.Value -CommandType Function
         $registryCas=$command.Name -in @('Submit-WsmAssistiveWindowsSettingsReview','Submit-WsmAssistiveGeneralHostDispositions','Submit-WsmAssistiveGeneralHostRequirements','Submit-WsmAssistiveGeneralHostRequirementDecisions','Reserve-WsmAssistiveResource','Set-WsmAssistiveResourceEvidence','Release-WsmAssistiveResource','Set-WsmAssistiveMaterialClosed','Invoke-WsmAssistiveCleanup')
         $parameters=@(foreach($p in $command.Parameters.Values){
-            if($p.ParameterType -eq [scriptblock] -or @($p.Attributes | Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.DontShow}).Count -or $p.Name -in $common -or $p.Name -in @('CancellationToken','Workspace','PairId') -or ($p.Name -eq 'ExpectedRevision' -and -not $registryCas)){continue}
+            if($p.ParameterType -eq [scriptblock] -or @($p.Attributes | Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.DontShow}).Count -or $p.Name -in $common -or $p.Name -in @('CancellationToken','Workspace','PairId','Jobs','OperationId') -or ($p.Name -eq 'ExpectedRevision' -and -not $registryCas)){continue}
             $required=@($p.Attributes | Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.Mandatory}).Count -gt 0
             $options=@($p.Attributes | Where-Object {$_ -is [Management.Automation.ValidateSetAttribute]} | ForEach-Object ValidValues)
             $type='string';$schema=$null;$sensitive=$p.Name -match 'Password|Secret|Credential|Token'
@@ -163,7 +163,7 @@ function Get-WsmHtmlActionMetadata {
             if($type -eq 'objectArray' -and -not $schema){$schema=@{title='Existing typed evidence';properties=@{TrustedPath=@{type='path';required=$true};TrustedSHA256=@{type='string';required=$true}}}}
             [pscustomobject]@{name=$p.Name;label=$p.Name;type=$type;required=$required;allowEmpty=(@($p.Attributes | Where-Object {$_ -is [Management.Automation.AllowEmptyCollectionAttribute] -or $_ -is [Management.Automation.AllowEmptyStringAttribute]}).Count -gt 0);options=$options;sensitive=$sensitive;schema=$schema;description=$(if($sensitive){'Memory-only secret input; never stored in drafts or reports.'}else{''})}
         })
-        $readOnly=$entry.Value -match '^(Get|Test|Assert|Read)-'
+        $readOnly=($entry.Value -match '^(Get|Test|Assert|Read)-' -and $entry.Key -notin @('GetTargetHandoffPreview','BulkPreparationPreview'))
         $previewAction=if($entry.Key -eq 'Restore'){'RestorePreview'}elseif($entry.Key -eq 'Rollback'){'RollbackPreview'}elseif($entry.Key -eq 'SpecBundleImport'){'SpecBundlePreview'}else{$null}
         $requiredRole=Get-WsmTextActionGroup $entry.Key
         $supportedRoles=@($requiredRole);if($entry.Key -ceq 'Inventory'){$supportedRoles=@('Source','Target')};if($entry.Key -ceq 'ImportApprovedPlan'){$requiredRole='SourceOrTarget';$supportedRoles=@('Source','Target')};if($entry.Key -ceq 'InspectWizardFiles'){$requiredRole='Source';$supportedRoles=@('Source')};if($entry.Key -ceq 'DeveloperProbe'){$requiredRole='Any';$supportedRoles=@('Source','Manager','Target')}
@@ -174,6 +174,10 @@ function Get-WsmHtmlActionMetadata {
 
 function Get-WsmHtmlRevision([string]$Workspace,[string]$PairId) {
     if(-not $PairId){return 0}
+    if(-not [IO.File]::Exists((Get-WsmCatalogPath $Workspace $PairId))){
+        $profile=Read-WsmOutputProfile $Workspace
+        if($profile -and $profile.Role -in @('Source','Target') -and (Get-WsmWizardReceivedApprovedPlan $Workspace $PairId $profile)){return [int](Get-WsmWizardState $Workspace $PairId $profile.Role).Revision}
+    }
     $catalog=Get-WsmCatalog $Workspace $PairId
     if($catalog.PSObject.Properties['Assistive']){return [int]$catalog.Assistive.Revision}
     [int]$catalog.DecisionRevision
@@ -371,10 +375,18 @@ function ConvertTo-WsmHtmlPreview($Result,[string]$Action,[int]$Revision,[string
 }
 
 function Get-WsmHtmlResultProjection($Output) {
-    $fields=@('Status','Stage','Path','SHA256','Hash','ReportPath','HtmlPath','ManifestPath','ManifestHash','Archive','ArchiveSHA256','RunId','PairId','Generation','Revision','ObservedChecks','PendingChecks','SpecPath','SpecHash','ReceiptPath','ReceiptHash','DecisionRevision','AssistiveRevision','SelectionRevision','TargetPhysicalId','RegistryRevision','ResourceKey','DocumentManifestPath','DocumentManifestHash','DocumentId','BundlePath','MemberCount','Valid','ProbeStatus','IndexPath','Kind','ExpectedRevision','PreviewPath','PreviewFileHash','PreviewHash','ReviewWindowsSettings','RowCount','ItemId','EntryCount','GapCount','ContentRead','BackupVerified','AuthoritativeApproval','SourceInventoryPath','SourceInventoryHash','SourceInventoryRevision','SourceIntentHash','ConfirmedChoiceCount','IncludedChoiceCount','ExcludedChoiceCount','AppliedChoiceCount','HandoffStatus','ImportPath','TargetInventoryPath','TargetInventoryHash','GeneratedDecisionsPath','GeneratedDecisionsHash','GeneratedRequirementsPath','GeneratedRequirementsHash','FailureCode','ReviewHash','Role','HostFingerprint','TaskPath','TaskName','TaskXmlSHA256','TaskSecuritySHA256','CapturedUtc','RawDefinitionReturned','RawDefinitionsReturned','RawDefinitionsIncluded','ProductionVerified','VendorVerified','ReadinessProof','BusinessAcceptance','ProviderId','Owner','SourceOS','TargetOS','TargetFingerprint','TargetSnapshotHash','TargetSnapshotUtc','SourceTaskXmlSHA256','SourceTaskSecuritySHA256','TargetTaskXmlSHA256','TargetTaskSecuritySHA256','SourceProviderProvenanceReference','TargetProviderProvenanceReference','TrustedBaselinePath','TrustedBaselineHash','TrustedBaselineOwner','SourceBaselineMatched','TargetBaselineMatched','DefinitionsDiffer','OSProvidedEligible','ValuesWithheld','EvidencePath','EvidenceHash','Disposition','ItemName','Adapter','Evidence','SoftwareScopeStatus','SoftwareScopeSourceInventoryHash','SourceSnapshotHash')
+    $fields=@('Status','Stage','Path','SHA256','Hash','ReportPath','HtmlPath','ManifestPath','ManifestHash','Archive','ArchiveSHA256','RunId','PairId','Generation','Revision','ObservedChecks','PendingChecks','SpecPath','SpecHash','ReceiptPath','ReceiptHash','DecisionRevision','AssistiveRevision','SelectionRevision','TargetPhysicalId','RegistryRevision','ResourceKey','DocumentManifestPath','DocumentManifestHash','DocumentId','BundlePath','MemberCount','Valid','ProbeStatus','IndexPath','Kind','ExpectedRevision','PreviewPath','PreviewFileHash','PreviewHash','ReviewWindowsSettings','RowCount','ItemId','EntryCount','GapCount','ContentRead','BackupVerified','AuthoritativeApproval','SourceInventoryPath','SourceInventoryHash','SourceInventoryRevision','SourceIntentHash','ConfirmedChoiceCount','IncludedChoiceCount','ExcludedChoiceCount','AppliedChoiceCount','HandoffStatus','ImportPath','TargetInventoryPath','TargetInventoryHash','GeneratedDecisionsPath','GeneratedDecisionsHash','GeneratedRequirementsPath','GeneratedRequirementsHash','FailureCode','ReviewHash','Role','HostFingerprint','TaskPath','TaskName','TaskXmlSHA256','TaskSecuritySHA256','CapturedUtc','RawDefinitionReturned','RawDefinitionsReturned','RawDefinitionsIncluded','ProductionVerified','VendorVerified','ReadinessProof','BusinessAcceptance','ProviderId','Owner','SourceOS','TargetOS','TargetFingerprint','TargetSnapshotHash','TargetSnapshotUtc','SourceTaskXmlSHA256','SourceTaskSecuritySHA256','TargetTaskXmlSHA256','TargetTaskSecuritySHA256','SourceProviderProvenanceReference','TargetProviderProvenanceReference','TrustedBaselinePath','TrustedBaselineHash','TrustedBaselineOwner','SourceBaselineMatched','TargetBaselineMatched','DefinitionsDiffer','OSProvidedEligible','ValuesWithheld','EvidencePath','EvidenceHash','Disposition','ItemName','Adapter','Evidence','SoftwareScopeStatus','SoftwareScopeSourceInventoryHash','SourceSnapshotHash','PreviewId','TargetIdentityPath','TargetIdentityHash','TrustMethod','ProducedUtc','ProducedLocal','ImportedUtc','ImportedLocal','TimeZone','NextOperator','NextMachine','NextAction','Duplicate')
     @(foreach($row in @($Output)){$safe=[ordered]@{};foreach($field in $fields){if($row -and $row.PSObject.Properties[$field]){$value=$row.$field;if($value -is [string] -or $value -is [ValueType] -or $field -eq 'CollectorCounts'){$safe[$field]=$value}}};if($row -and $row.PSObject.Properties['Kind'] -and $row.Kind -ceq 'WizardPreparationReview'){
  $safe.FormFields=@(foreach($form in @($row.FormFields)){[pscustomobject][ordered]@{key=[string]$form.key;label=[string]$form.label;type=[string]$form.type;value=$form.value;required=[bool]$form.required;editable=[bool]$form.editable;options=@($form.options);origin=[string]$form.origin;provenance=$form.provenance}})
  foreach($name in @('DefaultPriority','MissingTypedFields','SoftwareScopeDiagnostics','SoftwareExclusionCandidates')){if($row.PSObject.Properties[$name]){$safe[$name]=$row.$name}}
+};if($row -and $row.PSObject.Properties['Kind'] -and $row.Kind -cin @('WizardTargetHandoffPreview','WizardTargetHandoffExport')){
+ foreach($name in @('Directory','ObservedManifestHash','ExpectedManifestHash','InventoryRevision','InventoryHash','SourceInventoryHash','SourceSelectionRevision','ToolFingerprint','TargetHostId')){if($row.PSObject.Properties[$name]){$safe[$name]=$row.$name}}
+ foreach($name in @('Source','Target','CurrentTarget')){if($row.PSObject.Properties[$name]){$identity=[ordered]@{};foreach($key in @('HostId','Name','Fingerprint','SHA256','DecisionRevision','AssistiveRevision','HasApproval')){if($row.$name.PSObject.Properties[$key]){$identity[$key]=$row.$name.$key}};$safe[$name]=[pscustomobject]$identity}}
+};if($row -and $row.PSObject.Properties['Kind'] -and $row.Kind -cin @('WizardBulkPreparationPreview','WizardBulkPreparationSaved')){
+ foreach($name in @('CandidateItemIds','SkippedExistingSpecItemIds','SavedItemIds')){if($row.PSObject.Properties[$name]){$safe[$name]=@($row.$name|Where-Object {$_ -is [string]})}}
+ foreach($name in @('ReviewedSourceDefaultsRequired','SpecWrites','BusinessAcceptance')){if($row.PSObject.Properties[$name]){$safe[$name]=$row.$name}}
+ if($row.PSObject.Properties['DeferredFields']){$safe.DeferredFields=@(foreach($entry in @($row.DeferredFields)){[pscustomobject]@{ItemId=[string]$entry.ItemId;Field=[string]$entry.Field;Reason=[string]$entry.Reason}})}
+ $safe.Items=@(foreach($item in @($row.Items)){$record=[ordered]@{};foreach($name in @('ItemId','ItemName','Adapter','Status','SpecPath','SpecHash','SourceSnapshotHash','DecisionRevision','AssistiveRevision','SelectionRevision','ReplayedWrite')){if($item.PSObject.Properties[$name]){$record[$name]=$item.$name}};if($item.PSObject.Properties['FormFields']){$record.FormFields=@(foreach($field in @($item.FormFields)){[pscustomobject]@{key=[string]$field.key;type=[string]$field.type;value=$field.value;required=[bool]$field.required;editable=[bool]$field.editable;origin=[string]$field.origin;options=@($field.options)}})};[pscustomobject]$record})
 };if($row -and $row.PSObject.Properties['CollectorResults']){$safe.CollectorResults=@(foreach($collector in @($row.CollectorResults)){[pscustomobject]@{Id=[string]$collector.Id;Status=[string]$collector.Status;StartedUtc=$collector.StartedUtc;CompletedUtc=$collector.CompletedUtc;DurationMs=[long]$collector.DurationMs;ReasonCode=$collector.ReasonCode;Data=$collector.Data}})};if($row -and $row.PSObject.Properties['ManualReasons']){$safe.ManualReasons=@($row.ManualReasons | Where-Object {$_ -is [string]})};if($row -and $row.PSObject.Properties['Kind'] -and $row.Kind -cin @('AssistiveWindowsSettingsPreviewOutput','AssistivePreparationPreview','AssistiveRequirementReview')){
             $rowFields=if($row.Kind -ceq 'AssistiveWindowsSettingsPreviewOutput'){@('SettingId','SourceItemId','Category','Kind','SettingName','SourceValueHash','TargetValueHash','TargetDiff','ControlSource','SupportedActions','DefaultAction','RequiredConsumerItemIds')}else{@('RequirementId','Type','ProviderItemId','ExternalId','ProviderSoftwareId','ExpectedVersion','Architecture','RequiredPhase','Decision','Certainty','ConsumerItemIds','ContextHash')}
             $safe.Rows=@(foreach($entry in @($row.Rows)){$record=[ordered]@{};foreach($field in $rowFields){if($entry.PSObject.Properties[$field]){$value=$entry.$field;if($value -is [string] -or $value -is [ValueType]){$record[$field]=$value}elseif($value -is [array]){$record[$field]=@($value | Where-Object {$_ -is [string]})}}};[pscustomobject]$record})
@@ -424,7 +436,7 @@ function Get-WsmHtmlView {
     param([string]$Workspace,[string]$PairId,[string]$View,[string]$Role)
     if($View -ceq 'actions'){
         $actions=@(Get-WsmHtmlActionMetadata $Role)
-        if($PairId){
+        if($PairId -and [IO.File]::Exists((Get-WsmCatalogPath $Workspace $PairId))){
             $decisionRevision=[int](Get-WsmCatalog $Workspace $PairId).DecisionRevision
             foreach($action in $actions){
                 $parameterName=switch($action.action){
@@ -588,7 +600,13 @@ function ConvertTo-WsmHtmlArguments($Command,$Arguments) {
     $result=@{};$common=@('Verbose','Debug','ErrorAction','ErrorVariable','OutVariable','OutBuffer','PipelineVariable','InformationAction','InformationVariable','WarningAction','WarningVariable','Confirm','WhatIf','ProgressAction')
     foreach($p in $Arguments.PSObject.Properties){
         if(-not $Command.Parameters.ContainsKey($p.Name) -or $p.Name -in $common){throw 'Unsupported operation parameter.'}
+        if($p.Name -in @('Jobs','OperationId','CancellationToken')){throw 'Internal operation parameter is prohibited.'}
         $parameter=$Command.Parameters[$p.Name];if($parameter.ParameterType -eq [scriptblock] -or @($parameter.Attributes | Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.DontShow}).Count){throw 'Internal operation parameter is prohibited.'};$value=$p.Value
+        if($parameter.ParameterType -in @([bool],[Management.Automation.SwitchParameter]) -and $value -isnot [bool]){throw ('Boolean parameter must be a JSON boolean: '+$p.Name)}
+        if($parameter.ParameterType -in @([int],[long],[uint32],[uint64])){
+            $integerText=[Convert]::ToString($value,[Globalization.CultureInfo]::InvariantCulture)
+            if($integerText -notmatch '^-?\d+$'){throw ('Integer parameter must be a whole number: '+$p.Name)}
+        }
         if($p.Name -ceq 'Secrets'){
             $value=@{};foreach($secret in @($p.Value)){
                 Assert-WsmFields $secret @('Ref','Kind','Value','UserName','Password') @('Ref','Kind')
@@ -605,7 +623,7 @@ function ConvertTo-WsmHtmlArguments($Command,$Arguments) {
         elseif($parameter.ParameterType -eq [Security.SecureString]){$value=ConvertTo-SecureString ([string]$value) -AsPlainText -Force}
         $result[$p.Name]=$value
     }
-    foreach($parameter in $Command.Parameters.Values){$mandatory=@($parameter.Attributes|Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.Mandatory}).Count -gt 0;if($mandatory -and $parameter.Name -cne 'CancellationToken' -and -not $result.ContainsKey($parameter.Name)){throw ('Required parameter missing: '+$parameter.Name)}}
+    foreach($parameter in $Command.Parameters.Values){$mandatory=@($parameter.Attributes|Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.Mandatory}).Count -gt 0;if($mandatory -and $parameter.Name -notin @('CancellationToken','OperationId','Jobs') -and -not $result.ContainsKey($parameter.Name)){throw ('Required parameter missing: '+$parameter.Name)}}
     $result
 }
 
@@ -836,7 +854,7 @@ function Start-WsmHtmlConsole {
                         }
                         else{
                             $command=Get-Command $map[$body.action] -CommandType Function
-                            if($body.action -in @('GetPreparationReview','SavePreparationReview')){
+                            if($body.action -in @('GetPreparationReview','SavePreparationReview','GetTargetHandoffPreview','CommitTargetHandoff','BulkPreparationPreview','BulkPreparationSave')){
                                 $profile=Read-WsmOutputProfile $Workspace
                                 if($Role -cne 'Manager' -or -not $PairId -or -not $profile -or $profile.Role -cne 'Manager'){throw 'Preparation review requires the enrolled Manager workspace and a current pair.'}
                             }
@@ -873,6 +891,8 @@ function Start-WsmHtmlConsole {
                                 $arguments.BeforeWrite=New-WsmHtmlSoftwareBeforeWrite $Workspace $PairId $currentVector
                             }
                             if($body.action -eq 'DeveloperProbe'){$arguments.Workspace=$Workspace;$arguments.Role=$Role;$arguments.Origin=$origin;$arguments.PairId=''}else{foreach($binding in @(@('Workspace',$Workspace),@('PairId',$PairId))){if($command.Parameters.ContainsKey($binding[0]) -and -not $arguments.ContainsKey($binding[0])){$arguments[$binding[0]]=$binding[1]}}};if($body.action -ceq 'ImportApprovedPlan'){$arguments.Role=$Role;$arguments.OperationId=[string]$body.operationId};if($body.action -ceq 'ExportSourceReviewHandoff'){$arguments.Jobs=Get-WsmHtmlWizardJobs $jobs $Workspace}
+                            if($command.Parameters.ContainsKey('Jobs')){$arguments.Jobs=Get-WsmHtmlWizardJobs $jobs $Workspace};if($route -ceq '/api/operations' -and $command.Parameters.ContainsKey('OperationId')){$arguments.OperationId=[string]$body.operationId}
+                            if($command.Parameters.ContainsKey('WorkRoot')){if($arguments.ContainsKey('WorkRoot') -and [IO.Path]::GetFullPath([string]$arguments.WorkRoot) -ine [IO.Path]::GetFullPath($Workspace)){throw 'Session work root mismatch.'};$arguments.WorkRoot=$Workspace}
                             if($arguments.ContainsKey('Workspace') -and [IO.Path]::GetFullPath($arguments.Workspace) -ine [IO.Path]::GetFullPath($Workspace)){throw 'Session workspace mismatch.'}
                             if($arguments.ContainsKey('PairId') -and $arguments.PairId -cne $PairId){throw 'Session pair mismatch.'}
                             if($route -ceq '/api/view'){

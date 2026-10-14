@@ -167,5 +167,23 @@ public class WsmHttpFixtureStream : System.IO.MemoryStream {
         $errorText=[IO.File]::ReadAllText((Join-Path $errorRoot 'errors.jsonl'))
         Check ($errorText -match [regex]::Escape($safeError.correlationId) -and $errorText -match 'invalid_request' -and $errorText -notmatch 'not-public|secret|Password|token') 'Safe error correlation was not recorded separately from jobs without capturing request data.'
     }finally{if([IO.Directory]::Exists($historyRoot)){Remove-Item -LiteralPath $historyRoot -Recurse -Force}}
+    function Invoke-WsmInternalArgumentFixture {param([object[]]$Jobs,[string]$OperationId,$CancellationToken)}
+    $internalCommand=Get-Command Invoke-WsmInternalArgumentFixture -CommandType Function
+    foreach($name in @('Jobs','OperationId','CancellationToken')){$inputFields=[pscustomobject]@{};$inputFields|Add-Member NoteProperty $name 'untrusted caller value';Reject {ConvertTo-WsmHtmlArguments $internalCommand $inputFields} ('Caller could supply a server-owned '+$name+' parameter.')}
+    $handoffMetadata=@(Get-WsmHtmlActionMetadata Manager|Where-Object action -CEQ 'GetTargetHandoffPreview')
+    Check ($handoffMetadata.Count -eq 1 -and -not $handoffMetadata[0].readOnly -and $handoffMetadata[0].requiredRole -ceq 'Manager') 'Persisted handoff preview was described as a read-only or non-Manager action.'
+    $bulkMetadata=@(Get-WsmHtmlActionMetadata Manager|Where-Object action -CEQ 'BulkPreparationPreview')
+    Check ($bulkMetadata.Count -eq 1 -and -not $bulkMetadata[0].readOnly -and $bulkMetadata[0].requiredRole -ceq 'Manager') 'Persisted bulk preview lost its Manager write classification.'
+    $bulkCommand=Get-Command Save-WsmWizardBulkPreparationReview -CommandType Function
+    $bulkArguments=ConvertTo-WsmHtmlArguments $bulkCommand ([pscustomobject]@{Workspace='fixture';PairId=[Guid]::NewGuid().ToString();PreviewId=[Guid]::NewGuid().ToString();PreviewHash=('a'*64);Owner='explicit owner';Evidence='explicit evidence';BusinessChecks=@('File readback');ReviewedSourceDefaults=$true})
+    Check (-not $bulkArguments.ContainsKey('OperationId') -and $bulkArguments.Owner -ceq 'explicit owner') 'Controller conversion demanded or fabricated its server-owned operation identity.'
+    function Invoke-WsmTypedNumberFixture {param([long]$VolumeBytes,[switch]$Consent)}
+    $typedNumberCommand=Get-Command Invoke-WsmTypedNumberFixture -CommandType Function
+    Reject {ConvertTo-WsmHtmlArguments $typedNumberCommand ([pscustomobject]@{VolumeBytes=134217728.5})} 'Fractional integer was rounded into a valid volume size.'
+    Reject {ConvertTo-WsmHtmlArguments $typedNumberCommand ([pscustomobject]@{Consent='false'})} 'A string false became an affirmative consent switch.'
+    $bulkProjected=@(Get-WsmHtmlResultProjection @([pscustomobject]@{Kind='WizardBulkPreparationPreview';PreviewId='fixture';PreviewHash=('a'*64);CandidateItemIds=@('candidate');SkippedExistingSpecItemIds=@();DeferredFields=@([pscustomobject]@{ItemId='deferred';Field='SecretRef';Reason='SecretReferenceRequired'});Items=@([pscustomobject]@{ItemId='candidate';ItemName='Service';Adapter='Service';FormFields=@([pscustomobject]@{key='Desired/StartName';type='text';value='LocalSystem';required=$true;editable=$false;origin='TrustedSourceInventory';options=@()});Secret='private'});ReviewedSourceDefaultsRequired=$true;AuthoritativeApproval=$false;SpecWrites=0}))
+    Check ($bulkProjected.Count -eq 1 -and $bulkProjected[0].Items[0].FormFields[0].value -ceq 'LocalSystem' -and $bulkProjected[0].CandidateItemIds[0] -ceq 'candidate' -and ($bulkProjected|ConvertTo-Json -Depth 20) -notmatch 'private') 'Bulk typed preview lost its safe consumer fields or leaked an unknown field.'
+    $handoffProjected=@(Get-WsmHtmlResultProjection @([pscustomobject]@{Kind='WizardTargetHandoffPreview';CurrentTarget=[pscustomobject]@{HostId='current';Fingerprint=('a'*64);SHA256=('b'*64);Secret='private'};Target=[pscustomobject]@{HostId='received';Name='new target';Fingerprint=('c'*64)};Source=[pscustomobject]@{HostId='source';Name='old source'};ExpectedManifestHash=('d'*64);ManifestHash=('d'*64);InventoryRevision=2}))
+    Check ($handoffProjected[0].CurrentTarget.HostId -ceq 'current' -and $handoffProjected[0].Target.HostId -ceq 'received' -and $handoffProjected[0].Source.HostId -ceq 'source' -and ($handoffProjected|ConvertTo-Json -Depth 20) -notmatch 'private') 'Handoff projection confused current Target, received Target, or Source, or exposed a private field.'
     Write-Host ('PASS: '+$script:httpChecks+' native HTTP parser/writer and typed action checks; live browser transport is independently probed.')
 }

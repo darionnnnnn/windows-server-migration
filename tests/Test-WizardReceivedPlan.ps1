@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
@@ -43,6 +43,10 @@ try {
             $defaults=Get-WsmWizardActionDefaults $work $catalog.PairId $role $action
             if($role -ceq 'Source' -and ($defaults.args.ExpectedHash -ine $approval.SHA256 -or -not $defaults.args.PlanPath)){throw 'Source defaults lost the trusted plan binding.'}
             if([IO.Directory]::Exists((Join-Path $work 'catalogs'))){throw 'Received plan projection fabricated a Manager catalog.'}
+            $roleState=Get-WsmWizardState $work $catalog.PairId $role
+            if((Get-WsmHtmlRevision $work $catalog.PairId) -ne [int]$roleState.Revision){throw 'Received-plan HTML/CLI revision tried to read a fabricated Manager catalog.'}
+            $actionView=Get-WsmHtmlView $work $catalog.PairId actions $role
+            if(-not @($actionView.actions|Where-Object action -CEQ ImportApprovedPlan).Count){throw 'Received-plan action metadata required a nonexistent Manager catalog.'}
             $blocked=$false;try{Import-WsmWizardApprovedPlan $work $role $planPath ('0'*64)|Out-Null}catch{$blocked=$true};if(-not $blocked){throw 'Wrong independent hash was accepted.'}
         }
         $script:receivedFixtureFingerprint=('a'*64)
