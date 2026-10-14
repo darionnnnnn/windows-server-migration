@@ -281,3 +281,10 @@ P6 同步 README／IMPLEMENTATION／OPERATIONS／GENERAL-HOST-WORKFLOW／guide �
 主代理核對 consumer 與 15 份交付檔，建立排除 archive／私人檔／後續未完成 helper 的不可變 work/r6/p1a-final 副本，逐檔 SHA256 一致（p1a-final-index.json）。WinPS5.1／PS7 各通過 Preparation 29 checks、12 adapters 88 checks、AssistiveReviewForms 44 checks、HtmlConsole 64 checks、WizardFlow 45 checks。真 Edge fixture 通過草稿離開提醒、跨上下文隔離、source／spec 改變、hash-only refresh、SecretRef、欄位定位及保存後重新讀取。主代理發現並修正排程空 Arguments 被誤判必填，Command 仍須非空；修正 WinPS 中文來源 UTF8 BOM 相容。
 
 WinPS5.1／PS7 同一副本的實際 Edge 表單 → 正式 handler 回應擷取橋接 → 既有核心 sealed spec 檔案／SHA256 讀回均通過。橋接只擷取正式 writer 的 bytes，仍將每一請求送正式 controller 一次，保留角色、session、CAS、worker、catalog 和 Submit；並驗舊 review 拒絕及同 operation 重入不重寫。測試 fixture 使用隔離來源盤點與責任證據，不代表真實搬移核准。此為 P1a 可控使用端實作證據，**不是原生 HTTP／origin enforcement／完整三角色旅程 PASS**；P0 NotPassed 與 P1b 核准旅程仍待補，整輪未完成。日誌在 work/r6/p1a-final-*.log。
+### P2 分組／選取與 U08 保存防護：可控實作段已驗證
+
+正式模組改用 WizardGrouping 單一 consumer，群組 ID 由 family 與排序後的穩定 ItemId 集合產生；唯一設定併入業務群组，共享項只出現一次並列完整 consumer，缺少與循環相依有明確警示。自動選取先解析完整必要相依閉包；明確排除、缺件與未解循環保留待處理，來源／Manager 均走既有耐久 state／catalog 保存，不建立核准。未知舊 ReviewGroupId 導向第一個未確認群組；新盤點項目需重審。核心的預設選取與已審閱決策分開顯示，不能把 selected=true 當確認完成。
+
+主代理獨立驗證 work/r6/p2-final 的實際模組 consumer：WinPS5.1／PS7 均通過 200 項 Service／ScheduledTask／IISSite 混合集合的真匯入、逐項保存、模式切換、自動閉包、排除理由、重新盤點 201 項與餘項審閱；另 Source 11 checks 驗必要鏈、循環／缺件、盤點 job 來源綁定、排除與舊 intent 無 Confirmed 欄位。受影響 WizardFlow 各 45 checks 通過。真 Edge fixture 驗 200 群組完整保留、共享具名影響、待確認標記、警示及 375px 無橫向溢出；這是 UI consumer fixture，不冒稱原生盤點／封裝或 HTTP 通過。最終交付九份程式／測試 bytes 與驗證副本逐檔一致（work/r6/p2-final-index.json）。
+
+本段核對再發現 P1a 保存 catch 僅憑 stale code 就清除 pending 的風險，已一併修正：只有 submissionRejected=true 可清除待確認作業及重新 Get；未知 409／422 保留原 ID、輸入與焦點，只查同一作業，不重送。主代理獨立跑正式 UI fixture 的正反例及 P1 表單回歸通過，日誌 p2-final-uncertain-ui.log。P1b sealed plan 集合對照與原生 HTTP 旅程仍待所屬段，未把 P2 fixture 當整輪驗收。

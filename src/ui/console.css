@@ -81,6 +81,7 @@ body{font-size:18px}
 .wizard-related-item{padding:10px 0;border-top:1px solid #e8eef2}
 .wizard-related-item h3,.wizard-related-impact h3{margin:0 0 4px;font-size:16px;color:#29465b}
 .wizard-related-item p,.wizard-related-impact p{margin:3px 0;color:#526778;overflow-wrap:anywhere}
+.wizard-groups{display:grid;gap:10px;min-width:0;margin:14px 0}.wizard-group-row{align-items:flex-start}.wizard-group-name{display:grid;gap:3px;min-width:0;flex:1 1 240px;overflow-wrap:anywhere}.wizard-group-signals{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:8px;flex:1 0 100%;min-width:0}.wizard-group-signal{min-width:0;padding:10px 12px;border:1px solid #d8e2e8;border-radius:8px;background:#f8fafb}.wizard-group-signal h3{margin:0 0 3px;color:#29465b;font-size:16px}.wizard-group-signal p,.wizard-group-signal ul{margin:0;color:#526778;overflow-wrap:anywhere}.wizard-group-signal ul{padding-left:22px}.wizard-group-warning{border-color:#e5d4ae;background:#fff9ed}.wizard-group-limitation,.wizard-group-status{border-color:#e7d8b4;background:#fffaf0}.wizard-group-shared-impact{border-color:#cfe0e7;background:#f2f8fa}
 
 .guide-main{max-width:1000px;margin:0 auto}
 .guide-main .guide-section p,.guide-main .guide-section li,.guide-main .guide-section dt,.guide-main .guide-section dd{font-size:18px;line-height:1.75}
