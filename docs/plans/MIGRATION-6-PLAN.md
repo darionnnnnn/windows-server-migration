@@ -542,3 +542,10 @@ M01 的耐久來源意圖／材料／責任／作業紀錄有核心與 Source �
 主代理直接核對本輪 diff、入口及已提交來源；Luna high 的唯讀完整性複核未另找到 P1–P5 未接入 consumer，但其摘要中沿用的歷史 P0 全域 NotPassed 已由本 PLAN 上一節按實際 CI 範圍裁定。該複核不代替主代理查證，不構成不同實作模型的收尾簽核。未完成項保留本輪，不轉至下一輪。
 Manager 批次保存窄修由 gpt-6-luna/high 實作：批次卡本來已有獨立 wizardBulkPreparationInputs／Dirty 與離開提醒；其 input/change 不再同時污染一般 wizardDirty，未清空其他表單草稿，也未改 CAS 或未知寫入。新增動態 wizard revision 的順序案例在舊 UI 不可變副本重現 wizardStale=true；修正版副本 manager-bulk-save-stale-fixed-4ba2269e0a234df4906c373688bc902d 通過保存→可見 PublishComparison 表單→提交，並保留既有未知提交同 ID 查詢反例。主代理直接核對單一產品條件變更、草稿 Map／dirty consumer 及受測來源雜湊。這是 Edge API fixture；仍以接續真原生 J3 補驗完整結果。
 J3 最新原生結果：CI [38698158215](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38698158215)，commit e1c1d1f，WinPS5.1 job 116299657631／PS7 job 116299657703 均 success。三個空 workspace 透過真 Edge／HTTP 完成 Source 盤點、逐項保存與重開交接、空 Target 身分／盤點／交接、Manager 來源匯入／目標預覽與 commit／批次 spec 保存／PublishComparison／明確 ISOLATED-PILOT 核准，讀回真 sealed plan bytes／SHA256；關頁後新頁由 durable jobs 讀回同一份 plan 路徑及可見 hash，沒有新增 operation。未建立備份來繞過 Target 初始交接，也未以核心直接核准代替 UI。身分與本機盤點觀察仍為明列 fixture，ProductionVerified=false。後續同頁核准畫面的自有變更提示另做窄型核對，不重跑已無關的備份／還原矩陣。
+### 同頁核准完成後的草稿確認
+
+J3 已通過完整核心／原生旅程及重開頁面交接，另補查同頁狀態時重現：ApproveMigration 勾選本身留下 wizardDirty，成功核准的 revision 被誤判為別的視窗修改。Luna high 窄修記錄每次動作送出時的 context／role／Pair 與欄位值，只在同一作業成功且身分、值未改時確認提交；核准只清除自己的已提交欄位。先前成功提交的匯入／預覽欄位與後續真正新草稿分開追蹤，後者仍保留 stale 保護；失敗、切換上下文與未知結果不當成功，也不自動重送。
+
+舊版不可變副本 manager-approval-stale-negative-async-6a4fc1081161405da2c691737ae7c40c 重現成功核准仍 wizardStale=true。修正版 manager-approval-stale-fixed-submitted-history-5ec3f3f8481f48fd8ac82bc173d0b22c 的 Test-WizardHandoffUi 通過先成功 Target 預覽、再非同步核准後正確刷新，以及提交預覽後再次編輯仍保留草稿的反例。主代理直接讀程式、失敗／成功 log，核對 107 個快照輸入未變，console.js／測試與工作樹 hash 一致（D46C9574…／E10CA79C…）。第一次比對腳本的正反斜線路徑未正規化造成找不到索引列，修正查找後雜湊一致，沒有為此重跑行為測試。
+
+這是純前端生命週期修正；接續 native Manager runner 加入同頁 wizardStale=false／零 stale notice，僅補 PS7 真 Edge／HTTP 驗證。雙引擎核心、完整 J3 與重開交接沿用 38698158215，不再重跑未受影響的 Source 備份、Target 還原、Probe 與封裝矩陣。產品提交 skip-ci，下一個 runner 提交精確觸發受影響旅程。
