@@ -381,6 +381,8 @@ async function main() {
   const approvalRequests = managerUi.operations.filter(row => row.action === 'ApproveMigration');
   assert.equal(approvalRequests.length, 1, 'Exactly one native UI approval request is permitted.');
   assert.equal(approvalRequests[0].args.PilotAcknowledgement, 'ISOLATED-PILOT', 'The approval acknowledgment must come from its explicit UI checkbox.');
+  assert.equal(await managerUi.page.evaluate(() => window.WsmConsole.state.wizardStale), false, 'A successful approval must not label its own saved consent as a conflicting edit.');
+  assert.equal(await managerUi.page.locator('.wizard-stale-notice').count(), 0, 'Same-page approval must expose the current handoff state.');
   // Reopen a fresh page: handoff evidence must come from durable jobs, not memory.
   await managerUi.page.close();
   const reopenedManager = await openUi(manager);
