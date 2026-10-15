@@ -67,7 +67,7 @@ function makeSnapshot() {
  const observationHooks = String.raw`
 # TEST-ONLY native journey observations; applied only to this private module copy.
 if ($env:WSM_MANAGER_JOURNEY_TEST -eq '1') {
- function Get-WsmPreflight { [pscustomobject]@{OS='TEST-ONLY Windows Server fixture';Version='10.0';IsServer=$true;Administrator=$true;Is64Bit=$true;PowerShellVersion=$PSVersionTable.PSVersion.ToString();ExecutionPolicy='RemoteSigned';LanguageMode='FullLanguage'} }
+ function Get-WsmPreflight { [pscustomobject]@{OS='TEST-ONLY Windows Server fixture';Version='10.0';Build='20348';Edition='Datacenter';InstallationType='Server';Architecture='x64';IsServer=$true;Administrator=$true;Is64Bit=$true;PowerShellVersion=$PSVersionTable.PSVersion.ToString();ExecutionPolicy='RemoteSigned';LanguageMode='FullLanguage';InventoryOnly=$true;RestoreSupported=$false} }
  function Get-WsmMachineIdentity {
   if($env:WSM_RUNTIME_TEST_FINGERPRINT -notmatch '^[a-f0-9]{64}$'){throw 'TEST-ONLY controlled identity is not configured.'}
   $name=switch($env:WSM_RUNTIME_TEST_FINGERPRINT){('a'*64){'journey-source'}('b'*64){'journey-target'}default{'journey-manager'}}
@@ -197,6 +197,11 @@ async function openUi(server) {
   const errors = [], operations = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') log(server.role + ' browser console ' + message.text()); });
+  page.on('response', response => {
+    if (response.status() >= 400 && new URL(response.url()).pathname.startsWith('/api/')) {
+      response.text().then(body => log(server.role + ' HTTP ' + response.status() + ' ' + new URL(response.url()).pathname + ' ' + body.slice(0, 1800))).catch(() => {});
+    }
+  });
   page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/operations') { const body=request.postDataJSON();operations.push(body);log(server.role + ' UI operation ' + JSON.stringify(body)); } });
   await page.goto(server.origin + '/#wizard', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(role => window.WsmConsole?.state?.session?.role === role, server.role, { timeout: 30000 });
