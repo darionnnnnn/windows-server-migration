@@ -35,11 +35,11 @@
                 if($output -and $output.PSObject.Properties['AttemptId'] -and [string]$output.AttemptId -ceq [string]$attempt.AttemptId){$bound=$true;break}
             }
             if(-not $bound){continue}
-            $stage=[string]$attempt.Stage;$jobStatus=[string]$job.status
+            $stage=[string]$attempt.Stage;$jobStatus=[string]$job.status;$sourceRecoveryPending=[bool](($attempt.PSObject.Properties['SourceResumeRequired'] -and $attempt.SourceResumeRequired) -or ($attempt.PSObject.Properties['SourceResumeFreshFreezePending'] -and $attempt.SourceResumeFreshFreezePending))
             $stageMatches=switch($jobStatus){
                 'Succeeded' { $stage -in @('Delivered','ReviewRequired') }
-                'Failed' { $stage -ceq 'Failed' }
-                'Cancelled' { $stage -ceq 'Cancelled' }
+                'Failed' { $stage -ceq 'Failed' -or ($stage -ceq 'ReviewRequired' -and $sourceRecoveryPending) }
+                'Cancelled' { $stage -ceq 'Cancelled' -or ($stage -ceq 'ReviewRequired' -and $sourceRecoveryPending) }
                 'Interrupted' { $stage -in @('Authorized','CoreExported','PackageVerified','ReviewRequired') }
                 'ReviewRequired' { $stage -ceq 'ReviewRequired' }
                 default { $false }

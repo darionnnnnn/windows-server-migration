@@ -138,6 +138,69 @@ function Get-WsmWizardRuntimeTargetPreviewJobResult([string]$Workspace,[string]$
     $latest[0].Output
 }
 
+function Get-WsmWizardSourceResumeEvidence([string]$Workspace,[string]$PairId,$Profile,$PlanRef,$BackupAttempt,[object[]]$Jobs) {
+    $pairsRoot=[IO.Path]::GetFullPath((Join-Path $Workspace 'pairs'));$sourceAttemptPath='';$sourceAttemptHash='';$sourceAttempt=$null;$receiptError='';$attemptError='';$freezeRecordVerified=$false;$freezeRecordFresh=$false
+    try{
+        $freezePath='';$freezeHash=''
+        if($BackupAttempt.Freeze -and $BackupAttempt.Freeze.Path -and $BackupAttempt.Freeze.SHA256 -match '^[a-fA-F0-9]{64}$'){$freezePath=[IO.Path]::GetFullPath([string]$BackupAttempt.Freeze.Path);$freezeHash=[string]$BackupAttempt.Freeze.SHA256}
+        elseif($BackupAttempt.OutputRoot){$freezePath=[IO.Path]::GetFullPath((Join-Path ([string]$BackupAttempt.OutputRoot) 'source-freeze.json'));if([IO.File]::Exists($freezePath)){$freezeHash=(Get-FileHash -LiteralPath $freezePath -Algorithm SHA256).Hash}}
+        if($freezePath -and [IO.File]::Exists($freezePath)){
+            Assert-WsmNoReparse $freezePath
+            if((Get-FileHash -LiteralPath $freezePath -Algorithm SHA256).Hash -ieq $freezeHash){
+                $freeze=Read-WsmFreezeRecord $freezePath $freezeHash $PlanRef.Plan ([string]$PlanRef.SHA256) -AllowExpired
+                if($freeze.PairId -ceq $PairId -and $freeze.PlanHash -ieq [string]$PlanRef.SHA256 -and $freeze.PSObject.Properties['SourceAttemptPath'] -and $freeze.PSObject.Properties['SourceAttemptHash']){
+                    $freezeRecordVerified=$true
+                    $freezeExpiry=[DateTimeOffset]::MinValue;if([DateTimeOffset]::TryParse([string]$freeze.ExpiresUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind,[ref]$freezeExpiry) -and $freezeExpiry.Offset -eq [TimeSpan]::Zero -and $freezeExpiry -gt [DateTimeOffset]::UtcNow){$freezeRecordFresh=$true}
+                    $candidate=[IO.Path]::GetFullPath([string]$freeze.SourceAttemptPath);Assert-WsmNoReparse $candidate
+                    $candidateDirectory=[IO.Path]::GetDirectoryName($candidate);$ownedPrefix=$pairsRoot.TrimEnd('\')+'\freeze-'+$PairId+'-'
+                    if($candidate.StartsWith($ownedPrefix,[StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($candidate) -ceq 'attempt.json' -and [IO.File]::Exists($candidate)){
+                        $actualHash=(Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
+                        if($actualHash -ieq [string]$freeze.SourceAttemptHash){$sourceAttemptPath=$candidate;$sourceAttemptHash=$actualHash}
+                        else{
+                            # SourceResume updates the owned attempt in place. A changed
+                            # hash is usable only as a status observation; unlocking a
+                            # new backup still requires the matching successful job output.
+                            $observed=Read-WsmSourceAttempt $candidate $actualHash $PlanRef.Plan ([string]$PlanRef.SHA256)
+                            if($observed.State.Status -ceq 'SourceResumed'){$sourceAttemptPath=$candidate;$sourceAttemptHash=$actualHash}
+                        }
+                        if($sourceAttemptPath){$sourceAttempt=Read-WsmSourceAttempt $sourceAttemptPath $sourceAttemptHash $PlanRef.Plan ([string]$PlanRef.SHA256)}
+                    }
+                }
+            }
+        }
+    }catch{$receiptError=$_.Exception.Message;$sourceAttemptPath='';$sourceAttemptHash='';$sourceAttempt=$null}
+    if(-not $sourceAttempt -and $BackupAttempt.PSObject.Properties['FreezeAttemptStarted'] -and $BackupAttempt.FreezeAttemptStarted -and $BackupAttempt.PSObject.Properties['FreezeAttemptStartedUtc'] -and $BackupAttempt.FreezeAttemptStartedUtc){
+        try{
+            $started=[DateTimeOffset]::MinValue
+            if(-not [DateTimeOffset]::TryParse([string]$BackupAttempt.FreezeAttemptStartedUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind,[ref]$started) -or $started.Offset -ne [TimeSpan]::Zero){throw 'Freeze attempt start timestamp is missing or invalid.'}
+            Assert-WsmNoReparse $pairsRoot
+            $candidates=New-Object 'System.Collections.Generic.List[object]'
+            foreach($folder in @(Get-ChildItem -LiteralPath $pairsRoot -Directory -Filter ('freeze-'+$PairId+'-*'))){
+                Assert-WsmNoReparse $folder.FullName;$candidate=Join-Path $folder.FullName 'attempt.json';if(-not [IO.File]::Exists($candidate)){continue};Assert-WsmNoReparse $candidate
+                try{$hash=(Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant();$observed=Read-WsmSourceAttempt $candidate $hash $PlanRef.Plan ([string]$PlanRef.SHA256);$utc=[DateTimeOffset]::Parse([string]$observed.State.Utc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind);if($utc -lt $started -or [string]$observed.State.Owner -cne [string]$BackupAttempt.FreezeOwner -or [string]$observed.State.Evidence -cne [string]$BackupAttempt.FreezeEvidence){continue};$candidates.Add([pscustomobject]@{Path=[IO.Path]::GetFullPath($candidate);Hash=$hash;Attempt=$observed})}catch{}
+            }
+            if($candidates.Count -eq 1){$sourceAttemptPath=$candidates[0].Path;$sourceAttemptHash=$candidates[0].Hash;$sourceAttempt=$candidates[0].Attempt}
+            elseif($candidates.Count -gt 1){$attemptError='發現多份符合停寫開始紀錄的來源停寫資料，無法自動選擇；請保留資料並人工核對。'}
+        }catch{$attemptError=$_.Exception.Message}
+    }
+    $resumeJobVerified=$false
+    if($sourceAttempt -and $sourceAttempt.State.Status -ceq 'SourceResumed'){
+        $operationRoot=[IO.Path]::GetFullPath((Join-Path $pairsRoot ('source-operations\'+$PairId)))
+        try{Assert-WsmNoReparse $operationRoot;if(-not [IO.Directory]::Exists($operationRoot)){$sourceAttempt=$null}}catch{$sourceAttempt=$null}
+    }
+    if($sourceAttempt -and $sourceAttempt.State.Status -ceq 'SourceResumed'){
+        foreach($job in @($Jobs)){
+            if(-not $job -or [string](Get-WsmWizardTargetJobField $job action Action) -cne 'SourceResume' -or [string](Get-WsmWizardTargetJobField $job status Status) -cne 'Succeeded' -or [string](Get-WsmWizardTargetJobField $job role Role) -cne 'Source' -or [string](Get-WsmWizardTargetJobField $job pairId PairId) -cne $PairId){continue}
+            try{if([IO.Path]::GetFullPath([string](Get-WsmWizardTargetJobField $job workspace Workspace)) -ine [IO.Path]::GetFullPath($Workspace)){continue}}catch{continue}
+            foreach($output in @(Get-WsmWizardTargetJobField $job outputs Outputs)){
+                if($output -and $output.PSObject.Properties['Path'] -and $output.PSObject.Properties['SHA256'] -and [IO.Path]::GetFullPath([string]$output.Path) -ieq $sourceAttemptPath -and [string]$output.SHA256 -ieq $sourceAttemptHash){$resumeJobVerified=$true;break}
+            }
+            if($resumeJobVerified){break}
+        }
+    }
+    [pscustomobject]@{Path=$sourceAttemptPath;Hash=$sourceAttemptHash;Attempt=$sourceAttempt;FreezeRecordVerified=$freezeRecordVerified;FreezeRecordFresh=$freezeRecordFresh;ResumeJobVerified=$resumeJobVerified;MissingReason=$(if($attemptError){$attemptError}elseif($receiptError){'停寫收據無法核對；請保留資料並檢查收據與來源停寫紀錄。'}else{'未找到唯一可核對的來源停寫紀錄；請保留資料並檢查配對目錄中的停寫收據與嘗試紀錄。'})}
+}
+
 function Get-WsmWizardRuntimeSource([string]$Workspace,[string]$PairId,$Profile,[object[]]$Jobs) {
     $planRef=$null
     try{$planRef=Get-WsmWizardCurrentApprovedPlan $Workspace $PairId $Profile $null $Jobs}catch{}
@@ -145,7 +208,7 @@ function Get-WsmWizardRuntimeSource([string]$Workspace,[string]$PairId,$Profile,
         $choices=@();try{$choices=@(Get-WsmWizardReceivedPlanChoices $Workspace $Profile)}catch{}
         $importDefaults=@{Workspace=[IO.Path]::GetFullPath($Workspace);Role='Source'}
         $action=New-WsmWizardRuntimeAction 'ImportApprovedPlan' ($choices.Count -gt 0) $(if($choices.Count){'選擇已核准且綁定目前來源主機的計畫。'}else{'目前沒有可匯入的已核准計畫；需先由 Manager 產生可信交接材料。'}) $importDefaults @('Path','ExpectedHash')
-        return [pscustomobject][ordered]@{status='NeedsApprovedPlan';plan=$null;backupPreview=$null;backupResult=$null;delivery=[pscustomobject]@{mode='';volumeBytes=$null;frozen=$false};sourceFreeze=[pscustomobject]@{required=$false;missingEvidence=@();resumeRequired=$false;resumeRoute=$null};actions=@($action);choices=$choices;canStartBackup=$false}
+        return [pscustomobject][ordered]@{status='NeedsApprovedPlan';plan=$null;backupPreview=$null;backupResult=$null;delivery=[pscustomobject]@{mode='';volumeBytes=$null;frozen=$false};sourceFreeze=[pscustomobject]@{required=$false;missingEvidence=@();resumeRequired=$false;resumeRoute=$null;sourceResumed=$false;manualReviewRequired=$false;manualReviewReason=''};actions=@($action);choices=$choices;canStartBackup=$false}
     }
     # A runtime read must not create a WizardState record as a side effect.
     $state=$null
@@ -165,28 +228,22 @@ function Get-WsmWizardRuntimeSource([string]$Workspace,[string]$PairId,$Profile,
     $availability=$null;try{$availability=Get-WsmWizardBackupAvailability $Workspace $PairId $Profile $Jobs}catch{}
     $freezeRequired=[bool]($preview -and $preview.FreezeRequired)
     $missingEvidence=@();if($freezeRequired){$missingEvidence=@('Owner','Evidence','FreezeAuthorization','FreezeExternalEvidencePath','FreezeExternalEvidenceHash')}
-    $sourceResumeRequired=[bool]($availability -and $availability.attempt -and $availability.attempt.PSObject.Properties['SourceResumeRequired'] -and $availability.attempt.SourceResumeRequired)
-    $resumeRoute=$null
-    if($sourceResumeRequired){
-        $sourceAttemptPath='';$sourceAttemptHash=''
-        # The signed freeze receipt is the durable pointer to the distinct
-        # SourceFreezeAttempt. Never pass the freeze receipt as that attempt.
-        try{
-            $freeze=$availability.attempt.Freeze
-            if($freeze -and $freeze.Path -and $freeze.SHA256 -match '^[a-fA-F0-9]{64}$'){
-                $freezePath=[IO.Path]::GetFullPath([string]$freeze.Path);Assert-WsmNoReparse $freezePath
-                if((Get-FileHash -LiteralPath $freezePath -Algorithm SHA256).Hash -ieq [string]$freeze.SHA256){
-                    $freezeRecord=Read-WsmTrustedJson $freezePath ([string]$freeze.SHA256)
-                    if($freezeRecord.PairId -ceq $PairId -and $freezeRecord.PlanHash -ieq [string]$planRef.SHA256 -and $freezeRecord.PSObject.Properties['SourceAttemptPath'] -and $freezeRecord.PSObject.Properties['SourceAttemptHash'] -and [string]$freezeRecord.SourceAttemptHash -match '^[a-fA-F0-9]{64}$'){
-                        $candidatePath=[IO.Path]::GetFullPath([string]$freezeRecord.SourceAttemptPath);Assert-WsmNoReparse $candidatePath
-                        if([IO.File]::Exists($candidatePath) -and (Get-FileHash -LiteralPath $candidatePath -Algorithm SHA256).Hash -ieq [string]$freezeRecord.SourceAttemptHash){$sourceAttemptPath=$candidatePath;$sourceAttemptHash=([string]$freezeRecord.SourceAttemptHash).ToLowerInvariant()}
-                    }
-                }
-            }
-        }catch{$sourceAttemptPath='';$sourceAttemptHash=''}
-        $resumeRoute=[pscustomobject][ordered]@{required=$true;action='SourceResume';command='Invoke-WsmSourceResume';sourceAttemptPath=$sourceAttemptPath;sourceAttemptHash=$sourceAttemptHash;sourceStateDirectory=(Join-Path $Workspace 'pairs');missingExplicitFields=@('Owner','OwnershipEvidence','Acknowledgement','ResumeExternalEvidencePath','ResumeExternalEvidenceHash')}
+    $sourceResumeEvidence=$null;$sourceResumed=$false;$sourceResumeRequired=$false;$sourceResumeAvailable=$false;$sourceResumeFreshFreezePending=$false
+    if($availability -and $availability.attempt){
+        $backupAttempt=$availability.attempt
+        $sourceResumeRequired=[bool]($backupAttempt.PSObject.Properties['SourceResumeRequired'] -and $backupAttempt.SourceResumeRequired)
+        $sourceResumeFreshFreezePending=[bool]($backupAttempt.PSObject.Properties['SourceResumeFreshFreezePending'] -and $backupAttempt.SourceResumeFreshFreezePending)
+        if(-not $sourceResumeRequired -and $backupAttempt.PSObject.Properties['FreezeAttemptStarted'] -and $backupAttempt.FreezeAttemptStarted -and -not $backupAttempt.ChannelSummary -and [string]$backupAttempt.Stage -in @('Authorized','CoreExported','PackageVerified','Failed','Cancelled')){$sourceResumeRequired=$true}
+        if($sourceResumeRequired -or $sourceResumeFreshFreezePending){$sourceResumeEvidence=Get-WsmWizardSourceResumeEvidence $Workspace $PairId $Profile $planRef $backupAttempt $Jobs;if($sourceResumeEvidence.Attempt){$sourceAttemptStatus=[string]$sourceResumeEvidence.Attempt.State.Status;$sourceResumeAvailable=$sourceAttemptStatus -in @('Prepared','Quiescing','Interrupted','Frozen')};if($sourceResumeEvidence.Attempt -and $sourceResumeEvidence.Attempt.State.Status -ceq 'SourceResumed' -and $sourceResumeEvidence.ResumeJobVerified){$sourceResumed=$true;$sourceResumeRequired=$false;$sourceResumeAvailable=$false}elseif($sourceResumeEvidence.FreezeRecordVerified -and $sourceResumeEvidence.FreezeRecordFresh -and $sourceResumeEvidence.Attempt -and $sourceResumeEvidence.Attempt.State.Status -ceq 'Frozen'){$sourceResumeRequired=$false}}
     }
-    $status='Ready';if($freezeRequired -and $missingEvidence.Count){$status='NeedsFreezeEvidence'}elseif($availability -and [string]$availability.status -in @('Failed','Cancelled','Prepared','ReviewRequired')){$status=[string]$availability.status}
+    if($sourceResumed){$attempt=$null;$frozen=$false;$selectedMode='Zip';$volume=[long]536870912;if($state -and $state.PSObject.Properties['Mode']){switch([string]$state.Mode){'ItemByItem'{$selectedMode='Directory';$volume=0};'Automatic'{$selectedMode='Zip';$volume=536870912}}}}
+    $resumeRoute=$null
+    if($sourceResumeRequired -or $sourceResumeAvailable){
+        $sourceAttemptPath='';$sourceAttemptHash='';$manualReviewReason='';if($sourceResumeEvidence){$sourceAttemptPath=[string]$sourceResumeEvidence.Path;$sourceAttemptHash=[string]$sourceResumeEvidence.Hash;if(-not $sourceAttemptPath){$manualReviewReason=[string]$sourceResumeEvidence.MissingReason}elseif($sourceResumeEvidence.Attempt.State.Status -ceq 'SourceResumed'){$manualReviewReason='來源停寫紀錄顯示已恢復，但尚無可核對的恢復成功收據（SourceResume 工作路徑與 SHA256）；請保留資料並人工核對所有權與紀錄。'}}
+        if(-not $sourceAttemptPath){$sourceResumeAvailable=$false};if($manualReviewReason){$sourceResumeAvailable=$false}
+        $resumeRoute=[pscustomobject][ordered]@{required=$sourceResumeRequired;action='SourceResume';command='Invoke-WsmSourceResume';sourceAttemptPath=$sourceAttemptPath;sourceAttemptHash=$sourceAttemptHash;sourceStateDirectory=(Join-Path $Workspace 'pairs');manualReviewRequired=[bool]$manualReviewReason;manualReviewReason=$manualReviewReason;missingExplicitFields=@('Owner','OwnershipEvidence','Acknowledgement','ResumeExternalEvidencePath','ResumeExternalEvidenceHash')}
+    }
+    $status='Ready';if($freezeRequired -and $missingEvidence.Count){$status='NeedsFreezeEvidence'}elseif($availability -and [string]$availability.status -in @('Failed','Cancelled','Prepared','ReviewRequired')){$status=[string]$availability.status};if($sourceResumed){$status='Ready'}
     $startDefaults=@{Workspace=[IO.Path]::GetFullPath($Workspace);PairId=$PairId;DeliveryMode=$selectedMode;VolumeBytes=$volume}
     # Availability means the user may open the explicit authorization form;
     # canStartBackup is the stricter statement that the current projection has
@@ -194,10 +251,10 @@ function Get-WsmWizardRuntimeSource([string]$Workspace,[string]$PairId,$Profile,
     # value and trusted SourceFreezeReady evidence at submission time.
     $startAvailable=($null -ne $planRef -and -not $sourceResumeRequired)
     $canStartBackupReady=($startAvailable -and -not ($freezeRequired -and $missingEvidence.Count))
-    $startReason=if($sourceResumeRequired){'來源停寫可能中斷；請先使用既有 SourceResume／修復途徑，不會自動恢復或續跑。'}elseif($freezeRequired -and $missingEvidence.Count){'所選範圍需要來源停寫；先核對影響並取得責任人、證據與獨立 SourceFreezeReady 材料。'}elseif($attempt){'此未完成嘗試已凍結交付格式；續作會沿用同一格式與容量。'}else{'交付格式依目前精靈模式預設；StartBackup 會重新驗證核准、來源盤點與材料。'}
+    $startReason=if($sourceResumeRequired -and $sourceResumeEvidence -and $sourceResumeEvidence.FreezeRecordVerified -and -not $sourceResumeEvidence.FreezeRecordFresh){'來源凍結收據已過期；可先明確執行 SourceResume，但續作此備份前必須重新取得 SourceFreezeReady 並重新核准停寫。'}elseif($sourceResumeRequired){'來源停寫狀態或恢復材料未能完整核對；先完成 SourceResume 或人工修復核對，不會自動恢復或續跑。'}elseif($sourceResumed){'已核對來源恢復結果；重新備份會建立全新的輸出嘗試，並重新要求獨立 FreezeReady 與明確停寫授權。'}elseif($sourceResumeAvailable){'來源已停寫且完整凍結材料可核對；可明確續作目前備份，或另行核准 SourceResume。'}elseif($freezeRequired -and $missingEvidence.Count){'所選範圍需要來源停寫；先核對影響並取得責任人、證據與獨立 SourceFreezeReady 材料。'}elseif($attempt){'此未完成嘗試已凍結交付格式；續作會沿用同一格式與容量。'}else{'交付格式依目前精靈模式預設；StartBackup 會重新驗證核准、來源盤點與材料。'}
     $actions=@(New-WsmWizardRuntimeAction 'StartBackup' $startAvailable $startReason $startDefaults $missingEvidence)
-    if($sourceResumeRequired){$resumeDefaults=@{PlanPath=[string]$planRef.Path;ExpectedHash=[string]$planRef.SHA256;SourceStateDirectory=(Join-Path $Workspace 'pairs')};$resumeMissing=@('Owner','OwnershipEvidence','Acknowledgement','ResumeExternalEvidencePath','ResumeExternalEvidenceHash');if($resumeRoute.sourceAttemptPath -and $resumeRoute.sourceAttemptHash){$resumeDefaults.SourceAttemptPath=$resumeRoute.sourceAttemptPath;$resumeDefaults.SourceAttemptHash=$resumeRoute.sourceAttemptHash}else{$resumeMissing=@('SourceAttemptPath','SourceAttemptHash')+$resumeMissing};$actions+=New-WsmWizardRuntimeAction 'SourceResume' $true '來源恢復需要明確責任人、證據與單一寫入者條件；不會自動送出。' $resumeDefaults $resumeMissing}
-    [pscustomobject][ordered]@{status=$status;plan=[pscustomobject]@{path=[string]$planRef.Path;hash=[string]$planRef.SHA256;inventoryHash=[string]$planRef.Plan.InventoryHash;inventoryRevision=[int]$planRef.Plan.InventoryRevision;AuthoritativeApproval=$false};backupPreview=$preview;backupResult=$availability;delivery=[pscustomobject]@{mode=$selectedMode;volumeBytes=$volume;frozen=$frozen;attemptId=$(if($attempt){[string]$attempt.AttemptId}else{''})};sourceFreeze=[pscustomobject]@{required=$freezeRequired;missingEvidence=@($missingEvidence);resumeRequired=$sourceResumeRequired;resumeRoute=$resumeRoute;impact=$preview};actions=$actions;canStartBackup=$canStartBackupReady}
+    if($sourceResumeRequired -or $sourceResumeAvailable){$resumeDefaults=@{PlanPath=[string]$planRef.Path;ExpectedHash=[string]$planRef.SHA256;SourceStateDirectory=(Join-Path $Workspace 'pairs')};$resumeMissing=@('Owner','OwnershipEvidence','Acknowledgement','ResumeExternalEvidencePath','ResumeExternalEvidenceHash');if($resumeRoute.sourceAttemptPath -and $resumeRoute.sourceAttemptHash){$resumeDefaults.SourceAttemptPath=$resumeRoute.sourceAttemptPath;$resumeDefaults.SourceAttemptHash=$resumeRoute.sourceAttemptHash}else{$resumeMissing=@('SourceAttemptPath','SourceAttemptHash')+$resumeMissing};$resumeActionAvailable=([bool]$resumeRoute.sourceAttemptPath -and [bool]$resumeRoute.sourceAttemptHash -and -not $resumeRoute.manualReviewRequired);$resumeReason=if($resumeRoute.manualReviewRequired){[string]$resumeRoute.manualReviewReason}elseif($sourceResumeRequired){'來源恢復材料需明確人工核對；不會自動恢復或續跑。'}else{'來源恢復需要明確責任人、證據與單一寫入者條件；不會自動送出。'};$actions+=New-WsmWizardRuntimeAction 'SourceResume' $resumeActionAvailable $resumeReason $resumeDefaults $resumeMissing}
+    [pscustomobject][ordered]@{status=$status;plan=[pscustomobject]@{path=[string]$planRef.Path;hash=[string]$planRef.SHA256;inventoryHash=[string]$planRef.Plan.InventoryHash;inventoryRevision=[int]$planRef.Plan.InventoryRevision;AuthoritativeApproval=$false};backupPreview=$preview;backupResult=$availability;delivery=[pscustomobject]@{mode=$selectedMode;volumeBytes=$volume;frozen=$frozen;attemptId=$(if($attempt){[string]$attempt.AttemptId}else{''})};sourceFreeze=[pscustomobject]@{required=$freezeRequired;missingEvidence=@($missingEvidence);resumeRequired=$sourceResumeRequired;resumeAvailable=$sourceResumeAvailable;resumeRoute=$resumeRoute;impact=$preview;sourceResumed=$sourceResumed;manualReviewRequired=[bool]($resumeRoute -and $resumeRoute.manualReviewRequired);manualReviewReason=$(if($resumeRoute){[string]$resumeRoute.manualReviewReason}else{''})};actions=$actions;canStartBackup=$canStartBackupReady}
 }
 
 function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,[object[]]$Jobs) {

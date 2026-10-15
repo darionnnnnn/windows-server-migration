@@ -1,6 +1,6 @@
 # 第 6 輪規劃：完成備份、管理交接與還原精靈
 
-> 2026-10-14（Asia/Taipei）。狀態：實作完成、代理可執行驗收完成，待不同模型體檢。2026-10-14 使用者授權完整實作並補齊全部項目，逐段驗證後 commit／push 本輪分支。規劃階段的「不實作」紀錄屬當時狀態；本次依最新授權執行。本文件依使用者明確指示，承接第五輪未完成項目；第五輪只收尾已完成且可獨立驗證的交付範圍。原始需求與歷史證據保留於 [第五輪計畫](MIGRATION-5-PLAN.md)，現行能力以 [實作狀態](../IMPLEMENTATION-0.1.md) 為準。
+> 2026-10-14（Asia/Taipei）。狀態：逐項程式比對與補漏驗證完成；最終發行包重核中，不同模型體檢仍待完成。2026-10-14 使用者授權完整實作並補齊全部項目，逐段驗證後 commit／push 本輪分支。規劃階段的「不實作」紀錄屬當時狀態；本次依最新授權執行。本文件依使用者明確指示，承接第五輪未完成項目；第五輪只收尾已完成且可獨立驗證的交付範圍。原始需求與歷史證據保留於 [第五輪計畫](MIGRATION-5-PLAN.md)，現行能力以 [實作狀態](../IMPLEMENTATION-0.1.md) 為準。
 
 ## 1. 不變的定案
 
@@ -21,20 +21,7 @@
 - 開工先驗 stash／快照存在及雜湊，逐段移植，不直接 `stash pop` 覆蓋第五輪收尾修正。保存材料不可用時依本計畫重建，不假稱已恢復。
 - 部分 helper 曾有獨立核心 PASS（尤其 F1 真實小檔還原／取消／續作），仍可重用；修改後依相依 bytes 決定哪些證據有效。未交付 helper 的 PASS 不能成為第五輪發行能力聲明。
 
-| 承接項目 | 實作狀態／缺口 | 原第五輪條款 | 本輪段落 |
-|---|---|---|---|
-| 原生 HTML／CSS／session 載入可靠性 | 已有診斷與有限正式 handler PASS；本次 NativeHtmlBridge DOM 載入逾時、HtmlBridge spec-review／submission socket reset，先前完整 NativeBackup 亦有 CSS reset／盤點逾時；正式 handler 擷取測試不代表傳輸 PASS，原因未確定 | A01–03、F09、R12、R-A12 | P0 |
-| 全角色簡單操作、鍵盤與畫面覆蓋 | 基礎版面已交付；完整 Manager／Target 及新表單旅程未完成，不能以 Source 部分路徑代替 | B01–04、F01–05、R01、R-A01 | P1、P5、P6 |
-| 最新備份／還原結果導覽 | 新 durable attempt／材料綁定投影有部分實作；最新 running／missing CompletedUtc／取消／過期世代回歸未齊 | C01–05、R06、R-A05–06 | P3、P5 |
-| 分組與相依、200 項模式切換 | 基礎選取已交付，增強 grouping helper／循環／未知／跨組完整性未完成整合驗收 | D01–04、R04、R-A04 | P2 |
-| 管理端白話準備表單 | 已寫 Preparation helper、Desired 欄位／自動值來源／Submit；全部 adapter 真 Save→Submit 尚待最後雙引擎核驗與瀏覽器接線 | F0、R03、R-A02–03、R-A07 | P1 |
-| 自動排除可信安裝軟體子樹與 CER hash | 核心範圍防護已交付；安全預填、使用者覆寫優先、未知安裝位置及公用憑證匯入的整體使用端未完成 | E02、E05、R08、R-A03、R-A08 | P1、P3 |
-| 逐項／自動 UI 到真封裝 | Backup helper 有程式；Directory／ZIP 原生兩模式旅程未通過，缺資料／容量／漂移／取消閉環未齊 | E01–05、R02、R05、R08 | P3 |
-| 非 C 帳號、計畫、傳輸及匯入 | metadata-only 帳號觀察與 opaque choice 已寫；真正 constructor→worker→import 正向未過，peer UNC 觀察與實際 I/O 的隔離測試尚缺 | E03–04、R-A03、R-A06–09 | P4 |
-| Manager 全流程 UI 核准 | 原生測試仍用核心直接建立部分核准，不能算使用者 UI 到真 consumer | F01、F0、R-A07、H02 | P1、P5 |
-| Target 匯入、比較、收據、還原與續作 | F1 helper 有雙引擎核心證據；正式 UI 全旅程、取消後新決策、斷線恢復、鍵盤及跨階段組合未完成 | F01–05、F1、C04、R-A05–07 | P5 |
-| 可信結果進度 | Progress worker 部分有真實證據；統一 UI／未知總量／關頁重連與清理尚需整合 | R05、R-A05、H03 | P3、P5 |
-| 五條旅程、發行與最終完整性 | 未完整實作的部分不得驗收；需涵蓋逐項、自動、Manager、Target 續作、Probe 及失敗組合，最後文件與實際 ZIP bytes 同步 | H01–05、R-A09–12 | P6 |
+接手時的 12 條開發待辦已依第 3／5／6／9 節逐項追到正式程式使用端，完成項從待辦移除；實作與證據集中第 11 節。2026-10-15 本次反查另發現的 U02／U08／M01 接縫缺口已在本輪補齊，現況集中第 12 節，不以刪除舊待辦代替補實作。
 
 ## 3. 分段實作與代理可驗收條件
 
@@ -81,7 +68,7 @@
 
 驗收：三個隔離 workspace 走正式瀏覽器／handler／核心；錯主機、錯 hash、receipt 超 plan、stale comparison／世代／attempt、ItemResults 竄改被拒絕；成功項 bytes／ACL／metadata 真讀回且不覆寫既有檔。取消在真 partial payload 後觸發，明確新決策續作；同 attempt replay 不重做。後續 validation 追加日誌不使已核驗結果無故消失。還原／自動模式不能觸發啟用，單獨確認及核心 gate 均核對。
 
-另驗還原 job 缺 CompletedUtc 時，StrictMode 不拋錯，以耐久 attempt UpdatedUtc 安全排序；保存草稿的直接屬性讀取仍待修。Cancelled／Failed 的非成功結果與「尚未有封裝」分開呈現，不因沒有成功材料而抹去耐久失敗紀錄；它們也不構成可啟用證明。
+另驗還原 job 缺 CompletedUtc 時，StrictMode 不拋錯，以耐久 attempt UpdatedUtc 安全排序；缺可選時間欄位的讀取須使用安全存取器。Cancelled／Failed 的非成功結果與「尚未有封裝」分開呈現，不因沒有成功材料而抹去耐久失敗紀錄；它們也不構成可啟用證明。
 
 ### P6：全流程檢查、文件及交付
 
@@ -264,7 +251,9 @@ P6 同步 README／IMPLEMENTATION／OPERATIONS／GENERAL-HOST-WORKFLOW／guide �
 - 本節 U01–U08／M01–M04 均為本輪必做完整性條款，落在既有 12 子段，不新增輪次或框架。P6 必須逐項對照本節；U01–U08 的正式使用流程以及 M01–M03 的失敗處理在所屬段完成，不能推到 P6 才補程式。
 - 審查結論：上一版尚有材料生產者、停寫影響、NonC 語意、信任入口、分流、版本與發行使用端等規劃缺口，本節已補明。這是靜態程式核對及旅程推演，不是產品已正確運作的證據。原始 HTTP NotPassed、草稿缺欄位動態重現、本機權限／UNC 能力仍待實作階段驗證，未解除既有生產阻擋。
 
-## 10. 第六輪實作紀錄
+## 10. 第六輪實作紀錄（歷史過程）
+
+以下保留當時診斷、失敗、修正與驗收過程，其中的「尚待／未完成」不是現行 TODO；當前實作落點與未結項以第 11／12 節為準。
 
 2026-10-14 開工：沿用 codex/migration-6，規劃完成起點 0a2f74f60a1e0778f95401137ab3b2583d303d94，runtime 基準 1dbbc713f39b85276bd6de25b61fd39e282edd53。私人未追蹤檔保留，不讀／不改／不 stage。主代理套用 delegated-implementation 與 subagent-verification-policy；P0 原生傳輸委派 gpt-6-luna/high，接手材料唯讀盤點 gpt-6-luna/high，主代理核對實際 diff／正式 consumer 與驗收。此為啟動紀錄，不代表任何子段已完成。
 
@@ -549,7 +538,7 @@ J3 已通過完整核心／原生旅程及重開頁面交接，另補查同頁�
 舊版不可變副本 manager-approval-stale-negative-async-6a4fc1081161405da2c691737ae7c40c 重現成功核准仍 wizardStale=true。修正版 manager-approval-stale-fixed-submitted-history-5ec3f3f8481f48fd8ac82bc173d0b22c 的 Test-WizardHandoffUi 通過先成功 Target 預覽、再非同步核准後正確刷新，以及提交預覽後再次編輯仍保留草稿的反例。主代理直接讀程式、失敗／成功 log，核對 107 個快照輸入未變，console.js／測試與工作樹 hash 一致（D46C9574…／E10CA79C…）。第一次比對腳本的正反斜線路徑未正規化造成找不到索引列，修正查找後雜湊一致，沒有為此重跑行為測試。
 
 這是純前端生命週期修正；接續 native Manager runner 加入同頁 wizardStale=false／零 stale notice，僅補 PS7 真 Edge／HTTP 驗證。雙引擎核心、完整 J3 與重開交接沿用 38698158215，不再重跑未受影響的 Source 備份、Target 還原、Probe 與封裝矩陣。產品提交 skip-ci，下一個 runner 提交精確觸發受影響旅程。
-### 最終代理驗收與交付紀錄（2026-10-15）
+### 前次代理驗收與交付紀錄（2026-10-15；本次補漏後由第 12 節更新）
 
 - 最後產品修正 bbbe772bd118da71b003c7cb365970e718f3ef8b、原生同頁斷言 2c1f90257f1d3128e2c3611abda4fb9a674500e3 均已 commit／push codex/migration-6 並核對遠端 SHA。CI [38700109504](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38700109504) 的 PS7 Manager job 116306061458 success，主代理讀取原始 log，確認真 UI 明確 ISOLATED-PILOT 核准、sealed plan SHA256、同頁無 stale 與重開交接均通過。僅跑受改動影響的 Manager；沒有重跑未變的雙引擎核心、備份／還原與 Probe 矩陣。
 - 正式文件於 4d9f631 同步 11 份完整 HTML 與索引，主代理直接核對 11 個來源 hash、99 個本地引用及 14 個 HTML 頁面；產生器未變，沿用既有 24 項產生器測試，未為文件重跑同一 fixture。
@@ -558,3 +547,23 @@ J3 已通過完整核心／原生旅程及重開頁面交接，另補查同頁�
 - 主代理最後再次對照本 PLAN 第 1–9 節及第 11 節 12 子段、U01–U08、M01–M04 與五旅程，已定案實作、跨段 consumer、文件與交付包均有落點，沒有將未實作項移到下一輪。後續只改不入包的 PLAN／AGENTS 驗收紀錄，不改受驗證 payload，因此不重建同一包、不重跑無變更測試。
 - 尚未取得的只有完整流程的不同模型體檢簽核：主代理及 gpt-6-luna/high 均實作，主代理確切模型版本無可信可區分紀錄；先前 Astra medium 只有未完成的唯讀工作，不能代作簽核。待可確認未參與實作的模型審查原基準 1dbbc713f39b85276bd6de25b61fd39e282edd53 至本輪全部提交，或使用者明確覆寫同模型體檢規則。現有主代理／Luna 複核與驗收不冒稱獨立換模型體檢。
 - 開發電腦原生 reset／逾時仍 NotPassed、根因未定，AdGuard 設定保留；獨立 Windows CI 原生驗收已通過。外部 Server／SMB／企業 PKI／真業務／規模仍 NotTested，ProductionExecutionEnabled=false，按第 1／7 節既定範圍不轉成要求使用者主觀確認的開發驗收門檻。
+## 12. 本次依規劃逐項比對程式與 TODO 清理（2026-10-15）
+
+主代理直接追查第 1–9 節的 12 子段、U01–U08、M01–M04 與 UI／typed action／正式 handler／核心 consumer；三個 gpt-6-luna/high 唯讀分區核對只作線索，發現由主代理逐條查實。沒有獨立 TODO 檔或程式 TODO／NotImplemented 占位。接手表中已完成的開發待辦已刪除；原始規格、基準與歷史失敗證據仍保留。
+
+本次發現的四組缺口均已補齊並通過必要驗證，完成 TODO 已刪除，保留以下程式與證據對照：
+
+| 條款 | 缺口修正及實際使用端 | 核驗 |
+|---|---|---|
+| U08 | console.js 的 discardWizardPageDrafts 清除一般／runtime／準備／批次／NonC 草稿、確認追蹤及舊投影快取；明確捨棄後才重新載入。耐久 jobs 與未知 pendingOperation 保留，不送出新寫入。 | Test-WizardHandoffUi 真瀏覽器 API fixture 驗清除、零 POST、保留未知作業及時間有效／缺失／無效情境。 |
+| U02／M02 | WizardBackup、WizardBackupProjection、WizardRuntime 與 console.js 接起凍結後取消／失敗、回寫前 crash、過期／歧義材料、合法同嘗試續作與明確 SourceResume。OperationRequests 將真文字備援恢復結果納入耐久查詢；恢復後要求新 FreezeReady、epoch 與明確授權，建立新輸出嘗試；pending marker 與精確 child lineage 保護兩個寫入間隙。舊 operation 只讀原結果。 | Test-WizardBackupRecovery 真核心 freeze 後取消及真 typed CLI SourceResume，雙引擎各 21 assertions；terminal Delivered 僅為選擇器狀態注入，不冒稱新包已完成。 |
+| U02 | WizardBackup 依 plan hash／revision／host 核對全量盤點，IIS pool 與 SharedResourceImpacts 逐一顯示已選／未選 consumer；不完整觀測明示人工核對，逐列長度受控。正式 caller 的 Source 欄位與無盤點平面 row 均補齊。 | 同一窄測涵蓋真 approved-plan preview caller、可信 inventory 正例、只改 SHA 的拒絕反例、兩個 site、長名稱與正式 HTML 安全投影。 |
+| M01 | WizardHtmlRuntime 僅投影已核驗 AssistiveTargetDecisionReceipt 的五個責任摘要字串；Target 顯示 Owner／Reason 並明示非企業身分驗證。console.js 的作業／觀測／備份產生時間顯示本機時區、正規化 UTC 及原值。 | Test-WizardRuntimeTargetUi 與 HandoffUi 通過；正式 Test-WizardHtmlRuntimeProjection 雙引擎各 185 checks，排除任意 receipt、Comparison 及秘密欄位。 |
+
+後端舊 HEAD 三檔反例以真 freeze 後取消重現第一項失敗（exit 1，缺 SourceResumeRequired）。主代理直接讀 log／diff／consumer 後，另在不可變副本 work/r6/todo-recovery-main-d9a7daa7f5f4418f97abfdaa788952b6 執行同一窄測：recovery-pwsh.log／recovery-winps.log 均 PASS 21、exit 0；107 個 src／PS1／CMD／fixture 輸入雜湊不變且與工作樹一致。代理先前 live 工作樹的 PASS 只作除錯結果，不代替這份正式快照證據。
+
+UI 不可變副本 work/r6/todo-ui-main-1cadbb516a2a4c609054b0bd01b92c1c 的 HandoffUi、RuntimeTargetUi 與 Source manual-only RuntimeUi 均由主代理實跑 exit 0，109 個輸入測後未變；這是瀏覽器 API fixture，並非新原生 HTTP 驗收。其後只把備份產生時間接至同一個已測 formatter，node --check 通過，不重跑整段。Receipt 正式投影副本 work/r6/todo-receipt-fixed-e80a33b545ba479b869e6bcbc2503177 雙引擎 PASS 185、107 輸入未變；舊投影反例確因責任摘要遺失而 exit 1，錯誤存在當時工具輸出，未宣稱 negative.log 含該錯誤。
+
+主代理重新核對第 1–9 節、12 子段與交叉條款，現有定案未發現仍缺實作項，不把外部資格或不同模型簽核改寫成已完成。本段補漏由 gpt-6-luna/high 與主代理共同實作、主代理獨立查實及驗證；不稱為這些修改的獨立換模型體檢。本次變更使前次發行包失效，提交後僅重建一次最終包並另記實際 bytes 證據。
+
+外部操作用的軟體確認勾選表與 IMPLEMENTATION 的 7 條現場驗收尚無真實證據，不因開發完成而刪除。不同模型體檢是流程未結項，不是假裝待實作的產品功能；本次程式比對不冒稱完成該簽核。

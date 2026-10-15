@@ -14,9 +14,20 @@ function ConvertTo-WsmWizardHtmlValue($Value,[int]$Depth=0) {
     $allowed+=@('Shares','ReviewedTargetRootMappings','TargetStateShareName','UNCPath','CreatedLocal','TimeZoneId','NonCTransferPlanHash','NonCResultHash')
     $allowed+=@('Action','Rollback','RebootPossible','RequirementId','ConsumerItemId','Gate','Issue')
     $allowed+=@('CutoverPlanHash','CutoverStage')
+    $allowed+=@('manualReviewRequired','manualReviewReason','sourceResumed','resumeAvailable')
     $safe=[ordered]@{}
     if($Value -is [Collections.IDictionary]){$properties=@(foreach($key in $Value.Keys){[pscustomobject]@{Name=[string]$key;Value=$Value[$key]}})}else{$properties=@($Value.PSObject.Properties)}
-    foreach($property in $properties){if($property.Name -in $allowed){$safe[$property.Name]=ConvertTo-WsmWizardHtmlValue $property.Value ($Depth+1)}}
+    foreach($property in $properties){
+        if($property.Name -ceq 'Receipt' -and $property.Value -and $property.Value.PSObject.Properties['Kind'] -and [string]$property.Value.Kind -ceq 'AssistiveTargetDecisionReceipt'){
+            # The runtime has already verified the receipt. Expose only the
+            # responsibility summary, never its embedded comparison or payload.
+            $summary=[ordered]@{}
+            foreach($name in @('Kind','Owner','Reason','Decision','CreatedUtc')){
+                if($property.Value.PSObject.Properties[$name] -and $property.Value.$name -is [string]){$summary[$name]=ConvertTo-WsmWizardHtmlValue $property.Value.$name ($Depth+1)}
+            }
+            $safe.Receipt=[pscustomobject]$summary
+        }elseif($property.Name -in $allowed){$safe[$property.Name]=ConvertTo-WsmWizardHtmlValue $property.Value ($Depth+1)}
+    }
     [pscustomobject]$safe
 }
 

@@ -26,6 +26,13 @@ function Get-ActionInfo([string]$Workspace,[string]$PairId,[string]$Role,[string
     } @($Workspace,$PairId,$Role,$Action)
 }
 try {
+    $receipt=Get-Projection ([pscustomobject]@{decision=[pscustomobject]@{Path='C:\safe\receipt.json';SHA256=('a'*64);Receipt=[pscustomobject]@{Kind='AssistiveTargetDecisionReceipt';Owner='Reviewed owner';Reason='Reviewed reason';Decision='RestoreNow';CreatedUtc='2026-10-15T00:00:00Z';Comparison=@{Owner='must-not-leak'};SecretRef='must-not-leak'}}})
+    Check (Has $receipt.decision 'Receipt') 'The verified Target decision receipt lost its responsibility summary at the HTTP boundary.'
+    foreach($field in @('Kind','Owner','Reason','Decision','CreatedUtc')){Check (Has $receipt.decision.Receipt $field) ('Target responsibility summary lost '+$field)}
+    Check ($receipt.decision.Receipt.Owner -ceq 'Reviewed owner' -and $receipt.decision.Receipt.Reason -ceq 'Reviewed reason') 'Target responsibility values changed at the HTTP boundary.'
+    CheckNoProperty $receipt.decision.Receipt @('Comparison','SecretRef') 'Target responsibility summary'
+    $unknownReceipt=Get-Projection ([pscustomobject]@{Receipt=[pscustomobject]@{Kind='UnknownReceipt';Owner='must-not-leak'}})
+    Check (-not (Has $unknownReceipt 'Receipt')) 'An unknown receipt kind gained a new public projection.'
     # Exercise the actual module converter against the real public consumer shape.
     $backup=[pscustomobject][ordered]@{
         Kind='WizardBackupResult';Status='Exported';Path='C:\safe\backup.json';SHA256=('a'*64);ManifestPath='C:\safe\manifest.json';ManifestHash=('b'*64)
