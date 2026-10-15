@@ -381,6 +381,17 @@ async function main() {
   const approvalRequests = managerUi.operations.filter(row => row.action === 'ApproveMigration');
   assert.equal(approvalRequests.length, 1, 'Exactly one native UI approval request is permitted.');
   assert.equal(approvalRequests[0].args.PilotAcknowledgement, 'ISOLATED-PILOT', 'The approval acknowledgment must come from its explicit UI checkbox.');
+  // Reopen a fresh page: handoff evidence must come from durable jobs, not memory.
+  await managerUi.page.close();
+  const reopenedManager = await openUi(manager);
+  assert.equal(await reopenedManager.page.evaluate(() => window.WsmConsole.state.session.pairId), pairId);
+  await reopenedManager.page.evaluate(() => window.WsmConsole.navigate('jobs', { force: true }));
+  await reopenedManager.page.waitForFunction(id => window.WsmConsole.state.jobs.get(id)?.status === 'Succeeded', approval.jobId);
+  const recoveredApproval = await reopenedManager.page.evaluate(id => window.WsmConsole.state.jobs.get(id), approval.jobId);
+  assert.ok(recoveredApproval.outputs.some(row => row.Path === approvedOutput.Path && row.SHA256 === approvedOutput.SHA256), 'Reopened Manager must recover the exact sealed-plan handoff.');
+  assert.ok((await reopenedManager.page.locator('#job-list').innerText()).includes(approvedOutput.SHA256), 'The recovered handoff hash must be visible.');
+  assert.equal(reopenedManager.operations.length, 0, 'Reopening handoff history must not submit a new operation.');
+  assert.equal(reopenedManager.errors.length, 0);
   assert.deepEqual(snapshotFingerprint, digestTree(path.join(snapshot, 'src')), 'Immutable copied product source and its private observer overlay changed during the browser journey.');
   assert.deepEqual(sourceFingerprint, digestTree(path.join(sourceRoot, 'src')), 'Live product source fingerprint changed during the browser journey.');
   const productFiles = rows => rows.filter(row => !row.startsWith('WindowsServerMigration.psm1|'));
