@@ -222,5 +222,6 @@ public class WsmHttpFixtureStream : System.IO.MemoryStream {
     $contextJob.action='DeveloperProbe';$contextJob.pairId=''
     Assert-WsmHtmlJobContextAccess $contextJob 'C:\fixture\context' 'pair-b' Source
     $contextJob.pairId='pair-a';Reject {Assert-WsmHtmlJobContextAccess $contextJob 'C:\fixture\context' 'pair-b' Source} 'A malformed Probe inherited migration pair authority.'
+    $longRootError=Get-WsmHtmlSafeError 'WorkRoot initialization exceeds supported Windows PowerShell 5.1 path limits';Check ($longRootError.code -ceq 'workroot_path_too_long' -and $longRootError.nextStep -match 'shorter dedicated WorkRoot') 'Overlong WorkRoot did not expose actionable safe preflight guidance.'
     Write-Host ('PASS: '+$script:httpChecks+' native HTTP parser/writer and typed action checks; live browser transport is independently probed.')
 }

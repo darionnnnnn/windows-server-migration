@@ -72,6 +72,9 @@ function Initialize-WsmOutputWorkspace {
     $root=[IO.Path]::GetFullPath($WorkRoot)
     if(Get-Command Assert-WsmOutputWorkspaceNotMigrated -ErrorAction SilentlyContinue){Assert-WsmOutputWorkspaceNotMigrated $root}
     if([string]::IsNullOrWhiteSpace($WorkRoot) -or $root -eq [IO.Path]::GetPathRoot($root)){throw 'Choose a dedicated controlled WorkRoot below a volume root.'}
+    $hostPath=Join-Path (Join-Path $root 'hosts') ([string]$identity.Fingerprint)
+    $hostTemporary=Join-Path $hostPath (('0'*32)+'.tmp')
+    if($hostPath.Length -gt 247 -or $hostTemporary.Length -gt 259){throw 'WorkRoot initialization exceeds supported Windows PowerShell 5.1 path limits; choose a shorter dedicated WorkRoot separate from the tool installation directory. No workspace files were created.'}
     Assert-WsmNoReparse $root
     if(-not [IO.Directory]::Exists($root)){
         [void][IO.Directory]::CreateDirectory($root)

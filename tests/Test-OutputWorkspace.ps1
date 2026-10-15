@@ -27,6 +27,11 @@ $testRoot=Join-Path ([IO.Path]::GetTempPath()) ('.output-workspace-test-'+[Guid]
 [void][IO.Directory]::CreateDirectory($testRoot)
 $resolvedRoot=[IO.Path]::GetFullPath($testRoot)
 try {
+    $tooLongWorkRoot=Join-Path $testRoot ('w'*(152-$testRoot.Length-1))
+    $longInitializationRejected=$false
+    try{Initialize-WsmOutputWorkspace -WorkRoot $tooLongWorkRoot -Role Manager|Out-Null}catch{$longInitializationRejected=$_.Exception.Message -match 'WorkRoot initialization exceeds supported Windows PowerShell 5.1 path limits'}
+    Assert-OutputTest ($longInitializationRejected -and -not [IO.Directory]::Exists($tooLongWorkRoot)) 'Overlong WorkRoot was not rejected before any directory or workspace state was created.'
+
     $root=Join-Path $resolvedRoot 'source'
     $first=Initialize-WsmOutputWorkspace -WorkRoot $root -Role Source
     $again=Initialize-WsmOutputWorkspace -WorkRoot $root -Role Source

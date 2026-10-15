@@ -398,7 +398,7 @@ P0 原生傳輸仍 NotPassed；本節不宣告整輪完成、不移除原契約�
 
 WinPS5.1 的 Source 正式 handler 三子案例已完成：取消與 Probe 並行、逐項 Directory、Automatic ZIP 512MiB。ZIP 由全新程序真匯入後核對 manifest／artifacts／每個 payload hash，原 operation replay 與固定格式均核對。該次單一 runner 後續 Target 因當時的 UI 讀取／重繪缺陷失敗，不能把整個 runner 標 PASS；Source 子案例證據依執行已走到 Target startup 分開保留。PowerShell7 Target 的真 UI→正式 writer 擷取→核心接收／比較／決策／預覽／還原、檔案／journal hash 及同作業 replay 已通過；Native HTTP／origin／SMB 未由橋接證明。修正後 WinPS5.1 Target 另以新固定副本重驗，不沿用失敗結果。
 
-### P3–P5 相依整合段：本機可控驗證完成，準備提交
+### P3–P5 相依整合段：本機可控驗證完成，已提交
 
 最新 `formal-read-snapshot-final-powershell.log` 已通過 WinPS5.1 Target 的真 Edge UI→正式 handler／writer 擷取→核心 Directory 接收、比較匯入、明確 plan 子集決策、預覽、實際還原與檔案／journal hash 讀回、同 operation 重播。與已通過的 PS7 Target、Source 三子案例、雙引擎 CLI／核心／多共享／取消續作／Staged–Final 證據分開列範圍，未把曾失敗的單一 full runner 改標通過。
 
@@ -407,3 +407,22 @@ WinPS5.1 的 Source 正式 handler 三子案例已完成：取消與 Probe 並�
 讀取效能修正採最小範圍：Get-WsmHtmlRevisionVector／Context 在同一次工作目錄鎖內，把剛經正式讀取器核驗的 received plan 傳給 data-version 計算，不再立即重讀同份材料；不做跨請求 fingerprint 快取，執行仍走完整核驗。WinPS5.1 的最終正式旅程已使用這個版本。
 
 本段把模組匯入／公開命令、typed metadata、角色／CAS／作業接線、UI／CLI 及所有必要輔助檔整組提交，避免推送不能獨立使用的 helper。實作／本機可控接線未發現待補項；P0 原生失敗、M04 原生啟動保存、整輪 P6 與可信不同模型體檢仍未通過／未完成，保持本輪開放，不移到下一輪。
+
+
+提交紀錄：P3–P5 相依整合已 commit／push `9d4a27c336081f1d3febadcf933c130c2d7688e5`，遠端 SHA 已核對一致；包含 45 份成套來源／入口／測試及本 PLAN，沒有納入私人盤點原型。核心兩個獨立修正 `21293cb`、`a0c3382` 同樣已推送驗證。
+
+### P6 可交付組件與仍未通過的門檻
+
+文件由正式產生器同步 11 份完整 HTML 與索引，24 項檢查通過；新版發行以實際 ZIP 索引逐檔核對解壓 bytes、工具 fingerprint，以及含中文／空白路徑的 Windows PowerShell5.1 x64 模組、真 wizard 保存／讀回與正式 PS1 啟動器。沒有企業簽章，CMD 的 x64／路徑引用邊界另由隔離入口測試通過，不能合併宣稱原生完整頁旅程通過。最終 archive 的精確 SHA／位置以下列交付紀錄為準。
+
+原生 P0 用最終受測來源再驗仍是 index 的 ERR_CONNECTION_RESET。另建唯讀隔離候選，只把 Cache-Control 加上 no-transform，其他 bytes、設定與 deadline 不變；30s DOMContentLoaded 仍失敗且 index reset，未推入產品。此結果排除該單一候選，沒有證明責任元件，也沒有改動 AdGuard。原生頁、session、資源一致性與保存仍未通過，P0／M04 原生部分／整輪 P6 保持 NotPassed。
+
+完整性收尾：未發現尚未接入正式使用端的 P1–P5 已定案功能；本輪發現的核心、映射、讀取、作業及畫面缺陷均已在本輪修正。待解的是原生傳輸驗收與收尾門檻，不改列下一輪待辦或宣稱全輪完成。外部 Server／SMB／產品／業務／企業 PKI／規模仍 NotTested，ProductionVerified=false、ProductionExecutionEnabled=false。
+
+收尾體檢狀態：主代理與 gpt-6-luna 均有實作，主代理確切模型版本無可信可區分紀錄；代理額度不足後也沒有改用其他模型。依 project-closeout，不能宣稱已取得不同於全部實作者的模型簽核。後續需以可確認身分的不同模型，對本 PLAN 原始契約、起點與所有本輪 commit 做體檢；目前的主代理自查與回歸不冒充該簽核。
+
+### 發行驗證發現：工作根目錄初始化路徑預檢
+
+最終發行測試曾把 smoke WorkRoot 放在長的中文／空白安裝目錄下，真 WinPS5.1 在 hosts\fingerprint 的原子暫存檔處失敗。這也暴露實際產品缺口：過長 WorkRoot 在建立部分目錄後才報 DirectoryNotFound。Initialize-WsmOutputWorkspace 現先檢查初始 host 目錄及原子 JSON 暫存檔的既定 Windows 路徑預算，超限在任何工作區建立前拒絕，HTML／CLI 提供選擇較短固定 WorkRoot 的指引。較深的交付／還原預算仍由各操作既有預檢核對，不承諾任意長路徑。
+
+Release smoke 改按正式設計分離安裝目錄與固定工作根，保留含中文／空白的安裝路徑，並在真正匯出的模組中驗證過長初始化零建立；不是縮短安裝路徑或跳過初始化。`initialization-path-final` 兩引擎 OutputWorkspace、HtmlConsole 92 通過；實際 ZIP 逐檔／解壓 fingerprint、獨立短 WorkRoot 的真 wizard 保存讀回與 x64 PS1 入口通過。測試副本所有輸入測後未變。

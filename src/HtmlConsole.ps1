@@ -586,6 +586,7 @@ function Get-WsmHtmlSafeError([string]$ExceptionMessage,[string]$ExceptionType='
         $error|Add-Member NoteProperty fieldErrors @([pscustomobject]@{pointer=$pointer;reason=$reason;message=$message}) -Force
         return $error
     }
+    if($ExceptionMessage -match 'WorkRoot initialization exceeds supported Windows PowerShell 5.1 path limits'){return (New-WsmHtmlError 'The fixed workspace path is too long for the supported Windows PowerShell workflow.' 'workroot_path_too_long' 'Choose a shorter dedicated WorkRoot separate from the tool installation directory; no workspace files were created.')}
     if($ExceptionMessage -match 'Review changed|Context changed') { return (New-WsmHtmlError 'The reviewed context or data changed.' 'stale_context' 'Refresh the context and view, then review the operation again.') }
     if($ExceptionMessage -match 'Interrupted workspace transaction|workspace.*requires? repair|Repair-WsmWorkspace') { return (New-WsmHtmlError 'The workspace needs recovery before it can be used.' 'workspace_recovery_required' 'Use the text menu or CLI Repair-WsmWorkspace workflow, and retain controlled materials until recovery is complete.') }
     if($ExceptionMessage -match 'RejectedToken') { return (New-WsmHtmlError 'This request was not accepted by the local console.' 'invalid_token' 'Refresh the console page to renew its local session, then try again.') }
