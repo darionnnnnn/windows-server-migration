@@ -58,13 +58,21 @@ jobs:
           node ./tests/Test-ReleaseNativeLauncher.js 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wsm-launcher.log')
           if ($LASTEXITCODE -ne 0) { throw 'Actual released CMD browser acceptance failed.' }
       - name: Source and Target native runtime journeys with small controlled fixtures
+        if: ${{ !cancelled() }}
         shell: pwsh
         env:
           WSM_RUNTIME_NATIVE_TRANSPORT: '1'
         run: |
           $env:WSM_RUNTIME_FORMAL_SOURCE_ROOT = Split-Path (Split-Path $env:WSM_HTML_TEST_MODULE)
-          node ./tests/Test-NativeWizardRuntimeHandler.js 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wsm-runtime.log')
-          if ($LASTEXITCODE -ne 0) { throw 'Native Source/Target runtime acceptance failed.' }
+          Write-Output "Native runtime source: $env:WSM_RUNTIME_FORMAL_SOURCE_ROOT"
+          node --version
+          node --check ./tests/Test-NativeWizardRuntimeHandler.js
+          if ($LASTEXITCODE -ne 0) { throw 'Native runtime test syntax failed.' }
+          $runtimeLog = Join-Path $env:RUNNER_TEMP 'wsm-runtime.log'
+          node --trace-uncaught --trace-exit ./tests/Test-NativeWizardRuntimeHandler.js *> $runtimeLog
+          $runtimeExit = $LASTEXITCODE
+          Get-Content -LiteralPath $runtimeLog
+          if ($runtimeExit -ne 0) { throw "Native Source/Target runtime acceptance failed (exit $runtimeExit)." }
       - name: Retain sanitized fixture diagnostics
         if: always()
         uses: actions/upload-artifact@v4

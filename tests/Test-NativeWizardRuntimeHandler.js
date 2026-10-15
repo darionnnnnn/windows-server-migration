@@ -1,3 +1,4 @@
+console.log('Starting immutable native/formal runtime acceptance on '+process.version);
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),http=require('node:http'),{spawn,execFileSync}=require('node:child_process');
 const sourceRoot=path.resolve(process.env.WSM_RUNTIME_FORMAL_SOURCE_ROOT||path.resolve(__dirname,'..')),tempRoot=fs.mkdtempSync(path.join(os.tmpdir(),'wsm-runtime-formal-')),snapshot=path.join(tempRoot,'runtime'),ownTemp=path.resolve(os.tmpdir())+path.sep;
 assert.ok(path.resolve(tempRoot).startsWith(ownTemp),'Runtime test files must remain beneath the OS temp directory.');
