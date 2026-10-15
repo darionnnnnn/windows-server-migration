@@ -80,7 +80,7 @@ if ($env:WSM_MANAGER_JOURNEY_TEST -eq '1') {
   & $script:JourneyOriginalSoftwareCatalog @PSBoundParameters
  }
  function script:Export-WsmInventory {
-  param([string]$OutputDirectory,[switch]$DeepDiscovery)
+  [CmdletBinding()]param([Parameter(Mandatory)][string]$OutputDirectory,[switch]$DeepDiscovery,[switch]$IncludeSoftwareCatalog,[ValidateRange(1,50000)][int]$MaxSoftwareEntries=10000,[string[]]$PortableRoot=@(),[string]$ManualEvidencePath,[string]$ManualEvidenceSha256)
   $profile=Read-WsmOutputProfile $env:WSM_RUNTIME_TEST_WORKROOT
   if(-not $profile -or $profile.Role -notin @('Source','Target') -or $profile.Fingerprint -ine $env:WSM_RUNTIME_TEST_FINGERPRINT){throw 'TEST-ONLY inventory observation requires the current enrolled Source or Target profile.'}
   $facts=[pscustomobject]@{HostId=$profile.HostId;Fingerprint=$profile.Fingerprint;Name=$(if($profile.Role -ceq 'Source'){'journey-source'}else{'journey-target'})}
@@ -151,7 +151,8 @@ $module=Import-Module (Join-Path $PSScriptRoot 'runtime\src\WindowsServerMigrati
   $toolFingerprint=Get-WsmToolFingerprint
   if($toolFingerprint -notmatch '^[a-fA-F0-9]{64}$'){throw 'TEST-ONLY tool fingerprint is not a non-empty SHA-256.'}
   $profile=Initialize-WsmOutputWorkspace -WorkRoot $env:WSM_RUNTIME_TEST_WORKROOT -Role Source
-  $result=Export-WsmInventory -OutputDirectory $profile.InventoryDirectory
+  $arguments=ConvertTo-WsmHtmlArguments (Get-Command Export-WsmInventory) ([pscustomobject]@{OutputDirectory=$profile.InventoryDirectory;DeepDiscovery=$true;IncludeSoftwareCatalog=$true})
+  $result=Export-WsmInventory @arguments
   if(-not $result.Path -or -not $result.SHA256){throw 'TEST-ONLY observation did not return a durable inventory artifact.'}
   if((Get-FileHash -LiteralPath $result.Path -Algorithm SHA256).Hash -ine $result.SHA256){throw 'TEST-ONLY inventory readback SHA-256 mismatch.'}
   $inventory=Read-WsmJson $result.Path;Assert-WsmInventory $inventory

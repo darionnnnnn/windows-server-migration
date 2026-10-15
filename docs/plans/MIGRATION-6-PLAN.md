@@ -492,3 +492,9 @@ CI 38692004972 的三角色 Probe 已由真按鈕啟動、跨 workspace job 查�
 Manager 原生旅程從三個空工作區開始，暴露 Source 選定用途後 HTTP 400。隔離核心重現確認登記已完成，錯在立即產生初始 wizard projection：沒有盤點作業時，PowerShell 空 pipeline 在 caller 傳成 null entry，Get-WsmWizardInventoryFromJobs 直接存取其 PSObject.Properties。例外發生於 server contextId 更新後，才使後續舊頁要求成為 409。修正只忽略空 job entry，不放寬真 job 的身分、角色、成功狀態、路徑及雜湊核驗。
 
 新 Test-WizardEmptyRoleProjection 在 Source／Target 真空工作區依次驗未登記投影、正式首次登記、正式 HTML 投影，以及 null／空 job 清單，各引擎 10 checks 通過；主代理另實跑 WinPS5.1 確認。沿用上述定點 CI 原則，此核心一行修正先以 skip-ci 提交，下一個 Manager runner 提交只補尚缺的原生 J3，不重跑已具證據的非空 job 備份／還原矩陣。重連 UI commit 6a8e6bf 的基本原生與 Target 受影響旅程於 CI [38692554968](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38692554968) 雙引擎 success。
+
+### J5 原生補驗完成與 J3 測試參數修正
+
+Probe 三角色真 Edge／HTTP、同 workspace 查詢／取消、跨 workspace 作業拒絕及成果 ZIP／HTML／JSON／索引雜湊，PS7 於 CI 38692943802 job 116282952835、WinPS5.1 於 CI 38693301272 job 116284037564 通過。PS7 同時補正式 CLI；PS5 沿用已核對的 CLI 產物證據。PS5 最後一次只排除空的 FileShare.None `.wsm.lock` OS 鎖句柄，保留所有搬移權威資料雜湊，僅重跑 PS5，沒有重跑 PS7。
+
+Manager CI 38693174872 已通過空角色選定用途，但 Inventory 提交被拒絕：測試替身 Export-WsmInventory 遺漏正式 IncludeSoftwareCatalog 參數，HTML 參數白名單正確拒絕。替身恢復完整正式參數契約，窄型 fixture contract 現通過真 ConvertTo-WsmHtmlArguments 再產出並驗證盤點。這是測試缺陷；產品白名單不變。本次只補跑尚未完成的 Manager 原生旅程。
