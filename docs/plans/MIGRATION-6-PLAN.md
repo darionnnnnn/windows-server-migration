@@ -1,6 +1,6 @@
 # 第 6 輪規劃：完成備份、管理交接與還原精靈
 
-> 2026-10-14（Asia/Taipei）。狀態：逐項程式比對與補漏驗證完成；最終發行包重核中，不同模型體檢仍待完成。2026-10-14 使用者授權完整實作並補齊全部項目，逐段驗證後 commit／push 本輪分支。規劃階段的「不實作」紀錄屬當時狀態；本次依最新授權執行。本文件依使用者明確指示，承接第五輪未完成項目；第五輪只收尾已完成且可獨立驗證的交付範圍。原始需求與歷史證據保留於 [第五輪計畫](MIGRATION-5-PLAN.md)，現行能力以 [實作狀態](../IMPLEMENTATION-0.1.md) 為準。
+> 2026-10-14（Asia/Taipei）。狀態：逐項程式比對、補漏驗證及最終發行包核驗完成；不同模型體檢仍待完成。2026-10-14 使用者授權完整實作並補齊全部項目，逐段驗證後 commit／push 本輪分支。規劃階段的「不實作」紀錄屬當時狀態；本次依最新授權執行。本文件依使用者明確指示，承接第五輪未完成項目；第五輪只收尾已完成且可獨立驗證的交付範圍。原始需求與歷史證據保留於 [第五輪計畫](MIGRATION-5-PLAN.md)，現行能力以 [實作狀態](../IMPLEMENTATION-0.1.md) 為準。
 
 ## 1. 不變的定案
 
@@ -524,7 +524,7 @@ CI 38695946760 的 Manager 已完成目標 handoff commit；runner 只等待作�
 | P5c | WizardRuntime／WizardRestore → 結果、Staged／Final、獨立啟用 gate | Runtime 133、受影響投影／typed CLI／版本分離等既有定點證據；Failed／Cancelled／deferred 不假成功，追加日誌不抹去還原成果。 |
 | P6 | DeveloperProbe、UI、HTML 文件、ToolRelease／正式入口 | J5 雙引擎原生／CLI、版面／真 200% 縮放、正式 HTML 與引用核對、最終 131 檔發行包及真 WinPS5.1 入口通過。僅不同模型收尾體檢尚待完成。 |
 
-交叉條款的落點：U01 為空 Target 身分與交接，已由雙引擎原生 J3 完成零備份起步至完整核准；U02 停寫影響與取消不自動恢復由 Backup／SourceRecovery 及取消旅程核對；U03 多共享實際目的／狀態與 U05 獨立 C 分流由 NonC／Restore consumers 核對；U04 獨立信任與內容 hash 分離、U07 分卷完整性由正式 importer 及反例核對；U06 來源 facts／選版／目標觀測及局部失效沿用 VersionSeparation 28 checks；U08 同頁明確重連、版本相容草稿、未知寫入同 ID、不落盤已有 Test-SessionDraftReconnect 和 38692554968 原生回歸。批次保存與同頁核准後的 stale 缺陷亦屬 U08，均在本輪修正並取得反例及原生回歸。
+交叉條款的落點：U01 為空 Target 身分與交接，已由雙引擎原生 J3 完成零備份起步至完整核准；U02 停寫影響與取消不自動恢復由 Backup／SourceRecovery 及取消旅程核對，本次真恢復／crash／共享影響補漏見第 12 節；U03 多共享實際目的／狀態與 U05 獨立 C 分流由 NonC／Restore consumers 核對；U04 獨立信任與內容 hash 分離、U07 分卷完整性由正式 importer 及反例核對；U06 來源 facts／選版／目標觀測及局部失效沿用 VersionSeparation 28 checks；U08 同頁明確重連、版本相容草稿、未知寫入同 ID、不落盤已有 Test-SessionDraftReconnect 和 38692554968 原生回歸。批次保存與同頁核准後的 stale 缺陷亦屬 U08，均在本輪修正並取得反例及原生回歸。
 
 M01 的耐久來源意圖／材料／責任／作業紀錄有核心與 Source 重開證據；Manager 完整核准 runner 已由雙引擎 J3 驗證關頁後從原耐久作業恢復同一 plan 路徑與 hash、可見摘要及零新操作。M02 以 bootstrap／worker／pair locks、operation／attempt／journal 故障與重播證據判定，不刪活躍鎖；M03 真第二頁並行與兩工作 Probe 存取隔離已通過；M04 正式 CMD／離線說明原生證據有效；最終 ZIP 已核對精確 bytes、解壓內容與真 WinPS5.1 入口。
 
@@ -564,6 +564,12 @@ J3 已通過完整核心／原生旅程及重開頁面交接，另補查同頁�
 
 UI 不可變副本 work/r6/todo-ui-main-1cadbb516a2a4c609054b0bd01b92c1c 的 HandoffUi、RuntimeTargetUi 與 Source manual-only RuntimeUi 均由主代理實跑 exit 0，109 個輸入測後未變；這是瀏覽器 API fixture，並非新原生 HTTP 驗收。其後只把備份產生時間接至同一個已測 formatter，node --check 通過，不重跑整段。Receipt 正式投影副本 work/r6/todo-receipt-fixed-e80a33b545ba479b869e6bcbc2503177 雙引擎 PASS 185、107 輸入未變；舊投影反例確因責任摘要遺失而 exit 1，錯誤存在當時工具輸出，未宣稱 negative.log 含該錯誤。
 
-主代理重新核對第 1–9 節、12 子段與交叉條款，現有定案未發現仍缺實作項，不把外部資格或不同模型簽核改寫成已完成。本段補漏由 gpt-6-luna/high 與主代理共同實作、主代理獨立查實及驗證；不稱為這些修改的獨立換模型體檢。本次變更使前次發行包失效，提交後僅重建一次最終包並另記實際 bytes 證據。
+主代理重新核對第 1–9 節、12 子段與交叉條款，現有定案未發現仍缺實作項，不把外部資格或不同模型簽核改寫成已完成。本段補漏由 gpt-6-luna/high 與主代理共同實作、主代理獨立查實及驗證；不稱為這些修改的獨立換模型體檢。本次變更使前次發行包失效，已於產品提交後僅重建一次最終包，實際 bytes 證據如下。
 
 外部操作用的軟體確認勾選表與 IMPLEMENTATION 的 7 條現場驗收尚無真實證據，不因開發完成而刪除。不同模型體檢是流程未結項，不是假裝待實作的產品功能；本次程式比對不冒稱完成該簽核。
+### 本次補漏後的提交與最終交付
+
+- 產品與全部相依測試／TODO 清理已提交 d1f189f6b4afa16a815b32a98176a2d006ea7ff9，推送 codex/migration-6 並直接核對遠端同 SHA。此窄修用 skip-ci 避免檔名觸發無關完整搬移矩陣；上述雙引擎 core／typed CLI 與 UI／正式投影測試涵蓋本次受影響行為。原生雙引擎 J3／備份還原／Probe 沿用第 11 節適用結果，不冒稱新補漏做過全套原生旅程。
+- 全量不可變副本 work/r6/todo-final-release-347a0b140b5b44aa9efdd5ee5a245274 的 328 個輸入測後未變且與當時工作樹相符。Test-ReleaseWizardSmoke 一次 exit 0，真 WinPS5.1 5.1.26100.9711 x64 於中文／空白解壓路徑載入模組及正式 PS1，保存／讀回 prepare revision 1，超長 WorkRoot 在建立前拒絕。
+- 最新交付物為 work/r6/release-todo-final-8dd35bae6ba840e78fa259d91dd17585/migration-tool.zip；主代理獨立核對 131 個 release.json payload 的長度／SHA256 與工作樹一致，並核對 ZIP 實際 SHA256 為 3A234918D3BE49A01E326D9F3E247F9088CC5829378F6A37E8FF380D81A1D0CD，ToolFingerprint 為 9818f7e9b08c3e784031bf1bd26561feec2dcd55f7c2ca68bd3a128e5fc247c6。此包取代第 11 節前次 6D17A87D… 包，不再交付舊 payload。
+- 直接核對包內排除 archive、docs/plans、PLAN HTML、tests、work 及私人腳本，保留既有 docs/MIGRATION-3-PLAN.md。Signed=false、ProductionVerified=false、NativeHttp=NotProvenByThisSmoke；既有 CMD／真頁面證據範圍不擴張。最後只更新不入包的 PLAN／AGENTS，不再重建相同 bytes。
