@@ -449,3 +449,10 @@ README、一般主機流程、操作契約及實作狀態已同步至第六輪�
 
 含首次登記窄修的固定副本 delivery-native，318 輸入測後 SHA 不變。真發行 smoke 通過：`work/r6/release-native-94761801d05f47eeab71d476eebf6643/migration-tool.zip`，131 份檔案，archive SHA256 `9BE89E430D80E6CFF710252FE97296D060316AB5D62B7DFD817DEF1F8824819C`，runtime fingerprint `8f604b8e83fe04229c12a62227fab61d25dfce34511b927072a75482b054ec92`。精確索引／解壓每檔 bytes、中文／空白安裝路徑、WinPS5.1 x64 實際模組／PS1、真 wizard 保存讀回與過長 WorkRoot 零建立均通過；未簽署，NativeHttp=NotProvenByThisSmoke。完整實際 CMD／原生 runtime 仍依新 CI 結果判定，不能從本包 smoke 推導通過。
 CI 38687758110 新診斷顯示 runtime 在完成來源雜湊、進入 fs.cpSync 快照複製期間發生 Node native 0xC0000409；沒有完成產品操作。測試改用逐檔同步複製並拒絕符號連結／特殊檔案，原有複製前後完整 digestTree、唯讀快照與測後不變核對保留。另一次 native expired-session fixture 因並行原生要求收到正式 invalid_token，畫面正確顯示「本機工作階段 token 已失效」而非另一條同義文字；測試接受這兩個既有精確標籤，但仍要求 token=null、錯誤可見，未放寬其他錯誤或產品行為。新 CI 判定結果另記，不把 runner crash 當作 Source／Target 已通過。
+### 原生 runtime 完整旅程與畫面版本競態
+
+CI [38687999663](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38687999663) 的 WinPS5.1 job 116267194555 整段 success：真發行／CMD 起頁、用途保存重讀與離線說明；原生 Edge／HTTP 的 Source 取消與 Probe 並行、逐項 Directory、自動 ZIP512MiB（全新程序解包核每個 payload hash）及 Target Directory 接收、比較、明確決策、預覽、真還原、journal／檔案 hash、同 OperationId replay 均通過。受控身分／software／停寫排程仍是 fixture；不代稱真服務、SMB 或生產驗收。
+
+同 run 的 PS7 三個 Source 子案例已完成，Target 在保存決策後點預覽時重現缺少 viewContext：背景完成刷新會清空全域 runtime cache，舊 DOM 表單短暫仍存在，提交卻從全域而非該畫面讀審閱版本。正式 UI 現在把 Source 備份／恢復及 Target 各表單綁定到渲染當下 response.viewContext，沒有在提交前偷換成新的畫面或放寬 CAS。真正 stale 仍由 fresh session 與核心拒絕。
+
+新 runtime-form-context 固定副本的 Source／Target 真 Edge API fixture 通過：Target 在重新明確讀取合法版本後，故意清空全域 runtime cache、保留可見 DOM，再點原表單，仍送出該表單精確審閱版本並完成流程；舊版審閱零 POST、未知寫入只查原 ID、獨立還原確認及原 Source 停寫語意仍驗。六個 UI/test 輸入測後 hash 不變。此窄修仍需新原生雙引擎旅程，不把 PS5 的前版 PASS 直接當 PS7 修正通過。
