@@ -290,6 +290,16 @@ function Copy-WsmOutputMember([string]$Source,[string]$Destination,[long]$Expect
         if($copied -ne $ExpectedBytes -or $hash -ine $ExpectedHash){throw 'Copied package member bytes or hash mismatch.'}
     }finally{if($destStream){$destStream.Dispose()};$sourceStream.Dispose();$sha.Dispose()}
 }
+function Assert-WsmDirectoryDeliveryPathBudget {
+    param([Parameter(Mandatory)][string]$OutputDirectory,[string[]]$MemberNames=@(('payload/'+('f'*64)+'.blob'),'manifest.json','plan.json','artifacts.jsonl','freeze.json'))
+    $root=[IO.Path]::GetFullPath($OutputDirectory);$parent=[IO.Path]::GetDirectoryName($root)
+    if(-not $parent){throw 'Directory delivery requires a dedicated child directory.'}
+    $stage=Join-Path $parent ('.d-'+('0'*32))
+    $paths=@($root,$stage)
+    foreach($name in $MemberNames){if($name -notin @('manifest.json','plan.json','artifacts.jsonl','freeze.json') -and $name -notmatch '^payload/[a-f0-9]{64}\.blob$'){throw 'Directory path budget requires an exact package member name.'};$relative=$name.Replace('/','\');foreach($base in @($root,$stage)){$file=Join-Path $base $relative;if($file.Length -gt 259 -or ([IO.Path]::GetDirectoryName($file)).Length -gt 247){throw 'Directory delivery exceeds supported Windows path limits; choose a shorter fixed WorkRoot before backup. No delivery files were created.'}}}
+    if(@($paths|Where-Object {$_.Length -gt 247}).Count -or (Join-Path $parent ('delivery-'+('0'*36)+'.json')).Length -gt 259){throw 'Directory delivery exceeds supported Windows path limits; choose a shorter fixed WorkRoot before backup. No delivery files were created.'}
+}
+
 function Export-WsmDirectoryDelivery {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$ManifestPath,[Parameter(Mandatory)][string]$ExpectedHash,[Parameter(Mandatory)][string]$OutputDirectory,[object[]]$ReportReferences=@(),$CancellationToken=$null)
@@ -316,8 +326,10 @@ function Export-WsmDirectoryDelivery {
     $total=[long]0;foreach($m in $members){$total+=[long]$m.Bytes}
     $estimate=Get-WsmDirectoryDeliveryEstimate $package.Root $parent $total 65536
     if(@($estimate.Volumes | Where-Object {-not $_.Sufficient}).Count){throw 'Insufficient free space for clean directory copy and delivery metadata.'}
-    $deliveryId=[Guid]::NewGuid().ToString('D');$partial=$root+'.partial-'+$deliveryId.Replace('-','')
+    Assert-WsmDirectoryDeliveryPathBudget $root @($members|ForEach-Object Name)
+    $deliveryId=[Guid]::NewGuid().ToString('D');$partial=Join-Path $parent ('.d-'+$deliveryId.Replace('-',''))
     Assert-WsmNoReparse $partial
+    if([IO.File]::Exists($partial) -or [IO.Directory]::Exists($partial)){throw 'Directory delivery temporary destination already exists; preserve it for inspection.'}
     $summaryPath=Join-Path $parent ('delivery-'+$deliveryId+'.json')
     try{
         [void](New-WsmOutputOwnedDirectory $partial)
@@ -351,7 +363,7 @@ function Export-WsmDirectoryDelivery {
     }catch{
         if([IO.Directory]::Exists($partial)){
             $resolved=[IO.Path]::GetFullPath($partial);$parentResolved=[IO.Path]::GetFullPath($parent).TrimEnd('\')+'\'
-            if($resolved.StartsWith($parentResolved,[StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($resolved).StartsWith([IO.Path]::GetFileName($root)+'.partial-',[StringComparison]::OrdinalIgnoreCase)){Remove-Item -LiteralPath $resolved -Recurse -Force}
+            if($resolved.StartsWith($parentResolved,[StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($resolved) -ceq ('.d-'+$deliveryId.Replace('-',''))){Remove-Item -LiteralPath $resolved -Recurse -Force}
         }
         if([IO.File]::Exists($summaryPath)){Remove-Item -LiteralPath $summaryPath -Force}
         throw

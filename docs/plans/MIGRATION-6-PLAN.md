@@ -312,3 +312,8 @@ Target 可在零備份下匯出已註冊身分及本機盤點；Manager 以獨�
 - `Get-WsmAssistiveNonCTargetNativePath` 原先對 peer proof 的 NT 實體路徑再做 `GetFullPath`，並與磁碟代號目的地比較，會拒絕正確的本機目的檔案。改為兩側皆用已觀測的實體路徑比較，保留 exact peer 身分、sealed destination、相對路徑及防穿越檢查；不把 NT 路徑當 I/O 路徑。
 - 主代理在固定來源副本 `work/r6/native-path-snapshot.txt` 所指目錄，獨立跑 `Test-NonCTargetNativePath.ps1`：PowerShell 5.1 / 7 皆通過。使用實際 temp 目錄的原生 NT volume 觀測；peer metadata 為 fixture，不代表實際 SMB 認證／傳輸通過。
 - 此為既有核心的可獨立修正，不標記 P4／P5 或整輪完成。另已發現 Target 交接 helper 把 sealed physical StateDirectory 再當 logical I/O 路徑的問題，正在本輪接回固定 Target WorkRoot\pairs 並驗證，不延至後輪。
+### P3 Directory 路徑修正（2026-10-15）
+
+正式 Source 旅程發現：最終 payload 路徑仍可用時，舊 `.partial-<GUID>` 暫存路徑可能超過 Windows PowerShell 路徑限制。改用同父目錄 `.d-<完整 GUID>`，保留排他建立與精確清理；交付前依實際 whitelist 檢查最終／暫存／摘要路徑，超限時要求較短固定 WorkRoot，尚未建立交付目錄。新精靈亦於凍結前預算本次封裝實際類型需要的路徑。
+
+獨立核心驗證：`work/r6/directory-path-snapshot.txt` 指向唯讀輸入快照，`Test-OutputWorkspace.ps1` 於 Windows PowerShell 5.1／PowerShell 7 都通過，涵蓋原暫存路徑超限而新路徑可用的真複製／逐 member hash、過長路徑寫入前拒絕、取消與失敗清理。此提交僅包含核心路徑修正及回歸；精靈 hook 隨完整相依段落驗證提交。P0 原生傳輸及 P3 整段驗收仍未因此變為 PASS。

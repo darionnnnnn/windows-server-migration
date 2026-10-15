@@ -115,17 +115,26 @@ try {
     $reportPath=Join-Path $resolvedRoot 'report.txt';[IO.File]::WriteAllText($reportPath,'reviewed report');$reportHash=(Get-FileHash -LiteralPath $reportPath).Hash
     $reportResult=Export-WsmDirectoryDelivery -ManifestPath (Join-Path $packageRoot 'manifest.json') -ExpectedHash $script:FixturePackage.SHA256 -OutputDirectory (Join-Path $resolvedRoot 'with-report') -ReportReferences @([pscustomobject]@{Path=$reportPath;SHA256=$reportHash})
     Assert-OutputTest ((Read-WsmJson $reportResult.SummaryPath).ReportReferences.Count -eq 1) 'Fixed report reference was omitted from sealed delivery metadata.'
+    # A valid final blob path must not fail only because staging adds 41 characters.
+    $longParent=Join-Path $resolvedRoot ('p'* (137-$resolvedRoot.Length-1))
+    $longDelivery=Join-Path $longParent 'delivery'
+    $longResult=Export-WsmDirectoryDelivery -ManifestPath (Join-Path $packageRoot 'manifest.json') -ExpectedHash $script:FixturePackage.SHA256 -OutputDirectory $longDelivery
+    Assert-OutputTest ($longResult.Valid) 'Supported long directory delivery failed during staging.'
+    foreach($member in $script:FixtureMembers){Assert-OutputTest ((Get-FileHash -LiteralPath (Join-Path $longDelivery $member.Name)).Hash -ieq $member.Hash) 'Long-path delivery changed a member.'}
+    $overParent=Join-Path $resolvedRoot ('q'*(180-$resolvedRoot.Length-1));$overDelivery=Join-Path $overParent 'delivery'
+    try{Export-WsmDirectoryDelivery -ManifestPath (Join-Path $packageRoot 'manifest.json') -ExpectedHash $script:FixturePackage.SHA256 -OutputDirectory $overDelivery|Out-Null;throw 'over-budget path accepted'}catch{if($_.Exception.Message -eq 'over-budget path accepted'){throw};Assert-OutputTest ($_.Exception.Message -like '*shorter fixed WorkRoot*') 'Path rejection was not actionable.'}
+    Assert-OutputTest (-not [IO.Directory]::Exists($overParent)) 'Path-budget rejection created output directories.'
     $script:CancelDelivery=$true
     $cancelled=Join-Path $resolvedRoot 'cancelled-delivery'
     try { Export-WsmDirectoryDelivery -ManifestPath (Join-Path $packageRoot 'manifest.json') -ExpectedHash $script:FixturePackage.SHA256 -OutputDirectory $cancelled -CancellationToken ([pscustomobject]@{Cancelled=$true}) | Out-Null; throw 'cancelled directory delivery completed' } catch { if($_.Exception.Message -eq 'cancelled directory delivery completed'){throw} }
     $script:CancelDelivery=$false
-    Assert-OutputTest (-not [IO.Directory]::Exists($cancelled) -and @(Get-ChildItem -LiteralPath $resolvedRoot -Directory -Filter 'cancelled-delivery.partial-*').Count -eq 0) 'Cancellation left a partial delivery tree.'
+    Assert-OutputTest (-not [IO.Directory]::Exists($cancelled) -and @(Get-ChildItem -LiteralPath $resolvedRoot -Directory -Filter '.d-*').Count -eq 0) 'Cancellation left a partial delivery tree.'
 
     $badSource=Join-Path $packageRoot 'plan.json';[IO.File]::WriteAllText($badSource,'changed')
     $badDestination=Join-Path $resolvedRoot 'bad-delivery'
     try { Export-WsmDirectoryDelivery -ManifestPath (Join-Path $packageRoot 'manifest.json') -ExpectedHash $script:FixturePackage.SHA256 -OutputDirectory $badDestination | Out-Null; throw 'source hash drift was accepted' } catch { if($_.Exception.Message -eq 'source hash drift was accepted'){throw} }
     Assert-OutputTest (-not [IO.Directory]::Exists($badDestination)) 'Failed delivery left a completed package directory.'
-    Assert-OutputTest (@(Get-ChildItem -LiteralPath $resolvedRoot -Directory -Filter 'bad-delivery.partial-*').Count -eq 0) 'Failed delivery left a partial directory.'
+    Assert-OutputTest (@(Get-ChildItem -LiteralPath $resolvedRoot -Directory -Filter '.d-*').Count -eq 0) 'Failed delivery left a partial directory.'
     $script:FixtureMembers=@($script:FixtureMembers)+@([pscustomobject]@{Name='export-state.json';Path=(Join-Path $packageRoot 'export-state.json');Bytes=16;Hash=(Get-FileHash -LiteralPath (Join-Path $packageRoot 'export-state.json')).Hash.ToLowerInvariant()})
     try { Export-WsmDirectoryDelivery -ManifestPath (Join-Path $packageRoot 'manifest.json') -ExpectedHash $script:FixturePackage.SHA256 -OutputDirectory (Join-Path $resolvedRoot 'extra-member') | Out-Null; throw 'extra package member was accepted' } catch { if($_.Exception.Message -eq 'extra package member was accepted'){throw} }
     $script:FixtureMembers=@($script:FixtureMembers | Where-Object Name -ne 'plan.json')
