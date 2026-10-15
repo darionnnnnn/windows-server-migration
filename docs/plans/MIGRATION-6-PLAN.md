@@ -317,3 +317,23 @@ Target 可在零備份下匯出已註冊身分及本機盤點；Manager 以獨�
 正式 Source 旅程發現：最終 payload 路徑仍可用時，舊 `.partial-<GUID>` 暫存路徑可能超過 Windows PowerShell 路徑限制。改用同父目錄 `.d-<完整 GUID>`，保留排他建立與精確清理；交付前依實際 whitelist 檢查最終／暫存／摘要路徑，超限時要求較短固定 WorkRoot，尚未建立交付目錄。新精靈亦於凍結前預算本次封裝實際類型需要的路徑。
 
 獨立核心驗證：`work/r6/directory-path-snapshot.txt` 指向唯讀輸入快照，`Test-OutputWorkspace.ps1` 於 Windows PowerShell 5.1／PowerShell 7 都通過，涵蓋原暫存路徑超限而新路徑可用的真複製／逐 member hash、過長路徑寫入前拒絕、取消與失敗清理。此提交僅包含核心路徑修正及回歸；精靈 hook 隨完整相依段落驗證提交。P0 原生傳輸及 P3 整段驗收仍未因此變為 PASS。
+
+### 本輪補強定案：多共享與讀取副作用（2026-10-15）
+
+使用者明確同意本輪補齊 NonC 多共享：Source 各資料根目錄、Target 各資料根目錄與固定 WorkRoot\pairs 可分別使用明確審閱的不同既有共享。沿用 peer proof／實體範圍／獨立 manifest hash，不建立共享或放寬根目錄防護。Source／Target 攜出完整共享集合，Manager 正式核對並註冊全部證據；來源帳號觀察與傳輸計畫精確綁定所選完整 proof 集合，逐項唯一映射，遺漏／重疊／錯 peer／過期集合拒絕。UI 使用具名共享欄位及已登記證據選項，CLI 使用相同型別結構；單共享原呼叫保持相容。此項納入 P4a／P4b 與 P5a，不移往後輪。
+
+完整還原整合另外重現：後續 Final validation 追加 mutable journal 會使既有 Staged 機械驗證投影消失，且 Runtime GET 在 Passed 分支間接呼叫會寫入的 acceptance 核心。修法改用明確 validation／acceptance 操作產生的精確 attempt／receipt／generation 綁定與受控 immutable journal／gate artifact；GET 只讀回已保存證據，不執行 gate writer。未通過機械驗證時可閱讀已存在的 ReviewRequired gate 結果，仍不開放啟用。完成受影響雙引擎驗證前不標 P5c 通過。
+
+多共享整合驗證：主代理在不可變 `work/r6/multishare-cas-fixed-snapshot.txt` 副本執行 WinPS5.1／PS7，HtmlConsole 83、HtmlRuntimeProjection 165、ProofHandoff 25 checks 及完整 NonCTargetHandoff 均通過；測後全部 110 輸入檔 hash 不變。額外共享的未知／缺少欄位拒絕，安全投影保留完整共享與資料／狀態映射但去除秘密。修正 producer 把狀態目錄誤算為資料根目錄的契約衝突，仍精確校驗資料根集合及獨立狀態 peer proof；修正 WinPS5.1 第二次 Target receipt 選取以 null 備份路徑呼叫 File.Replace 失敗，改用共用原子 writer。測試修正重複攔截器造成遞迴，以及把 active pointer hash 誤當 receipt hash 的錯誤斷言，不放寬產品 CAS。
+
+主代理獨立執行 `wsm-multishare-state-99c5d1cf3c50437da13803612dfd1514/repo` 的真 observation→constructor→Source import→worker→Manager result import，兩引擎均通過；測後 274 檔 hash 全部不變。正例涵蓋兩個來源共享、兩個 Target 資料共享及第三個狀態共享，漏掉狀態 proof 拒絕；僅原生 UNC I/O／環境觀測以 exact owned-tempdir 接縫替代，不宣稱企業 SMB 驗證通過。實作代理為 gpt-6-luna/high，主代理直接檢查與重跑驗證。
+
+NonC 操作表單已補上多共享逐列輸入、Manager 完整共享／映射／材料指紋預覽與多個來源 proof 選取。主代理 Node 17 案通過；不可變 `work/r6/nonc-layout-final-snapshot.txt` 的真 Edge 通過三角色四種寬度、18px／48px／12px、鍵盤、焦點保留、文字 4.5:1 與控制邊界 3:1，108 檔測後 hash 不變。此為 UI／API fixture 證據，尚非真正 200% browser zoom 或 P0 原生 HTTP 通過。
+
+Target GET 整合發現：自動重跑 native software catalog 實測單次約 17 秒，重複進入 preview／availability 還可能寫入 journal snapshot；已改為 GET 只讀精確 job／材料，明確 preview／restore writer 保留重驗，正在雙引擎驗證。另重現 PowerShell 自動 `$Matches` 被正規表示式覆寫 List 而隱藏結果，已將新結果 accumulator 改為專用變數；完整 Target／接受條件回歸完成前不標完成。以上均留本輪處理。
+
+### P4 共用核心獨立提交：來源 UNC 與精確結果綁定
+
+主代理從已提交 HEAD 只封存既有 src、兩個啟動器與既有核心測試，再覆蓋本段 AssistiveNonC 及新增路徑測試，建立 `work/r6/nonc-core-independent-snapshot.txt` 不可變副本；兩引擎各通過 AssistiveNonC 34 checks 與 NonCSourceImportPath 8 checks，測後全部輸入 hash 不變。此段包含本機來源 host 檢查、密封 logical path／native collection proof／peer UNC 的 import-only 精確映射、Target share alias 與結果 account map／SACL requirement 核對；原生觀測接縫預設仍呼叫真系統 API，不放寬 SMB／物理範圍驗證。來源路徑比對使用純字串 Path.Combine，不要求 Manager 存在來源 D／E 磁碟。此核心可由既有已提交模組獨立載入及回復，與仍在本輪驗證的新精靈 family 分開提交；P4 整段及整輪不因此標通過。
+
+正式 Target 首次匯入亦重現必填 Role 綁定順序錯誤：已於參數驗證前綁定 Source／Target session，拒絕不同 caller role。獨立 `Test-HtmlConsole.ps1` 雙引擎 80 checks 通過，快照測前後 hash 一致；正式瀏覽器完整旅程續驗。
