@@ -474,3 +474,9 @@ J5 正式 `Start-ServerMigration.ps1 -Action DeveloperProbe` 的 WinPS5.1 實跑
 新獨立 Windows CI 僅補 J3 Manager 真 UI 登記／交接／spec／comparison／明確 ISOLATED-PILOT 核准，以及 J5 三角色真 UI Probe 與兩 workspace 作業隔離。Manager helper 啟動／合法觀察契約、真 Get-WsmToolFingerprint 與 PS1／CMD 複製雜湊已驗；原生完整旅程結果尚待 CI，不能以語法或 fixture 契約代替。Probe 的 PS5 CLI 沿用上述結果，CI 只於 PS7 補該正式入口。
 
 委派設定依使用者最新訊息恢復 gpt-6-luna low／medium／high；前次明確授權的 gpt-6-astra medium 只做重連唯讀複核且因切換中斷，未修改產品、未提供完成簽核。主代理繼續獨立查實產物與必要行為，不把新驗收腳本的存在當成契約已通過。
+
+### U08 同頁明確重連與草稿生命週期
+
+401 後保留分頁記憶體內的非敏感 typed／準備／runtime／NonC 草稿，提供明確重連按鈕；不增加 Web Storage 草稿。只有 WorkRoot、角色、Pair、data／selection／材料版本核對相符時，才將舊 contextId 的草稿重新綁定至新 session；舊預覽一律失效。不同工作或重連期間的上下文／版本變更先隔離草稿並封鎖寫入，需明確捨棄再操作；選取與軟體草稿也清除，避免跨工作套用。敏感輸入清除，未知寫入保留原 operationId 且不自動提交。
+
+主代理複核修正了共享物件使版本比較失效、focus／背景隱式重連、失敗過早解除 gate，以及 context 回應的角色／Pair／contextId 改變與 active refresh 再次 401。測試在最後一個反例曾因初始 token 已為 null 過早通過等待條件，已限定新 contextId 且 token=null；這是 fixture 等待錯誤，不改產品 deadline。新 Test-SessionDraftReconnect 由主代理實跑 PASS，涵蓋相容保留、跨工作隔離、兩種競態、失敗重試、焦點不重連、unknown ID、不落盤與不重送。先前受影響的 Source／Target runtime UI fixture 已通過，未再重跑不受此分支影響的封裝／還原核心。API fixture 不冒充原生服務驗收；UI 變更只觸發基本原生與 Target 受影響旅程。

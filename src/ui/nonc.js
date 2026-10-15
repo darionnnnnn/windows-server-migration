@@ -31,7 +31,24 @@
   function roleValue(context) { return text(context && context.role); }
   function roleLabel(context) { return ({ Source: '舊主機', Target: '新主機', Manager: '整理搬移資料的電腦' })[roleValue(context)] || '未知用途'; }
   function contextKey(context) {
-    return [context && context.role, context && context.workspace, context && context.contextId, context && context.pairId, context && context.dataVersion].map(text).join('|');
+    return [context && context.role, context && (context.workspace||context.workRoot), context && context.contextId, context && context.pairId, context && context.dataVersion].map(text).join('|');
+  }
+  function rebindReconnectDraft(oldContext, newContext) {
+    const oldValue=oldContext||{},next=newContext||{},oldRoot=text(oldValue.workspace||oldValue.workRoot).replace(/[\\/]+$/,'').toLowerCase(),nextRoot=text(next.workspace||next.workRoot).replace(/[\\/]+$/,'').toLowerCase();
+    if(!oldRoot||oldRoot!==nextRoot||!oldValue.role||text(oldValue.role)!==text(next.role)||!oldValue.pairId||text(oldValue.pairId)!==text(next.pairId)||oldValue.dataVersion==null||next.dataVersion==null||text(oldValue.dataVersion)!==text(next.dataVersion)||!oldValue.contextId||!next.contextId||text(oldValue.contextId)===text(next.contextId))return false;
+    for(const key of ['materialVersion','materialHash'])if((oldValue[key]!=null||next[key]!=null)&&text(oldValue[key])!==text(next[key]))return false;
+    const oldKey=contextKey(oldValue),nextKey=contextKey(next),state=contexts.get(oldKey);if(!state)return true;if(contexts.has(nextKey)&&contexts.get(nextKey)!==state)return false;
+    if(state.pending)return false;
+    state.key=nextKey;state.context=Object.assign({},next);state.preview=null;state.targetHandoffPreview=null;state.sequence++;
+    contexts.delete(oldKey);contexts.set(nextKey,state);
+    if(active&&active.state===state)active.key=nextKey;
+    return true;
+  }
+  function clearSensitiveFields() {
+    const sensitive=key=>/password|secret|credential|token|private.?key/i.test(text(key));
+    for(const state of contexts.values())for(const key of [...state.fields.keys()])if(sensitive(key)||sensitive(state.labels.get(key))){state.fields.delete(key);state.dirtyFields.delete(key);}
+    for(const input of document.querySelectorAll('[data-nonc-field]'))if(sensitive(input.dataset.noncField)||sensitive(input.getAttribute('aria-label')))input.value='';
+    for(const state of contexts.values())state.dirty=state.dirtyFields.size>0;
   }
   function makeState(key, context) {
     if (contexts.size >= 8) {
@@ -644,5 +661,5 @@
   }
   function hasDirty() { return Array.from(contexts.values()).some(state => state.dirty); }
 
-  root.WsmNonCWizard = Object.freeze({ render, clear, hasDirty });
+  root.WsmNonCWizard = Object.freeze({ render, clear, hasDirty, rebindReconnectDraft, clearSensitiveFields });
 })(typeof window !== 'undefined' ? window : globalThis);
