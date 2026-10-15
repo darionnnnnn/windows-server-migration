@@ -224,6 +224,8 @@ async function waitJob(page, action) {
   await page.waitForFunction(name => [...(window.WsmConsole?.state?.jobs?.values() || [])].some(job => job.action === name && ['Succeeded','Failed','ReviewRequired','Cancelled'].includes(job.status)), action, { timeout: 120000 });
   const job = await page.evaluate(name => [...window.WsmConsole.state.jobs.values()].filter(row => row.action === name).at(-1), action);
   assert.equal(job.status, 'Succeeded', action + ' failed: ' + JSON.stringify(job.error || job));
+  // Await the session/context reconciliation that follows terminal publication.
+  await page.waitForFunction(() => !window.WsmConsole.state.jobsRefreshing && !window.WsmConsole.state.busy && !window.WsmConsole.state.wizardAdvancing && !window.WsmConsole.state.wizardSourceHandoffImportFollowing);
   return job;
 }
 async function selectWizardAction(page, action, values = {}) {
