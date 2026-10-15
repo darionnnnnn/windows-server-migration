@@ -498,3 +498,13 @@ Manager 原生旅程從三個空工作區開始，暴露 Source 選定用途後 
 Probe 三角色真 Edge／HTTP、同 workspace 查詢／取消、跨 workspace 作業拒絕及成果 ZIP／HTML／JSON／索引雜湊，PS7 於 CI 38692943802 job 116282952835、WinPS5.1 於 CI 38693301272 job 116284037564 通過。PS7 同時補正式 CLI；PS5 沿用已核對的 CLI 產物證據。PS5 最後一次只排除空的 FileShare.None `.wsm.lock` OS 鎖句柄，保留所有搬移權威資料雜湊，僅重跑 PS5，沒有重跑 PS7。
 
 Manager CI 38693174872 已通過空角色選定用途，但 Inventory 提交被拒絕：測試替身 Export-WsmInventory 遺漏正式 IncludeSoftwareCatalog 參數，HTML 參數白名單正確拒絕。替身恢復完整正式參數契約，窄型 fixture contract 現通過真 ConvertTo-WsmHtmlArguments 再產出並驗證盤點。這是測試缺陷；產品白名單不變。本次只補跑尚未完成的 Manager 原生旅程。
+
+### 空工作原生旅程的盤點綁定與交接接線
+
+CI 38694316646 雙引擎在 Inventory 成功後仍停於 scan。主代理核對正式 WizardFlow 的回應：唯一可信盤點放在 inventory；inventoryCandidates 僅在多份歧義材料時提供。前端 bindRequestedWizardInventory 卻只搜尋候選清單，未清除待綁定 job，因而阻止正常下一步。修正先核對目前 inventory 的精確 jobId，再沿用候選清單；仍經正式 selectInventory 檢查路徑、hash、身分及 revision。
+
+同時查得未綁 Pair 的 Source 在完成選取後直接進入需要核准計畫的 runtime 卡片，遮住來源交接與核准計畫匯入。修正使未綁 Pair 的 backup 步驟顯示既有核心提供的交接／匯入操作；已有 Pair 繼續原備份影響及停寫授權流程，未新增備份或授權通道。
+
+原生測試亦按實際契約修正：來源選取等待整個導覽保存完成；來源意圖匯入已建立 Assistive，不另執行冗餘啟用；新 Manager Pair 經可見模式選擇進入 handoff；Target 身分由首次 UI 選用途建立，後續 RegisterTarget 應保留同一身分。Luna high 僅修改窄型瀏覽器測試；產品三處接線及原生 runner 由主代理修正。驗收結果於後續紀錄補記。
+
+上述唯一盤點反例在舊 UI 的不可變副本於 30 秒內無法進入 review；修正版完整小型 Edge API fixture 通過精確一次 selectInventory、逐項保存、來源交接、Manager 可見用途／模式選擇及匯入。共享影響已移至可見摘要、舊技術 disclosure 已移除，測試改核對實際容器與不露 ID 的契約；不改產品以迎合過期 selector。主代理逐檔核對受測 UI／test 與工作樹 hash 一致（console.js D906A28B…），未重跑同一 fixture。這是局部 UI 證據；接續原生 Manager CI 才驗真 handler／核心。產品窄修以 skip-ci 避免無關備份／還原矩陣，下一個 native fixture 提交只跑本次受影響的空 Source／Target→Manager。
