@@ -250,18 +250,7 @@ async function selectWizardAction(page, action, values = {}) {
   if (isPrimary && await primary.isVisible()) await primary.click();
   else await form.getByRole('button', { name: /執行此步驟|保存項目審閱/ }).click();
   await waitJob(page, action);
-}
-async function performOperationThroughForm(page, action, expectedRevision) {
-  await page.evaluate(async name => { await window.WsmConsole.navigate('operations', { force: true }); window.WsmConsole.setAction(name); }, action);
-  const field = page.locator('#parameter-fields input').first();
-  await field.waitFor({ state: 'visible', timeout: 15000 });
-  await field.fill(String(expectedRevision));
-  await page.locator('#preview-operation').click();
-  await page.locator('#preview-panel').waitFor({ state: 'visible', timeout: 30000 });
-  const confirm = page.locator('#operation-confirm');
-  await confirm.check();
-  await page.locator('#submit-operation').click();
-  await waitJob(page, action);
+  await page.waitForFunction(() => !window.WsmConsole.state.busy && !window.WsmConsole.state.wizardAdvancing && !window.WsmConsole.state.wizardSourceHandoffImportFollowing);
 }
 async function confirmSourceIntent(page) {
   const deadline = Date.now() + 30000;
@@ -269,11 +258,14 @@ async function confirmSourceIntent(page) {
     const projection = await page.evaluate(() => window.WsmConsole.state.wizard);
     if (projection.currentStep !== 'review') return;
     const pending = (projection.groups || []).some(group => group.confirmed !== true);
-    if (!pending) return;
+    if (!pending) {
+      await page.waitForFunction(() => window.WsmConsole.state.wizard?.currentStep !== 'review');
+      return;
+    }
     const include = page.locator('#wizard-content input[name="wizard-group-choice"][value="include"]');
     if (await include.count()) await include.check();
     await page.locator('#wizard-next').click();
-    await page.waitForFunction(previous => window.WsmConsole.state.wizard?.revision !== previous, projection.revision, { timeout: 15000 });
+    await page.waitForFunction(previous => window.WsmConsole.state.wizard?.currentStep !== 'review' || window.WsmConsole.state.wizard?.currentGroupId !== previous, projection.currentGroupId, { timeout: 15000 });
   }
   throw new Error('Source item by item review did not finish through its visible controls.');
 }
@@ -304,7 +296,7 @@ async function main() {
   const initialActions = await sourceUi.page.evaluate(() => window.WsmConsole.state.wizard.actions.map(row => row.action));
   assert.ok(initialActions.includes('Inventory'), 'Source wizard must start without a pre-seeded inventory binding.');
   await selectWizardAction(sourceUi.page, 'Inventory');
-  await sourceUi.page.waitForFunction(() => !!window.WsmConsole.state.wizard?.inventory?.sha256);
+  await sourceUi.page.waitForFunction(() => !!window.WsmConsole.state.wizard?.inventory?.sha256 && window.WsmConsole.state.wizard.currentStep === 'review');
   const sourceInventory = await sourceUi.page.evaluate(() => window.WsmConsole.state.wizard.inventory);
   assert.ok(sourceInventory?.sha256, 'UI Inventory action must bind a real Source inventory.');
   await confirmSourceIntent(sourceUi.page);
@@ -352,9 +344,13 @@ async function main() {
   const pairRoot = path.join(manager.workspace, 'pairs', pairId);
   assert.ok(pairId && fs.existsSync(pairRoot));
   await managerUi.page.waitForFunction(id => String(window.WsmConsole.state.session?.pairId || '') === id, pairId, { timeout: 30000 });
-  const decisionRevision = await managerUi.page.evaluate(() => window.WsmConsole.state.session.decisionRevision);
-  await performOperationThroughForm(managerUi.page, 'AssistiveEnable', decisionRevision);
   await managerUi.page.evaluate(() => window.WsmConsole.navigate('wizard', { force: true }));
+  // Importing confirmed Source intent already creates the Assistive contract.
+  // The newly selected pair has its own initial wizard state, chosen in the UI.
+  await managerUi.page.waitForFunction(() => window.WsmConsole.state.wizard?.currentStep === 'start');
+  await managerUi.page.locator('input[name="wizard-mode"][value="ItemByItem"]').check();
+  await managerUi.page.locator('#wizard-next').click();
+  await managerUi.page.waitForFunction(() => window.WsmConsole.state.wizard?.currentStep === 'handoff');
   await selectWizardAction(managerUi.page, 'GetTargetHandoffPreview', { HandoffDirectory: targetHandoff.Directory, ExpectedManifestHash: targetHandoff.ObservedManifestHash });
   const targetPreview = managerUi.page.locator('.wizard-target-handoff-card').getByRole('button', { name: '明確保存此目標快照' });
   await targetPreview.waitFor({ state: 'visible', timeout: 15000 });
