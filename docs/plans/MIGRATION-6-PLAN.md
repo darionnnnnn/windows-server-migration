@@ -486,3 +486,9 @@ J5 正式 `Start-ServerMigration.ps1 -Action DeveloperProbe` 的 WinPS5.1 實跑
 CI 38692004972 的三角色 Probe 已由真按鈕啟動、跨 workspace job 查詢／取消拒絕，於核對結果時發現核心 false 資格旗標在 HTTP 投影遺失。Get-WsmHtmlResultProjection 補入 ProductionQualified、BusinessValidated、ArchiveBytes 與 CollectorCounts；計數只准固定八個數值欄位，不讓任意巢狀內容或路徑越過白名單。新 Test-HtmlProbeProjection 對核心→HTTP結果→公開作業整條投影驗 false、計數、bytes 與秘密／路徑／請求 metadata 遮蔽，代理雙引擎及主代理 WinPS5.1 查證通過。
 
 此窄修提交使用 skip-ci，避免 HtmlConsole 檔名觸發與結果欄位無關的全部封裝／還原矩陣；下一個 native fixture 修正提交專門執行尚缺的 Manager／Probe 原生驗收，並包含本修正來源。最終發行另核對實際 bytes。這不略過本修正的驗收，也不把目前仍失敗的 Manager 旅程標通過。
+
+### 空 Source／Target 首次登記後的投影缺陷
+
+Manager 原生旅程從三個空工作區開始，暴露 Source 選定用途後 HTTP 400。隔離核心重現確認登記已完成，錯在立即產生初始 wizard projection：沒有盤點作業時，PowerShell 空 pipeline 在 caller 傳成 null entry，Get-WsmWizardInventoryFromJobs 直接存取其 PSObject.Properties。例外發生於 server contextId 更新後，才使後續舊頁要求成為 409。修正只忽略空 job entry，不放寬真 job 的身分、角色、成功狀態、路徑及雜湊核驗。
+
+新 Test-WizardEmptyRoleProjection 在 Source／Target 真空工作區依次驗未登記投影、正式首次登記、正式 HTML 投影，以及 null／空 job 清單，各引擎 10 checks 通過；主代理另實跑 WinPS5.1 確認。沿用上述定點 CI 原則，此核心一行修正先以 skip-ci 提交，下一個 Manager runner 提交只補尚缺的原生 J3，不重跑已具證據的非空 job 備份／還原矩陣。重連 UI commit 6a8e6bf 的基本原生與 Target 受影響旅程於 CI [38692554968](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38692554968) 雙引擎 success。
