@@ -1,6 +1,6 @@
-﻿param([string]$Workspace,[string]$ReadyPath,[string]$StopFile,[switch]$Seed,[string]$ResponseCapturePath,[switch]$FailWizardRegistration)
+﻿param([string]$Workspace,[string]$ReadyPath,[string]$StopFile,[switch]$Seed,[string]$ResponseCapturePath,[switch]$FailWizardRegistration,[string]$ModulePath=(Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1'))
 $ErrorActionPreference='Stop'
-$module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru -DisableNameChecking
+$module=Import-Module $ModulePath -Force -PassThru -DisableNameChecking
 & $module {param($Workspace,$ReadyPath,$StopFile,$Seed,$console,$ResponseCapturePath,$FailWizardRegistration)
  . $console
  # Optional test-only capture of the formal handler response before socket writing.
@@ -37,4 +37,4 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
   }
  }
  Start-WsmHtmlConsole -Workspace $Workspace -PairId $pair -Role Manager -NoBrowser -ReadyPath $ReadyPath -StopFile $StopFile
-} $Workspace $ReadyPath $StopFile $Seed (Join-Path $PSScriptRoot '..\src\HtmlConsole.ps1') $ResponseCapturePath $FailWizardRegistration
+} $Workspace $ReadyPath $StopFile $Seed (Join-Path $module.ModuleBase 'HtmlConsole.ps1') $ResponseCapturePath $FailWizardRegistration

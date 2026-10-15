@@ -13,7 +13,9 @@ const logs = [], requests = [], responses = new Map(), pageErrors = [];
 
 async function startServer() {
   const ready = path.join(root, 'ready.json'), stop = path.join(root, 'stop');
-  child = spawn('powershell.exe', ['-NoProfile', '-File', path.join(__dirname, 'Start-HtmlTestServer.ps1'), '-Workspace', root, '-ReadyPath', ready, '-StopFile', stop, '-Seed'], {
+  const args = ['-NoProfile', '-File', path.join(__dirname, 'Start-HtmlTestServer.ps1'), '-Workspace', root, '-ReadyPath', ready, '-StopFile', stop, '-Seed'];
+  if (process.env.WSM_HTML_TEST_MODULE) args.push('-ModulePath', process.env.WSM_HTML_TEST_MODULE);
+  child = spawn(process.env.WSM_PS_EXE || 'powershell.exe', args, {
     windowsHide: true,
     env: { ...process.env, PSModulePath: path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'Modules') }
   });
@@ -62,7 +64,7 @@ async function verifyInjectedViewFailure(browser, origin, fault, expectedText, t
     const captureResponse = response => {
       const url = new URL(response.url());
       if (url.origin === origin && (url.pathname.startsWith('/ui/') || url.pathname === '/api/session' || url.pathname === '/api/view')) {
-        responses.set(url.pathname + url.search, { status: response.status(), bodyPromise: response.body() });
+        responses.set(url.pathname + url.search, { status: response.status(), bodyPromise: response.body().then(body => ({ body })).catch(error => ({ error: String(error) })) });
       }
     };
     page.on('response', captureResponse);
@@ -77,7 +79,7 @@ async function verifyInjectedViewFailure(browser, origin, fault, expectedText, t
 
     const requiredRoutes = ['/ui/index.html', '/ui/console.js', '/ui/console.css', '/api/session'];
     for (const route of requiredRoutes) assert.ok(responses.has(route), `real native handler did not serve ${route}`);
-    for (const route of requiredRoutes) responses.get(route).body = await responses.get(route).bodyPromise;
+    for (const route of requiredRoutes) { const observed = await responses.get(route).bodyPromise; assert.ok(!observed.error, `native response body unavailable for ${route}: ${observed.error}`); responses.get(route).body = observed.body; }
     const session = JSON.parse(responses.get('/api/session').body.toString('utf8'));
     for (const route of ['/ui/index.html', '/ui/console.js', '/ui/console.css']) {
       const record = responses.get(route);
@@ -87,7 +89,7 @@ async function verifyInjectedViewFailure(browser, origin, fault, expectedText, t
     }
     const inventoryResponse = [...responses.entries()].find(([key]) => key.startsWith('/api/view?action=inventory'));
     assert.ok(inventoryResponse, 'native browser did not request inventory through the real session API');
-    inventoryResponse[1].body = await inventoryResponse[1].bodyPromise;
+    const inventoryObserved = await inventoryResponse[1].bodyPromise; assert.ok(!inventoryObserved.error, `native inventory body unavailable: ${inventoryObserved.error}`); inventoryResponse[1].body = inventoryObserved.body;
     const inventoryBody = JSON.parse(inventoryResponse[1].body.toString('utf8'));
     assert.equal(inventoryBody.items.length, 125);
     assert.equal(inventoryBody.viewContext.pairId, session.pairId);
@@ -106,7 +108,9 @@ async function verifyInjectedViewFailure(browser, origin, fault, expectedText, t
     await guidePage.goto(origin + '/ui/guide.html', { waitUntil: 'domcontentloaded' });
     const guideRecord = responses.get('/ui/guide.html');
     assert.ok(guideRecord && guideRecord.status === 200, 'real browser did not load guide.html through the native handler');
-    guideRecord.body = await guideRecord.bodyPromise;
+    const guideObserved = await guideRecord.bodyPromise;
+    assert.ok(!guideObserved.error, `native guide body unavailable: ${guideObserved.error}`);
+    guideRecord.body = guideObserved.body;
     assert.equal(crypto.createHash('sha256').update(guideRecord.body).digest('hex'), session.assetHashes['/ui/guide.html']);
     assert.deepEqual(pageErrors, []);
     await verifyInjectedViewFailure(browser, origin, route => route.fulfill({ status: 200, contentType: 'text/html', body: '<html>proxy error</html>' }), '回傳的內容格式無法讀取');

@@ -426,3 +426,9 @@ WinPS5.1 的 Source 正式 handler 三子案例已完成：取消與 Probe 並�
 最終發行測試曾把 smoke WorkRoot 放在長的中文／空白安裝目錄下，真 WinPS5.1 在 hosts\fingerprint 的原子暫存檔處失敗。這也暴露實際產品缺口：過長 WorkRoot 在建立部分目錄後才報 DirectoryNotFound。Initialize-WsmOutputWorkspace 現先檢查初始 host 目錄及原子 JSON 暫存檔的既定 Windows 路徑預算，超限在任何工作區建立前拒絕，HTML／CLI 提供選擇較短固定 WorkRoot 的指引。較深的交付／還原預算仍由各操作既有預檢核對，不承諾任意長路徑。
 
 Release smoke 改按正式設計分離安裝目錄與固定工作根，保留含中文／空白的安裝路徑，並在真正匯出的模組中驗證過長初始化零建立；不是縮短安裝路徑或跳過初始化。`initialization-path-final` 兩引擎 OutputWorkspace、HtmlConsole 92 通過；實際 ZIP 逐檔／解壓 fingerprint、獨立短 WorkRoot 的真 wizard 保存讀回與 x64 PS1 入口通過。測試副本所有輸入測後未變。
+
+### 原生傳輸隔離對照：Windows CI
+
+新增僅本輪分支觸發的 Native released console workflow，固定 Playwright 1.62.1、實際 Microsoft Edge 及 WinPS5.1／PS7 分開測試。先建立真發行 ZIP、核對索引／解壓 bytes／工具 fingerprint，再由測試 helper 匯入該解壓模組與同目錄 HtmlConsole；不混用 repository 的產品模組。測試保留原生資源雜湊、125 項 session／inventory、一次可回復的選取保存及明確注入的錯誤案例。測試-only engine／module path 參數不修改產品行為或本機安全設定。response.body 的拒絕立即保留為診斷，guide 雜湊也正確取回實際 bytes，避免未處理 Promise 或誤把包裝物件當作 bytes。
+
+本段提交前 JavaScript syntax、249 份腳本 encoding／PowerShell parsing、workflow YAML／雙引擎矩陣及 diff whitespace 檢查通過。原生執行結果以 GitHub Actions 實際 run／job log 補記；未取得結果前不標 P0 或 M04 通過。此 CI 只使用小型 fixture，不執行實體 4GiB／企業環境或放寬 deadline。

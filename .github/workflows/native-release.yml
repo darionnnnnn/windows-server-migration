@@ -1,0 +1,59 @@
+name: Native released console
+on:
+  push:
+    branches: [codex/migration-6]
+    paths:
+      - '.github/workflows/native-release.yml'
+      - 'src/**'
+      - 'tests/Test-NativeHtmlBridge.js'
+      - 'tests/Start-HtmlTestServer.ps1'
+      - 'tests/Test-ReleaseWizardSmoke.ps1'
+      - 'Start-ServerMigration.*'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [powershell, pwsh]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned browser driver
+        shell: pwsh
+        run: |
+          $driver = Join-Path $env:RUNNER_TEMP 'wsm-browser-driver'
+          npm install --prefix $driver --no-audit --no-fund playwright@1.62.1
+          if ($LASTEXITCODE -ne 0) { throw 'Browser driver installation failed.' }
+          "WSM_NODE_MODULES=$driver/node_modules" >> $env:GITHUB_ENV
+          $edge = @("${env:ProgramFiles(x86)}/Microsoft/Edge/Application/msedge.exe", "$env:ProgramFiles/Microsoft/Edge/Application/msedge.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (-not $edge) { throw 'Actual installed Microsoft Edge is required.' }
+          "WSM_EDGE=$edge" >> $env:GITHUB_ENV
+          "WSM_PS_EXE=$((Get-Command '${{ matrix.engine }}').Source)" >> $env:GITHUB_ENV
+      - name: Verify exact release and extracted launcher
+        shell: powershell
+        run: |
+          $release = Join-Path $env:RUNNER_TEMP 'wsm-native-release'
+          ./tests/Test-ReleaseWizardSmoke.ps1 -OutputDirectory $release
+          $evidence = Get-Content -LiteralPath (Join-Path $release 'release-evidence.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          "WSM_HTML_TEST_MODULE=$(Join-Path $evidence.Result.Root 'src/WindowsServerMigration.psd1')" >> $env:GITHUB_ENV
+      - name: Actual Edge to extracted native PowerShell handler
+        shell: pwsh
+        run: |
+          node ./tests/Test-NativeHtmlBridge.js 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wsm-native.log')
+          if ($LASTEXITCODE -ne 0) { throw 'Native browser acceptance failed; fixture captures do not substitute for this gate.' }
+      - name: Retain sanitized fixture diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-release-${{ matrix.engine }}
+          path: |
+            ${{ runner.temp }}/wsm-native.log
+            ${{ runner.temp }}/wsm-native-release/release-evidence.json
+          retention-days: 7
