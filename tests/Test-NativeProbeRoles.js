@@ -21,7 +21,7 @@ let workRoot = tempRoot;
 let substDrive = null;
 const snapshot = path.join(tempRoot, 'snapshot');
 const psExe = process.env.WSM_PS_EXE || 'powershell.exe';
-const stateRoots = ['developer-probes', 'console-jobs', 'console-errors', 'developer-probe-cancellations'];
+const stateRoots = ['developer-probes', 'console-jobs', 'console-errors', 'developer-probe-cancellations', 'console-probe-worker.lock'];
 const roles = ['Source', 'Target', 'Manager'];
 const expectedCollectorIds = ['PlatformIdentity', 'CommandsModules', 'LocalVolumes', 'NativeInventory', 'HttpProbe'];
 const processes = [];
@@ -197,7 +197,7 @@ function authorityDigest(workspace) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       const child = path.posix.join(relative.replace(/\\/g, '/'), entry.name);
       if (relative === '' && stateRoots.includes(entry.name)) continue;
-      const full = path.join(dir, child);
+      const full = path.join(workspace, child);
       if (entry.isSymbolicLink()) throw new Error('Workspace fixture unexpectedly contains a reparse/symbolic link: ' + full);
       if (entry.isDirectory()) walk(full, child);
       else if (entry.isFile()) rows.push(child + '|' + crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex'));

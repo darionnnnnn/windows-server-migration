@@ -200,16 +200,17 @@ async function openUi(server) {
   page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/operations') { const body=request.postDataJSON();operations.push(body);log(server.role + ' UI operation ' + JSON.stringify(body)); } });
   await page.goto(server.origin + '/#wizard', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(role => window.WsmConsole?.state?.session?.role === role, server.role, { timeout: 30000 });
+  await page.waitForFunction(() => !!window.WsmConsole?.state?.wizard?.currentStep, null, { timeout: 30000 });
   const state = await page.evaluate(() => ({ intentRequired: !!window.WsmConsole.state.wizard?.intentRequired, step: window.WsmConsole.state.wizard?.currentStep }));
   if (state.intentRequired) {
     await page.locator(`input[name="wizard-role"][value="${server.role}"]`).check();
     await page.getByRole('button', { name: '使用這個用途並開始' }).click();
-    await page.waitForFunction(() => !window.WsmConsole.state.wizard?.intentRequired);
+    await page.waitForFunction(() => !!window.WsmConsole.state.wizard && !window.WsmConsole.state.wizard.intentRequired);
   }
   if ((await page.evaluate(() => window.WsmConsole.state.wizard?.currentStep)) === 'start') {
     await page.locator('input[name="wizard-mode"][value="ItemByItem"]').check();
     await page.locator('#wizard-next').click();
-    await page.waitForFunction(() => window.WsmConsole.state.wizard?.currentStep !== 'start');
+    await page.waitForFunction(() => !!window.WsmConsole.state.wizard?.currentStep && window.WsmConsole.state.wizard.currentStep !== 'start');
   }
   return { page, errors, operations };
 }
@@ -297,6 +298,7 @@ async function main() {
   const initialActions = await sourceUi.page.evaluate(() => window.WsmConsole.state.wizard.actions.map(row => row.action));
   assert.ok(initialActions.includes('Inventory'), 'Source wizard must start without a pre-seeded inventory binding.');
   await selectWizardAction(sourceUi.page, 'Inventory');
+  await sourceUi.page.waitForFunction(() => !!window.WsmConsole.state.wizard?.inventory?.sha256);
   const sourceInventory = await sourceUi.page.evaluate(() => window.WsmConsole.state.wizard.inventory);
   assert.ok(sourceInventory?.sha256, 'UI Inventory action must bind a real Source inventory.');
   await confirmSourceIntent(sourceUi.page);
@@ -316,6 +318,7 @@ async function main() {
   const identityFiles = fs.existsSync(targetIdentityRoot) ? fs.readdirSync(targetIdentityRoot, { recursive: true }).filter(name => String(name).endsWith('target-identity.json')) : [];
   assert.equal(identityFiles.length, 0, 'Target identity must be absent before UI registration.');
   await selectWizardAction(targetUi.page, 'Inventory');
+  await targetUi.page.waitForFunction(() => window.WsmConsole.state.wizard?.currentStep === 'prepare');
   assert.equal(await targetUi.page.evaluate(() => window.WsmConsole.state.wizard.currentStep), 'prepare', 'Target inventory must advance through the normal wizard flow.');
   await selectWizardAction(targetUi.page, 'RegisterTarget');
   const registrationJob = await targetUi.page.evaluate(() => [...window.WsmConsole.state.jobs.values()].filter(job => job.action === 'RegisterTarget').at(-1));
