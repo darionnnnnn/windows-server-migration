@@ -10,7 +10,7 @@
 
 左側「開發者環境探測」是獨立的一鍵唯讀診斷入口，不是一般備份步驟。網頁不可用時，可在本機執行 `powershell.exe -NoProfile -File .\Start-ServerMigration.ps1 -Action DeveloperProbe`。探測把 ZIP、匿名化 JSON 與 HTML 摘要寫入工作區 `developer-probes`；原始盤點留在受保護本機目錄，不自動上傳。權限或環境不適用的 collector 會列出狀態與缺口；探測不執行還原、服務啟動或其他寫入，也不代表 Server 資格或業務驗收通過。
 
-第六輪的雙引擎核心、受控正式 handler 備份／還原旅程與真 Edge 版面已有分項證據；本機原始傳輸 **NotPassed** 狀態保留，不以 mock、fixture 或 writer 擷取橋接改寫。獨立 Windows CI 的原生資源／盤點／保存已通過；完整原生備份、非 C 傳輸及目標還原旅程依本輪分項證據判定。外部 Server／產品／帳號／業務／PKI／規模仍為 NotTested；`ProductionVerified=false`、`ProductionExecutionEnabled=false`，發行包未簽署。最新逐段證據見[實作狀態](IMPLEMENTATION-0.1.md)及[第六輪計畫](plans/MIGRATION-6-PLAN.md)。
+第六輪的雙引擎核心、受控正式 handler 備份／還原旅程與真 Edge 版面已有分項證據；本機原始傳輸 **NotPassed** 狀態保留，不以 mock、fixture 或 writer 擷取橋接改寫。獨立 Windows CI 的原生資源／盤點／保存、Source 備份、Manager 審閱核准、Target 還原及 Probe 已通過。非 C 以隔離雙引擎真 worker／結果匯入驗證，原生企業 SMB 不在通過範圍；精確邊界依本輪分項證據判定。外部 Server／產品／帳號／業務／PKI／規模仍為 NotTested；`ProductionVerified=false`、`ProductionExecutionEnabled=false`，發行包未簽署。最新逐段證據見[實作狀態](IMPLEMENTATION-0.1.md)及[第六輪計畫](plans/MIGRATION-6-PLAN.md)。
 
 ## 備份與接收的材料順序
 
@@ -40,11 +40,13 @@ Source、Manager、Target 是操作上下文，不是登入身分或權限授予
 
 第四輪常用任務以具名 action 與 typed 表單呈現，完整進階 allowlist 可搜尋。第五輪增加用途導引與保存的精靈選取，第六輪接入封裝、非 C 交接及目標還原；完整原生旅程尚未通過驗收。以下 action 說明保留進階操作契約，實際一般入口與證據範圍依本輪 PLAN 核對。`Inventory` 在 Source 或 Target 本機的 Windows Server／管理員／64 位 FullLanguage PowerShell 執行；`ImportInventory` 匯入來源盤點並核對獨立可信 SHA-256；`AssistiveEnable` 使用目前配對／角色上下文。目標端先取得可信目標盤點，再由 Manager 提交 `TargetSnapshot`（目標材料路徑及其可信 SHA-256）並 `PublishComparison`；重新載入舊比較不會重新探測目標。只有有效核准後才可進入封包、還原及後續驗證。表單欄位不涵蓋所有專業證據欄位；不確定時查手冊及核准流程，不以空值或自填路徑繞過檢查。
 
+工作階段過期時，請留在原分頁按「重新連線工作階段」。非敏感草稿只留在該分頁記憶體；工具核對工作根目錄、角色、配對與材料版本相符後才沿用，舊預覽與確認一律失效。切換工作或版本變更時會封鎖寫入並要求明確處置過期草稿。重新載入或關閉分頁不保留未保存草稿；已保存內容仍以工作目錄內的正式記錄為準。敏感輸入需重新提供。
+
 操作結果請回到「作業與交接」按權威 OperationId 檢查。提交逾時或回應中斷時，先查是否已有該工作紀錄，不要盲目重送。關閉瀏覽器、停止本機 PowerShell 程序及要求取消是不同動作；取消要求不代表工作已停止。報告以經驗證的路徑與 hash 交由 Windows 預設應用程式開啟，可能另開視窗或程式，不保證是瀏覽器新分頁。
 
 功能與驗證範圍見[實作狀態](IMPLEMENTATION-0.1.md)，分版本證據集中於開發 PLAN。提交等待期間再次保存會被阻擋；保留第一筆 OperationId，先查清其權威結果再決定後續操作。
 
-原始傳輸完整性仍為 **NotPassed**：保留 AdGuard 設定的本機環境曾觀察到回應差異。後續真 Edge／正式 handler 已驗證有限的讀取、可逆保存及隔離資料精靈選取；不代表原始傳輸差異已解決，也不代表完整備份／還原旅程通過。Node mock 或隔離 fixture 不能代替尚未驗收的真實路徑、企業主機及業務驗收。`ProductionVerified=false`、`ProductionExecutionEnabled=false`，發行包未簽署。
+原始傳輸完整性仍為 **NotPassed**：保留 AdGuard 設定的本機環境曾觀察到回應差異。後續獨立 Windows CI 已驗證真 Edge／正式 handler 的讀取、可逆保存、隔離 Source Directory／ZIP 備份與 Target 真還原／hash／journal 讀回。這不代表本機原始傳輸差異已解決；受控身分／觀測不等於真實業務服務驗收。Node mock 或隔離 fixture 不能代替尚未驗收的真實路徑、企業主機及業務驗收。`ProductionVerified=false`、`ProductionExecutionEnabled=false`，發行包未簽署。
 
 本版目前僅供明確批准的隔離 pilot。來源、目標與管理工作區各自本機執行。不得用此文件宣稱實際十台已完成遷移。
 

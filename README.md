@@ -4,7 +4,7 @@ PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目
 
 ## 目前狀態（2026-10-15）
 
-第六輪已分段提交型別化準備／核准、Directory／ZIP 備份、持久作業與取消、多共享非 C 帳號／證據交接，以及新主機接收、比較、決策、還原與 Staged／Final 驗證。本機雙引擎核心、受控正式 handler 使用旅程與真瀏覽器縮放已有證據；本機原生 Edge→HTTP 仍 NotPassed；獨立 Windows CI 的原生資源／盤點／保存已通過，整輪尚未通過，不能把橋接、fixture 或發行煙霧測試當作生產資格。逐段狀態與限制見[第六輪計畫](docs/plans/MIGRATION-6-PLAN.md)。
+第六輪已分段提交型別化準備／核准、Directory／ZIP 備份、持久作業與取消、多共享非 C 帳號／證據交接，以及新主機接收、比較、決策、還原與 Staged／Final 驗證。本機雙引擎核心、受控正式 handler 使用旅程與真瀏覽器縮放已有證據；本機原生 Edge→HTTP 仍 NotPassed；獨立 Windows CI 的原生資源／盤點／保存、Source Directory／ZIP、Target 真還原、Manager 審閱核准及三角色 Probe 旅程已通過，整輪尚未通過，不能把橋接、fixture 或發行煙霧測試當作生產資格。逐段狀態與限制見[第六輪計畫](docs/plans/MIGRATION-6-PLAN.md)。
 
 一般使用者可從工具首頁按「開始／繼續操作」，選擇這台電腦的用途，再依「下一步」完成目前可用步驟。已驗證材料會帶入路徑、雜湊及版本等值；工具用途不等於權限或核准。另有左側「開發者環境探測」入口，以及不依賴網頁的本機命令列備援；探測只讀本機資訊，建立 ZIP、JSON、HTML，不會上傳。
 

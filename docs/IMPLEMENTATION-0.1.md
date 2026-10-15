@@ -6,13 +6,13 @@
 
 | 範圍 | 目前實作 | 驗收邊界 |
 |---|---|---|
-| 準備與核准 | 全 adapter 型別化準備、真 Save→Submit、共享／未知／循環相依、200 項選取、批次審閱、Target 零備份交接與來源核准計畫匯入。 | 已提交獨立段落有雙引擎與正式 handler 的受控 UI 證據；來源意圖不等於核准。 |
-| 備份與作業 | 每次 attempt 固定 Directory／ZIP、停寫影響預覽、獨立 freeze 授權、真核心封裝／讀回、持久進度、同 ID 查詢、取消與工作區單一寫入者。 | 已有兩引擎核心封裝／取消／故障恢復與耐久結果證據；完整原生 HTTP 旅程仍受 P0 阻擋。 |
+| 準備與核准 | 全 adapter 型別化準備、真 Save→Submit、共享／未知／循環相依、200 項選取、批次審閱、Target 零備份交接與來源核准計畫匯入。 | 雙引擎核心與正式 handler 證據，以及三個空工作區到真 UI 核准、計畫雜湊讀回與重開交接的隔離原生證據；來源意圖不等於核准。 |
+| 備份與作業 | 每次 attempt 固定 Directory／ZIP、停寫影響預覽、獨立 freeze 授權、真核心封裝／讀回、持久進度、同 ID 查詢、取消與工作區單一寫入者。 | 已有兩引擎核心及隔離 Windows CI 原生 Directory／ZIP 封裝、取消／Probe 並行、耐久結果證據；本機環境傳輸問題另列。 |
 | 非 C | metadata-only 帳號觀察、逐 SID 映射、兩端既有共享／實體範圍證據攜出與匯入、精確傳輸計畫及結果交接。 | 本機檔案與 metadata 可由代理驗證；隔離 peer 觀測不代表原生 SMB 驗收。雙來源共享、雙資料目的共享與獨立狀態共享的 constructor→worker→Manager→Target 已有隔離雙引擎證據；不代表企業 SMB 通過。 |
 | Target | 真 ZIP／Directory 接收、目前盤點／比較／計畫子集決策、還原預覽／取消／明確新決策續作、逐項結果及驗證投影。 | 獨立 C 不被無關 NonC 材料全域阻擋；混合成功不代表全部完成。Staged→獨立啟用審閱→Final 驗證與接受條件分開，啟用後保留原還原歷史；不自動啟用。 |
-| 開發者探測 | 獨立唯讀收集器與 CLI；Probe／搬移各有單一寫入鎖，可分別執行。 | 不修改搬移權威狀態；本機 Win11 的 Server 深度盤點為 NotApplicable。 |
+| 開發者探測 | 獨立唯讀收集器與 CLI；Probe／搬移各有單一寫入鎖，可分別執行。 | 三角色原生 UI、跨工作區作業隔離與 ZIP／HTML／JSON／索引讀回在隔離 Windows CI 雙引擎通過；不修改搬移權威狀態，本機 Win11 的 Server 深度盤點為 NotApplicable。 |
 
-本機原生 Edge→HTTP 傳輸仍為 **NotPassed**。獨立 Windows CI 已通過實際發行／解壓模組的原生資源 bytes、session、125 項盤點、一次保存及明確注入錯誤處理；[雙引擎 run 38686507492](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38686507492) 不代表這台電腦的環境問題已解決。已修正 idle preconnect 的未初始化錯誤，保留原 deadline；瀏覽器觀察到回應改寫／reset，但責任元件未確定。正式 handler 擷取橋接可驗證核心與 UI 接線，不能代替原生傳輸通過；P0 未通過時，整輪 P6 不得標 PASS。保留 AdGuard 與企業政策設定。
+本機原生 Edge→HTTP 傳輸仍為 **NotPassed**。獨立 Windows CI 已通過實際發行／解壓模組的原生資源 bytes、session、125 項盤點、一次保存及明確注入錯誤處理；後續 [Source／Target 雙引擎原生旅程](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38689090862) 已完成 Directory／ZIP 小檔封裝、明確 Target 還原、檔案／journal 雜湊讀回及同 OperationId 重播，[第二頁 Probe／查詢／取消](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38690279623) 也已通過。受控身分、盤點及停寫排程仍是 fixture，沒有操作真實業務服務；[雙引擎 run 38686507492](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38686507492) 不代表這台電腦的環境問題已解決。已修正 idle preconnect 的未初始化錯誤，保留原 deadline；瀏覽器觀察到回應改寫／reset，但責任元件未確定。正式 handler 擷取橋接可驗證核心與 UI 接線；P0 所需真 Edge／正式 HTTP／可逆保存及錯誤處理已有獨立 Windows CI 證據。本機失敗仍單列，[Manager 雙引擎原生旅程](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38698158215) 亦已完成審閱、明確核准與重開交接；整輪狀態仍依最終交付與收尾核對判定。保留 AdGuard 與企業政策設定。
 
 一般流程使用「舊主機」「新主機」「整理搬移資料的電腦」及逐步導引。保留已核准業務 DLL／EXE、網站、排程、設定及資料；排除 Windows／IIS／Oracle Client／runtime 等安裝軟體本體、整機映像與 System State。來源、選用、觀測版本分存，不自動轉換格式或代認新版相容。外部 Server／SMB／產品／帳號／業務／PKI／規模仍為 NotTested，`ProductionVerified=false`、`ProductionExecutionEnabled=false`；發行包未簽署。尚未宣稱取得不同於全部實作者的獨立模型簽核。
 

@@ -4,7 +4,7 @@
 
 一般使用者可雙擊 `Start-ServerMigration.cmd`，按「開始／繼續操作」，選擇這台電腦的用途，再逐步按「下一步」。畫面使用「舊主機」「新主機」「整理搬移資料的電腦」等名稱；可由已驗證的工作材料帶入欄位。工具用途不改變本機權限，也不核准任何計畫。
 
-第六輪已接入準備／核准、Directory／ZIP 備份、多共享非 C 交接及目標接收／比較／決策／還原。雙引擎核心與受控正式 handler 旅程已有驗證；本機原生 Edge→HTTP 仍 NotPassed；獨立 Windows CI 已通過原生資源、盤點與保存，完整一般旅程仍依本輪分項證據判定。下方保留資訊人員可用的進階核心契約。開始備份需真實目標身分、sealed plan 與有效核准；還原及啟用另有明確確認。
+第六輪已接入準備／核准、Directory／ZIP 備份、多共享非 C 交接及目標接收／比較／決策／還原。雙引擎核心與受控正式 handler 旅程已有驗證；本機原生 Edge→HTTP 仍 NotPassed；獨立 Windows CI 已通過原生資源／盤點／保存，以及 Source 備份、Manager 審閱核准、Target 還原和 Probe；精確範圍與替身邊界仍依本輪分項證據判定。下方保留資訊人員可用的進階核心契約。開始備份需真實目標身分、sealed plan 與有效核准；還原及啟用另有明確確認。
 
 支援範圍包含已核准的業務網站／排程 DLL、EXE、設定與資料；排除 Windows、IIS 安裝本體、Oracle Client、runtime 等安裝軟體、整機映像與 System State。非 C 槽仍走既有核准／跳板通道。詳見[目前實作狀態](IMPLEMENTATION-0.1.md)及[一般操作手冊](ASSISTIVE-OPERATIONS.html)。
 
@@ -21,6 +21,8 @@
 ```
 
 來源人員由操作中心執行 `Inventory` 並交付可信盤點；Manager 使用 `ImportInventory` 核對檔案與獨立 SHA-256，接著以 `AssistiveEnable` 建立輔助狀態、檢查預選項目並用 `SaveSelection` 記錄選取（每項未選內容都要有原因）。選取不是核准。目標人員由「建立目標本機盤點材料」任務執行 `Inventory`，使用目標專屬輸出目錄，並透過受控離線材料交給 Manager；Manager 在自己的工作區以檔案路徑與獨立 `ExpectedHash` 執行 `TargetSnapshot` 記錄目標快照，再執行 `PublishComparison` 發布比較。目標材料不需先用來源 `ImportInventory` 匯入。核准後才沿用既有封裝、目標預覽、還原、讀回及交接流程。完整欄位、責任分工與疑難處理見[HTML 操作與交接手冊](ASSISTIVE-OPERATIONS.html)及[企業遷移涵蓋範圍](ENTERPRISE-MIGRATION-COVERAGE.md)。實際 Windows Server／業務資格和本機 loopback 傳輸限制見[目前狀態](IMPLEMENTATION-0.1.md)；使用 HTML 入口不代表外部驗收完成。
+
+工作階段過期時，在原分頁明確重新連線即可重新核對工作與材料版本。相符的非敏感草稿可保留，仍須重新預覽及確認；不符時先處置過期草稿。分頁記憶體草稿不會跨重新載入或關頁保存。寫入結果不明時，先查原 OperationId，不能以重連為由再次提交。
 
 ## 工作目錄與交付
 
