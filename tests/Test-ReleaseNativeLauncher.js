@@ -30,7 +30,10 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     browser = await chromium.launch({ executablePath: process.env.WSM_EDGE, headless: true });
     const page = await browser.newPage();
     await page.goto(origin + '/ui/index.html', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.WsmConsole?.state.wizard?.intentRequired === true);
+    await page.waitForFunction(() => window.WsmConsole?.state.wizard?.intentRequired === true).catch(async error => {
+      const diagnostic = await page.evaluate(() => ({ wizard: window.WsmConsole?.state.wizard, role: window.WsmConsole?.state.session?.role, workspace: window.WsmConsole?.state.session?.workspace, error: document.getElementById('error-summary')?.textContent }));
+      throw new Error(`${error.message}; actual launcher initial view: ${JSON.stringify(diagnostic)}`);
+    });
     const session = await page.evaluate(() => window.WsmConsole.state.session);
     assert.equal(path.resolve(session.workspace).toLowerCase(), workspace.toLowerCase());
     await page.locator('input[name="wizard-role"][value="Manager"]').check();
