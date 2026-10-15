@@ -456,3 +456,6 @@ CI [38687999663](https://github.com/darionnnnnn/windows-server-migration/actions
 同 run 的 PS7 三個 Source 子案例已完成，Target 在保存決策後點預覽時重現缺少 viewContext：背景完成刷新會清空全域 runtime cache，舊 DOM 表單短暫仍存在，提交卻從全域而非該畫面讀審閱版本。正式 UI 現在把 Source 備份／恢復及 Target 各表單綁定到渲染當下 response.viewContext，沒有在提交前偷換成新的畫面或放寬 CAS。真正 stale 仍由 fresh session 與核心拒絕。
 
 新 runtime-form-context 固定副本的 Source／Target 真 Edge API fixture 通過：Target 在重新明確讀取合法版本後，故意清空全域 runtime cache、保留可見 DOM，再點原表單，仍送出該表單精確審閱版本並完成流程；舊版審閱零 POST、未知寫入只查原 ID、獨立還原確認及原 Source 停寫語意仍驗。六個 UI/test 輸入測後 hash 不變。此窄修仍需新原生雙引擎旅程，不把 PS5 的前版 PASS 直接當 PS7 修正通過。
+PS7 原生重驗：CI [38689090862](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38689090862)，commit 619c604，PS7 job 116270605886 已整段 success，包含上述 Source 三子案例與 Target 真還原／hash／operation replay；不是只以單次 Target helper PASS 代替整段。WinPS5.1 同 run 結果另以最終 job 狀態核對。
+
+M03 第二頁補驗：原生 runtime runner 在開始受控停寫邊界的備份前，先開第二個獨立 browser context／page。第一頁只啟動一次備份；另一頁從真 Probe 按鈕啟動獨立工作，透過作業卡讀取仍 Running 的備份，再按該精確作業的「要求取消」。既有正式 journal／結果、Probe 完成與 pair 權威未變斷言保留；橋接模式保留原行為。此為待 CI 執行的新補驗，JS syntax 已通過，尚不能宣稱雙頁原生驗收通過。
