@@ -302,3 +302,8 @@ Target 可在零備份下匯出已註冊身分及本機盤點；Manager 以獨�
 核心 OutputWorkspace／OutputWorkflow 支援明確的 per-attempt Directory／ZIP 與容量，既有 attempt 沿用凍結值、明確要求改格式／容量則拒絕，且不修改已登錄 OutputProfile。DirectoryDelivery 先核對摘要、完整成員、封包與 Target 身分，再以 Directory／0 bytes 建立該次 attempt；Target 的 ZIP 偏好不再誤擋資料夾接收。來源 EnrolledDelivery 轉交同一組已驗證的 attempt 值。
 
 主代理以 P1b 固定基準只覆蓋本段兩個核心檔及 OutputWorkspace 測試，獨立執行 Windows PowerShell 5.1／PowerShell 7 的 OutputWorkspace 與 OutputWorkflow；全部通過。固定副本及三檔 SHA-256 見 work/r6/output-prerequisite-snapshot.txt／stage-input-index.json；OutputWorkflow 的 transport native boundary 使用既有 fixture，不能代稱原生跨機傳輸。另在 P3 固定副本已完成兩格式真封裝、匯入與 payload hash 讀回的 PS7 子案例，但全套 P3／P5 仍有 consumer／取消／交接驗證在本輪修正中；此提交不表示完整 P3、P5 或整輪通過。原生 P0 NotPassed 不變。
+### 本輪整合發現修正：可選軟體涵蓋 ItemId（2026-10-15）
+
+- 原生機器層級 SoftwareCatalog Coverage 合法省略 ItemId；StrictMode 下原直接讀取會阻止 Target 比較與 NonC 復原接縫。
+- 指紋計算將缺省 ItemId 正規化為空字串，保留明確項目及狀態差異的指紋綁定，不修改 sealed source facts。
+- 驗證：不可變來源副本 `work/r6/software-facts-snapshot.txt` 所指目錄，`tests/Test-SoftwareFactsCoverage.ps1` 在 PowerShell 5.1 / 7 皆通過。此結果僅涵蓋該指紋契約，不代表 P5 或整輪驗收通過。

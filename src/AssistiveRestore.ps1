@@ -82,7 +82,7 @@ function Get-WsmAssistiveSoftwareFactsHash($SoftwareCatalog) {
     # proof that software is absent. Bind the exact coverage vector so a probe
     # changing status or scope invalidates the receipt without blocking
     # unrelated FileScope items globally.
-    $coverage=@($SoftwareCatalog.Coverage | ForEach-Object {[pscustomobject][ordered]@{Probe=[string]$_.Probe;Scope=[string]$_.Scope;SID=[string]$_.SID;View=[string]$_.View;Status=[string]$_.Status;EvidenceKind=[string]$_.EvidenceKind;Count=[long]$_.Count;ErrorKind=[string]$_.ErrorKind;ItemId=[string]$_.ItemId}} | Sort-Object Probe,Scope,SID,View,ItemId)
+    $coverage=@($SoftwareCatalog.Coverage | ForEach-Object {[pscustomobject][ordered]@{Probe=[string]$_.Probe;Scope=[string]$_.Scope;SID=[string]$_.SID;View=[string]$_.View;Status=[string]$_.Status;EvidenceKind=[string]$_.EvidenceKind;Count=[long]$_.Count;ErrorKind=[string]$_.ErrorKind;ItemId=$(if($_.PSObject.Properties['ItemId']){[string]$_.ItemId}else{''})}} | Sort-Object Probe,Scope,SID,View,ItemId)
     $projection=[pscustomobject][ordered]@{Entries=@($facts.ToArray() | Sort-Object);Coverage=$coverage}
     Get-WsmHashText ($projection | ConvertTo-Json -Depth 20 -Compress)
 }
