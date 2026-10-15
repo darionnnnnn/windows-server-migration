@@ -125,7 +125,17 @@ function Invoke-WsmLocked([string]$Workspace, [scriptblock]$Action) {
     if(Get-Command Assert-WsmOutputWorkspaceNotMigrated -ErrorAction SilentlyContinue){Assert-WsmOutputWorkspaceNotMigrated $Workspace}
     $lock = $null
     try {
-        $lock = [IO.File]::Open((Join-Path $Workspace '.wsm.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+        $acquisition=[Diagnostics.Stopwatch]::StartNew()
+        while(-not $lock){
+            try{$lock=[IO.File]::Open((Join-Path $Workspace '.wsm.lock'), 'OpenOrCreate', 'ReadWrite', 'None')}
+            catch [IO.IOException]{
+                $ioError=$_.Exception
+                for($depth=0;$depth -lt 8 -and $ioError -isnot [IO.IOException] -and $ioError.InnerException;$depth++){$ioError=$ioError.InnerException}
+                $nativeCode=$ioError.HResult -band 65535
+                if($nativeCode -notin @(32,33) -or $acquisition.ElapsedMilliseconds -ge 2000){throw}
+                Start-Sleep -Milliseconds 10
+            }
+        }
         & $Action
     } finally { if ($lock) { $lock.Dispose() } }
 }
