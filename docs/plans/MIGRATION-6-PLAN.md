@@ -436,3 +436,10 @@ CI run 38686260214 的兩引擎均通過實際發行 smoke，原生頁面／sess
 CI run [38686507492](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38686507492)，commit 25e7a0f，WinPS5.1 job 116262459381 與 PS7 job 116262459062 均 success。兩者使用原封實際發行／解壓模組；真原生 Edge 載入完整頁、未解碼 bytes 與 session asset hash、125 項盤點、一次真保存，以及明確注入非 JSON／reset／timeout／expired session 的錯誤處理通過。此為 GitHub Windows 隔離主機的原生有限旅程通過；本機環境 reset／逾時仍 NotPassed，責任元件未定，不把 CI 通過改寫成這台電腦已恢復。
 
 下一段將以獨立測試走真解壓 CMD／PS1 預設入口、原生用途保存重讀及完整離線手冊，補 M04；既有 Source／Target 小資料 runtime fixture 增加原生 HTTP 模式，略過 writer capture bridge 並以實際 browser requests 記錄寫入。受控身分／盤點／software／取消排程觀察仍明列，不代稱實際服務／SMB／生產通過。保留原 30s 原生讀取時限，CI job 整體上限增加供四子案例使用，不放寬產品 deadline。
+### 原生發行旅程發現的首次登記缺陷
+
+實際 CMD 可啟動原生頁，但用途保存回 400。主代理以實際 Enter-WsmWorkspaceWorkerGuard 先建立 migration／Probe 兩鎖檔，再做首次用途登記，於未修正的 HEAD 重現「unowned state (console-probe-worker.lock)」。原有預先登記角色 fixture 未涵蓋這個順序。
+
+Initialize-WsmWizardWorkspace 現將兩個精確 worker 鎖檔名辨識為 bootstrap 產物，仍拒絕 reparse／偽裝目錄與所有其他未知資料；不讀取鎖檔作授權、不刪鎖、不改 ownership、不解除活躍 Probe owner。新 Test-WizardBootstrapLocks 通過真啟動 guard→角色保存、migration metadata hash 不變、活躍 Probe FileShare.None 仍排他、兩個偽裝目錄均在 profile 建立前拒絕。固定副本 bootstrap-final 的 WinPS5.1／PS7 各通過新測試、WizardFlow 45、HtmlConsole 92，281 個輸入測後未變。正式 CMD 仍須以新 commit 在 CI 重驗，不以本機核心反例代替 M04。
+
+CI runtime runner 的第一個完整模式在 Node22.23.3 於測試早期非正常退出，精確 exit -1073740791 (0xC0000409)，沒有得到 Source／Target 結果，故該段仍未通過；補足啟動階段診斷以定位，不據此推論產品失敗或安全元件責任。

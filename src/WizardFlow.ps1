@@ -62,11 +62,11 @@ function Initialize-WsmWizardWorkspace {
     $root=[IO.Path]::GetFullPath($Workspace)
     if([IO.File]::Exists((Join-Path (Join-Path $root 'workspace-control') 'output-profile.json'))){$profile=Read-WsmOutputProfile $root;if($profile.Role -cne $Role){throw 'This workspace is already enrolled for another role; its role cannot be changed.'};return $profile}
     if([IO.Directory]::Exists($root)){
-        $bootstrap=@('.wsm.lock','console-jobs','console-errors','developer-probes')
+        $bootstrap=@('.wsm.lock','console-worker.lock','console-probe-worker.lock','console-jobs','console-errors','developer-probes')
         foreach($entry in @(Get-ChildItem -LiteralPath $root -Force)){
             if($entry.Name -notin $bootstrap){throw ('This workspace contains unowned state ('+$entry.Name+') without a role profile; preserve it and choose its existing workflow or perform an explicit workspace migration.')}
             Assert-WsmNoReparse $entry.FullName
-            if($entry.Name -eq '.wsm.lock' -and $entry.PSIsContainer){throw 'The local workspace lock path is occupied by a directory.'}
+            if($entry.Name -in @('.wsm.lock','console-worker.lock','console-probe-worker.lock') -and $entry.PSIsContainer){throw 'The local workspace lock path is occupied by a directory.'}
             if($entry.Name -in @('console-jobs','console-errors') -and -not $entry.PSIsContainer){throw 'A local console state directory is occupied by a file.'}
             if($entry.Name -eq 'developer-probes'){
                 if(-not $entry.PSIsContainer){throw 'The developer probe root is occupied by a file.'}

@@ -1,13 +1,17 @@
 console.log('Starting immutable native/formal runtime acceptance on '+process.version);
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),http=require('node:http'),{spawn,execFileSync}=require('node:child_process');
 const sourceRoot=path.resolve(process.env.WSM_RUNTIME_FORMAL_SOURCE_ROOT||path.resolve(__dirname,'..')),tempRoot=fs.mkdtempSync(path.join(os.tmpdir(),'wsm-runtime-formal-')),snapshot=path.join(tempRoot,'runtime'),ownTemp=path.resolve(os.tmpdir())+path.sep;
+console.log('Runtime fixture paths allocated.');
 assert.ok(path.resolve(tempRoot).startsWith(ownTemp),'Runtime test files must remain beneath the OS temp directory.');
 const workDrive=[...'RSTUVWXYZ'].find(letter=>!fs.existsSync(`${letter}:\\`));if(!workDrive)throw new Error('No free drive letter is available for short formal fixture work roots.');execFileSync('subst.exe',[`${workDrive}:`,tempRoot]);const workRoot=`${workDrive}:\\`;
+console.log('Owned short fixture drive allocated.');
 function digestTree(root,relative=''){const rows=[];for(const entry of fs.readdirSync(path.join(root,relative),{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))){const child=path.posix.join(relative,entry.name);if(entry.isDirectory())rows.push(...digestTree(root,child));else if(entry.isFile()){const ext=path.extname(entry.name).toLowerCase();if(relative===''&&!['.ps1','.psm1','.psd1'].includes(ext))continue;if(relative==='ui'&&!['.html','.css','.js'].includes(ext))continue;rows.push(`${child.replace(/\\/g,'/')}|${crypto.createHash('sha256').update(fs.readFileSync(path.join(root,child))).digest('hex')}`);}}return rows;}
 function makeImmutable(file){for(const entry of fs.readdirSync(file,{withFileTypes:true})){const child=path.join(file,entry.name);if(entry.isDirectory())makeImmutable(child);else fs.chmodSync(child,0o444);}fs.chmodSync(file,0o555);}
 function makeSnapshot(){
  const src=path.join(sourceRoot,'src'),before=digestTree(src);
+ console.log('Runtime source hashes collected.');
  fs.mkdirSync(snapshot,{recursive:true});fs.cpSync(src,path.join(snapshot,'src'),{recursive:true});
+ console.log('Runtime source copy completed.');
  for(const name of ['Start-ServerMigration.ps1','Start-ServerMigration.cmd']){const full=path.join(sourceRoot,name);if(fs.existsSync(full))fs.copyFileSync(full,path.join(snapshot,name));}
  const tests=path.join(snapshot,'tests');fs.mkdirSync(tests,{recursive:true});fs.copyFileSync(path.join(__dirname,'Start-WizardRuntimeTestServer.ps1'),path.join(tests,'Start-WizardRuntimeTestServer.ps1'));
  assert.deepEqual(before,digestTree(src),'Live source changed while the immutable snapshot was being created.');assert.deepEqual(before,digestTree(path.join(snapshot,'src')),'Copied runtime differs from the source fingerprint before test adaptation.');
@@ -44,6 +48,7 @@ if ($env:WSM_RUNTIME_TEST_IDENTITY -eq '1') {
  assert.deepEqual(adaptedFingerprint,digestTree(path.join(snapshot,'src')),'Immutable test snapshot changed during preparation.');return adaptedFingerprint;
 }
 const snapshotFingerprint=makeSnapshot(),runtime=process.env.WSM_NODE_MODULES||'C:/Users/eldar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules',{chromium}=require(path.join(runtime,'playwright'));
+console.log('Immutable fixture and browser driver ready.');
 const trace=[],tracePath=path.join(tempRoot,'formal-trace.jsonl');function log(text){const entry={utc:new Date().toISOString(),message:String(text)};trace.push(`${entry.utc} ${entry.message}`);fs.appendFileSync(tracePath,JSON.stringify(entry)+'\n','utf8');}function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 async function reservePort(){return new Promise((resolve,reject)=>{const server=http.createServer();server.once('error',reject);server.listen(0,'127.0.0.1',()=>{const port=server.address()?.port;server.close(error=>error?reject(error):resolve(port));});});}
 let roleRunSequence=0;
