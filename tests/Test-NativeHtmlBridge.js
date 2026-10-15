@@ -38,6 +38,22 @@ async function stopServer() {
   });
 }
 
+async function verifyNativeAsset(page, route, record, expectedHash) {
+  assert.ok(record && record.status === 200, `native browser did not load ${route}`);
+  // CDP exposes decoded text for script bodies and can omit the UTF-8 BOM.
+  // Fetch ArrayBuffer in the actual browser to check the untouched wire bytes.
+  const bytes = Buffer.from(await page.evaluate(async asset => {
+    const response = await fetch(asset, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Native asset fetch failed: ${response.status}`);
+    return Array.from(new Uint8Array(await response.arrayBuffer()));
+  }, route));
+  assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), expectedHash, `native wire bytes differ from the session for ${route}`);
+  const observed = await record.bodyPromise;
+  assert.ok(!observed.error, `native response body unavailable for ${route}: ${observed.error}`);
+  const withoutBom = bytes.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])) ? bytes.subarray(3) : bytes;
+  assert.ok(observed.body.equals(bytes) || observed.body.equals(withoutBom), `loaded asset differs from its native wire bytes for ${route}`);
+}
+
 async function verifyInjectedViewFailure(browser, origin, fault, expectedText, timeout = 20000) {
   const page = await browser.newPage();
   await page.route('**/api/view*', async route => {
@@ -82,10 +98,7 @@ async function verifyInjectedViewFailure(browser, origin, fault, expectedText, t
     for (const route of requiredRoutes) { const observed = await responses.get(route).bodyPromise; assert.ok(!observed.error, `native response body unavailable for ${route}: ${observed.error}`); responses.get(route).body = observed.body; }
     const session = JSON.parse(responses.get('/api/session').body.toString('utf8'));
     for (const route of ['/ui/index.html', '/ui/console.js', '/ui/console.css']) {
-      const record = responses.get(route);
-      assert.ok(record && record.status === 200, `native browser did not load ${route}`);
-      const hash = crypto.createHash('sha256').update(record.body).digest('hex');
-      assert.equal(hash, session.assetHashes[route], `native response hash differs from the session for ${route}`);
+      await verifyNativeAsset(page, route, responses.get(route), session.assetHashes[route]);
     }
     const inventoryResponse = [...responses.entries()].find(([key]) => key.startsWith('/api/view?action=inventory'));
     assert.ok(inventoryResponse, 'native browser did not request inventory through the real session API');
@@ -108,10 +121,7 @@ async function verifyInjectedViewFailure(browser, origin, fault, expectedText, t
     await guidePage.goto(origin + '/ui/guide.html', { waitUntil: 'domcontentloaded' });
     const guideRecord = responses.get('/ui/guide.html');
     assert.ok(guideRecord && guideRecord.status === 200, 'real browser did not load guide.html through the native handler');
-    const guideObserved = await guideRecord.bodyPromise;
-    assert.ok(!guideObserved.error, `native guide body unavailable: ${guideObserved.error}`);
-    guideRecord.body = guideObserved.body;
-    assert.equal(crypto.createHash('sha256').update(guideRecord.body).digest('hex'), session.assetHashes['/ui/guide.html']);
+    await verifyNativeAsset(guidePage, '/ui/guide.html', guideRecord, session.assetHashes['/ui/guide.html']);
     assert.deepEqual(pageErrors, []);
     await verifyInjectedViewFailure(browser, origin, route => route.fulfill({ status: 200, contentType: 'text/html', body: '<html>proxy error</html>' }), '回傳的內容格式無法讀取');
     await verifyInjectedViewFailure(browser, origin, route => route.abort('connectionreset'), '無法連線本機服務');
