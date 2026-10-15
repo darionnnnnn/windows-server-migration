@@ -2,13 +2,13 @@
 
 PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目標 Server 2016 → 2025、約十台主機。各台本機執行，管理端彙整文件與結果，不要求 WinRM。
 
-## 目前狀態（2026-10-13）
+## 目前狀態（2026-10-15）
 
-第五輪交付白話操作基礎、保存的選取進度、雙擊啟動器、獨立開發者環境探測，以及業務檔案範圍和還原取消／修復防護。正式本機 handler 的隔離旅程已驗證用途、選取保存及來源意圖交接。完整自動備份、管理準備、非 C 槽交接及目標還原精靈尚未交付，依使用者指示移入[第六輪規劃](docs/plans/MIGRATION-6-PLAN.md)；目前需由資訊人員使用既有進階受控流程。
+第六輪已分段提交型別化準備／核准、Directory／ZIP 備份、持久作業與取消、多共享非 C 帳號／證據交接，以及新主機接收、比較、決策、還原與 Staged／Final 驗證。本機雙引擎核心、受控正式 handler 使用旅程與真瀏覽器縮放已有證據；本機原生 Edge→HTTP 仍 NotPassed；獨立 Windows CI 的原生資源／盤點／保存已通過，整輪尚未通過，不能把橋接、fixture 或發行煙霧測試當作生產資格。逐段狀態與限制見[第六輪計畫](docs/plans/MIGRATION-6-PLAN.md)。
 
 一般使用者可從工具首頁按「開始／繼續操作」，選擇這台電腦的用途，再依「下一步」完成目前可用步驟。已驗證材料會帶入路徑、雜湊及版本等值；工具用途不等於權限或核准。另有左側「開發者環境探測」入口，以及不依賴網頁的本機命令列備援；探測只讀本機資訊，建立 ZIP、JSON、HTML，不會上傳。
 
-本工具保留已核准的業務 DLL／EXE、網站、排程、設定及資料，排除 Windows、IIS、Oracle Client、runtime 等安裝軟體本體、整機映像及 System State。可信安裝目錄與系統路徑受防護；軟體盤點不完整時明列缺口，不宣稱完整識別。非 C 槽資料仍須走已核准通道。外部 Server／產品／帳號／業務／PKI／規模驗收仍為 NotTested；ProductionVerified=false、ProductionExecutionEnabled=false，發行包未簽署。詳見[實作狀態](docs/IMPLEMENTATION-0.1.md)、[第五輪計畫與逐段證據](docs/plans/MIGRATION-5-PLAN.md)及[操作契約](docs/OPERATIONS.md)。
+本工具保留已核准的業務 DLL／EXE、網站、排程、設定及資料，排除 Windows、IIS、Oracle Client、runtime 等安裝軟體本體、整機映像及 System State。可信安裝目錄與系統路徑受防護；軟體盤點不完整時明列缺口，不宣稱完整識別。非 C 槽資料仍須走已核准通道。外部 Server／產品／帳號／業務／PKI／規模驗收仍為 NotTested；ProductionVerified=false、ProductionExecutionEnabled=false，發行包未簽署。詳見[實作狀態](docs/IMPLEMENTATION-0.1.md)、[第六輪計畫與逐段證據](docs/plans/MIGRATION-6-PLAN.md)及[操作契約](docs/OPERATIONS.md)。
 
 ## 專案用途與現行契約
 
@@ -50,7 +50,7 @@ PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目
 
 **尚未取得 Server 2016／2025 生產資格，執行功能限定使用者明確核准的隔離 pilot。** 未知產品保留為缺口或具責任與證據的專用流程；不會自動匯入整個 registry、執行包內腳本或啟動舊來源。實際資料、帳號密碼、憑證、企業設定不得放入這個公開 repository。
 
-第2輪一般主機操作與資料格式見 [GENERAL-HOST-WORKFLOW.md](docs/GENERAL-HOST-WORKFLOW.md)：完整軟體／環境確認、Oracle effective設定與wallet外部處理、分階段準備證據、具原值復原的Windows設定、固定WorkRoot與ZIP／Directory交付。Source、Manager、Target使用自己的受控目錄；來源及目標交付模式需相符。每台完整MD／JSON／HTML／TXT／CSV會保留全部已發現列與探索缺口，文件回填不構成執行核准。
+第2輪一般主機操作與資料格式見 [GENERAL-HOST-WORKFLOW.md](docs/GENERAL-HOST-WORKFLOW.md)：完整軟體／環境確認、Oracle effective設定與wallet外部處理、分階段準備證據、具原值復原的Windows設定、固定WorkRoot與ZIP／Directory交付。Source、Manager、Target使用自己的受控目錄；來源每次備份會固定其交付格式；目標依收到的材料格式匯入，不要求目標工作區的預設輸出偏好相同。每台完整MD／JSON／HTML／TXT／CSV會保留全部已發現列與探索缺口，文件回填不構成執行核准。
 當前外部驗收待辦集中於[實作狀態](docs/IMPLEMENTATION-0.1.md)，不以歷史規劃作為最新完成證明。
 
 企業備份／還原情境及實際支援見 [ENTERPRISE-MIGRATION-COVERAGE.md](docs/ENTERPRISE-MIGRATION-COVERAGE.md)。專業／環境軟體本體在 HTML 清單列出，由使用者安裝；環境設定檔另列核准搬移／外部重建，ConfigFiles 是精確設定檔清單；不擴張成整個安裝目錄。本工具不提供整機／System State復原。

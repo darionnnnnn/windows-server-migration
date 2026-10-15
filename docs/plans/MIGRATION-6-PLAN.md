@@ -443,3 +443,8 @@ CI run [38686507492](https://github.com/darionnnnnn/windows-server-migration/act
 Initialize-WsmWizardWorkspace 現將兩個精確 worker 鎖檔名辨識為 bootstrap 產物，仍拒絕 reparse／偽裝目錄與所有其他未知資料；不讀取鎖檔作授權、不刪鎖、不改 ownership、不解除活躍 Probe owner。新 Test-WizardBootstrapLocks 通過真啟動 guard→角色保存、migration metadata hash 不變、活躍 Probe FileShare.None 仍排他、兩個偽裝目錄均在 profile 建立前拒絕。固定副本 bootstrap-final 的 WinPS5.1／PS7 各通過新測試、WizardFlow 45、HtmlConsole 92，281 個輸入測後未變。正式 CMD 仍須以新 commit 在 CI 重驗，不以本機核心反例代替 M04。
 
 CI runtime runner 的第一個完整模式在 Node22.23.3 於測試早期非正常退出，精確 exit -1073740791 (0xC0000409)，沒有得到 Source／Target 結果，故該段仍未通過；補足啟動階段診斷以定位，不據此推論產品失敗或安全元件責任。
+### 現況文件與可核驗發行包
+
+README、一般主機流程、操作契約及實作狀態已同步至第六輪目前能力，回收仍稱 E／F 未接入的過期說明；保留本機原生 NotPassed、獨立 Windows CI 有限原生 PASS、外部 NotTested、未簽署與 production=false 的各自邊界。補明兩格式按收到材料匯入、每 attempt 固定格式、多共享／固定狀態目錄、停寫授權、取消／續作、Staged／Final、上下文及鎖定／長工作根指引。正式產生器產生 11 份 HTML 與索引，24 項文件檢查通過；250 份腳本編碼及解析通過。
+
+含首次登記窄修的固定副本 delivery-native，318 輸入測後 SHA 不變。真發行 smoke 通過：`work/r6/release-native-94761801d05f47eeab71d476eebf6643/migration-tool.zip`，131 份檔案，archive SHA256 `9BE89E430D80E6CFF710252FE97296D060316AB5D62B7DFD817DEF1F8824819C`，runtime fingerprint `8f604b8e83fe04229c12a62227fab61d25dfce34511b927072a75482b054ec92`。精確索引／解壓每檔 bytes、中文／空白安裝路徑、WinPS5.1 x64 實際模組／PS1、真 wizard 保存讀回與過長 WorkRoot 零建立均通過；未簽署，NativeHttp=NotProvenByThisSmoke。完整實際 CMD／原生 runtime 仍依新 CI 結果判定，不能從本包 smoke 推導通過。

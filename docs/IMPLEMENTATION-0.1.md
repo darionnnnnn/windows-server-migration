@@ -1,20 +1,20 @@
 # 0.4 實作狀態與外部驗證
 
-更新：2026-10-13。本文件維護當前交付能力；第五輪依使用者要求收尾已完成範圍，未完成實作及整合驗收集中[第六輪 PLAN](plans/MIGRATION-6-PLAN.md)。逐段證據保留於[第五輪 PLAN](plans/MIGRATION-5-PLAN.md)，前輪紀錄見[第四輪 PLAN](plans/MIGRATION-4-PLAN.md)與[第三輪 PLAN](MIGRATION-3-PLAN.md)。操作模板不能代勾，保留的開發草稿不算已交付能力。
+更新：2026-10-15。第六輪備份／多共享／還原相依整合已提交，本機受控證據與未通過邊界分列，逐段 commit、適用版本及證據集中[第六輪 PLAN](plans/MIGRATION-6-PLAN.md)。第五輪及更早的結果保留於各輪 PLAN；操作模板不能代勾，程式存在或 helper 測試通過不等於完整使用旅程已通過。
 
-## 第五輪交付範圍與第六輪待辦
+## 第六輪現況
 
-| 範圍 | 已有程式與證據 | 尚未完成的部分 |
+| 範圍 | 目前實作 | 驗收邊界 |
 |---|---|---|
-| 啟動與引導 | `Start-ServerMigration.cmd` 可雙擊啟動 x64 Windows PowerShell 5.1；真 Edge 透過正式 PowerShell handler 已驗證用途選擇、精靈步驟版本檢查，以及 Manager 對隔離盤點資料的分組選取、保存、返回與排除理由。 | 不涵蓋實際備份封裝、非 C 傳輸及目標還原的完整旅程。啟動器不繞過執行政策；被封鎖時須依企業程序核准。 |
-| 精靈與選取 | 精靈狀態、用途工作區綁定、可信盤點、revision/CAS、分組選取、受控明細及来源意圖匯出／Manager 匯入已接入核心；意圖不等於核准。 | 第六輪 P1／P2 補全部白話 adapter、共享相依與 200 項模式切換的完整使用端。 |
-| 備份 E | 既有核心要求 sealed plan、目標身分及有效核准；本輪防護限制系統／可信安裝根目錄，保留業務程式與核准 ExactFiles 設定。 | 第六輪 P3／P4 完成自動備份、C／非 C 結果及正向傳輸。StartBackup 等開發草稿未納入目前發行。 |
-| 交接與還原 F | 受信計畫讀取、核心取消／日誌／保留 intent 修復與檔案範圍防護已交付；還原與啟用各自有 gate。 | 第六輪 P5 完成 Target 封包、比較、決策、還原及續作 UI。新 helper 的隔離 PASS 不等於完整一般操作旅程。 |
-| 開發者環境探測 G | 獨立一鍵與 CLI 共用只讀收集器；ZIP、匿名化 JSON、HTML，原始證據留受保護本機位置。兩引擎未注入 collector 的 OS／磁碟讀回已通過，CIM 載入缺陷已修正。 | 本機 Win11 的 Server 深度盤點為 NotApplicable；第六輪只補與新搬移流程的並行回歸，不重做收集器或冒稱企業主機驗收。 |
+| 準備與核准 | 全 adapter 型別化準備、真 Save→Submit、共享／未知／循環相依、200 項選取、批次審閱、Target 零備份交接與來源核准計畫匯入。 | 已提交獨立段落有雙引擎與正式 handler 的受控 UI 證據；來源意圖不等於核准。 |
+| 備份與作業 | 每次 attempt 固定 Directory／ZIP、停寫影響預覽、獨立 freeze 授權、真核心封裝／讀回、持久進度、同 ID 查詢、取消與工作區單一寫入者。 | 已有兩引擎核心封裝／取消／故障恢復與耐久結果證據；完整原生 HTTP 旅程仍受 P0 阻擋。 |
+| 非 C | metadata-only 帳號觀察、逐 SID 映射、兩端既有共享／實體範圍證據攜出與匯入、精確傳輸計畫及結果交接。 | 本機檔案與 metadata 可由代理驗證；隔離 peer 觀測不代表原生 SMB 驗收。雙來源共享、雙資料目的共享與獨立狀態共享的 constructor→worker→Manager→Target 已有隔離雙引擎證據；不代表企業 SMB 通過。 |
+| Target | 真 ZIP／Directory 接收、目前盤點／比較／計畫子集決策、還原預覽／取消／明確新決策續作、逐項結果及驗證投影。 | 獨立 C 不被無關 NonC 材料全域阻擋；混合成功不代表全部完成。Staged→獨立啟用審閱→Final 驗證與接受條件分開，啟用後保留原還原歷史；不自動啟用。 |
+| 開發者探測 | 獨立唯讀收集器與 CLI；Probe／搬移各有單一寫入鎖，可分別執行。 | 不修改搬移權威狀態；本機 Win11 的 Server 深度盤點為 NotApplicable。 |
 
-原生工作台橋接曾驗證動態資源、正式 handler 的讀取／可逆保存；後續真 Edge journey 以隔離盤點資料驗證精靈選取。這些結果已修正第四輪「動態工作台完整旅程尚未通過」過時概括，但**不代表完整備份或還原旅程已通過**。原始傳輸完整性仍是 NotPassed；Node mock、fixture 及隔離資料不能替代各自未驗的原生路徑或企業主機。
+本機原生 Edge→HTTP 傳輸仍為 **NotPassed**。獨立 Windows CI 已通過實際發行／解壓模組的原生資源 bytes、session、125 項盤點、一次保存及明確注入錯誤處理；[雙引擎 run 38686507492](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38686507492) 不代表這台電腦的環境問題已解決。已修正 idle preconnect 的未初始化錯誤，保留原 deadline；瀏覽器觀察到回應改寫／reset，但責任元件未確定。正式 handler 擷取橋接可驗證核心與 UI 接線，不能代替原生傳輸通過；P0 未通過時，整輪 P6 不得標 PASS。保留 AdGuard 與企業政策設定。
 
-一般流程使用「舊主機」「新主機」「整理搬移資料的電腦」及「開始／下一步」導引。已核准業務 DLL／EXE 可搬；Windows、IIS 安裝本體、Oracle Client、runtime 等安裝軟體、整機映像及 System State 不搬。非 C 沿用既有受控通道；開發者探測不修改搬移權威狀態或代表生產資格。第五輪範圍收尾不等於最初全部 A–H 完成，也沒有宣稱已取得不同於所有實作者的獨立模型簽核。
+一般流程使用「舊主機」「新主機」「整理搬移資料的電腦」及逐步導引。保留已核准業務 DLL／EXE、網站、排程、設定及資料；排除 Windows／IIS／Oracle Client／runtime 等安裝軟體本體、整機映像與 System State。來源、選用、觀測版本分存，不自動轉換格式或代認新版相容。外部 Server／SMB／產品／帳號／業務／PKI／規模仍為 NotTested，`ProductionVerified=false`、`ProductionExecutionEnabled=false`；發行包未簽署。尚未宣稱取得不同於全部實作者的獨立模型簽核。
 
 ## 第四輪 A–E 現況（基線）
 
@@ -58,7 +58,7 @@
 - [ ] Oracle exact provider／consumer／runtime帳號的TNS_ADMIN、DB／TCPS與業務驗證；企業有效信任鏈、撤銷材料、簽章／批准及正式資格。
 - [ ] 代表性封裝→還原量測耗時、容量、尖峰記憶體與維護窗；既有4GiB邊界不等於企業效能，長路徑目前明確阻擋。
 - [ ] 單台pilot、相依雙台及十台波次：真實freeze／fencing／activation／新交易回退／source resume／唯一writer、業務接受、觀察、備份實還原與退役批准。
-- [ ] 真實瀏覽器與主控台完整備份→交接→目標還原旅程；已驗證的有限精靈選取旅程、Node DOM 或 CLI fixture 不能代替尚未完成的 E／F 真實接線。
+- [ ] 真實瀏覽器與主控台完整備份→交接→目標還原旅程；已驗證的受控正式 handler 備份／還原旅程、Node DOM 或 CLI fixture 不能代替原生傳輸、SMB 及完整實機驗收。
 
 使用者的隔離 Server 無法讓代理直接連線，目前尚未收到真實清單／LabReport及企業材料。不能以合成測試補作這些證據，也不刪除原始驗收需求。
 

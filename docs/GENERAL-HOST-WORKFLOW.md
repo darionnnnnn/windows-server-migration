@@ -1,16 +1,16 @@
 # 一般主機操作閉環（第 2 輪契約與現行 HTML 入口）
 
-## 第五輪一般入口與目前可用範圍
+## 第六輪一般入口與目前可用範圍
 
 一般使用者可雙擊 `Start-ServerMigration.cmd`，按「開始／繼續操作」，選擇這台電腦的用途，再逐步按「下一步」。畫面使用「舊主機」「新主機」「整理搬移資料的電腦」等名稱；可由已驗證的工作材料帶入欄位。工具用途不改變本機權限，也不核准任何計畫。
 
-目前 Edge／正式本機 handler 證據涵蓋用途選擇、隔離盤點的分組選取及來源意圖交接。第五輪依使用者指示先收尾這些已完成範圍；完整備份、管理準備、C／非 C 成果及目標還原精靈移至第六輪。下方是資訊人員可用的既有進階核心契約，不能當作完整一般精靈已交付。開始備份需真實目標身分、sealed plan 與有效核准；還原及啟用另有明確確認。
+第六輪已接入準備／核准、Directory／ZIP 備份、多共享非 C 交接及目標接收／比較／決策／還原。雙引擎核心與受控正式 handler 旅程已有驗證；本機原生 Edge→HTTP 仍 NotPassed；獨立 Windows CI 已通過原生資源、盤點與保存，完整一般旅程仍依本輪分項證據判定。下方保留資訊人員可用的進階核心契約。開始備份需真實目標身分、sealed plan 與有效核准；還原及啟用另有明確確認。
 
 支援範圍包含已核准的業務網站／排程 DLL、EXE、設定與資料；排除 Windows、IIS 安裝本體、Oracle Client、runtime 等安裝軟體、整機映像與 System State。非 C 槽仍走既有核准／跳板通道。詳見[目前實作狀態](IMPLEMENTATION-0.1.md)及[一般操作手冊](ASSISTIVE-OPERATIONS.html)。
 
 本流程供受控隔離 pilot。Windows Server、Oracle 實際帳號／產品、企業 PKI 與業務驗收仍需外部實機證據；本機 fixture 通過不等於正式上線資格。所有主機使用相同工具 bytes，以系統管理員的 64 位元 FullLanguage Windows PowerShell 5.1 執行；不符時由管理者確認既有企業原則。
 
-第三輪核心契約及第四輪工作台構成本文件保留的進階操作參考；第五輪另加入逐步精靈及正式本機 handler 的有限瀏覽器驗證。精靈完整備份、非 C 傳輸和目標還原仍未完成。文字選單及非互動 CLI 是資訊人員的備援。本文件保留已驗的一般主機資料契約、細節與 CLI 範例。
+第三輪核心契約及第四輪工作台構成本文件保留的進階操作參考；第五輪加入逐步精靈，第六輪擴充備份、非 C 交接和目標還原。文字選單及非互動 CLI 是資訊人員的備援。本文件保留一般主機資料契約、細節與 CLI 範例；實作與驗收範圍依本輪 PLAN 的個別證據判定，不能以核心操作通過代替原生使用者旅程。
 
 從各自主機的受控工具目錄啟動 HTML 入口；以下工作區為虛構範例，Source、Manager、Target 必須各用自己的 WorkRoot：
 
@@ -28,7 +28,7 @@
 
 建議預設分卷 ZIP 512 MiB；介面可選整數 128–1024 MiB。每卷為獨立封裝，沒有壓縮容量承諾。封存資料夾模式使用乾淨白名單副本。兩種模式都需完整可信 manifest／transport 索引與全部成員；不能手動解壓後視為完成還原。先估算每個磁碟的 package、副本、scratch、incoming、既有目標及回復保留空間。
 
-輸出偏好只影響新 attempt；既有 attempt 的模式／卷大小固定。原 WorkRoot 的 enrollment、source-state、catalog、operation state／journal 必須持續保存。不同 plan 不能直接沿用舊 state；先完成舊作業的 reconciliation 與新基線審核。
+輸出偏好只影響新 attempt；既有 attempt 的模式／卷大小固定。精靈逐項模式預設 Directory、自動模式預設 ZIP，操作者仍可明確改選。Target 按收到的材料格式匯入，不要求與 Target 工作區的預設輸出偏好相同；缺卷、重複卷、跨世代混卷或 hash 不符均不得當成接收成功。原 WorkRoot 的 enrollment、source-state、catalog、operation state／journal 必須持續保存。不同 plan 不能直接沿用舊 state；先完成舊作業的 reconciliation 與新基線審核。
 
 ## 管理者與 owner 確認
 
