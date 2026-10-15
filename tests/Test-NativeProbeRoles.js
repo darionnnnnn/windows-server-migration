@@ -231,11 +231,14 @@ function assertProbeArtifacts(workspace, job, expectedRole) {
   assert.ok(['Completed', 'Partial', 'Cancelled'].includes(output.Status), `Probe artifact outcome is ${output.Status}.`);
   assert.equal(output.ProductionQualified, false);
   assert.equal(output.BusinessValidated, false);
+  assert.ok(Number.isSafeInteger(output.ArchiveBytes) && output.ArchiveBytes > 0, 'Native public Probe output must retain the actual archive byte count.');
+  assert.equal(Object.values(output.CollectorCounts).reduce((sum, count) => sum + count, 0), expectedCollectorIds.length, 'Native public collector counts must account for the fixed manifest.');
   const runRoot = path.join(workspace, 'developer-probes', output.RunId);
   const probePath = path.join(runRoot, 'probe.json'), htmlPath = path.join(runRoot, 'index.html');
   const indexPath = path.join(runRoot, 'files-index.json'), zipPath = path.join(runRoot, 'developer-probe.zip');
   for (const file of [probePath, htmlPath, indexPath, zipPath]) assert.ok(fs.statSync(file).isFile(), 'Missing real Probe artifact: ' + file);
   const archiveHash = crypto.createHash('sha256').update(fs.readFileSync(zipPath)).digest('hex');
+  assert.equal(fs.statSync(zipPath).size, output.ArchiveBytes);
   assert.equal(archiveHash, output.SHA256, 'Probe job output hash differs from the actual ZIP bytes.');
   const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
   for (const row of index) {
