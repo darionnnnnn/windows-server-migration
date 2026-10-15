@@ -1,0 +1,84 @@
+name: Native round-six acceptance gaps
+on:
+  push:
+    branches: [codex/migration-6]
+    paths:
+      - '.github/workflows/native-round6-gaps.yml'
+      - 'tests/Test-NativeWizardManagerJourney.js'
+      - 'tests/Start-WizardManagerJourneyTestServer.ps1'
+      - 'tests/Test-NativeProbeRoles.js'
+      - 'tests/Start-NativeProbeRoleTestServer.ps1'
+  workflow_dispatch:
+    inputs:
+      suite:
+        type: choice
+        default: both
+        options: [both, manager, probe]
+permissions:
+  contents: read
+jobs:
+  scope:
+    runs-on: windows-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: select
+        shell: pwsh
+        env:
+          PREVIOUS_SHA: ${{ github.event.before }}
+          REQUESTED_SUITE: ${{ inputs.suite }}
+        run: |
+          $suites = @()
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            $suites = if ($env:REQUESTED_SUITE -eq 'both') { @('manager','probe') } else { @($env:REQUESTED_SUITE) }
+          } else {
+            $files = @(git diff --name-only $env:PREVIOUS_SHA $env:GITHUB_SHA)
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot establish changed acceptance scope.' }
+            $workflow = $files -contains '.github/workflows/native-round6-gaps.yml'
+            if ($workflow -or @($files | Where-Object { $_ -match '^tests/(Test-NativeWizardManagerJourney.js|Start-WizardManagerJourneyTestServer.ps1)$' }).Count) { $suites += 'manager' }
+            if ($workflow -or @($files | Where-Object { $_ -match '^tests/(Test-NativeProbeRoles.js|Start-NativeProbeRoleTestServer.ps1)$' }).Count) { $suites += 'probe' }
+          }
+          $matrix = @{include=@(foreach ($suite in $suites) { foreach ($engine in @('powershell','pwsh')) { @{suite=$suite;engine=$engine} } })} | ConvertTo-Json -Compress -Depth 4
+          "matrix=$matrix" >> $env:GITHUB_OUTPUT
+          Write-Output "Selected only missing acceptance: $matrix"
+  native:
+    needs: scope
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.scope.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare actual Edge driver and selected PowerShell
+        shell: pwsh
+        run: |
+          $driver = Join-Path $env:RUNNER_TEMP 'wsm-browser-driver'
+          npm install --prefix $driver --no-audit --no-fund playwright@1.62.1
+          if ($LASTEXITCODE -ne 0) { throw 'Browser driver installation failed.' }
+          "WSM_NODE_MODULES=$driver/node_modules" >> $env:GITHUB_ENV
+          "WSM_PS_EXE=$((Get-Command '${{ matrix.engine }}').Source)" >> $env:GITHUB_ENV
+      - name: Exercise the missing native journey
+        shell: pwsh
+        env:
+          WSM_RUNTIME_NATIVE_TRANSPORT: '1'
+          WSM_PROBE_SKIP_CLI: ${{ matrix.engine == 'powershell' && '1' || '0' }}
+        run: |
+          $test = if ('${{ matrix.suite }}' -eq 'manager') { 'Test-NativeWizardManagerJourney.js' } else { 'Test-NativeProbeRoles.js' }
+          $log = Join-Path $env:RUNNER_TEMP 'wsm-acceptance-gap.log'
+          node "tests/$test" *> $log
+          $result = $LASTEXITCODE
+          Get-Content -LiteralPath $log
+          if ($result -ne 0) { throw "Native ${{ matrix.suite }} acceptance failed (exit $result)." }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: round6-${{ matrix.suite }}-${{ matrix.engine }}
+          path: ${{ runner.temp }}/wsm-acceptance-gap.log
+          retention-days: 7

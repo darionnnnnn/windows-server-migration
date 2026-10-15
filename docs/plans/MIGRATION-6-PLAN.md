@@ -462,3 +462,15 @@ M03 第二頁補驗：原生 runtime runner 在開始受控停寫邊界的備份
 ### 測試必要性界線（2026-10-15 使用者補充）
 
 每次測試先確認它對應哪個新改動、失敗或尚缺證據；已有適用程式／依賴／環境與覆蓋結果即沿用，不為取得另一份 PASS 重跑。CI 改按實際差異分別選基本原生、啟動器／發行、Target 或 Source 取消／Probe；測試腳本窄修不再一律重跑三個 Source 備份格式及整段 Target。僅核心跨段相依改動或明確選 all 才跑完整 runtime。Release smoke 固定用真 WinPS5.1，僅矩陣一端執行，不在兩個引擎 job 重複建立相同格式發行包。workflow-only 範圍調整只作 YAML／PowerShell syntax 核對，不觸發產品全套；分項選擇不能用來把尚未驗項標通過。
+
+### 尚缺劇本的定點補驗
+
+CI [38689090862](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38689090862) 最終雙引擎均 success，補齊前述 PS5 結果。M03 第二頁改在備份開始後讀取當前上下文，避免測試拿備份前的舊畫面提交；[38690279623](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38690279623) 於 cf8956f 的 PS5 job 116274341237、PS7 job 116274341017 均 success。該次只跑 Source 取消／另一頁真 Probe 按鈕／作業卡查詢與取消，沒有重跑發行及其他搬移格式。
+
+U07 新增真正同 Pair、同 plan 的兩代多卷 ZIP：兩代各通過核心 validator／export，第二代鏈結第一代 manifest；將第二代真 volume 混入第一代真 transport，正式 Target importer 拒絕，沒有建立接收狀態或改寫 profile。代理 PS7 與主代理 WinPS5.1 各通過 12 checks；含 PS1／CMD／src 的不可變副本雜湊受保護。只補原驗收缺的跨世代情境，未重跑既有還原矩陣。
+
+J5 正式 `Start-ServerMigration.ps1 -Action DeveloperProbe` 的 WinPS5.1 實跑已核對真 JSON／HTML／ZIP、files-index SHA256 與 collector manifest；結果 Partial 如實保留，ProductionQualified／BusinessValidated=false。首次 runner 在驗收完成後因 cleanup root 等值判斷失敗而 exit 1；已修正該測試清理條件並清除精確自有暫存根，不為清理錯誤重跑 Probe。這不是產品失敗，也不把整支當時 exit 1 改記成 exit 0。
+
+新獨立 Windows CI 僅補 J3 Manager 真 UI 登記／交接／spec／comparison／明確 ISOLATED-PILOT 核准，以及 J5 三角色真 UI Probe 與兩 workspace 作業隔離。Manager helper 啟動／合法觀察契約、真 Get-WsmToolFingerprint 與 PS1／CMD 複製雜湊已驗；原生完整旅程結果尚待 CI，不能以語法或 fixture 契約代替。Probe 的 PS5 CLI 沿用上述結果，CI 只於 PS7 補該正式入口。
+
+委派設定依使用者最新訊息恢復 gpt-6-luna low／medium／high；前次明確授權的 gpt-6-astra medium 只做重連唯讀複核且因切換中斷，未修改產品、未提供完成簽核。主代理繼續獨立查實產物與必要行為，不把新驗收腳本的存在當成契約已通過。
