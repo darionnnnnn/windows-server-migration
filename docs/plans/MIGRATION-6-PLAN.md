@@ -480,3 +480,9 @@ J5 正式 `Start-ServerMigration.ps1 -Action DeveloperProbe` 的 WinPS5.1 實跑
 401 後保留分頁記憶體內的非敏感 typed／準備／runtime／NonC 草稿，提供明確重連按鈕；不增加 Web Storage 草稿。只有 WorkRoot、角色、Pair、data／selection／材料版本核對相符時，才將舊 contextId 的草稿重新綁定至新 session；舊預覽一律失效。不同工作或重連期間的上下文／版本變更先隔離草稿並封鎖寫入，需明確捨棄再操作；選取與軟體草稿也清除，避免跨工作套用。敏感輸入清除，未知寫入保留原 operationId 且不自動提交。
 
 主代理複核修正了共享物件使版本比較失效、focus／背景隱式重連、失敗過早解除 gate，以及 context 回應的角色／Pair／contextId 改變與 active refresh 再次 401。測試在最後一個反例曾因初始 token 已為 null 過早通過等待條件，已限定新 contextId 且 token=null；這是 fixture 等待錯誤，不改產品 deadline。新 Test-SessionDraftReconnect 由主代理實跑 PASS，涵蓋相容保留、跨工作隔離、兩種競態、失敗重試、焦點不重連、unknown ID、不落盤與不重送。先前受影響的 Source／Target runtime UI fixture 已通過，未再重跑不受此分支影響的封裝／還原核心。API fixture 不冒充原生服務驗收；UI 變更只觸發基本原生與 Target 受影響旅程。
+
+### 原生 Probe 補驗發現：結果投影漏欄位
+
+CI 38692004972 的三角色 Probe 已由真按鈕啟動、跨 workspace job 查詢／取消拒絕，於核對結果時發現核心 false 資格旗標在 HTTP 投影遺失。Get-WsmHtmlResultProjection 補入 ProductionQualified、BusinessValidated、ArchiveBytes 與 CollectorCounts；計數只准固定八個數值欄位，不讓任意巢狀內容或路徑越過白名單。新 Test-HtmlProbeProjection 對核心→HTTP結果→公開作業整條投影驗 false、計數、bytes 與秘密／路徑／請求 metadata 遮蔽，代理雙引擎及主代理 WinPS5.1 查證通過。
+
+此窄修提交使用 skip-ci，避免 HtmlConsole 檔名觸發與結果欄位無關的全部封裝／還原矩陣；下一個 native fixture 修正提交專門執行尚缺的 Manager／Probe 原生驗收，並包含本修正來源。最終發行另核對實際 bytes。這不略過本修正的驗收，也不把目前仍失敗的 Manager 旅程標通過。
