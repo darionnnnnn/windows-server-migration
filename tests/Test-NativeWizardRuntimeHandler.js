@@ -126,7 +126,11 @@ assert.equal(crypto.createHash('sha256').update(fs.readFileSync(fixture.ProfileP
 (async()=>{
  const targetOnly=process.env.WSM_RUNTIME_FORMAL_TARGET_ONLY==='1';
  try{
-  if(targetOnly){
+  if(process.env.WSM_RUNTIME_FORMAL_SOURCE_CANCEL_ONLY==='1'){
+   const source=await runRole('Source',{mode:'ItemByItem',cancel:true,probeDuringRun:true});assert.equal(source.status,'Cancelled');assert.equal(source.canCancel,false);assert.ok(source.probe&&source.probe.collectorCount>0);
+   assert.deepEqual(snapshotFingerprint,digestTree(path.join(snapshot,'src')),'Immutable runtime snapshot changed during Source cancel/Probe test.');
+   console.log('PASS: Source backup, separate-browser-page Probe/query/cancel, exact terminal operation and unchanged pair authority. Transport mode: '+(process.env.WSM_RUNTIME_NATIVE_TRANSPORT==='1'?'native HTTP':'formal capture bridge')+'. Controlled observations only.');
+  }else if(targetOnly){
    const target=await runRole('Target');assert.equal(target.role,'Target');assert.ok(['Succeeded','Partial'].includes(target.status));
    assert.deepEqual(snapshotFingerprint,digestTree(path.join(snapshot,'src')),'Immutable runtime snapshot changed during formal tests.');
    console.log('PASS: immutable Source-root snapshot -> real Edge UI -> actual HTML handler -> actual Target Directory receive, comparison import, explicit decision, preview and restore; exact package, payload and journal hashes and operation replay verified. Transport mode: '+(process.env.WSM_RUNTIME_NATIVE_TRANSPORT==='1'?'actual native HTTP and browser origin':'formal writer capture bridge; native transport/origin not asserted')+'. Controlled host/software fixtures are used; live SMB, actual services and production qualification are not asserted.');

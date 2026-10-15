@@ -459,3 +459,6 @@ CI [38687999663](https://github.com/darionnnnnn/windows-server-migration/actions
 PS7 原生重驗：CI [38689090862](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38689090862)，commit 619c604，PS7 job 116270605886 已整段 success，包含上述 Source 三子案例與 Target 真還原／hash／operation replay；不是只以單次 Target helper PASS 代替整段。WinPS5.1 同 run 結果另以最終 job 狀態核對。
 
 M03 第二頁補驗：原生 runtime runner 在開始受控停寫邊界的備份前，先開第二個獨立 browser context／page。第一頁只啟動一次備份；另一頁從真 Probe 按鈕啟動獨立工作，透過作業卡讀取仍 Running 的備份，再按該精確作業的「要求取消」。既有正式 journal／結果、Probe 完成與 pair 權威未變斷言保留；橋接模式保留原行為。此為待 CI 執行的新補驗，JS syntax 已通過，尚不能宣稱雙頁原生驗收通過。
+### 測試必要性界線（2026-10-15 使用者補充）
+
+每次測試先確認它對應哪個新改動、失敗或尚缺證據；已有適用程式／依賴／環境與覆蓋結果即沿用，不為取得另一份 PASS 重跑。CI 改按實際差異分別選基本原生、啟動器／發行、Target 或 Source 取消／Probe；測試腳本窄修不再一律重跑三個 Source 備份格式及整段 Target。僅核心跨段相依改動或明確選 all 才跑完整 runtime。Release smoke 固定用真 WinPS5.1，僅矩陣一端執行，不在兩個引擎 job 重複建立相同格式發行包。workflow-only 範圍調整只作 YAML／PowerShell syntax 核對，不觸發產品全套；分項選擇不能用來把尚未驗項標通過。

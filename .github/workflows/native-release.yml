@@ -13,6 +13,11 @@ on:
       - 'tests/Start-WizardRuntimeTestServer.ps1'
       - 'Start-ServerMigration.*'
   workflow_dispatch:
+    inputs:
+      suite:
+        type: choice
+        default: all
+        options: [all, basic, launcher, release, target, source-cancel]
 permissions:
   contents: read
 jobs:
@@ -25,10 +30,43 @@ jobs:
         engine: [powershell, pwsh]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Select only affected acceptance scope
+        id: scope
+        shell: pwsh
+        env:
+          PREVIOUS_SHA: ${{ github.event.before }}
+          REQUESTED_SUITE: ${{ inputs.suite }}
+        run: |
+          $files = @()
+          $manual = $env:GITHUB_EVENT_NAME -eq 'workflow_dispatch'
+          if (-not $manual) {
+            $files = @(git diff --name-only $env:PREVIOUS_SHA $env:GITHUB_SHA)
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot establish changed files; select an explicit acceptance suite.' }
+          }
+          $backend = @($files | Where-Object { $_ -match '^src/(?!ui/)' }).Count -gt 0
+          $entry = @($files | Where-Object { $_ -match '^Start-ServerMigration\.' }).Count -gt 0
+          $console = $files -contains 'src/ui/console.js'
+          $basic = $backend -or $entry -or $console -or @($files | Where-Object { $_ -match '^tests/(Test-NativeHtmlBridge.js|Start-HtmlTestServer.ps1)$' }).Count -gt 0
+          $launcher = $entry -or ($files -contains 'tests/Test-ReleaseNativeLauncher.js')
+          $release = $backend -or $entry -or $launcher -or ($files -contains 'tests/Test-ReleaseWizardSmoke.ps1')
+          $runtime = $backend -or $console -or @($files | Where-Object { $_ -match '^tests/(Test-NativeWizardRuntimeHandler.js|Start-WizardRuntimeTestServer.ps1)$' }).Count -gt 0
+          $case = if ($backend -or ($files -contains 'tests/Start-WizardRuntimeTestServer.ps1')) { 'all' } elseif ($console) { 'target' } else { 'source-cancel' }
+          if ($manual) {
+            $suite = $env:REQUESTED_SUITE
+            $basic = $suite -in @('all','basic'); $launcher = $suite -in @('all','launcher')
+            $release = $suite -in @('all','release','launcher'); $runtime = $suite -in @('all','target','source-cancel'); $case = $suite
+          }
+          foreach ($row in @{basic=$basic;launcher=$launcher;release=$release;runtime=$runtime;driver=($basic -or $launcher -or $runtime)}.GetEnumerator()) { "$($row.Key)=$($row.Value.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT }
+          "case=$case" >> $env:GITHUB_OUTPUT
+          "WSM_HTML_TEST_MODULE=$(Join-Path $env:GITHUB_WORKSPACE 'src/WindowsServerMigration.psd1')" >> $env:GITHUB_ENV
+          Write-Output "Selected basic=$basic launcher=$launcher release=$release runtime=$runtime case=$case"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Install pinned browser driver
+        if: steps.scope.outputs.driver == 'true'
         shell: pwsh
         run: |
           $driver = Join-Path $env:RUNNER_TEMP 'wsm-browser-driver'
@@ -40,28 +78,32 @@ jobs:
           "WSM_EDGE=$edge" >> $env:GITHUB_ENV
           "WSM_PS_EXE=$((Get-Command '${{ matrix.engine }}').Source)" >> $env:GITHUB_ENV
       - name: Verify exact release and extracted launcher
+        if: matrix.engine == 'powershell' && steps.scope.outputs.release == 'true'
         shell: powershell
         run: |
           $release = Join-Path $env:RUNNER_TEMP 'wsm-native-release'
           ./tests/Test-ReleaseWizardSmoke.ps1 -OutputDirectory $release
           $evidence = Get-Content -LiteralPath (Join-Path $release 'release-evidence.json') -Raw -Encoding UTF8 | ConvertFrom-Json
           "WSM_HTML_TEST_MODULE=$(Join-Path $evidence.Result.Root 'src/WindowsServerMigration.psd1')" >> $env:GITHUB_ENV
-      - name: Actual Edge to extracted native PowerShell handler
+      - name: Actual Edge to native PowerShell handler
+        if: steps.scope.outputs.basic == 'true'
         shell: pwsh
         run: |
           node ./tests/Test-NativeHtmlBridge.js 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wsm-native.log')
           if ($LASTEXITCODE -ne 0) { throw 'Native browser acceptance failed; fixture captures do not substitute for this gate.' }
       - name: Actual released CMD launch and native purpose save
-        if: matrix.engine == 'powershell'
+        if: matrix.engine == 'powershell' && steps.scope.outputs.launcher == 'true'
         shell: pwsh
         run: |
           node ./tests/Test-ReleaseNativeLauncher.js 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wsm-launcher.log')
           if ($LASTEXITCODE -ne 0) { throw 'Actual released CMD browser acceptance failed.' }
       - name: Source and Target native runtime journeys with small controlled fixtures
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.scope.outputs.runtime == 'true' }}
         shell: pwsh
         env:
           WSM_RUNTIME_NATIVE_TRANSPORT: '1'
+          WSM_RUNTIME_FORMAL_TARGET_ONLY: ${{ steps.scope.outputs.case == 'target' && '1' || '0' }}
+          WSM_RUNTIME_FORMAL_SOURCE_CANCEL_ONLY: ${{ steps.scope.outputs.case == 'source-cancel' && '1' || '0' }}
         run: |
           $env:WSM_RUNTIME_FORMAL_SOURCE_ROOT = Split-Path (Split-Path $env:WSM_HTML_TEST_MODULE)
           Write-Output "Native runtime source: $env:WSM_RUNTIME_FORMAL_SOURCE_ROOT"
@@ -74,7 +116,7 @@ jobs:
           Get-Content -LiteralPath $runtimeLog
           if ($runtimeExit -ne 0) { throw "Native Source/Target runtime acceptance failed (exit $runtimeExit)." }
       - name: Retain sanitized fixture diagnostics
-        if: always()
+        if: ${{ always() && (steps.scope.outputs.driver == 'true' || steps.scope.outputs.release == 'true') }}
         uses: actions/upload-artifact@v4
         with:
           name: native-release-${{ matrix.engine }}
