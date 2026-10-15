@@ -7,10 +7,11 @@ const workDrive=[...'RSTUVWXYZ'].find(letter=>!fs.existsSync(`${letter}:\\`));if
 console.log('Owned short fixture drive allocated.');
 function digestTree(root,relative=''){const rows=[];for(const entry of fs.readdirSync(path.join(root,relative),{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))){const child=path.posix.join(relative,entry.name);if(entry.isDirectory())rows.push(...digestTree(root,child));else if(entry.isFile()){const ext=path.extname(entry.name).toLowerCase();if(relative===''&&!['.ps1','.psm1','.psd1'].includes(ext))continue;if(relative==='ui'&&!['.html','.css','.js'].includes(ext))continue;rows.push(`${child.replace(/\\/g,'/')}|${crypto.createHash('sha256').update(fs.readFileSync(path.join(root,child))).digest('hex')}`);}}return rows;}
 function makeImmutable(file){for(const entry of fs.readdirSync(file,{withFileTypes:true})){const child=path.join(file,entry.name);if(entry.isDirectory())makeImmutable(child);else fs.chmodSync(child,0o444);}fs.chmodSync(file,0o555);}
+function copyFixtureDirectory(source,destination){fs.mkdirSync(destination,{recursive:true});for(const entry of fs.readdirSync(source,{withFileTypes:true})){const from=path.join(source,entry.name),to=path.join(destination,entry.name);if(entry.isSymbolicLink())throw new Error('Fixture snapshot refuses symbolic links: '+from);if(entry.isDirectory())copyFixtureDirectory(from,to);else if(entry.isFile())fs.copyFileSync(from,to);else throw new Error('Fixture snapshot requires regular files: '+from);}}
 function makeSnapshot(){
  const src=path.join(sourceRoot,'src'),before=digestTree(src);
  console.log('Runtime source hashes collected.');
- fs.mkdirSync(snapshot,{recursive:true});fs.cpSync(src,path.join(snapshot,'src'),{recursive:true});
+ fs.mkdirSync(snapshot,{recursive:true});copyFixtureDirectory(src,path.join(snapshot,'src'));
  console.log('Runtime source copy completed.');
  for(const name of ['Start-ServerMigration.ps1','Start-ServerMigration.cmd']){const full=path.join(sourceRoot,name);if(fs.existsSync(full))fs.copyFileSync(full,path.join(snapshot,name));}
  const tests=path.join(snapshot,'tests');fs.mkdirSync(tests,{recursive:true});fs.copyFileSync(path.join(__dirname,'Start-WizardRuntimeTestServer.ps1'),path.join(tests,'Start-WizardRuntimeTestServer.ps1'));

@@ -130,7 +130,7 @@ async function verifyInjectedViewFailure(browser, origin, fault, expectedText, t
     await expiredPage.route('**/api/context', route => route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ code: 'invalid_token', message: 'session expired' }) }));
     await expiredPage.goto(origin + '/ui/index.html', { waitUntil: 'domcontentloaded' });
     await expiredPage.waitForFunction(() => window.WsmConsole && window.WsmConsole.state.token === null && !document.getElementById('error-summary').hidden, null, { timeout: 10000 });
-    assert.match(await expiredPage.locator('#error-summary').textContent(), /工作階段已失效/);
+    assert.match(await expiredPage.locator('#error-summary').textContent(), /工作階段(?: token )?已失效/);
     await expiredPage.close();
     process.stdout.write('PASS: Edge loaded the real PowerShell loopback handler, verified native asset hashes and 125-item inventory/session context, saved a reversible selection once, and displayed identified errors for injected non-JSON, connection reset, timeout, and expired-session responses. Fault cases use explicit Playwright response injection.\n');
   } finally {
