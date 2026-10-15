@@ -344,8 +344,11 @@ async function main() {
   assert.equal(importJob.outputs[0].HandoffStatus, 'Imported');
   assert.equal(managerUi.operations.some(row => row.action === 'ImportSourceReviewHandoff'), true, 'Manager source intent must be imported by the native UI.');
   const pairId = importJob.outputs[0].PairId;
-  const pairRoot = path.join(manager.workspace, 'pairs', pairId);
-  assert.ok(pairId && fs.existsSync(pairRoot));
+  const catalogPath = path.join(manager.workspace, 'pairs', pairId + '.json');
+  assert.ok(pairId && fs.existsSync(catalogPath), 'Source handoff must create the formal pairs/<PairId>.json catalog.');
+  const importedCatalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
+  assert.equal(importedCatalog.PairId, pairId);
+  assert.ok(importedCatalog.Assistive, 'Confirmed Source intent must create its Assistive contract.');
   await managerUi.page.waitForFunction(id => String(window.WsmConsole.state.session?.pairId || '') === id, pairId, { timeout: 30000 });
   await managerUi.page.evaluate(() => window.WsmConsole.navigate('wizard', { force: true }));
   // Importing confirmed Source intent already creates the Assistive contract.
