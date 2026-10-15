@@ -21,7 +21,9 @@ let workRoot = tempRoot;
 let substDrive = null;
 const snapshot = path.join(tempRoot, 'snapshot');
 const psExe = process.env.WSM_PS_EXE || 'powershell.exe';
-const stateRoots = ['developer-probes', 'console-jobs', 'console-errors', 'developer-probe-cancellations', 'console-probe-worker.lock'];
+// The empty .wsm.lock is an OS lock handle, not migration data; a live request
+// legitimately holds it with FileShare.None. All actual authority files remain hashed.
+const stateRoots = ['developer-probes', 'console-jobs', 'console-errors', 'developer-probe-cancellations', 'console-probe-worker.lock', '.wsm.lock'];
 const roles = ['Source', 'Target', 'Manager'];
 const expectedCollectorIds = ['PlatformIdentity', 'CommandsModules', 'LocalVolumes', 'NativeInventory', 'HttpProbe'];
 const processes = [];

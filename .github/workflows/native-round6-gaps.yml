@@ -14,6 +14,10 @@ on:
         type: choice
         default: both
         options: [both, manager, probe]
+      engine:
+        type: choice
+        default: both
+        options: [both, powershell, pwsh]
 permissions:
   contents: read
 jobs:
@@ -30,18 +34,25 @@ jobs:
         env:
           PREVIOUS_SHA: ${{ github.event.before }}
           REQUESTED_SUITE: ${{ inputs.suite }}
+          REQUESTED_ENGINE: ${{ inputs.engine }}
         run: |
           $suites = @()
+          $engine = 'both'
           if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
             $suites = if ($env:REQUESTED_SUITE -eq 'both') { @('manager','probe') } else { @($env:REQUESTED_SUITE) }
+            $engine = $env:REQUESTED_ENGINE
           } else {
             $files = @(git diff --name-only $env:PREVIOUS_SHA $env:GITHUB_SHA)
             if ($LASTEXITCODE -ne 0) { throw 'Cannot establish changed acceptance scope.' }
-            $workflow = $files -contains '.github/workflows/native-round6-gaps.yml'
+            $workflow = ($files -contains '.github/workflows/native-round6-gaps.yml') -and @($files | Where-Object { $_ -match '^tests/(Test-NativeWizardManagerJourney.js|Start-WizardManagerJourneyTestServer.ps1|Test-NativeProbeRoles.js|Start-NativeProbeRoleTestServer.ps1)$' }).Count -eq 0
             if ($workflow -or @($files | Where-Object { $_ -match '^tests/(Test-NativeWizardManagerJourney.js|Start-WizardManagerJourneyTestServer.ps1)$' }).Count) { $suites += 'manager' }
             if ($workflow -or @($files | Where-Object { $_ -match '^tests/(Test-NativeProbeRoles.js|Start-NativeProbeRoleTestServer.ps1)$' }).Count) { $suites += 'probe' }
+            $message = git log -1 --format=%B
+            if (($message -join "`n") -match '(?m)^Native-Engines: (powershell|pwsh|both)\s*$') { $engine = $Matches[1] }
           }
-          $matrix = @{include=@(foreach ($suite in $suites) { foreach ($engine in @('powershell','pwsh')) { @{suite=$suite;engine=$engine} } })} | ConvertTo-Json -Compress -Depth 4
+          if ($engine -notin @('both','powershell','pwsh')) { throw 'Invalid requested native engine scope.' }
+          $engines = if ($engine -eq 'both') { @('powershell','pwsh') } else { @($engine) }
+          $matrix = @{include=@(foreach ($suite in $suites) { foreach ($selectedEngine in $engines) { @{suite=$suite;engine=$selectedEngine} } })} | ConvertTo-Json -Compress -Depth 4
           "matrix=$matrix" >> $env:GITHUB_OUTPUT
           Write-Output "Selected only missing acceptance: $matrix"
   native:
