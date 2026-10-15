@@ -1,0 +1,484 @@
+﻿# Target-side Assistive restore orchestration for the migration wizard.
+# Every authorization decision is derived from the enrolled Target profile,
+# a received schema-3 sealed plan, durable operation outputs, and core receipts.
+
+function Get-WsmWizardTargetMaterialRoot([string]$Workspace,[string]$PairId) {
+    $root=[IO.Path]::GetFullPath((Join-Path (Join-Path (Join-Path $Workspace 'workspace-control') 'wizard-materials') ('target-'+$PairId)))
+    $base=[IO.Path]::GetFullPath((Join-Path (Join-Path $Workspace 'workspace-control') 'wizard-materials')).TrimEnd('\')+'\'
+    if(-not $root.StartsWith($base,[StringComparison]::OrdinalIgnoreCase)){throw 'Target wizard material path escaped its owned workspace root.'}
+    $root
+}
+
+function Assert-WsmWizardTargetRole([string]$Workspace,[string]$PairId) {
+    if(-not $PairId){throw 'PairId is required.'};Assert-WsmId $PairId
+    $profile=Read-WsmOutputProfile $Workspace
+    if(-not $profile -or $profile.Role -cne 'Target'){throw 'This operation requires the enrolled Target workspace.'}
+    $machine=Get-WsmMachineIdentity
+    if($machine.Fingerprint -ine $profile.Fingerprint){throw 'Current machine identity differs from the enrolled Target workspace.'}
+    $received=Get-WsmWizardReceivedApprovedPlan $Workspace $PairId $profile
+    if(-not $received -or $received.Plan.SchemaVersion -ne 3){throw 'A uniquely verified received schema-3 approved plan is required on this Target.'}
+    Assert-WsmAssistiveContract $received.Plan MigrationPlan | Out-Null
+    if($received.Plan.PairId -cne $PairId -or $received.Plan.Target.HostId -cne $profile.HostId -or $received.Plan.Target.Fingerprint -ine $profile.Fingerprint){throw 'Received plan is not bound to this exact Target pair and host.'}
+    [pscustomobject]@{Profile=$profile;Received=$received;Plan=$received.Plan}
+}
+
+function Get-WsmWizardTargetJobField($Job,[string]$Name,[string]$Alternate='') {
+    if($Job.PSObject.Properties[$Name]){return $Job.$Name}
+    if($Alternate -and $Job.PSObject.Properties[$Alternate]){return $Job.$Alternate}
+    $null
+}
+
+function Get-WsmWizardTargetPackage([string]$Workspace,[string]$PairId,$Context,[object[]]$Jobs) {
+    $packageMatches=New-Object 'System.Collections.Generic.List[object]'
+    foreach($job in @($Jobs)){
+        if(-not $job){continue}
+        $status=[string](Get-WsmWizardTargetJobField $job status Status);$action=[string](Get-WsmWizardTargetJobField $job action Action)
+        $role=[string](Get-WsmWizardTargetJobField $job role Role);$jobPair=[string](Get-WsmWizardTargetJobField $job pairId PairId);$jobWorkspace=[string](Get-WsmWizardTargetJobField $job workspace Workspace)
+        if($status -cne 'Succeeded' -or $action -notin @('ImportPackageZip','DirectoryImport','TargetZipImport','TargetDirectoryImport') -or $role -cne 'Target' -or $jobPair -cne $PairId -or -not $jobWorkspace -or [IO.Path]::GetFullPath($jobWorkspace) -ine [IO.Path]::GetFullPath($Workspace)){continue}
+        foreach($output in @((Get-WsmWizardTargetJobField $job outputs Outputs))){
+            if(-not $output -or -not $output.PSObject.Properties['Valid'] -or -not [bool]$output.Valid){continue}
+            $manifestPath=[string]$output.ManifestPath;$manifestHash='';if($output.PSObject.Properties['SHA256']){$manifestHash=[string]$output.SHA256}elseif($output.PSObject.Properties['ManifestHash']){$manifestHash=[string]$output.ManifestHash}
+            if(-not $manifestPath -or $manifestHash -notmatch '^[a-fA-F0-9]{64}$'){continue}
+            try{$manifestPath=[IO.Path]::GetFullPath($manifestPath)}catch{throw 'A successful Target package job contains an invalid manifest path; inspect the durable job record.'}
+            if([IO.Path]::GetFileName($manifestPath) -cne 'manifest.json' -or -not [IO.File]::Exists($manifestPath) -or (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash -ine $manifestHash){throw 'A successful Target package job references missing or changed manifest bytes; preserve the job and redeliver verified material.'}
+            try{$package=Test-WsmMigrationPackage $manifestPath $manifestHash}catch{throw ('A successful Target package job references malformed or changed package material; preserve it and redeliver after review: '+$_.Exception.Message)}
+            if($package.Manifest.PairId -cne $PairId){throw 'A successful Target package job references another pair; preserve the job and resolve the delivery binding.'}
+            if($package.Manifest.PlanHash -ine $Context.Received.SHA256 -or $package.Plan.SchemaVersion -ne 3){continue}
+            if($package.Manifest.Target.HostId -cne $Context.Profile.HostId -or $package.Manifest.Target.Fingerprint -ine $Context.Profile.Fingerprint){throw 'A successful Target package job has a cross-host target binding; preserve the job and resolve the delivery binding.'}
+            try{
+                if($action -eq 'DirectoryImport' -and ($output.PairId -cne $PairId -or $output.PlanHash -ine $Context.Received.SHA256)){continue}
+                $packageMatches.Add([pscustomobject]@{Package=$package;ManifestPath=$manifestPath;ManifestHash=$manifestHash.ToLowerInvariant();JobId=[string](Get-WsmWizardTargetJobField $job jobId JobId);AttemptId=[string]$output.AttemptId;Action=$action;CompletedUtc=[string](Get-WsmWizardTargetJobField $job CompletedUtc completedUtc)})
+            }catch{throw ('Unable to bind the successful Target package job to its verified material: '+$_.Exception.Message)}
+        }
+    }
+    if($packageMatches.Count -eq 0){throw 'No durable successful Target package-delivery job matches this received plan.'}
+    # The same sealed package may be imported more than once to distinct incoming
+    # directories. It is still one exact generation/material identity. Prefer the
+    # latest durable delivery record, then a stable path tie-break. A genuinely
+    # different manifest at the same generation remains ambiguous and fails closed.
+    $byGeneration=@{};foreach($match in $packageMatches){$key=[string]([long]$match.Package.Manifest.Generation);if(-not $byGeneration.ContainsKey($key)){$byGeneration[$key]=New-Object 'System.Collections.Generic.List[object]'};$byGeneration[$key].Add($match)}
+    $latestGeneration=(@($byGeneration.Keys | ForEach-Object {[long]$_} | Sort-Object -Descending)[0]);$latest=@($byGeneration[[string]$latestGeneration].ToArray());$distinct=@($latest | Select-Object -ExpandProperty ManifestHash -Unique)
+    if($distinct.Count -gt 1){throw 'More than one distinct successful package manifest matches the latest Target generation; retain the exact delivery job and resolve the ambiguity.'}
+    $latest | Sort-Object @{Expression={if($_.CompletedUtc){[string]$_.CompletedUtc}else{''}};Descending=$true},@{Expression={$_.ManifestPath.ToLowerInvariant()};Descending=$false} | Select-Object -First 1
+}
+
+function Get-WsmWizardTargetSnapshot([string]$Workspace,$Context,[object[]]$Jobs) {
+    $inventory=Get-WsmWizardInventoryFromJobs $Workspace $Context.Profile $Jobs
+    if(-not $inventory -or $inventory.Ambiguous){throw 'A unique successful current Target inventory job is required; refresh Target inventory before continuing.'}
+    if($inventory.Inventory.Source.HostId -cne $Context.Profile.HostId -or $inventory.Inventory.Source.Fingerprint -ine $Context.Profile.Fingerprint){throw 'Current Target inventory does not match the enrolled local host identity.'}
+    if(-not $inventory.Inventory.PSObject.Properties['SoftwareCatalog']){throw 'Target inventory has no native software catalog; do not infer software absence.'}
+    Assert-WsmSoftwareCatalog $inventory.Inventory.SoftwareCatalog -SourceInventory $inventory.Inventory | Out-Null
+    Assert-WsmAssistiveSnapshotFresh $inventory.Inventory | Out-Null
+    Assert-WsmAssistiveCurrentSoftware $inventory.Inventory | Out-Null
+    [pscustomobject]@{Path=[string]$inventory.Path;SHA256=[string]$inventory.SHA256;Inventory=$inventory.Inventory;JobId=[string]$inventory.JobId}
+}
+
+function Get-WsmWizardTargetDecisionRecord([string]$Workspace,[string]$PairId,[string]$ExpectedPlanHash='') {
+    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;if(-not [IO.Directory]::Exists($root)){return $null};Assert-WsmNoReparse $root
+    $rows=New-Object 'System.Collections.Generic.List[object]'
+    foreach($file in @(Get-ChildItem -LiteralPath $root -Filter 'decision-*.json' -File)){
+        try{Assert-WsmNoReparse $file.FullName;if($file.Length -gt 4194304){continue};$hash=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant();$receipt=Read-WsmTrustedJson $file.FullName $hash;Assert-WsmAssistiveContract $receipt TargetDecisionReceipt | Out-Null;if($receipt.PairId -cne $PairId -or ($ExpectedPlanHash -and $receipt.PlanHash -ine $ExpectedPlanHash)){continue};$rows.Add([pscustomobject]@{Path=$file.FullName;SHA256=$hash;Receipt=$receipt})}catch{}
+    }
+    if($rows.Count -gt 1){$latest=@($rows.ToArray() | Sort-Object { [DateTimeOffset]::Parse([string]$_.Receipt.CreatedUtc) } -Descending);if($latest.Count -gt 1 -and [string]$latest[0].Receipt.CreatedUtc -ceq [string]$latest[1].Receipt.CreatedUtc){throw 'Target decision receipt selection is ambiguous; inspect the durable receipt artifacts.'};return $latest[0]}
+    if($rows.Count -eq 1){return $rows[0]};$null
+}
+
+function Get-WsmWizardTargetComparisonRecord([string]$Workspace,[string]$PairId,[string]$ExpectedPlanHash='') {
+    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;if(-not [IO.Directory]::Exists($root)){return $null};Assert-WsmNoReparse $root
+    $rows=New-Object 'System.Collections.Generic.List[object]'
+    foreach($file in @(Get-ChildItem -LiteralPath $root -Filter 'comparison-*.json' -File)){
+        try{Assert-WsmNoReparse $file.FullName;if($file.Length -gt 4194304){continue};$hash=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant();$doc=Read-WsmTrustedJson $file.FullName $hash;if($doc.Kind -cne 'WizardTargetComparisonMaterial' -or $doc.SchemaVersion -ne 1 -or $doc.PairId -cne $PairId -or ($ExpectedPlanHash -and $doc.PlanHash -ine $ExpectedPlanHash)){continue};$rows.Add([pscustomobject]@{Path=$file.FullName;SHA256=$hash;Document=$doc;Comparison=$doc.Comparison})}catch{}
+    }
+    if($rows.Count -gt 1){$latest=@($rows.ToArray() | Sort-Object { [DateTimeOffset]::Parse([string]$_.Document.CreatedUtc) } -Descending);if($latest.Count -gt 1 -and [string]$latest[0].Document.CreatedUtc -ceq [string]$latest[1].Document.CreatedUtc){throw 'Target comparison selection is ambiguous; import the current comparison again to refresh its durable timestamp.'};return $latest[0]}
+    if($rows.Count -eq 1){return $rows[0]};$null
+}
+
+function Get-WsmWizardTargetPreviewHash($Preview,[string]$PairId,[string]$PlanHash,[string]$ManifestHash,[long]$Generation,[string]$ReceiptHash,[string]$TargetSnapshotHash,[string]$ComparisonHash,[int]$ComparisonRevision,[int]$SelectionRevision,[string]$Decision) {
+    $binding=[ordered]@{PairId=$PairId;PlanHash=$PlanHash;ManifestHash=$ManifestHash;Generation=$Generation;ReceiptHash=$ReceiptHash;TargetSnapshotHash=$TargetSnapshotHash;ComparisonHash=$ComparisonHash;ComparisonRevision=$ComparisonRevision;SelectionRevision=$SelectionRevision;Decision=$Decision;SelectedItemIds=@($Preview.SelectedItemIds);Rows=@(ConvertTo-WsmWizardHtmlValue @($Preview.Rows));Problems=@(ConvertTo-WsmWizardHtmlValue @($Preview.Problems));GeneralHostIssues=@(ConvertTo-WsmWizardHtmlValue @($Preview.GeneralHostIssues));Blocked=[bool]$Preview.Blocked;CanRestoreIndependentItems=[bool]$Preview.CanRestoreIndependentItems}
+    foreach($name in @('NonCTransferPlanHash','NonCResultHash','WizardNonCEvidenceIssue')){$binding[$name]=if($Preview.PSObject.Properties[$name]){[string]$Preview.$name}else{''}}
+    Get-WsmHashText ($binding | ConvertTo-Json -Depth 100 -Compress)
+}
+
+function Get-WsmWizardSelectedNonCPreviewInputs([string]$Workspace,[string]$PairId,$Plan,$Decision,[object[]]$Jobs) {
+    $selected=@($Decision.SelectedItemIds)
+    $nonC=@($Plan.Items|Where-Object {$selected -ccontains [string]$_.ItemId -and $_.MigrationSpec.Adapter -ceq 'FileScope' -and $_.MigrationSpec.TransferChannel -ceq 'NonC'})
+    $result=[pscustomobject]@{Arguments=@{};Issue=''}
+    if(-not $nonC.Count){return $result}
+    try{
+        $materials=Get-WsmWizardNonCTargetRestoreInputs -Workspace $Workspace -PairId $PairId -Jobs $Jobs
+        if($materials){foreach($name in @('NonCTransferPlanPath','NonCTransferPlanHash','NonCResultPath','NonCResultHash')){$result.Arguments[$name]=[string]$materials.$name}}
+    }catch{
+        # Invalid NonC evidence cannot authorize a NonC row, and must not gate
+        # unrelated C items. Core preview receives no NonC inputs and retains
+        # its deferred rows; this explicit issue is bound into the review hash.
+        $result.Issue='CurrentNonCMaterialsInvalid; retain the materials for inspection and import a newly verified handoff before restoring NonC items.'
+    }
+    $result
+}
+
+function Export-WsmWizardTargetComparison {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[object[]]$Jobs=@())
+    $profile=Read-WsmOutputProfile $Workspace;if(-not $profile -or $profile.Role -cne 'Manager'){throw 'Target comparison export requires the enrolled Manager workspace.'};Assert-WsmId $PairId
+    $catalog=Get-WsmCatalog $Workspace $PairId;if(-not $catalog.PSObject.Properties['Assistive'] -or -not $catalog.Approval -or $catalog.Approval.Kind -cne 'MigrationPlan'){throw 'A current schema-3 Assistive approved plan and comparison are required.'}
+    $approved=Get-WsmWizardCurrentApprovedPlan $Workspace $PairId $profile $catalog $Jobs
+    if(-not $approved -or $approved.Plan.SchemaVersion -ne 3 -or $approved.SHA256 -ine [string]$catalog.Approval.Hash){throw 'Current approved schema-3 plan bytes could not be verified from the successful approval job.'}
+    $comparison=Get-WsmAssistiveComparison $Workspace $PairId
+    if(-not $catalog.Assistive.Comparison -or (Get-WsmHashText ($catalog.Assistive.Comparison | ConvertTo-Json -Depth 100 -Compress)) -ine (Get-WsmHashText ($comparison | ConvertTo-Json -Depth 100 -Compress))){throw 'Manager comparison is not the exact current published comparison.'}
+    $sourceInventory=Get-WsmAssistiveSnapshotInventory $Workspace $catalog.Assistive.SourceSnapshot Source
+    $targetInventory=Get-WsmAssistiveSnapshotInventory $Workspace $catalog.Assistive.TargetCurrent Target
+    if($comparison.SourceSnapshotHash -ine $approved.Plan.Assistive.SourceSnapshotHash -or $comparison.TargetSnapshotHash -ine [string]$catalog.Assistive.TargetCurrent.SHA256 -or [int]$comparison.SelectionRevision -ne [int]$approved.Plan.Assistive.SourceSelectionsVersion){throw 'Current comparison source, target or sealed source-selection bindings do not match the approved plan.'}
+    Assert-WsmAssistiveComparisonSnapshotVersions $comparison $targetInventory $sourceInventory.SoftwareCatalog | Out-Null
+    $document=[pscustomobject][ordered]@{SchemaVersion=1;Kind='WizardTargetComparisonMaterial';PairId=$PairId;PlanHash=[string]$approved.SHA256;SourceSnapshotHash=[string]$comparison.SourceSnapshotHash;TargetSnapshotHash=[string]$comparison.TargetSnapshotHash;SelectionRevision=[int]$comparison.SelectionRevision;ComparisonRevision=[int]$comparison.Revision;Comparison=$comparison;InformationalOnly=$true;CreatedUtc=(Get-WsmUtc)}
+    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;[void](New-WsmOutputOwnedDirectory $root);$path=Join-Path $root ('manager-comparison-'+$comparison.Revision+'-'+(Get-WsmHashText ($document | ConvertTo-Json -Depth 100 -Compress))+'.json');Write-WsmJson $path $document
+    [pscustomobject][ordered]@{Status='Succeeded';PairId=$PairId;Path=[IO.Path]::GetFullPath($path);SHA256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();ComparisonRevision=[int]$comparison.Revision;PlanHash=[string]$approved.SHA256;SourceSnapshotHash=[string]$comparison.SourceSnapshotHash;TargetSnapshotHash=[string]$comparison.TargetSnapshotHash;SelectionRevision=[int]$comparison.SelectionRevision;InformationalOnly=$true;AuthoritativeApproval=$false;ProductionVerified=$false}
+}
+
+function Import-WsmWizardTargetComparison {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$ExpectedHash,[object[]]$Jobs=@())
+    $ctx=Assert-WsmWizardTargetRole $Workspace $PairId
+    if($ExpectedHash -notmatch '^[a-fA-F0-9]{64}$'){throw 'A separately verified comparison SHA-256 is required.'}
+    $source=[IO.Path]::GetFullPath($Path);Assert-WsmNoReparse $source;if(-not [IO.File]::Exists($source) -or (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ine $ExpectedHash){throw 'Comparison path and independently supplied SHA-256 do not match.'}
+    $doc=Read-WsmTrustedJson $source $ExpectedHash
+    if($doc.Kind -cne 'WizardTargetComparisonMaterial' -or $doc.SchemaVersion -ne 1 -or -not $doc.InformationalOnly -or $doc.PairId -cne $PairId -or $doc.PlanHash -ine $ctx.Received.SHA256){throw 'Comparison is not informational material for this exact received Target plan and pair.'}
+    if([int]$doc.SelectionRevision -ne [int]$ctx.Plan.Assistive.SourceSelectionsVersion -or [int]$doc.ComparisonRevision -lt 1){throw 'Comparison selection or revision binding is invalid.'}
+    $snapshot=Get-WsmWizardTargetSnapshot $Workspace $ctx $Jobs
+    if($doc.TargetSnapshotHash -ine $snapshot.SHA256 -or $doc.Comparison.TargetSnapshotHash -ine $snapshot.SHA256 -or $doc.SourceSnapshotHash -ine $ctx.Plan.Assistive.SourceSnapshotHash -or $doc.Comparison.SourceSnapshotHash -ine $ctx.Plan.Assistive.SourceSnapshotHash -or [int]$doc.Comparison.Revision -ne [int]$doc.ComparisonRevision -or [int]$doc.Comparison.SelectionRevision -ne [int]$doc.SelectionRevision){throw 'Comparison is stale or bound to another Target inventory, sealed Source snapshot, or selection revision.'}
+    $sourceCatalog=$null;if($ctx.Plan.PSObject.Properties['GeneralHost'] -and $ctx.Plan.GeneralHost -and $ctx.Plan.GeneralHost.PSObject.Properties['SoftwareCatalog']){$sourceCatalog=$ctx.Plan.GeneralHost.SoftwareCatalog}
+    Assert-WsmAssistiveComparisonSnapshotVersions $doc.Comparison $snapshot.Inventory $sourceCatalog | Out-Null
+    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;[void](New-WsmOutputOwnedDirectory $root);$contentHash=Get-WsmHashText ($doc.Comparison | ConvertTo-Json -Depth 100 -Compress);$stored=[pscustomobject][ordered]@{SchemaVersion=1;Kind='WizardTargetComparisonMaterial';PairId=$PairId;PlanHash=[string]$ctx.Received.SHA256;SourceSnapshotHash=[string]$doc.SourceSnapshotHash;TargetSnapshotHash=[string]$snapshot.SHA256;SelectionRevision=[int]$doc.SelectionRevision;ComparisonRevision=[int]$doc.ComparisonRevision;Comparison=$doc.Comparison;ComparisonContentHash=$contentHash;ImportedFromHash=$ExpectedHash.ToLowerInvariant();CreatedUtc=(Get-WsmUtc)}
+    $storedPath=Join-Path $root ('comparison-'+$contentHash+'.json');if([IO.File]::Exists($storedPath)){Assert-WsmNoReparse $storedPath;$existing=Read-WsmTrustedJson $storedPath (Get-FileHash -LiteralPath $storedPath -Algorithm SHA256).Hash;if((Get-WsmHashText ($existing.Comparison | ConvertTo-Json -Depth 100 -Compress)) -ine $contentHash){throw 'Existing owned Target comparison content-addressed path conflicts; preserve it for inspection.'}}else{Write-WsmJson $storedPath $stored}
+    [pscustomobject][ordered]@{Status='Succeeded';PairId=$PairId;Path=[IO.Path]::GetFullPath($storedPath);SHA256=(Get-FileHash -LiteralPath $storedPath -Algorithm SHA256).Hash.ToLowerInvariant();ComparisonRevision=[int]$doc.ComparisonRevision;PlanHash=[string]$ctx.Received.SHA256;TargetSnapshotHash=[string]$snapshot.SHA256;SourceSnapshotHash=[string]$doc.SourceSnapshotHash;SelectionRevision=[int]$doc.SelectionRevision;AuthoritativeApproval=$false;InformationalOnly=$true;ProductionVerified=$false}
+}
+
+function Create-WsmWizardTargetDecisionReceipt {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][ValidateSet('WaitForInstall','RestoreNow')][string]$Decision,[Parameter(Mandatory)][string]$Owner,[Parameter(Mandatory)][string]$Reason,[Parameter(Mandatory)][string[]]$SelectedItemIds,[string[]]$AcceptedUnpreparedItemIds=@(),[object[]]$Jobs=@())
+    $ctx=Assert-WsmWizardTargetRole $Workspace $PairId
+    if([string]::IsNullOrWhiteSpace($Owner) -or [string]::IsNullOrWhiteSpace($Reason)){throw 'An explicit responsible owner and reason are required for the Target decision.'}
+    $packageRecord=Get-WsmWizardTargetPackage $Workspace $PairId $ctx $Jobs;$snapshot=Get-WsmWizardTargetSnapshot $Workspace $ctx $Jobs;$comparisonRecord=Get-WsmWizardTargetComparisonRecord $Workspace $PairId $ctx.Received.SHA256
+    if(-not $comparisonRecord){throw 'Import the current informational Manager comparison before making a Target decision.'}
+    $comparison=$comparisonRecord.Comparison
+    if($comparisonRecord.Document.TargetSnapshotHash -ine $snapshot.SHA256 -or $comparisonRecord.Document.SourceSnapshotHash -ine $ctx.Plan.Assistive.SourceSnapshotHash -or [int]$comparisonRecord.Document.SelectionRevision -ne [int]$ctx.Plan.Assistive.SourceSelectionsVersion){throw 'Imported comparison no longer matches the current Target inventory, sealed source snapshot and selection.'}
+    $allowed=New-WsmAssistiveAllowedSubset $packageRecord.Package.Plan $SelectedItemIds;$selectedUnique=@($SelectedItemIds | Select-Object -Unique);if(@($allowed).Count -ne $selectedUnique.Count){throw 'Target selection contains a duplicate or an item outside the exact sealed approved subset.'}
+    $acceptedUnique=@($AcceptedUnpreparedItemIds | Select-Object -Unique);if($acceptedUnique.Count -ne @($AcceptedUnpreparedItemIds).Count){throw 'Accepted-unprepared selection contains duplicate item identities.'}
+    $selectedSet=@{};foreach($id in $allowed){$selectedSet[[string]$id]=$true};foreach($id in $acceptedUnique){if(-not $selectedSet.ContainsKey([string]$id)){throw 'Accepted-unprepared item IDs must be a subset of the explicitly selected approved items.'}}
+    $dummyDecision=[pscustomobject]@{SelectedItemIds=$allowed;Receipt=[pscustomobject]@{Comparison=$comparison;AcceptedUnpreparedItemIds=@()}}
+    $actualIssues=@(Get-WsmAssistiveComparisonDependencyIssues $packageRecord.Package $dummyDecision);$eligible=@{};foreach($issue in $actualIssues){$eligible[[string]$issue.ConsumerItemId]=$true}
+    foreach($id in $acceptedUnique){if(-not $eligible.ContainsKey([string]$id)){throw ('Accepted-unprepared item '+$id+' has no current core-derived software dependency issue to accept.') }}
+    $args=@{PlanPath=[string]$ctx.Received.Path;PlanHash=[string]$ctx.Received.SHA256;ManifestHash=[string]$packageRecord.ManifestHash;Generation=[int]$packageRecord.Package.Manifest.Generation;TargetSnapshotHash=[string]$snapshot.SHA256;ComparisonRevision=[int]$comparison.Revision;SelectionRevision=[int]$ctx.Plan.Assistive.SourceSelectionsVersion;Decision=$Decision;Owner=$Owner;Reason=$Reason;SelectedItemIds=[string[]]$allowed;AcceptedUnpreparedItemIds=[string[]]$acceptedUnique;Comparison=$comparison}
+    $receipt=New-WsmAssistiveTargetDecisionReceipt @args
+    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;[void](New-WsmOutputOwnedDirectory $root);$receiptHash=Get-WsmHashText ($receipt | ConvertTo-Json -Depth 100 -Compress);$path=Join-Path $root ('decision-'+$receiptHash+'.json')
+    if(-not [IO.File]::Exists($path)){Write-WsmJson $path $receipt}else{$oldHash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash;Assert-WsmNoReparse $path;$old=Read-WsmTrustedJson $path $oldHash;if((Get-WsmHashText ($old | ConvertTo-Json -Depth 100 -Compress)) -ine $receiptHash){throw 'Existing Target decision receipt path conflicts; preserve it for inspection.'}}
+    [pscustomobject][ordered]@{Status='Succeeded';PairId=$PairId;ReceiptPath=[IO.Path]::GetFullPath($path);Path=[IO.Path]::GetFullPath($path);ReceiptHash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();SHA256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();ManifestHash=[string]$packageRecord.ManifestHash;Generation=[long]$packageRecord.Package.Manifest.Generation;PlanHash=[string]$ctx.Received.SHA256;TargetSnapshotHash=[string]$snapshot.SHA256;ComparisonRevision=[int]$comparison.Revision;SelectionRevision=[int]$ctx.Plan.Assistive.SourceSelectionsVersion;Decision=$Decision;SelectedItemIds=@($allowed);AcceptedUnpreparedItemIds=@($acceptedUnique);AuthoritativeApproval=$false;ProductionVerified=$false}
+}
+
+function Get-WsmWizardTargetRestoreProjection {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[object[]]$Jobs=@(),[object[]]$GeneralHostEvidence=@())
+    $ctx=Assert-WsmWizardTargetRole $Workspace $PairId;$packageRecord=Get-WsmWizardTargetPackage $Workspace $PairId $ctx $Jobs;$snapshot=Get-WsmWizardTargetSnapshot $Workspace $ctx $Jobs;$decisionRecord=Get-WsmWizardTargetDecisionRecord $Workspace $PairId $ctx.Received.SHA256
+    if(-not $decisionRecord){return [pscustomobject][ordered]@{Status='NeedsTargetDecision';PairId=$PairId;PlanHash=[string]$ctx.Received.SHA256;ManifestHash=[string]$packageRecord.ManifestHash;Generation=[long]$packageRecord.Package.Manifest.Generation;TargetSnapshotHash=[string]$snapshot.SHA256;ComparisonRevision=0;SelectedItemIds=@();Rows=@();Problems=@();CanRestore=$false;PreviewHash='';BusinessValidationRequired=$true;ProductionVerified=$false}}
+    $decision=$decisionRecord.Receipt
+    if($decision.ManifestHash -ine $packageRecord.ManifestHash -or [long]$decision.Generation -ne [long]$packageRecord.Package.Manifest.Generation -or $decision.TargetSnapshotHash -ine $snapshot.SHA256){throw 'Current Target receipt is stale for the delivered package generation or Target inventory; create a new comparison and decision receipt.'}
+    $comparisonRecord=Get-WsmWizardTargetComparisonRecord $Workspace $PairId $ctx.Received.SHA256
+    if(-not $comparisonRecord -or (Get-WsmHashText ($comparisonRecord.Comparison | ConvertTo-Json -Depth 100 -Compress)) -ine [string]$decision.ComparisonHash){throw 'Target decision receipt does not embed the exact currently imported comparison.'}
+    $nonCInputs=Get-WsmWizardSelectedNonCPreviewInputs $Workspace $PairId $ctx.Plan $decision $Jobs;$nonCArgs=$nonCInputs.Arguments
+    $stateDirectory=Join-Path $ctx.Profile.WorkRoot 'pairs';$preview=Get-WsmAssistiveRestorePreview @nonCArgs -ManifestPath $packageRecord.ManifestPath -ExpectedHash $packageRecord.ManifestHash -StateDirectory $stateDirectory -AssistiveDecisionReceiptPath $decisionRecord.Path -AssistiveDecisionReceiptHash $decisionRecord.SHA256 -AssistiveTargetSnapshotPath $snapshot.Path -GeneralHostEvidence $GeneralHostEvidence
+    $preview | Add-Member NoteProperty WizardNonCEvidenceIssue ([string]$nonCInputs.Issue) -Force
+    $nonCTransferPlanHash=if($nonCArgs.ContainsKey('NonCTransferPlanHash')){[string]$nonCArgs['NonCTransferPlanHash']}else{''}
+    $nonCResultHash=if($nonCArgs.ContainsKey('NonCResultHash')){[string]$nonCArgs['NonCResultHash']}else{''}
+    $previewHash=Get-WsmWizardTargetPreviewHash $preview $PairId ([string]$ctx.Received.SHA256) ([string]$packageRecord.ManifestHash) ([long]$packageRecord.Package.Manifest.Generation) ([string]$decisionRecord.SHA256) ([string]$snapshot.SHA256) ([string]$decision.ComparisonHash) ([int]$decision.ComparisonRevision) ([int]$decision.SelectionRevision) ([string]$decision.Decision)
+    [pscustomobject][ordered]@{Status='Previewed';PairId=$PairId;PlanHash=[string]$ctx.Received.SHA256;ManifestPath=[string]$packageRecord.ManifestPath;ManifestHash=[string]$packageRecord.ManifestHash;Generation=[long]$packageRecord.Package.Manifest.Generation;ReceiptPath=[string]$decisionRecord.Path;ReceiptHash=[string]$decisionRecord.SHA256;TargetSnapshotPath=[string]$snapshot.Path;TargetSnapshotHash=[string]$snapshot.SHA256;ComparisonHash=[string]$decision.ComparisonHash;ComparisonRevision=[int]$decision.ComparisonRevision;SelectionRevision=[int]$decision.SelectionRevision;Decision=[string]$decision.Decision;SelectedItemIds=@($preview.SelectedItemIds);Rows=@($preview.Rows);Problems=@($preview.Problems);GeneralHostIssues=@($preview.GeneralHostIssues);Blocked=[bool]$preview.Blocked;CanRestoreIndependentItems=[bool]$preview.CanRestoreIndependentItems;BusinessValidationRequired=$true;ProductionVerified=$false;NonCEvidenceIssue=[string]$nonCInputs.Issue;NonCTransferPlanHash=$nonCTransferPlanHash;NonCResultHash=$nonCResultHash;PreviewHash=$previewHash;ExplicitRestoreRequired=$true}
+}
+
+function Invoke-WsmWizardTargetRestore {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$PreviewHash,[object[]]$Jobs=@(),$CancellationToken=$null,[hashtable]$Secrets=@{},[object[]]$GeneralHostEvidence=@())
+    if($PreviewHash -notmatch '^[a-f0-9]{64}$'){throw 'A current exact Target restore PreviewHash is required.'}
+    $projection=Get-WsmWizardTargetRestoreProjection -Workspace $Workspace -PairId $PairId -Jobs $Jobs -GeneralHostEvidence $GeneralHostEvidence
+    if($projection.Status -cne 'Previewed'){throw ('Target restore preview is no longer available (current status: '+[string]$projection.Status+'); refresh the preview and require a new explicit restore confirmation.')}
+    if($projection.Decision -eq 'WaitForInstall'){
+        if($projection.PreviewHash -ine $PreviewHash){throw 'Target deferred decision changed after preview; refresh and require a new explicit resume confirmation.'}
+        return [pscustomobject][ordered]@{Status='DeferredSoftware';PairId=$PairId;PlanHash=$projection.PlanHash;ManifestHash=$projection.ManifestHash;Generation=$projection.Generation;Decision='WaitForInstall';SelectedItemIds=@($projection.SelectedItemIds);Rows=@($projection.Rows);JournalPath='';JournalHash='';AttemptOperationId='';NoTargetWrites=$true;ResumeRequiredAfterPreparation=$true;ProductionVerified=$false}
+    }
+    $package=Test-WsmMigrationPackage $projection.ManifestPath $projection.ManifestHash
+    $stateDirectory=Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs'
+    $paths=Get-WsmOperationPaths $stateDirectory $PairId;$state=Get-WsmOperationState $paths $package
+    # A successful restore may itself change the live filesystem rows that fed the
+    # preview (for example Create becomes MergeIntoExistingDirectory). Allow only
+    # an exact replay of the preview bound into the durable attempt, after all
+    # current package/receipt/snapshot bindings were revalidated by the projection.
+    if($state.PSObject.Properties['RestoreAttempt'] -and $state.RestoreAttempt.PSObject.Properties['WizardPreviewHash'] -and
+       [string]$state.RestoreAttempt.WizardPreviewHash -ceq $PreviewHash -and
+       [string]$state.RestoreAttempt.ManifestHash -ieq $projection.ManifestHash -and
+       [long]$state.RestoreAttempt.Generation -eq [long]$projection.Generation -and
+       [string]$state.RestoreAttempt.DecisionReceiptHash -ieq $projection.ReceiptHash -and
+       [string]$state.RestoreAttempt.TargetSnapshotHash -ieq $projection.TargetSnapshotHash -and
+       [string]$state.RestoreAttempt.DecisionReceiptPath -ieq $projection.ReceiptPath -and
+       [string]$state.RestoreAttempt.TargetSnapshotPath -ieq $projection.TargetSnapshotPath -and
+       (@($state.RestoreAttempt.SelectedItemIds | Sort-Object -Unique) -join "`n") -ceq (@($projection.SelectedItemIds | Sort-Object -Unique) -join "`n")) {
+        if(@($state.PendingOperations).Count){throw 'The exact reviewed restore attempt has an unresolved journal intent; repair it before retrying.'}
+        if($state.Stage -notin @('Succeeded','Partial','RebootRequired','Cancelled')){throw 'The exact reviewed restore attempt is not terminal; inspect its journal and resume through core recovery before retrying.'}
+        $journal=Test-WsmJournal $stateDirectory $PairId
+        if(-not $journal.Consistent){throw 'The exact reviewed restore attempt journal needs recovery before its result can be replayed.'}
+        if(-not $state.RestoreAttempt.PSObject.Properties['ItemResults']){throw 'The exact reviewed restore attempt has no durable item-result projection; retain the journal for review.'}
+        $replayResults=@($state.RestoreAttempt.ItemResults)
+        $journalProof=Save-WsmWizardRestoreJournalSnapshot $paths $package ([string]$state.RestoreAttempt.OperationId) ([string]$state.Stage);$journalHash=[string]$journalProof.SHA256
+        return [pscustomobject][ordered]@{Status=[string]$state.Stage;PairId=$PairId;PlanHash=[string]$projection.PlanHash;ManifestHash=[string]$projection.ManifestHash;Generation=[long]$projection.Generation;Decision=[string]$projection.Decision;TargetSnapshotHash=[string]$projection.TargetSnapshotHash;DecisionReceiptHash=[string]$projection.ReceiptHash;SelectedItemIds=@($state.RestoreAttempt.SelectedItemIds);Rows=@($projection.Rows);ItemResults=$replayResults;ItemResultsHash=(Get-WsmHashText ($replayResults|ConvertTo-Json -Depth 100 -Compress));Deferred=@($projection.Rows | Where-Object Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired'));JournalPath=[string]$journalProof.Path;JournalHash=$journalHash;AttemptOperationId=[string]$state.RestoreAttempt.OperationId;Stage=[string]$state.Stage;PendingOperations=@();BusinessValidationRequired=$true;ProductionVerified=$false;AuthoritativeApproval=$false;Replay=$true}
+    }
+    if($projection.PreviewHash -ine $PreviewHash){throw ('Target restore context changed after preview (reviewed '+$PreviewHash+', current '+[string]$projection.PreviewHash+'); refresh the preview and require a new explicit restore confirmation.')}
+    $ctx=Assert-WsmWizardTargetRole $Workspace $PairId;$decisionRecord=Get-WsmWizardTargetDecisionRecord $Workspace $PairId $ctx.Received.SHA256;$nonCInputs=Get-WsmWizardSelectedNonCPreviewInputs $Workspace $PairId $ctx.Plan $decisionRecord.Receipt $Jobs;$nonCArgs=$nonCInputs.Arguments
+    $freshPreview=Get-WsmAssistiveRestorePreview @nonCArgs -ManifestPath $projection.ManifestPath -ExpectedHash $projection.ManifestHash -StateDirectory (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs') -AssistiveDecisionReceiptPath $projection.ReceiptPath -AssistiveDecisionReceiptHash $projection.ReceiptHash -AssistiveTargetSnapshotPath $projection.TargetSnapshotPath -GeneralHostEvidence $GeneralHostEvidence
+    $freshPreview | Add-Member NoteProperty WizardNonCEvidenceIssue ([string]$nonCInputs.Issue) -Force
+    $freshHash=Get-WsmWizardTargetPreviewHash $freshPreview $PairId $projection.PlanHash $projection.ManifestHash ([long]$projection.Generation) $projection.ReceiptHash $projection.TargetSnapshotHash $projection.ComparisonHash ([int]$projection.ComparisonRevision) ([int]$projection.SelectionRevision) ([string]$projection.Decision)
+    if($freshHash -ine $PreviewHash){throw 'Target preview rows or readiness gates changed before restore; refresh and require a new explicit confirmation.'}
+    $freshPreview | Add-Member NoteProperty WizardPreviewHash $PreviewHash -Force
+    if($state.PSObject.Properties['RestoreAttempt'] -and [string]$state.RestoreAttempt.ManifestHash -ieq $projection.ManifestHash -and [string]$state.RestoreAttempt.DecisionReceiptHash -ieq $projection.ReceiptHash -and [long]$state.RestoreAttempt.Generation -eq [long]$projection.Generation){
+        if(@($state.PendingOperations).Count){throw 'The exact current restore attempt has an unresolved journal intent; repair it before retrying.'}
+        if($state.Stage -in @('Succeeded','Partial','RebootRequired')){if(-not $state.RestoreAttempt.PSObject.Properties['ItemResults']){throw 'The exact current restore attempt has no durable item-result projection; retain the journal for review.'};$result=[pscustomobject]@{Results=@($state.RestoreAttempt.ItemResults);Deferred=@($projection.Rows | Where-Object Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired'))}}
+        else{throw 'The exact current restore attempt is not terminal; inspect its journal and resume through core recovery before retrying.'}
+    }else{$result=Invoke-WsmAssistiveRestore $package $projection.ManifestHash $stateDirectory $Secrets @{} $CancellationToken $GeneralHostEvidence $projection.ReceiptPath $projection.ReceiptHash $projection.TargetSnapshotPath $freshPreview;$state=Get-WsmOperationState $paths $package}
+    $journalProof=Save-WsmWizardRestoreJournalSnapshot $paths $package ([string]$state.RestoreAttempt.OperationId) ([string]$state.Stage);$journalHash=[string]$journalProof.SHA256
+    $attempt=$null;if($state.PSObject.Properties['RestoreAttempt']){$attempt=$state.RestoreAttempt}
+    $itemResults=@($result.Results)
+    [pscustomobject][ordered]@{Status=[string]$state.Stage;PairId=$PairId;PlanHash=[string]$projection.PlanHash;ManifestHash=[string]$projection.ManifestHash;Generation=[long]$projection.Generation;Decision=[string]$projection.Decision;TargetSnapshotHash=[string]$projection.TargetSnapshotHash;DecisionReceiptHash=[string]$projection.ReceiptHash;SelectedItemIds=@($projection.SelectedItemIds);Rows=@($projection.Rows);ItemResults=$itemResults;ItemResultsHash=(Get-WsmHashText ($itemResults|ConvertTo-Json -Depth 100 -Compress));Deferred=@($result.Deferred);JournalPath=[string]$journalProof.Path;JournalHash=$journalHash;AttemptOperationId=$(if($attempt){[string]$attempt.OperationId}else{''});Stage=[string]$state.Stage;PendingOperations=@($state.PendingOperations);BusinessValidationRequired=$true;ProductionVerified=$false;AuthoritativeApproval=$false}
+}
+
+function Save-WsmWizardRestoreJournalSnapshot($Paths,$Package,[string]$OperationId,[string]$ExpectedStage) {
+    Assert-WsmId $OperationId
+    Invoke-WsmLocked $Paths.Root {
+        $current=Get-WsmOperationState $Paths $Package
+        if(-not $current.PSObject.Properties['RestoreAttempt'] -or $current.RestoreAttempt.OperationId -cne $OperationId -or $current.Stage -cne $ExpectedStage -or $current.RestoreAttempt.ManifestHash -ine $Package.SHA256 -or [long]$current.RestoreAttempt.Generation -ne [long]$Package.Manifest.Generation){throw 'Restore changed before its immutable result journal could be retained; inspect the current attempt.'}
+        Assert-WsmNoReparse $Paths.Journal
+        $hash=(Get-FileHash -LiteralPath $Paths.Journal -Algorithm SHA256).Hash.ToLowerInvariant()
+        $root=Join-Path $Paths.Root 'restore-journals';[void](New-WsmOutputOwnedDirectory $root)
+        $path=Join-Path $root ($hash+'.jsonl');Assert-WsmNoReparse $path
+        if(-not [IO.File]::Exists($path)){[IO.File]::Copy($Paths.Journal,$path,$false)}
+        if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine $hash -or (Get-FileHash -LiteralPath $Paths.Journal -Algorithm SHA256).Hash -ine $hash){throw 'Restore journal bytes changed while retaining the result proof.'}
+        [pscustomobject]@{Path=[IO.Path]::GetFullPath($path);SHA256=$hash}
+    }
+}
+
+function Save-WsmWizardTargetAcceptanceArtifact($Paths,$Record) {
+    $root=New-WsmOutputOwnedDirectory (Join-Path $Paths.Root 'acceptance-gates')
+    $json=$Record | ConvertTo-Json -Depth 40
+    $bytes=[Text.Encoding]::UTF8.GetBytes($json)
+    $sha=[Security.Cryptography.SHA256]::Create();try{$hash=[BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
+    $path=Join-Path $root ($hash+'.json');Assert-WsmNoReparse $path
+    if([IO.File]::Exists($path)){
+        if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine $hash){throw 'Existing acceptance artifact path contains different bytes; preserve it for review.'}
+    }else{
+        $temporary=Join-Path $root ([Guid]::NewGuid().ToString('N')+'.tmp')
+        try{$stream=[IO.File]::Open($temporary,'CreateNew','Write','None');try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()};[IO.File]::Move($temporary,$path)}finally{if([IO.File]::Exists($temporary)){[IO.File]::Delete($temporary)}}
+        if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine $hash){throw 'Acceptance artifact changed while it was being retained.'}
+    }
+    [pscustomobject]@{Path=[IO.Path]::GetFullPath($path);SHA256=$hash}
+}
+
+function Get-WsmWizardTargetAcceptanceRecord([string]$Workspace,[string]$PairId,$Context,$PackageRecord,$Snapshot,$DecisionRecord,[object[]]$Jobs=@()) {
+    # Runtime reads only an explicit TargetAcceptance job and its immutable
+    # artifact. It never invokes the gate writer or infers success from the
+    # mutable operation journal.
+    try{
+        $statePaths=Get-WsmOperationPaths (Join-Path $Context.Profile.WorkRoot 'pairs') $PairId
+        $state=Get-WsmOperationState $statePaths $PackageRecord.Package
+        if(-not $state.RestoreAttempt -or [string]$state.Stage -notin @('Succeeded','Partial','RebootRequired','PostCutoverValidationRequired') -or [string]$state.ManifestHash -ine [string]$PackageRecord.ManifestHash -or [long]$state.Generation -ne [long]$PackageRecord.Package.Manifest.Generation){return $null}
+        $attempt=$state.RestoreAttempt
+        if([string]$attempt.ManifestHash -ine [string]$PackageRecord.ManifestHash -or [long]$attempt.Generation -ne [long]$PackageRecord.Package.Manifest.Generation -or [string]$attempt.DecisionReceiptHash -ine [string]$DecisionRecord.SHA256 -or [string]$attempt.TargetSnapshotHash -ine [string]$Snapshot.SHA256 -or [string]$DecisionRecord.Receipt.Decision -cne 'RestoreNow'){return $null}
+        $operationRoot=[IO.Path]::GetFullPath($statePaths.Root).TrimEnd('\')+'\'
+        $acceptanceRoot=[IO.Path]::GetFullPath((Join-Path $statePaths.Root 'acceptance-gates')).TrimEnd('\')+'\'
+        $journalRoot=[IO.Path]::GetFullPath((Join-Path $statePaths.Root 'restore-journals')).TrimEnd('\')+'\'
+        $expectedFinal=Join-Path $statePaths.Root 'validation-Final.json'
+        $acceptanceRecords=New-Object 'System.Collections.Generic.List[object]'
+        foreach($job in @($Jobs)){
+            if(-not $job -or [string](Get-WsmWizardTargetJobField $job action Action) -cne 'TargetAcceptance' -or [string](Get-WsmWizardTargetJobField $job role Role) -cne 'Target' -or [string](Get-WsmWizardTargetJobField $job pairId PairId) -cne $PairId -or [string](Get-WsmWizardTargetJobField $job status Status) -notin @('Succeeded','ReviewRequired')){continue}
+            try{if([IO.Path]::GetFullPath([string](Get-WsmWizardTargetJobField $job workspace Workspace)) -ine [IO.Path]::GetFullPath($Workspace)){continue}}catch{continue}
+            foreach($output in @((Get-WsmWizardTargetJobField $job outputs Outputs))){
+                if(-not $output){continue}
+                try{
+                    if([string]$output.Status -notin @('FinalAccepted','ReviewRequired') -or [string]$output.PairId -cne $PairId -or [string]$output.PlanHash -ine [string]$Context.Received.SHA256 -or [string]$output.ManifestHash -ine [string]$PackageRecord.ManifestHash -or [long]$output.Generation -ne [long]$PackageRecord.Package.Manifest.Generation -or [string]$output.RestoreAttemptId -cne [string]$attempt.OperationId -or [string]$output.DecisionReceiptHash -ine [string]$DecisionRecord.SHA256 -or [string]$output.TargetSnapshotHash -ine [string]$Snapshot.SHA256){continue}
+                    $artifactPath=[IO.Path]::GetFullPath([string]$output.Path);Assert-WsmNoReparse $artifactPath
+                    if(-not $artifactPath.StartsWith($acceptanceRoot,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetDirectoryName($artifactPath).TrimEnd('\') -ine $acceptanceRoot.TrimEnd('\') -or [IO.Path]::GetFileName($artifactPath) -cne ([string]$output.SHA256+'.json') -or [string]$output.SHA256 -notmatch '^[a-fA-F0-9]{64}$' -or -not [IO.File]::Exists($artifactPath) -or (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash -ine [string]$output.SHA256){continue}
+                    $record=Read-WsmTrustedJson $artifactPath ([string]$output.SHA256)
+                    if([int]$record.SchemaVersion -ne 1 -or [string]$record.Kind -cne 'WizardTargetAcceptanceGates' -or [string]$record.PairId -cne $PairId -or [string]$record.PlanHash -ine [string]$Context.Received.SHA256 -or [string]$record.ManifestHash -ine [string]$PackageRecord.ManifestHash -or [long]$record.Generation -ne [long]$PackageRecord.Package.Manifest.Generation -or [string]$record.RestoreAttemptId -cne [string]$attempt.OperationId -or [string]$record.DecisionReceiptHash -ine [string]$DecisionRecord.SHA256 -or [string]$record.TargetSnapshotHash -ine [string]$Snapshot.SHA256){continue}
+                    $finalPath=[IO.Path]::GetFullPath([string]$record.FinalValidationPath);Assert-WsmNoReparse $finalPath
+                    if($finalPath -ine [IO.Path]::GetFullPath($expectedFinal) -or [string]$record.FinalValidationHash -notmatch '^[a-fA-F0-9]{64}$' -or -not [IO.File]::Exists($finalPath) -or (Get-FileHash -LiteralPath $finalPath -Algorithm SHA256).Hash -ine [string]$record.FinalValidationHash){continue}
+                    $finalValidation=Read-WsmTrustedJson $finalPath ([string]$record.FinalValidationHash)
+                    if([string]$finalValidation.Kind -cne 'ValidationResult' -or [string]$finalValidation.PairId -cne $PairId -or [string]$finalValidation.ManifestHash -ine [string]$PackageRecord.ManifestHash -or [long]$finalValidation.Generation -ne [long]$PackageRecord.Package.Manifest.Generation -or [string]$finalValidation.Phase -cne 'Final' -or [bool]$finalValidation.Passed -ne [bool]$record.FinalValidationPassed){continue}
+                    $journalSnapshot=[IO.Path]::GetFullPath([string]$record.JournalSnapshotPath);Assert-WsmNoReparse $journalSnapshot
+                    if(-not $journalSnapshot.StartsWith($journalRoot,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetDirectoryName($journalSnapshot).TrimEnd('\') -ine $journalRoot.TrimEnd('\') -or [IO.Path]::GetFileName($journalSnapshot) -cne ([string]$record.JournalHash+'.jsonl') -or [string]$record.JournalHash -notmatch '^[a-fA-F0-9]{64}$' -or -not [IO.File]::Exists($journalSnapshot) -or (Get-FileHash -LiteralPath $journalSnapshot -Algorithm SHA256).Hash -ine [string]$record.JournalHash){continue}
+                    if([bool]$record.Gates.FinalAccepted -ne [bool]$output.FinalAccepted -or [bool]$record.Gates.RetirementReady -ne [bool]$output.RetirementReady -or [string]$output.Status -cne $(if($record.Gates.FinalAccepted){'FinalAccepted'}else{'ReviewRequired'})){continue}
+                    $acceptanceRecords.Add([pscustomobject]@{Job=$job;Output=$output;Record=$record;ArtifactPath=$artifactPath;FinalValidation=$finalValidation;JournalSnapshotPath=$journalSnapshot})
+                }catch{continue}
+            }
+        }
+        if($acceptanceRecords.Count -ne 1){return $null}
+        $acceptanceRecords[0]
+    }catch{$null}
+}
+
+function Get-WsmWizardTargetTerminalResultForOperation([string]$Workspace,[string]$PairId,[string]$OperationId,[object[]]$Jobs=@()) {
+    # EndInvoke can fail after the core has durably closed a restore. Recover only
+    # that exact operation's result; never call the restore writer from here.
+    if(-not $Workspace -or -not $PairId -or -not $OperationId){return $null}
+    try{Assert-WsmId $OperationId}catch{return $null}
+    $worker=$null
+    foreach($job in @($Jobs)){
+        if(-not $job){continue}
+        $status=[string](Get-WsmWizardTargetJobField $job status Status);$action=[string](Get-WsmWizardTargetJobField $job action Action)
+        $role=[string](Get-WsmWizardTargetJobField $job role Role);$jobPair=[string](Get-WsmWizardTargetJobField $job pairId PairId)
+        $jobId=[string](Get-WsmWizardTargetJobField $job jobId JobId);$jobWorkspace=[string](Get-WsmWizardTargetJobField $job workspace Workspace)
+        if($action -cne 'TargetRestore' -or $role -cne 'Target' -or $jobPair -cne $PairId -or $jobId -cne $OperationId -or $status -notin @('Failed','Cancelled','Interrupted') -or -not $jobWorkspace){continue}
+        try{if([IO.Path]::GetFullPath($jobWorkspace) -ine [IO.Path]::GetFullPath($Workspace)){continue}}catch{continue}
+        $worker=$job;break
+    }
+    if(-not $worker){return $null}
+    try{
+        $context=Assert-WsmWizardTargetRole $Workspace $PairId
+        $packageRecord=Get-WsmWizardTargetPackage $Workspace $PairId $context $Jobs
+        $snapshot=Get-WsmWizardTargetSnapshot $Workspace $context $Jobs
+        $stateDirectory=Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs';$paths=Get-WsmOperationPaths $stateDirectory $PairId
+        if(-not [IO.File]::Exists($paths.State)){return $null}
+        $package=$packageRecord.Package;$state=Get-WsmOperationState $paths $package
+        if(-not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.RestoreAttempt){return $null}
+        $attempt=$state.RestoreAttempt
+        if([string]$attempt.OperationId -cne $OperationId -or [string]$state.PairId -cne $PairId -or
+           [string]$state.ManifestHash -ine [string]$packageRecord.ManifestHash -or [long]$state.Generation -ne [long]$package.Manifest.Generation -or
+           [string]$attempt.ManifestHash -ine [string]$packageRecord.ManifestHash -or [long]$attempt.Generation -ne [long]$package.Manifest.Generation -or
+           [string]$attempt.TargetSnapshotHash -ine [string]$snapshot.SHA256 -or [string]$attempt.TargetSnapshotPath -ine [string]$snapshot.Path -or -not $attempt.PSObject.Properties['ItemResults'] -or
+           @($state.PendingOperations).Count -gt 0 -or [string]$state.Stage -notin @('Succeeded','Partial','RebootRequired','Cancelled','Failed')){return $null}
+        $journal=Test-WsmJournal $stateDirectory $PairId;if(-not $journal.Consistent){return $null}
+        $decision=Get-WsmWizardTargetDecisionRecord $Workspace $PairId $context.Received.SHA256
+        if(-not $decision -or [string]$attempt.DecisionReceiptPath -cne [string]$decision.Path -or [string]$attempt.DecisionReceiptHash -ine [string]$decision.SHA256 -or
+           [string]$decision.Receipt.ManifestHash -ine [string]$packageRecord.ManifestHash -or [long]$decision.Receipt.Generation -ne [long]$package.Manifest.Generation -or
+           [string]$decision.Receipt.TargetSnapshotHash -ine [string]$snapshot.SHA256 -or [string]$decision.Receipt.Decision -cne 'RestoreNow' -or
+           (@($attempt.SelectedItemIds | Sort-Object -Unique) -join "`n") -cne (@($decision.Receipt.SelectedItemIds | Sort-Object -Unique) -join "`n")){return $null}
+        $journalHash=(Get-FileHash -LiteralPath $paths.Journal -Algorithm SHA256).Hash.ToLowerInvariant()
+        $journalRoot=[IO.Path]::GetFullPath((Join-Path $paths.Root 'restore-journals')).TrimEnd('\')+'\'
+        $journalSnapshot=Join-Path $journalRoot ($journalHash+'.jsonl');Assert-WsmNoReparse $journalSnapshot
+        if(-not [IO.File]::Exists($journalSnapshot)){
+            $retained=Save-WsmWizardRestoreJournalSnapshot $paths $package $OperationId ([string]$state.Stage)
+            if([string]$retained.SHA256 -ine $journalHash -or [string]$retained.Path -ine $journalSnapshot){return $null}
+        }
+        if((Get-FileHash -LiteralPath $journalSnapshot -Algorithm SHA256).Hash -ine $journalHash){return $null}
+        $projection=Get-WsmWizardTargetRestoreProjection -Workspace $Workspace -PairId $PairId -Jobs $Jobs
+        $results=@($attempt.ItemResults);$resultsHash=Get-WsmHashText ($results|ConvertTo-Json -Depth 100 -Compress)
+        $stage=[string]$state.Stage
+        $deferred=@($projection.Rows | Where-Object Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired'))
+        [pscustomobject][ordered]@{Status=$stage;PairId=$PairId;PlanHash=[string]$context.Received.SHA256;ManifestHash=[string]$packageRecord.ManifestHash;Generation=[long]$package.Manifest.Generation;Decision='RestoreNow';SelectedItemIds=@($attempt.SelectedItemIds);Rows=@($projection.Rows);ItemResults=$results;ItemResultsHash=$resultsHash;Deferred=$deferred;JournalPath=[IO.Path]::GetFullPath($journalSnapshot);JournalHash=$journalHash;AttemptOperationId=$OperationId;Stage=$stage;PendingOperations=@();BusinessValidationRequired=$true;ProductionVerified=$false;AuthoritativeApproval=$false;Replay=$true;RecoveredAfterWorkerFailure=$true;WorkerStatus=[string](Get-WsmWizardTargetJobField $worker status Status)}
+    }catch{return $null}
+}
+
+function Get-WsmWizardTargetRestoreAvailability([string]$Workspace,[string]$PairId,$Profile,[object[]]$Jobs=@()) {
+    if(-not $Workspace -or -not $PairId -or -not $Profile -or [string]$Profile.Role -cne 'Target'){return $null}
+    try{$context=Assert-WsmWizardTargetRole $Workspace $PairId;$packageRecord=Get-WsmWizardTargetPackage $Workspace $PairId $context $Jobs;$snapshot=Get-WsmWizardTargetSnapshot $Workspace $context $Jobs}catch{return $null}
+    try{$profileWorkRoot=[IO.Path]::GetFullPath([string]$Profile.WorkRoot);$currentWorkRoot=[IO.Path]::GetFullPath($Workspace)}catch{return $null}
+    if([string]$Profile.ProfileId -cne [string]$context.Profile.ProfileId -or [string]$Profile.HostId -cne [string]$context.Profile.HostId -or [string]$Profile.Fingerprint -ine [string]$context.Profile.Fingerprint -or $profileWorkRoot -ine $currentWorkRoot){return $null}
+    $stateDirectory=Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs';$paths=Get-WsmOperationPaths $stateDirectory $PairId
+    if(-not [IO.File]::Exists($paths.State)){return $null}
+    try{$state=Get-WsmOperationState $paths $packageRecord.Package}catch{return $null}
+    if(-not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.RestoreAttempt){return $null}
+    $attempt=$state.RestoreAttempt
+    foreach($field in @('OperationId','ManifestHash','Generation','DecisionReceiptHash','DecisionReceiptPath','TargetSnapshotHash','TargetSnapshotPath','SelectedItemIds')){if(-not $attempt.PSObject.Properties[$field]){return $null}}
+    try{Assert-WsmId ([string]$attempt.OperationId)}catch{return $null}
+    if([string]$state.PairId -cne $PairId -or [string]$attempt.ManifestHash -ine [string]$packageRecord.ManifestHash -or [long]$attempt.Generation -ne [long]$packageRecord.Package.Manifest.Generation -or [string]$state.ManifestHash -ine [string]$packageRecord.ManifestHash -or [long]$state.Generation -ne [long]$packageRecord.Package.Manifest.Generation -or [string]$attempt.TargetSnapshotHash -ine [string]$snapshot.SHA256){return $null}
+    $decisionRecord=Get-WsmWizardTargetDecisionRecord $Workspace $PairId $context.Received.SHA256
+    if(-not $decisionRecord -or [string]$decisionRecord.SHA256 -ine [string]$attempt.DecisionReceiptHash -or [string]$decisionRecord.Path -ine [string]$attempt.DecisionReceiptPath -or [string]$decisionRecord.Receipt.ManifestHash -ine [string]$packageRecord.ManifestHash -or [long]$decisionRecord.Receipt.Generation -ne [long]$packageRecord.Package.Manifest.Generation -or [string]$decisionRecord.Receipt.TargetSnapshotHash -ine [string]$snapshot.SHA256 -or [string]$decisionRecord.Receipt.Decision -cne 'RestoreNow'){return $null}
+    if((@($attempt.SelectedItemIds | Sort-Object -Unique) -join "`n") -cne (@($decisionRecord.Receipt.SelectedItemIds | Sort-Object -Unique) -join "`n")){return $null}
+    $expectedJournalRoot=[IO.Path]::GetFullPath((Join-Path $paths.Root 'restore-journals')).TrimEnd('\')+'\'
+    $stage=[string]$state.Stage
+    if($stage -notin @('Succeeded','Partial','RebootRequired','Cancelled','Failed')){return $null}
+    if(-not $attempt.PSObject.Properties['ItemResults']){return $null}
+    $attemptResults=@($attempt.ItemResults);$attemptResultsHash=Get-WsmHashText ($attemptResults|ConvertTo-Json -Depth 100 -Compress);$appliedCount=@($attemptResults|Where-Object {$_.Status -in @('Succeeded','RebootRequired') -and $_.PSObject.Properties['AppliedManifestHash'] -and $_.PSObject.Properties['AppliedGeneration'] -and [string]$_.AppliedManifestHash -ieq [string]$packageRecord.ManifestHash -and [long]$_.AppliedGeneration -eq [long]$packageRecord.Package.Manifest.Generation}).Count
+    $failedCount=@($attemptResults|Where-Object {$_.Status -ceq 'Failed'}).Count;$blockedCount=@($attemptResults|Where-Object {$_.Status -in @('Blocked','BlockedConflict','ManualEvidenceRequired')}).Count
+    $matchingJobs=New-Object 'System.Collections.Generic.List[object]'
+    foreach($job in @($Jobs)){
+        if(-not $job){continue}
+        $action=[string](Get-WsmWizardTargetJobField $job action Action);$status=[string](Get-WsmWizardTargetJobField $job status Status);$role=[string](Get-WsmWizardTargetJobField $job role Role);$pair=[string](Get-WsmWizardTargetJobField $job pairId PairId);$jobWorkspace=[string](Get-WsmWizardTargetJobField $job workspace Workspace);$jobId=[string](Get-WsmWizardTargetJobField $job jobId JobId)
+        if($action -cne 'TargetRestore' -or $role -cne 'Target' -or $pair -cne $PairId -or $status -notin @('Succeeded','ReviewRequired','Cancelled','Failed','Interrupted') -or -not $jobWorkspace){continue}
+        try{if([IO.Path]::GetFullPath($jobWorkspace) -ine [IO.Path]::GetFullPath($Workspace) -or $jobId -cne [string]$attempt.OperationId){continue}}catch{continue}
+        foreach($output in @((Get-WsmWizardTargetJobField $job outputs Outputs))){
+            if(-not $output){continue}
+            $outputAttempt=[string](Get-WsmWizardTargetJobField $output AttemptOperationId AttemptId);if(-not $outputAttempt){$outputAttempt=[string](Get-WsmWizardTargetJobField $output OperationId OperationId)}
+            $outputGeneration=[long]0;try{$outputGeneration=[long](Get-WsmWizardTargetJobField $output Generation Generation)}catch{continue}
+            if($outputAttempt -cne [string]$attempt.OperationId -or [string](Get-WsmWizardTargetJobField $output PairId PairId) -cne $PairId -or [string](Get-WsmWizardTargetJobField $output ManifestHash ManifestHash) -ine [string]$packageRecord.ManifestHash -or $outputGeneration -ne [long]$packageRecord.Package.Manifest.Generation){continue}
+            $outputStage=[string](Get-WsmWizardTargetJobField $output Stage Stage);$outputStatus=[string](Get-WsmWizardTargetJobField $output Status Status)
+            if($outputStage -cne $stage -or ($outputStatus -and $outputStatus -cne $stage)){continue}
+            if($output.PSObject.Properties['SafeProjectedItemResults'] -and $output.SafeProjectedItemResults -is [bool] -and $output.SafeProjectedItemResults){
+                if(-not $output.PSObject.Properties['ItemResultsHash'] -or [string]$output.ItemResultsHash -notmatch '^[a-fA-F0-9]{64}$' -or [string]$output.ItemResultsHash -ine $attemptResultsHash){continue}
+            }else{
+                if(-not $output.PSObject.Properties['ItemResults'] -or -not $output.PSObject.Properties['ItemResultsHash']){continue}
+                $providedItemResultsHash=Get-WsmHashText ($output.ItemResults|ConvertTo-Json -Depth 100 -Compress)
+                if([string]$output.ItemResultsHash -notmatch '^[a-fA-F0-9]{64}$' -or [string]$output.ItemResultsHash -ine $providedItemResultsHash -or $providedItemResultsHash -ine $attemptResultsHash){continue}
+            }
+            if(-not $output.PSObject.Properties['JournalHash'] -or [string]$output.JournalHash -notmatch '^[a-fA-F0-9]{64}$' -or -not $output.PSObject.Properties['JournalPath']){continue}
+            try{$journalPath=[IO.Path]::GetFullPath([string]$output.JournalPath);Assert-WsmNoReparse $journalPath;if(-not $journalPath.StartsWith($expectedJournalRoot,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.File]::Exists($journalPath) -or (Get-FileHash -LiteralPath $journalPath -Algorithm SHA256).Hash -ine [string]$output.JournalHash){continue}}catch{continue}
+            $matchingJobs.Add([pscustomobject]@{Job=$job;Output=$output;JournalPath=$journalPath;JournalHash=([string]$output.JournalHash).ToLowerInvariant()})
+        }
+    }
+    if(-not $matchingJobs.Count){return $null}
+    $completedUtc=''
+    $orderedJobs=@($matchingJobs|Sort-Object @{Expression={try{$field=Get-WsmWizardTargetJobField $_.Job CompletedUtc completedUtc;if($field){[DateTimeOffset]::Parse([string]$field)}else{[DateTimeOffset]::MinValue}}catch{[DateTimeOffset]::MinValue}};Descending=$true},@{Expression={[string](Get-WsmWizardTargetJobField $_.Job jobId JobId)};Descending=$false})
+    $chosen=$orderedJobs[0];$completedValue=Get-WsmWizardTargetJobField $chosen.Job CompletedUtc completedUtc
+    if($completedValue){try{$completedUtc=[DateTimeOffset]::Parse([string]$completedValue).ToUniversalTime().ToString('o')}catch{}}
+    if(-not $completedUtc -and $state.PSObject.Properties['UpdatedUtc']){try{$completedUtc=[DateTimeOffset]::Parse([string]$state.UpdatedUtc).ToUniversalTime().ToString('o')}catch{}}
+    if(-not $completedUtc){
+        $reader=$null
+        try{
+            $reader=New-Object IO.StreamReader($chosen.JournalPath,[Text.Encoding]::UTF8,$true)
+            $lastLine='';while(-not $reader.EndOfStream){$nextLine=$reader.ReadLine();if(-not [string]::IsNullOrWhiteSpace($nextLine)){$lastLine=$nextLine}}
+            if($lastLine){$lastEvent=ConvertFrom-WsmJson $lastLine;if($lastEvent.PairId -ceq $PairId -and [string]$lastEvent.RunId -ceq [string]$state.RunId -and $lastEvent.Action -in @('AssistiveRestoreCompleted','AssistiveRestoreCancelled')){$completedUtc=[DateTimeOffset]::Parse([string]$lastEvent.Utc).ToUniversalTime().ToString('o')}}
+        }catch{}finally{if($reader){$reader.Dispose()}}
+    }
+    [pscustomobject][ordered]@{status=$stage;stage=$stage;workerStatus=[string](Get-WsmWizardTargetJobField $chosen.Job status Status);pairId=$PairId;planHash=[string]$packageRecord.Package.Manifest.PlanHash;manifestHash=[string]$packageRecord.ManifestHash;generation=[long]$packageRecord.Package.Manifest.Generation;attemptId=[string]$attempt.OperationId;runId=[string](Get-WsmWizardTargetJobField $chosen.Job jobId JobId);decisionReceiptHash=[string]$attempt.DecisionReceiptHash;selectedItemIds=@($attempt.SelectedItemIds);completedUtc=$completedUtc;journalPath=[string]$chosen.JournalPath;journalHash=[string]$chosen.JournalHash;appliedCount=$appliedCount;failedCount=$failedCount;blockedCount=$blockedCount;current=$true;hasDurableRecord=$true;authoritativeApproval=$false;productionVerified=$false}
+}
+
+function Invoke-WsmWizardTargetValidation {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[ValidateSet('Staged','Final')][string]$Phase='Staged',[object[]]$Jobs=@(),[object[]]$GeneralHostEvidence=@())
+    $ctx=Assert-WsmWizardTargetRole $Workspace $PairId;$packageRecord=Get-WsmWizardTargetPackage $Workspace $PairId $ctx $Jobs;$stateDirectory=Join-Path $ctx.Profile.WorkRoot 'pairs';$paths=Get-WsmOperationPaths $stateDirectory $PairId;$state=Get-WsmOperationState $paths $packageRecord.Package
+    if($state.ManifestHash -ine $packageRecord.ManifestHash -or [long]$state.Generation -ne [long]$packageRecord.Package.Manifest.Generation){throw 'Validation requires the exact currently delivered generation to be applied and journaled on this Target.'}
+    $validation=Invoke-WsmValidation -ManifestPath $packageRecord.ManifestPath -ExpectedHash $packageRecord.ManifestHash -StateDirectory $stateDirectory -Phase $Phase -GeneralHostEvidence $GeneralHostEvidence
+    $state=Get-WsmOperationState $paths $packageRecord.Package
+    if(-not $state.RestoreAttempt){throw 'Validation result has no durable restore-attempt binding.'}
+    $attemptId=[string]$state.RestoreAttempt.OperationId;$decisionRecord=Get-WsmWizardTargetDecisionRecord $Workspace $PairId $ctx.Received.SHA256
+    if(-not $decisionRecord -or [string]$state.RestoreAttempt.DecisionReceiptHash -ine [string]$decisionRecord.SHA256 -or [string]$state.RestoreAttempt.DecisionReceiptPath -ine [string]$decisionRecord.Path -or [string]$state.RestoreAttempt.TargetSnapshotHash -ine [string]$decisionRecord.Receipt.TargetSnapshotHash -or [string]$state.RestoreAttempt.ManifestHash -ine [string]$packageRecord.ManifestHash -or [long]$state.RestoreAttempt.Generation -ne [long]$packageRecord.Package.Manifest.Generation){throw 'Validation result no longer matches the current restore attempt, decision receipt, Target snapshot or package generation.'}
+    $journalSnapshot=Save-WsmWizardRestoreJournalSnapshot $paths $packageRecord.Package $attemptId ([string]$state.Stage)
+    $validationPath=Join-Path $paths.Root ('validation-'+$Phase+'.json');Assert-WsmNoReparse $validationPath
+    [pscustomobject][ordered]@{Status=$(if($validation.Passed){'Succeeded'}else{'ReviewRequired'});PairId=$PairId;PlanHash=[string]$ctx.Received.SHA256;ManifestHash=[string]$packageRecord.ManifestHash;Generation=[long]$packageRecord.Package.Manifest.Generation;RestoreAttemptId=$attemptId;DecisionReceiptHash=[string]$decisionRecord.SHA256;TargetSnapshotHash=[string]$state.RestoreAttempt.TargetSnapshotHash;Phase=$Phase;Passed=[bool]$validation.Passed;Checks=@($validation.Checks);Path=[IO.Path]::GetFullPath($validationPath);SHA256=(Get-FileHash -LiteralPath $validationPath -Algorithm SHA256).Hash.ToLowerInvariant();JournalPath=[string]$journalSnapshot.Path;JournalHash=[string]$journalSnapshot.SHA256;BusinessValidationRequired=$true;ProductionVerified=$false}
+}
+
+function Get-WsmWizardTargetAcceptanceGates {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[object[]]$Jobs=@(),[object[]]$GeneralHostEvidence=@())
+    $ctx=Assert-WsmWizardTargetRole $Workspace $PairId;$packageRecord=Get-WsmWizardTargetPackage $Workspace $PairId $ctx $Jobs;$snapshot=Get-WsmWizardTargetSnapshot $Workspace $ctx $Jobs;$decisionRecord=Get-WsmWizardTargetDecisionRecord $Workspace $PairId $ctx.Received.SHA256;$stateDirectory=Join-Path $ctx.Profile.WorkRoot 'pairs';$paths=Get-WsmOperationPaths $stateDirectory $PairId;$state=Get-WsmOperationState $paths $packageRecord.Package
+    if($state.ManifestHash -ine $packageRecord.ManifestHash -or [long]$state.Generation -ne [long]$packageRecord.Package.Manifest.Generation){throw 'Acceptance gates require the exact currently delivered generation to be applied and journaled.'}
+    if(-not $state.RestoreAttempt -or -not $decisionRecord -or [string]$state.RestoreAttempt.ManifestHash -ine [string]$packageRecord.ManifestHash -or [long]$state.RestoreAttempt.Generation -ne [long]$packageRecord.Package.Manifest.Generation -or [string]$state.RestoreAttempt.DecisionReceiptHash -ine [string]$decisionRecord.SHA256 -or [string]$state.RestoreAttempt.DecisionReceiptPath -ine [string]$decisionRecord.Path -or [string]$state.RestoreAttempt.TargetSnapshotHash -ine [string]$snapshot.SHA256 -or [string]$decisionRecord.Receipt.TargetSnapshotHash -ine [string]$snapshot.SHA256){throw 'Acceptance requires the current exact restore attempt, decision receipt, package generation and Target inventory.'}
+    $restoreAttemptId=[string]$state.RestoreAttempt.OperationId
+    $gates=Get-WsmAcceptanceGates -ManifestPath $packageRecord.ManifestPath -ExpectedHash $packageRecord.ManifestHash -StateDirectory $stateDirectory -GeneralHostEvidence $GeneralHostEvidence
+    $state=Get-WsmOperationState $paths $packageRecord.Package
+    if(-not $state.RestoreAttempt -or [string]$state.RestoreAttempt.OperationId -cne $restoreAttemptId -or [string]$state.RestoreAttempt.DecisionReceiptHash -ine [string]$decisionRecord.SHA256 -or [string]$state.RestoreAttempt.DecisionReceiptPath -ine [string]$decisionRecord.Path -or [string]$state.RestoreAttempt.TargetSnapshotHash -ine [string]$snapshot.SHA256){throw 'Restore attempt changed while the explicit acceptance gates were being evaluated.'}
+    $attemptId=[string]$state.RestoreAttempt.OperationId
+    $finalValidationPath=[IO.Path]::GetFullPath((Join-Path $paths.Root 'validation-Final.json'));Assert-WsmNoReparse $finalValidationPath
+    if(-not [IO.File]::Exists($finalValidationPath)){throw 'Final validation did not produce a durable result.'}
+    $finalValidationHash=(Get-FileHash -LiteralPath $finalValidationPath -Algorithm SHA256).Hash.ToLowerInvariant();$finalValidation=Read-WsmTrustedJson $finalValidationPath $finalValidationHash
+    if([string]$finalValidation.Kind -cne 'ValidationResult' -or [string]$finalValidation.PairId -cne $PairId -or [string]$finalValidation.ManifestHash -ine [string]$packageRecord.ManifestHash -or [long]$finalValidation.Generation -ne [long]$packageRecord.Package.Manifest.Generation -or [string]$finalValidation.Phase -cne 'Final'){throw 'Final validation artifact does not match the current package.'}
+    $journalSnapshot=Save-WsmWizardRestoreJournalSnapshot $paths $packageRecord.Package $attemptId ([string]$state.Stage)
+    $artifact=[pscustomobject][ordered]@{SchemaVersion=1;Kind='WizardTargetAcceptanceGates';PairId=$PairId;PlanHash=[string]$ctx.Received.SHA256;ManifestHash=[string]$packageRecord.ManifestHash;Generation=[long]$packageRecord.Package.Manifest.Generation;RestoreAttemptId=$attemptId;DecisionReceiptHash=[string]$decisionRecord.SHA256;TargetSnapshotHash=[string]$snapshot.SHA256;FinalValidationPath=$finalValidationPath;FinalValidationHash=$finalValidationHash;FinalValidationPassed=[bool]$finalValidation.Passed;JournalSnapshotPath=[string]$journalSnapshot.Path;JournalHash=[string]$journalSnapshot.SHA256;Gates=$gates;CreatedUtc=(Get-WsmUtc)}
+    $artifactFile=Save-WsmWizardTargetAcceptanceArtifact $paths $artifact
+    [pscustomobject][ordered]@{Status=$(if($gates.FinalAccepted){'FinalAccepted'}else{'ReviewRequired'});PairId=$PairId;PlanHash=[string]$ctx.Received.SHA256;ManifestHash=[string]$packageRecord.ManifestHash;Generation=[long]$packageRecord.Package.Manifest.Generation;RestoreAttemptId=$attemptId;DecisionReceiptHash=[string]$decisionRecord.SHA256;TargetSnapshotHash=[string]$snapshot.SHA256;FinalAccepted=[bool]$gates.FinalAccepted;RetirementReady=[bool]$gates.RetirementReady;MissingFinal=@($gates.MissingFinal);MissingRetirement=@($gates.MissingRetirement);Observation=$gates.Observation;RetirementAction=[string]$gates.RetirementAction;Path=[string]$artifactFile.Path;SHA256=[string]$artifactFile.SHA256;FinalValidationPath=$finalValidationPath;FinalValidationHash=$finalValidationHash;JournalSnapshotPath=[string]$journalSnapshot.Path;JournalHash=[string]$journalSnapshot.SHA256;ProductionVerified=$false}
+}
+
+function Invoke-WsmWizardTargetActivation {
+    [CmdletBinding(SupportsShouldProcess)]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$CutoverPlanPath,[Parameter(Mandatory)][string]$CutoverPlanHash,[Parameter(Mandatory)][string]$Acknowledgement,[object[]]$Jobs=@(),[hashtable]$Secrets=@{},[object[]]$GeneralHostEvidence=@(),[object[]]$ExternalEvidenceReferences=@(),[switch]$ResumeActivation,[string]$ResumeOwner,[string]$ResumeEvidence)
+    $ctx=Assert-WsmWizardTargetRole $Workspace $PairId;$packageRecord=Get-WsmWizardTargetPackage $Workspace $PairId $ctx $Jobs
+    if($CutoverPlanHash -notmatch '^[a-f0-9]{64}$'){throw 'A separately verified current CutoverPlan SHA-256 is required.'}
+    $cutoverPath=[IO.Path]::GetFullPath($CutoverPlanPath);Assert-WsmNoReparse $cutoverPath;if(-not [IO.File]::Exists($cutoverPath) -or (Get-FileHash -LiteralPath $cutoverPath -Algorithm SHA256).Hash -ine $CutoverPlanHash){throw 'Cutover plan path/hash could not be verified.'}
+    $cutoverPlan=Read-WsmTrustedJson $cutoverPath $CutoverPlanHash;Assert-WsmEnvelope $cutoverPlan 'CutoverPlan'
+    if($cutoverPlan.PairId -cne $PairId -or $cutoverPlan.ManifestHash -ine $packageRecord.ManifestHash -or [long]$cutoverPlan.Generation -ne [long]$packageRecord.Package.Manifest.Generation -or $cutoverPlan.TargetFingerprint -ine $ctx.Profile.Fingerprint){throw 'Cutover plan is stale or bound to another Target pair, package, generation or host.'}
+    if($Acknowledgement -cne ('CUTOVER '+$PairId)){throw 'Activation requires the exact current pair acknowledgement.'}
+    $stateDirectory=Join-Path $ctx.Profile.WorkRoot 'pairs';$state=Get-WsmOperationState (Get-WsmOperationPaths $stateDirectory $PairId) $packageRecord.Package
+    if($state.ManifestHash -ine $packageRecord.ManifestHash -or [long]$state.Generation -ne [long]$packageRecord.Package.Manifest.Generation){throw 'Activation requires the exact current applied Target generation.'}
+    Assert-WsmAssistiveCutoverActivationIntent $packageRecord.Package $stateDirectory $state
+    $invokeArgs=@{ManifestPath=$packageRecord.ManifestPath;ExpectedHash=$packageRecord.ManifestHash;StateDirectory=$stateDirectory;CutoverPlanPath=$cutoverPath;CutoverPlanHash=$CutoverPlanHash;Acknowledgement=$Acknowledgement;Secrets=$Secrets;GeneralHostEvidence=$GeneralHostEvidence;ExternalEvidenceReferences=$ExternalEvidenceReferences;WhatIf=[bool]$WhatIfPreference;Confirm=$false}
+    if($ResumeActivation){$invokeArgs.ResumeActivation=$true;$invokeArgs.ResumeOwner=$ResumeOwner;$invokeArgs.ResumeEvidence=$ResumeEvidence}
+    $result=Invoke-WsmCutover @invokeArgs
+    $paths=Get-WsmOperationPaths $stateDirectory $PairId;$updated=Get-WsmOperationState $paths $packageRecord.Package
+    $journalHash='';if([IO.File]::Exists($paths.Journal)){$journalHash=(Get-FileHash -LiteralPath $paths.Journal -Algorithm SHA256).Hash.ToLowerInvariant()}
+    [pscustomobject][ordered]@{Status=$(if($result.PSObject.Properties['Kind'] -and $result.Kind -ceq 'CutoverExecutionPreview'){'PreviewOnly'}else{[string]$updated.Stage});PairId=$PairId;PlanHash=[string]$ctx.Received.SHA256;ManifestHash=[string]$packageRecord.ManifestHash;Generation=[long]$packageRecord.Package.Manifest.Generation;CutoverPlanHash=$CutoverPlanHash;CutoverStage=$(if($updated.Cutover){[string]$updated.Cutover.Stage}else{''});Result=$result;JournalPath=[string]$paths.Journal;JournalHash=$journalHash;ProductionVerified=$false;BusinessAccepted=$false}
+}
+

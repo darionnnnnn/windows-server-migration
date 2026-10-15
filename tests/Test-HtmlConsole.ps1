@@ -159,7 +159,15 @@ public class WsmHttpFixtureStream : System.IO.MemoryStream {
         Check ($artifacts.Count -eq 1 -and $artifacts[0].Path -ceq $reportPath -and $artifacts[0].SHA256 -ceq (Get-FileHash $reportPath -Algorithm SHA256).Hash.ToLowerInvariant() -and (Get-WsmOperationStatusCode $projected) -eq 0 -and ($projected|ConvertTo-Json) -notmatch 'not-public') 'Material job status report could not cross the safe job projection and authenticated HTML artifact route as a completed read-only operation.'
         $id=[Guid]::NewGuid().ToString();$key=[Guid]::NewGuid().ToString();$recordPath=Join-Path $historyRoot ($id+'.json')
         Write-WsmJson $recordPath ([pscustomobject]@{jobId=$id;idempotencyKey=$key;RequestHash=('a'*64);status='Running';canCancel=$true})
+        $probeId=[Guid]::NewGuid().ToString();$probePath=Join-Path $historyRoot ($probeId+'.json');Write-WsmJson $probePath ([pscustomobject]@{jobId=$probeId;action='DeveloperProbe';status='Running';canCancel=$true})
         $jobs=@{};$keys=@{};Import-WsmHtmlJobHistory $historyRoot $jobs $keys
+        Check ($jobs[$id].Record.status -ceq 'Running' -and (Read-WsmJson $recordPath).status -ceq 'Running') 'A read-only console history load interrupted another worker.'
+        $guard=Enter-WsmWorkspaceWorkerGuard -Workspace (Split-Path $historyRoot -Parent) -Action 'TestHistoryRecovery'
+        try{$jobs=@{};$keys=@{};Import-WsmHtmlJobHistory $historyRoot $jobs $keys -RecoveryGuard $guard}finally{Exit-WsmWorkspaceWorkerGuard $guard}
+        Check ($jobs[$probeId].Record.status -ceq 'Running' -and (Read-WsmJson $probePath).status -ceq 'Running') 'Migration history recovery interrupted an independently running probe.'
+        $probeGuard=Enter-WsmWorkspaceWorkerGuard -Workspace (Split-Path $historyRoot -Parent) -Action 'DeveloperProbe'
+        try{$jobs=@{};$keys=@{};Import-WsmHtmlJobHistory $historyRoot $jobs $keys -RecoveryGuard $probeGuard}finally{Exit-WsmWorkspaceWorkerGuard $probeGuard}
+        Check ($jobs[$probeId].Record.status -ceq 'Interrupted') 'Probe history could not be recovered while its own lane was exclusively held.'
         Check ($keys.ContainsKey($key) -and $keys[$key].Id -ceq $id -and $keys[$key].Hash -ceq ('a'*64)) 'Restart lost the durable idempotency binding.'
         Check ($jobs[$id].Record.status -ceq 'Interrupted' -and -not $jobs[$id].Record.canCancel -and (Read-WsmJson $recordPath).status -ceq 'Interrupted') 'Restart promoted an unfinished worker or exposed a stale cancellation handle.'
         Check ($jobs[$id].Record.pairId -eq $null -and $jobs[$id].Record.role -eq $null -and $jobs[$id].Record.startedRevision -eq $null) 'Legacy job history was backfilled with current or inferred provenance.'
@@ -172,6 +180,8 @@ public class WsmHttpFixtureStream : System.IO.MemoryStream {
     foreach($name in @('Jobs','OperationId','CancellationToken')){$inputFields=[pscustomobject]@{};$inputFields|Add-Member NoteProperty $name 'untrusted caller value';Reject {ConvertTo-WsmHtmlArguments $internalCommand $inputFields} ('Caller could supply a server-owned '+$name+' parameter.')}
     $handoffMetadata=@(Get-WsmHtmlActionMetadata Manager|Where-Object action -CEQ 'GetTargetHandoffPreview')
     Check ($handoffMetadata.Count -eq 1 -and -not $handoffMetadata[0].readOnly -and $handoffMetadata[0].requiredRole -ceq 'Manager') 'Persisted handoff preview was described as a read-only or non-Manager action.'
+    $acceptanceMetadata=@(Get-WsmHtmlActionMetadata Target|Where-Object action -CEQ 'TargetAcceptance')
+    Check ($acceptanceMetadata.Count -eq 1 -and -not $acceptanceMetadata[0].readOnly -and $acceptanceMetadata[0].requiredRole -ceq 'Target') 'Acceptance gate writer was advertised as read-only and could execute before explicit APPLY.'
     $bulkMetadata=@(Get-WsmHtmlActionMetadata Manager|Where-Object action -CEQ 'BulkPreparationPreview')
     Check ($bulkMetadata.Count -eq 1 -and -not $bulkMetadata[0].readOnly -and $bulkMetadata[0].requiredRole -ceq 'Manager') 'Persisted bulk preview lost its Manager write classification.'
     $bulkCommand=Get-Command Save-WsmWizardBulkPreparationReview -CommandType Function
@@ -185,5 +195,32 @@ public class WsmHttpFixtureStream : System.IO.MemoryStream {
     Check ($bulkProjected.Count -eq 1 -and $bulkProjected[0].Items[0].FormFields[0].value -ceq 'LocalSystem' -and $bulkProjected[0].CandidateItemIds[0] -ceq 'candidate' -and ($bulkProjected|ConvertTo-Json -Depth 20) -notmatch 'private') 'Bulk typed preview lost its safe consumer fields or leaked an unknown field.'
     $handoffProjected=@(Get-WsmHtmlResultProjection @([pscustomobject]@{Kind='WizardTargetHandoffPreview';CurrentTarget=[pscustomobject]@{HostId='current';Fingerprint=('a'*64);SHA256=('b'*64);Secret='private'};Target=[pscustomobject]@{HostId='received';Name='new target';Fingerprint=('c'*64)};Source=[pscustomobject]@{HostId='source';Name='old source'};ExpectedManifestHash=('d'*64);ManifestHash=('d'*64);InventoryRevision=2}))
     Check ($handoffProjected[0].CurrentTarget.HostId -ceq 'current' -and $handoffProjected[0].Target.HostId -ceq 'received' -and $handoffProjected[0].Source.HostId -ceq 'source' -and ($handoffProjected|ConvertTo-Json -Depth 20) -notmatch 'private') 'Handoff projection confused current Target, received Target, or Source, or exposed a private field.'
+    $receivedArgs=[pscustomobject]@{Workspace='C:\fixture';Path='C:\approved.json';ExpectedHash=('a'*64)}
+    Set-WsmHtmlImportPlanRoleBinding $receivedArgs Target
+    $receivedTyped=ConvertTo-WsmHtmlArguments (Get-Command Import-WsmWizardApprovedPlan) $receivedArgs
+    Check ($receivedTyped.Role -ceq 'Target' -and -not $receivedTyped.ContainsKey('OperationId')) 'First-use approved-plan import did not bind session role before mandatory argument validation.'
+    Reject {Set-WsmHtmlImportPlanRoleBinding ([pscustomobject]@{Role='Source'}) Target} 'Caller role overrode the Target session during approved-plan import.'
+    Reject {Set-WsmHtmlImportPlanRoleBinding ([pscustomobject]@{}) Manager} 'Manager session imported a received Source/Target plan.'
+    $shareCommand=Get-Command Export-WsmWizardNonCTargetProofHandoff
+    $shareArgs=[pscustomobject]@{Workspace='C:\fixture';ShareName='data';LocalPath='D:\data';LocalRoots=@('D:\data');StateDirectory='C:\fixture\pairs';Destination='C:\handoff';NextOperator='Manager';AdditionalShares=@([pscustomobject]@{ShareName='state';LocalPath='C:\fixture'})}
+    $shareTyped=ConvertTo-WsmHtmlArguments $shareCommand $shareArgs
+    Check (@($shareTyped.AdditionalShares).Count -eq 1 -and $shareTyped.AdditionalShares[0].ShareName -ceq 'state' -and $shareTyped.AdditionalShares[0].LocalPath -ceq 'C:\fixture') 'Typed HTML boundary lost the separately reviewed state share.'
+    $shareArgs.AdditionalShares=@([pscustomobject]@{ShareName='state';LocalPath='C:\fixture';Password='untrusted'})
+    Reject {ConvertTo-WsmHtmlArguments $shareCommand $shareArgs} 'Additional share accepted an unknown nested field.'
+    $shareArgs.AdditionalShares=@([pscustomobject]@{ShareName='state'})
+    Reject {ConvertTo-WsmHtmlArguments $shareCommand $shareArgs} 'Additional share accepted an incomplete share/path pair.'
+    $probeReadRoot=Join-Path ([IO.Path]::GetTempPath()) ('wsm-probe-lock-'+[guid]::NewGuid().ToString('N'))
+    [void][IO.Directory]::CreateDirectory($probeReadRoot)
+    $held=[IO.File]::Open((Join-Path $probeReadRoot '.wsm.lock'),'OpenOrCreate','ReadWrite','None')
+    try{$probeVector=Get-WsmHtmlSubmissionRevisionVector $probeReadRoot '' 'DeveloperProbe';Check ($probeVector.revision -eq 0 -and -not $probeVector.pairId -and -not $probeVector.dataVersion) 'Independent Probe read active migration authority while its workspace lock was held.';Reject {Get-WsmHtmlSubmissionRevisionVector $probeReadRoot '' 'Inventory'} 'Migration submission bypassed its authoritative revision lock.'}finally{$held.Dispose();Remove-Item -LiteralPath (Join-Path $probeReadRoot '.wsm.lock') -Force;[IO.Directory]::Delete($probeReadRoot)}
+    $contextJob=[pscustomobject]@{workspace='C:\fixture\context';role='Source';pairId='pair-a';action='StartBackup'}
+    Assert-WsmHtmlJobContextAccess $contextJob 'C:\fixture\context' 'pair-a' Source
+    Reject {Assert-WsmHtmlJobContextAccess $contextJob 'C:\fixture\context' 'pair-b' Source} 'Another pair could cancel or open a migration job material.'
+    Reject {Assert-WsmHtmlJobContextAccess $contextJob 'C:\fixture\context' 'pair-a' Target} 'Another role could cancel or open a migration job material.'
+    Reject {Assert-WsmHtmlJobContextAccess $contextJob 'C:\fixture\elsewhere' 'pair-a' Source} 'Another workspace could cancel or open a migration job material.'
+    Reject {Assert-WsmHtmlJobContextAccess ([pscustomobject]@{action='StartBackup'}) 'C:\fixture\context' 'pair-a' Source} 'Legacy unknown job provenance became authority to open materials or cancel.'
+    $contextJob.action='DeveloperProbe';$contextJob.pairId=''
+    Assert-WsmHtmlJobContextAccess $contextJob 'C:\fixture\context' 'pair-b' Source
+    $contextJob.pairId='pair-a';Reject {Assert-WsmHtmlJobContextAccess $contextJob 'C:\fixture\context' 'pair-b' Source} 'A malformed Probe inherited migration pair authority.'
     Write-Host ('PASS: '+$script:httpChecks+' native HTTP parser/writer and typed action checks; live browser transport is independently probed.')
 }

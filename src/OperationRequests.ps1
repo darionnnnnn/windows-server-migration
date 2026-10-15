@@ -1,5 +1,5 @@
 ﻿function Get-WsmOperationActions {
-    [ordered]@{BulkPreparationPreview='Get-WsmWizardBulkPreparationPreview';BulkPreparationSave='Save-WsmWizardBulkPreparationReview';ExportTargetHandoff='Export-WsmWizardTargetHandoff';GetTargetHandoffPreview='Get-WsmWizardTargetHandoffPreview';CommitTargetHandoff='Commit-WsmWizardTargetHandoff';GetPreparationReview='Get-WsmWizardPreparationReview';SavePreparationReview='Save-WsmWizardPreparationReview';OsProvidedCapture='Export-WsmAssistiveOsProvidedTaskCapture';OsProvidedBaseline='Export-WsmAssistiveOsProvidedBaseline';OsProvidedReview='Get-WsmAssistiveOsProvidedReview';OsProvidedSubmit='Submit-WsmAssistiveOsProvidedReview';RequirementReview='Get-WsmAssistiveGeneralHostRequirementReview';RequirementDecisionSubmit='Submit-WsmAssistiveGeneralHostRequirementDecisions';PreparationPreview='Get-WsmAssistivePreparationPreview';PreparationEvidence='Export-WsmAssistivePreparationEvidence';WindowsSettingsPreviewExport='Export-WsmAssistiveWindowsSettingsPreview';WindowsSettingsSubmit='Submit-WsmAssistiveWindowsSettingsReview';DispositionSubmit='Submit-WsmAssistiveGeneralHostDispositions';RequirementSubmit='Submit-WsmAssistiveGeneralHostRequirements';HttpIntegrityProbe='Export-WsmAssistiveHttpProbe';SpecReview='Get-WsmAssistiveSpecReview';SaveSpecReview='Submit-WsmAssistiveSpecReview';TargetReceipt='Export-WsmAssistiveTargetDecisionReceipt';AssistiveReport='Export-WsmAssistiveReport';AssistiveReportCheck='Test-WsmAssistiveReport';AssistiveComparison='Get-WsmAssistiveComparison';PublishComparison='Update-WsmAssistiveComparison';TargetSnapshot='Update-WsmAssistiveTargetSnapshot';SetSoftwareVersion='Set-WsmAssistiveSoftwareVersion';FilePlacementPreview='Get-WsmFilePlacementPreview';NonCPeerProof='New-WsmAssistivePeerShareProof';NonCPhysicalProof='New-WsmAssistiveTargetPhysicalProof';NonCPlan='New-WsmAssistiveNonCTransferPlan';NonCTransfer='Invoke-WsmAssistiveNonCTransfer';NonCImport='Import-WsmAssistiveNonCResult';ReservationPreview='Get-WsmAssistiveResourceReservationPreview';ReserveResource='Reserve-WsmAssistiveResource';ResourceEvidence='Set-WsmAssistiveResourceEvidence';ReleaseResource='Release-WsmAssistiveResource';RegisterMaterial='Register-WsmAssistiveMaterialReference';CloseMaterial='Set-WsmAssistiveMaterialClosed';JobLock='Set-WsmAssistiveJobLock';MaterialJobStatus='Export-WsmAssistiveMaterialJobStatus';CleanupPreview='Get-WsmAssistiveCleanupPreview';Cleanup='Invoke-WsmAssistiveCleanup';EnvironmentProbe='Export-WsmAssistiveEnvironmentProbe';ProbeImport='Import-WsmAssistiveEnvironmentProbe';AssistiveEnable='Enable-WsmAssistiveMode';AssistiveSelections='Set-WsmAssistiveSelections';AssistiveTargetDecisionReceipt='New-WsmAssistiveTargetDecisionReceipt';WorkspaceTransferPreview='New-WsmOutputWorkspaceTransferPreview';WorkspaceTransfer='Invoke-WsmOutputWorkspaceTransfer';WorkspaceTransferRestorePreview='New-WsmOutputWorkspaceTransferRestorePreview';WorkspaceTransferRestore='Invoke-WsmOutputWorkspaceTransferRestore';DeliveryDocument='Export-WsmDeliveryDocument';ImportedDeliveryReceipt='Export-WsmImportedDeliveryReceipt';DeliveryReceiptImport='Import-WsmDeliveryReceipt';WindowsSettingsPreview='Get-WsmWindowsSettingsReviewWorkspacePreview';WindowsSettingsApply='Apply-WsmWindowsSettingsReview';QualificationSigningRequest='New-WsmQualificationSigningRequest';QualificationSigningComplete='Complete-WsmQualificationSigningRequest';CheckToolRelease='Test-WsmToolRelease';DeltaDirectory='Export-WsmArtifactDeltaDirectory';DeltaDirectoryImport='Import-WsmArtifactDeltaDirectory';GeneralHostMode='Set-WsmGeneralHostMode';SoftwareAttach='Set-WsmGeneralHostSoftwareCatalog';DispositionPreview='Get-WsmGeneralHostDispositionPreview';DispositionApply='Set-WsmGeneralHostDispositions';RequirementPreview='Get-WsmGeneralHostRequirementPreview';RequirementApply='Set-WsmGeneralHostRequirements';GeneralHostEvidence='Import-WsmGeneralHostEvidence';SoftwareEvidence='Export-WsmSoftwareCatalogEvidence';OutputInitialize='Initialize-WsmOutputWorkspace';OutputResolve='Resolve-WsmOutputWorkspace';OutputRegisterPair='Register-WsmOutputPair';OutputConfirmState='Confirm-WsmOutputOperationState';OutputPreferences='Set-WsmOutputPreferences';EnrolledInventory='Export-WsmEnrolledInventory';EnrolledDelivery='Export-WsmEnrolledPackageDelivery';DirectoryDelivery='Export-WsmDirectoryDelivery';DirectoryImport='Import-WsmDirectoryDelivery';OracleBindingTemplate='Export-WsmOracleConsumerBindingTemplate';OracleConfigDraft='Get-WsmOracleClientConfigDraft';EnvironmentConfirmation='Export-WsmEnvironmentConfirmation';DeltaVolumes='Export-WsmArtifactDeltaVolumes';DeltaVolumeImport='Import-WsmArtifactDeltaVolumes';LabReport='Export-WsmLabValidationReport';ConfigReview='Export-WsmConfigArtifactReview';ConfigScopeDraft='Export-WsmConfigArtifactScopeDraft';DeltaManifest='New-WsmArtifactDeltaManifest';DeltaCheck='Test-WsmArtifactDeltaManifest';DeltaZip='Export-WsmArtifactDeltaZip';DeltaImport='Import-WsmArtifactDeltaZip';DeltaRestore='Invoke-WsmArtifactDeltaRestore';DeltaRepair='Repair-WsmArtifactDeltaRestore';CancellationToken='New-WsmCancellationToken';RequestCancellation='Request-WsmCancellation';GroupPlan='New-WsmConsistencyGroupPlan';GroupReceipt='New-WsmConsistencyGroupReceipt';GroupBarrier='Assert-WsmConsistencyGroupBarrier';RollbackResult='Export-WsmRollbackResult';QualificationKey='Get-WsmQualificationRecordKey';QualificationRecord='New-WsmQualificationRecord';QualificationAdd='Add-WsmQualification';QualificationRevoke='Revoke-WsmQualification';QualificationLookup='Resolve-WsmProductionQualification';QualificationMatrix='Get-WsmQualificationMatrix';SourceTaskTemplate='Export-WsmSourceTaskReconciliationTemplate';SourceResume='Invoke-WsmSourceResume';SpecBundleExport='Export-WsmMigrationSpecBundle';SpecBundlePreview='Get-WsmMigrationSpecBundlePreview';SpecBundleImport='Import-WsmMigrationSpecBundle';RepairWorkspace='Repair-WsmWorkspace';RawEvidence='Export-WsmRawEvidenceManifest';RegisterTarget='Register-WsmTarget';ToolRelease='Export-WsmToolRelease';SourceResult='Export-WsmSourceStageResult';IdentityMap='Set-WsmIdentityMap';ConfigureMigration='Set-WsmMigrationSpec';ApproveMigration='Approve-WsmMigrationPlan';EstimatePackage='Get-WsmPackageEstimate';ExportPackage='Export-WsmMigrationPackage';CheckPackage='Test-WsmMigrationPackage';RestorePreview='Get-WsmRestorePreview';Restore='Invoke-WsmRestore';FreezeSource='Export-WsmFreezeRecord';ValidationEvidence='Set-WsmValidationEvidence';Validate='Invoke-WsmValidation';CutoverPlan='New-WsmCutoverPlan';Cutover='Invoke-WsmCutover';Acceptance='Get-WsmAcceptanceGates';ExportResult='Export-WsmStageResult';Repair='Repair-WsmOperation';RollbackPreview='Get-WsmRollbackPreview';Rollback='Invoke-WsmRollback';CheckJournal='Test-WsmJournal';PackageZip='Export-WsmPackageZip';ImportPackageZip='Import-WsmPackageZip';MigrationReport='Export-WsmOperationReport';ImportApprovedPlan='Import-WsmWizardApprovedPlan';InspectWizardFiles='Export-WsmWizardFileDetails';ExportSourceReviewHandoff='Export-WsmWizardSourceReviewHandoff';ImportSourceReviewHandoff='Import-WsmWizardSourceReviewHandoff'}
+    [ordered]@{NonCTargetHandoffExport='Export-WsmWizardNonCTargetHandoff';NonCTargetHandoffPreview='Get-WsmWizardNonCTargetHandoffPreview';NonCTargetHandoffImport='Import-WsmWizardNonCTargetHandoff';NonCSourceProofExport='Export-WsmWizardNonCSourceProofHandoff';NonCTargetProofExport='Export-WsmWizardNonCTargetProofHandoff';NonCProofPreview='Get-WsmWizardNonCProofHandoffPreview';NonCProofImport='Import-WsmWizardNonCProofHandoff';TargetZipImport='Import-WsmWizardTargetZipPackage';TargetDirectoryImport='Import-WsmWizardTargetDirectoryPackage';BackupImpactPreview='Get-WsmWizardBackupImpactPreview';ComparisonExport='Export-WsmWizardTargetComparison';ComparisonImport='Import-WsmWizardTargetComparison';CreateNonCTransferPlan='New-WsmWizardNonCTransferPlan';CreateTargetDecisionReceipt='Create-WsmWizardTargetDecisionReceipt';ImportNonCResult='Import-WsmWizardNonCResult';ImportNonCTransferPlan='Import-WsmWizardNonCTransferPlan';NonCAccountObservation='Get-WsmWizardNonCAccountObservations';NonCPreparation='Get-WsmWizardNonCPreparation';StartBackup='Invoke-WsmWizardStartBackup';StartNonCTransfer='Invoke-WsmWizardNonCTransfer';TargetAcceptance='Get-WsmWizardTargetAcceptanceGates';TargetActivation='Invoke-WsmWizardTargetActivation';TargetRestore='Invoke-WsmWizardTargetRestore';TargetRestorePreview='Get-WsmWizardTargetRestoreProjection';TargetValidation='Invoke-WsmWizardTargetValidation';WizardRuntimeProjection='Get-WsmWizardRuntimeProjection';BulkPreparationPreview='Get-WsmWizardBulkPreparationPreview';BulkPreparationSave='Save-WsmWizardBulkPreparationReview';ExportTargetHandoff='Export-WsmWizardTargetHandoff';GetTargetHandoffPreview='Get-WsmWizardTargetHandoffPreview';CommitTargetHandoff='Commit-WsmWizardTargetHandoff';GetPreparationReview='Get-WsmWizardPreparationReview';SavePreparationReview='Save-WsmWizardPreparationReview';OsProvidedCapture='Export-WsmAssistiveOsProvidedTaskCapture';OsProvidedBaseline='Export-WsmAssistiveOsProvidedBaseline';OsProvidedReview='Get-WsmAssistiveOsProvidedReview';OsProvidedSubmit='Submit-WsmAssistiveOsProvidedReview';RequirementReview='Get-WsmAssistiveGeneralHostRequirementReview';RequirementDecisionSubmit='Submit-WsmAssistiveGeneralHostRequirementDecisions';PreparationPreview='Get-WsmAssistivePreparationPreview';PreparationEvidence='Export-WsmAssistivePreparationEvidence';WindowsSettingsPreviewExport='Export-WsmAssistiveWindowsSettingsPreview';WindowsSettingsSubmit='Submit-WsmAssistiveWindowsSettingsReview';DispositionSubmit='Submit-WsmAssistiveGeneralHostDispositions';RequirementSubmit='Submit-WsmAssistiveGeneralHostRequirements';HttpIntegrityProbe='Export-WsmAssistiveHttpProbe';SpecReview='Get-WsmAssistiveSpecReview';SaveSpecReview='Submit-WsmAssistiveSpecReview';TargetReceipt='Export-WsmAssistiveTargetDecisionReceipt';AssistiveReport='Export-WsmAssistiveReport';AssistiveReportCheck='Test-WsmAssistiveReport';AssistiveComparison='Get-WsmAssistiveComparison';PublishComparison='Update-WsmAssistiveComparison';TargetSnapshot='Update-WsmAssistiveTargetSnapshot';SetSoftwareVersion='Set-WsmAssistiveSoftwareVersion';FilePlacementPreview='Get-WsmFilePlacementPreview';NonCPeerProof='New-WsmAssistivePeerShareProof';NonCPhysicalProof='New-WsmAssistiveTargetPhysicalProof';NonCPlan='New-WsmAssistiveNonCTransferPlan';NonCTransfer='Invoke-WsmAssistiveNonCTransfer';NonCImport='Import-WsmAssistiveNonCResult';ReservationPreview='Get-WsmAssistiveResourceReservationPreview';ReserveResource='Reserve-WsmAssistiveResource';ResourceEvidence='Set-WsmAssistiveResourceEvidence';ReleaseResource='Release-WsmAssistiveResource';RegisterMaterial='Register-WsmAssistiveMaterialReference';CloseMaterial='Set-WsmAssistiveMaterialClosed';JobLock='Set-WsmAssistiveJobLock';MaterialJobStatus='Export-WsmAssistiveMaterialJobStatus';CleanupPreview='Get-WsmAssistiveCleanupPreview';Cleanup='Invoke-WsmAssistiveCleanup';EnvironmentProbe='Export-WsmAssistiveEnvironmentProbe';ProbeImport='Import-WsmAssistiveEnvironmentProbe';AssistiveEnable='Enable-WsmAssistiveMode';AssistiveSelections='Set-WsmAssistiveSelections';AssistiveTargetDecisionReceipt='New-WsmAssistiveTargetDecisionReceipt';WorkspaceTransferPreview='New-WsmOutputWorkspaceTransferPreview';WorkspaceTransfer='Invoke-WsmOutputWorkspaceTransfer';WorkspaceTransferRestorePreview='New-WsmOutputWorkspaceTransferRestorePreview';WorkspaceTransferRestore='Invoke-WsmOutputWorkspaceTransferRestore';DeliveryDocument='Export-WsmDeliveryDocument';ImportedDeliveryReceipt='Export-WsmImportedDeliveryReceipt';DeliveryReceiptImport='Import-WsmDeliveryReceipt';WindowsSettingsPreview='Get-WsmWindowsSettingsReviewWorkspacePreview';WindowsSettingsApply='Apply-WsmWindowsSettingsReview';QualificationSigningRequest='New-WsmQualificationSigningRequest';QualificationSigningComplete='Complete-WsmQualificationSigningRequest';CheckToolRelease='Test-WsmToolRelease';DeltaDirectory='Export-WsmArtifactDeltaDirectory';DeltaDirectoryImport='Import-WsmArtifactDeltaDirectory';GeneralHostMode='Set-WsmGeneralHostMode';SoftwareAttach='Set-WsmGeneralHostSoftwareCatalog';DispositionPreview='Get-WsmGeneralHostDispositionPreview';DispositionApply='Set-WsmGeneralHostDispositions';RequirementPreview='Get-WsmGeneralHostRequirementPreview';RequirementApply='Set-WsmGeneralHostRequirements';GeneralHostEvidence='Import-WsmGeneralHostEvidence';SoftwareEvidence='Export-WsmSoftwareCatalogEvidence';OutputInitialize='Initialize-WsmOutputWorkspace';OutputResolve='Resolve-WsmOutputWorkspace';OutputRegisterPair='Register-WsmOutputPair';OutputConfirmState='Confirm-WsmOutputOperationState';OutputPreferences='Set-WsmOutputPreferences';EnrolledInventory='Export-WsmEnrolledInventory';EnrolledDelivery='Export-WsmEnrolledPackageDelivery';DirectoryDelivery='Export-WsmDirectoryDelivery';DirectoryImport='Import-WsmDirectoryDelivery';OracleBindingTemplate='Export-WsmOracleConsumerBindingTemplate';OracleConfigDraft='Get-WsmOracleClientConfigDraft';EnvironmentConfirmation='Export-WsmEnvironmentConfirmation';DeltaVolumes='Export-WsmArtifactDeltaVolumes';DeltaVolumeImport='Import-WsmArtifactDeltaVolumes';LabReport='Export-WsmLabValidationReport';ConfigReview='Export-WsmConfigArtifactReview';ConfigScopeDraft='Export-WsmConfigArtifactScopeDraft';DeltaManifest='New-WsmArtifactDeltaManifest';DeltaCheck='Test-WsmArtifactDeltaManifest';DeltaZip='Export-WsmArtifactDeltaZip';DeltaImport='Import-WsmArtifactDeltaZip';DeltaRestore='Invoke-WsmArtifactDeltaRestore';DeltaRepair='Repair-WsmArtifactDeltaRestore';CancellationToken='New-WsmCancellationToken';RequestCancellation='Request-WsmCancellation';GroupPlan='New-WsmConsistencyGroupPlan';GroupReceipt='New-WsmConsistencyGroupReceipt';GroupBarrier='Assert-WsmConsistencyGroupBarrier';RollbackResult='Export-WsmRollbackResult';QualificationKey='Get-WsmQualificationRecordKey';QualificationRecord='New-WsmQualificationRecord';QualificationAdd='Add-WsmQualification';QualificationRevoke='Revoke-WsmQualification';QualificationLookup='Resolve-WsmProductionQualification';QualificationMatrix='Get-WsmQualificationMatrix';SourceTaskTemplate='Export-WsmSourceTaskReconciliationTemplate';SourceResume='Invoke-WsmSourceResume';SpecBundleExport='Export-WsmMigrationSpecBundle';SpecBundlePreview='Get-WsmMigrationSpecBundlePreview';SpecBundleImport='Import-WsmMigrationSpecBundle';RepairWorkspace='Repair-WsmWorkspace';RawEvidence='Export-WsmRawEvidenceManifest';RegisterTarget='Register-WsmTarget';ToolRelease='Export-WsmToolRelease';SourceResult='Export-WsmSourceStageResult';IdentityMap='Set-WsmIdentityMap';ConfigureMigration='Set-WsmMigrationSpec';ApproveMigration='Approve-WsmMigrationPlan';EstimatePackage='Get-WsmPackageEstimate';ExportPackage='Export-WsmMigrationPackage';CheckPackage='Test-WsmMigrationPackage';RestorePreview='Get-WsmRestorePreview';Restore='Invoke-WsmRestore';FreezeSource='Export-WsmFreezeRecord';ValidationEvidence='Set-WsmValidationEvidence';Validate='Invoke-WsmValidation';CutoverPlan='New-WsmCutoverPlan';Cutover='Invoke-WsmCutover';Acceptance='Get-WsmAcceptanceGates';ExportResult='Export-WsmStageResult';Repair='Repair-WsmOperation';RollbackPreview='Get-WsmRollbackPreview';Rollback='Invoke-WsmRollback';CheckJournal='Test-WsmJournal';PackageZip='Export-WsmPackageZip';ImportPackageZip='Import-WsmPackageZip';MigrationReport='Export-WsmOperationReport';ImportApprovedPlan='Import-WsmWizardApprovedPlan';InspectWizardFiles='Export-WsmWizardFileDetails';ExportSourceReviewHandoff='Export-WsmWizardSourceReviewHandoff';ImportSourceReviewHandoff='Import-WsmWizardSourceReviewHandoff'}
 }
 function Invoke-WsmOperationRequest {
     [CmdletBinding(SupportsShouldProcess)]param([string]$Path,[string]$ExpectedHash,[hashtable]$Secrets=@{})
@@ -17,7 +17,7 @@ function Invoke-WsmOperationRequest {
 }
 function Get-WsmOperationStatusCode($Result) {
     $code=0
-    $knownStates=@('Export','Retirement','PostCutoverValidation','Activated','Previewed','EvidenceRecorded','ObservedMatches','AddingTemporaryDeny','Applied','Blocked','BlockedByOpenHandles','BlockedConflict','BudgetExceeded','Cancelled','Captured','CloseCommandSucceeded','CloseFailed','CloseFailedObservedGone','CloseFailedStillOpen','CloseIntent','ClosingReviewedHandles','Completed','CoverageGap','Cutover','DeferredSoftware','Draft','Exporting','External','ExternalProductWorkflowRequired','ExternalRequired','FAIL','Failed','Frozen','Generated','ImportedVerified','IndexValidationFailed','Intent','Interrupted','Inventory','Manual','ManualEvidenceRequired','Mapped','Migrated','NeedsOwnerReview','NetworkApplied','NoApproval','NoChange','NoReceipt','NotAvailable','NotFound','NotInstalled','NotLoaded','NotObserved','NotSearched','NotStarted','NotTested','NotApplicable','NotRun','NotNeeded','OwnerAttestedStaticOnly','OwnerReviewRequired','PASS','Partial','Pending','PermissionDenied','PostCutoverValidationRequired','PreCutoverValidation','Prepared','ProjectionHashVerified','ProviderVersionSpecificBehaviorRequiresOwnerObservation','Quiesced','Quiescing','Read','ReadStaticConfigOnly','Ready','RebootRequired','RecoveredApplied','RecoveredPriorReadback','RenameRebootRequired','ReportLocatorOnly','ReportOnly','RequiresReview','Restored','RestoredPriorValue','Restore','ReviewRequired','RetryPending','RollbackEvidenceComplete','RollbackRunning','RolledBack','Running','Sealed','Skipped','SourceResumed','Succeeded','SucceededWithWarnings','Success','Unknown','Unavailable','Unmapped','UnresolvedPath','Unsupported','Verified','VerifiedTrustedBase','WaitForInstall','WaitForOwner','None')
+    $knownStates=@('Delivered','Exported','ReadyForExplicitCommit','ReadyForExplicitBulkReview','Export','Retirement','PostCutoverValidation','Activated','Previewed','EvidenceRecorded','ObservedMatches','AddingTemporaryDeny','Applied','Blocked','BlockedByOpenHandles','BlockedConflict','BudgetExceeded','Cancelled','Captured','CloseCommandSucceeded','CloseFailed','CloseFailedObservedGone','CloseFailedStillOpen','CloseIntent','ClosingReviewedHandles','Completed','CoverageGap','Cutover','DeferredSoftware','Draft','Exporting','External','ExternalProductWorkflowRequired','ExternalRequired','FAIL','Failed','Frozen','Generated','ImportedVerified','IndexValidationFailed','Intent','Interrupted','Inventory','Manual','ManualEvidenceRequired','Mapped','Migrated','NeedsOwnerReview','NetworkApplied','NoApproval','NoChange','NoReceipt','NotAvailable','NotFound','NotInstalled','NotLoaded','NotObserved','NotSearched','NotStarted','NotTested','NotApplicable','NotRun','NotNeeded','OwnerAttestedStaticOnly','OwnerReviewRequired','PASS','Partial','Pending','PermissionDenied','PostCutoverValidationRequired','PreCutoverValidation','Prepared','ProjectionHashVerified','ProviderVersionSpecificBehaviorRequiresOwnerObservation','Quiesced','Quiescing','Read','ReadStaticConfigOnly','Ready','RebootRequired','RecoveredApplied','RecoveredPriorReadback','RenameRebootRequired','ReportLocatorOnly','ReportOnly','RequiresReview','Restored','RestoredPriorValue','Restore','ReviewRequired','RetryPending','RollbackEvidenceComplete','RollbackRunning','RolledBack','Running','Sealed','Skipped','SourceResumed','Succeeded','SucceededWithWarnings','Success','Unknown','Unavailable','Unmapped','UnresolvedPath','Unsupported','Verified','VerifiedTrustedBase','WaitForInstall','WaitForOwner','None')
     foreach($r in @($Result)){
         if($null -eq $r){continue}
         $states=@();foreach($field in @('Stage','Status')){if($r.PSObject.Properties[$field]){$states+=@([string]$r.$field)}}
@@ -46,6 +46,9 @@ function Get-WsmTextMetadataValue($Metadata,[string]$Name,$Default=$null) {
     $Default
 }
 function Get-WsmTextActionGroup([string]$Action) {
+    if($Action -in @('NonCSourceProofExport','BackupImpactPreview','StartBackup','ImportNonCTransferPlan','StartNonCTransfer')){return 'Source'}
+    if($Action -in @('NonCTargetHandoffExport','NonCProofPreview','NonCProofImport','NonCPreparation','NonCAccountObservation','CreateNonCTransferPlan','ImportNonCResult','ComparisonExport')){return 'Manager'}
+    if($Action -in @('NonCTargetProofExport','NonCTargetHandoffPreview','NonCTargetHandoffImport','TargetZipImport','TargetDirectoryImport','ComparisonImport','CreateTargetDecisionReceipt','TargetRestorePreview','TargetRestore','TargetValidation','TargetAcceptance','TargetActivation')){return 'Target'}
     if($Action -ceq 'ExportSourceReviewHandoff'){return 'Source'}
     if($Action -ceq 'ImportSourceReviewHandoff'){return 'Manager'}
     if($Action -eq 'ExportTargetHandoff'){return 'Target'}
@@ -143,24 +146,197 @@ function Get-WsmTextCurrentRevision([string]$Name,[string]$Workspace,[string]$Pa
     try{$catalog=Get-WsmCatalog $Workspace $PairId;switch($Name){'ExpectedAssistiveRevision' {return [int]$catalog.Assistive.Revision};'ExpectedSelectionRevision' {return [int]$catalog.Assistive.Selections.Revision};'ExpectedDecisionRevision' {return [int]$catalog.DecisionRevision};'DecisionRevision' {if($CommandName -ceq 'Export-WsmAssistiveOsProvidedTaskCapture'){return [int]$catalog.DecisionRevision};return $null};'ExpectedRevision' {if($CommandName -in @('Reserve-WsmAssistiveResource','Set-WsmAssistiveResourceEvidence','Release-WsmAssistiveResource','Set-WsmAssistiveMaterialClosed','Invoke-WsmAssistiveCleanup')){return $null};if($CommandName -in @('Set-WsmHtmlSelections','Set-WsmHtmlRestoreDecision','Set-WsmAssistiveSelections','Update-WsmAssistiveTargetSnapshot','Update-WsmAssistiveComparison','Set-WsmAssistiveSoftwareVersion')){return [int]$catalog.Assistive.Revision};return [int]$catalog.DecisionRevision};default {return $null}}}catch{return $null}
 }
 function Test-WsmTextApplyConfirmation([string]$Value) {return ($Value -ceq 'APPLY')}
+function Get-WsmWorkerFailureStatus($Failure) {
+    $current=$Failure
+    for($depth=0;$depth -lt 8 -and $current;$depth++){
+        if($current -is [System.Management.Automation.ErrorRecord]){$current=$current.Exception;continue}
+        if($current -is [OperationCanceledException] -and $current.Data -and $current.Data['CancellationRequested'] -is [bool] -and $current.Data['CancellationRequested']){return 'Cancelled'}
+        if($current -is [Exception] -and $current.InnerException){$current=$current.InnerException;continue}
+        break
+    }
+    'Failed'
+}
+function Get-WsmTextWizardActions {
+    @('BackupImpactPreview','StartBackup','NonCSourceProofExport','StartNonCTransfer','ImportApprovedPlan','ExportSourceReviewHandoff','ImportSourceReviewHandoff','ExportTargetHandoff','GetTargetHandoffPreview','CommitTargetHandoff','BulkPreparationPreview','BulkPreparationSave','TargetZipImport','TargetDirectoryImport','ComparisonExport','ComparisonImport','TargetReceipt','CreateTargetDecisionReceipt','TargetRestorePreview','TargetRestore','TargetValidation','TargetAcceptance','TargetActivation','NonCTargetProofExport','NonCTargetHandoffExport','NonCTargetHandoffPreview','NonCTargetHandoffImport','NonCProofPreview','NonCProofImport','CreateNonCTransferPlan','ImportNonCResult','NonCAccountObservation','NonCPreparation','WizardRuntimeProjection','TargetSnapshot','AssistiveComparison','PublishComparison','SetSoftwareVersion','AssistiveEnable','AssistiveSelections')
+}
+function Get-WsmTextDeveloperProbeJobs([string]$Workspace,[string]$Role) {
+    @(Get-WsmTextWizardJobs $Workspace '' $Role | Where-Object {$_.action -ceq 'DeveloperProbe'})
+}
+function Resolve-WsmTextDeveloperProbeJob([string]$Workspace,[string]$Role,[string]$JobId) {
+    Assert-WsmId $JobId
+    $jobs=@(Get-WsmTextDeveloperProbeJobs $Workspace $Role)
+    $matches=@($jobs|Where-Object {$_.jobId -ceq $JobId})
+    if($matches.Count -ne 1){throw 'Developer probe job was not found for this workspace and role.'}
+    $job=$matches[0]
+    if($job.status -in @('Running','CancelRequested')){
+        $guard=$null
+        try{$guard=Enter-WsmWorkspaceWorkerGuard -Workspace $Workspace -OperationId $JobId -Role $Role -Action 'DeveloperProbe'}
+        catch{
+            if(-not ($_.Exception.Data -and $_.Exception.Data['WsmWorkspaceWorkerBusy'] -eq $true)){throw}
+            $token=New-WsmDeveloperProbeCancellationToken -Workspace $Workspace -OperationId $JobId
+            $request=Request-WsmDeveloperProbeCancellation -CancellationToken $token
+            return [pscustomobject]@{Status='CancelRequested';Executed=$false;Action='DeveloperProbe';Job=$job;CancellationRequestedUtc=[string]$request.RequestedUtc}
+        }
+        try{
+            Assert-WsmWorkspaceWorkerGuard $guard $Workspace 'DeveloperProbe'
+            $jobs=@(Recover-WsmTextWizardJobs $Workspace '' $Role $guard)
+            $job=@($jobs|Where-Object {$_.jobId -ceq $JobId})|Select-Object -First 1
+            if(-not $job){throw 'Developer probe job disappeared during guarded recovery.'}
+        }finally{if($guard){Exit-WsmWorkspaceWorkerGuard $guard}}
+    }
+    [pscustomobject]@{Status='Reconnected';Executed=$false;Action='DeveloperProbe';Job=$job}
+}
+function Enter-WsmWorkspaceWorkerGuard {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[string]$OperationId,[string]$Role,[string]$PairId,[string]$Action)
+    $workspaceRoot=[IO.Path]::GetFullPath($Workspace)
+    if(-not [IO.Directory]::Exists($workspaceRoot)){throw 'Workspace worker guard requires an initialized workspace directory.'}
+    Assert-WsmNoReparse $workspaceRoot
+    $lane=if($Action -ceq 'DeveloperProbe'){'DeveloperProbe'}else{'Migration'}
+    $lockName=if($lane -ceq 'DeveloperProbe'){'console-probe-worker.lock'}else{'console-worker.lock'}
+    $path=Join-Path $workspaceRoot $lockName;Assert-WsmNoReparse $path
+    if($OperationId){Assert-WsmId $OperationId}
+    $stream=$null
+    try{$stream=[IO.File]::Open($path,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)}catch [IO.IOException]{$busy=New-Object InvalidOperationException('WorkspaceWorkerBusy: another console worker or recovery currently owns this workspace. Wait for it to finish, then retry.',$_.Exception);$busy.Data['WsmWorkspaceWorkerBusy']=$true;throw $busy}
+    try{
+        $metadata=[ordered]@{ProcessId=$PID;StartedUtc=(Get-WsmUtc);OperationId=$OperationId;Role=$Role;PairId=$PairId;Action=$Action}|ConvertTo-Json -Depth 4 -Compress
+        $bytes=(New-Object Text.UTF8Encoding($false)).GetBytes($metadata);$stream.SetLength(0);$stream.Position=0;$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)
+        [pscustomobject]@{Path=$path;Workspace=$workspaceRoot;Lane=$lane;Stream=$stream;ProcessId=$PID;OperationId=$OperationId;Role=$Role;PairId=$PairId;Action=$Action}
+    }catch{$stream.Dispose();throw}
+}
+function Exit-WsmWorkspaceWorkerGuard {
+    [CmdletBinding()]param([Parameter(Mandatory)]$Guard)
+    if(-not $Guard.PSObject.Properties['Stream'] -or -not $Guard.PSObject.Properties['Workspace']){throw 'Invalid workspace worker guard handle.'}
+    if($Guard.Stream -and -not $Guard.Stream.SafeFileHandle.IsClosed){$Guard.Stream.Dispose()}
+}
+function Assert-WsmWorkspaceWorkerGuard($Guard,[string]$Workspace,[string]$ExpectedLane) {
+    if(-not $Guard -or -not $Guard.PSObject.Properties['Stream'] -or -not $Guard.PSObject.Properties['Workspace'] -or -not $Guard.PSObject.Properties['Lane'] -or -not $Guard.Stream -or $Guard.Stream.SafeFileHandle.IsClosed){throw 'A live workspace worker guard is required for durable job recovery.'}
+    if([IO.Path]::GetFullPath([string]$Guard.Workspace) -ine [IO.Path]::GetFullPath($Workspace)){throw 'Workspace worker guard does not belong to the requested workspace.'}
+    if($ExpectedLane -and [string]$Guard.Lane -cne $ExpectedLane){throw 'Workspace worker guard does not own the required worker lane.'}
+}
+function Recover-WsmTextWizardJobs([string]$Workspace,[string]$PairId,[string]$Role,$Guard) {
+    Assert-WsmWorkspaceWorkerGuard $Guard $Workspace
+    $records=@(Get-WsmTextWizardJobs $Workspace $PairId $Role)
+    foreach($job in $records){
+        if($job.status -notin @('Running','CancelRequested')){continue}
+        $recordPath=Join-Path (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'console-jobs') ($job.jobId+'.json');Assert-WsmNoReparse $recordPath
+        $record=Read-WsmJson $recordPath
+        if([string]$record.jobId -cne [string]$job.jobId -or [string]$record.workspace -ine [IO.Path]::GetFullPath($Workspace) -or [string]$record.role -cne $Role -or [string]$record.pairId -cne $PairId){throw 'A durable wizard job changed identity during guarded recovery.'}
+        if($record.status -notin @('Running','CancelRequested')){continue}
+        $record.status='Interrupted';$record.CompletedUtc=Get-WsmUtc;$record|Add-Member NoteProperty canCancel $false -Force
+        $recovered=@()
+        if(Get-Command Get-WsmHtmlWizardTerminalOutput -ErrorAction SilentlyContinue){try{$recovered=@(Get-WsmHtmlWizardTerminalOutput $record $records|Where-Object {$null -ne $_})}catch{$recovered=@()}}
+        $record.outputs=@(Get-WsmHtmlResultProjection $recovered)
+        Write-WsmJson $recordPath $record
+        $job.status='Interrupted';$job.CompletedUtc=[string]$record.CompletedUtc;$job.outputs=@($record.outputs)
+    }
+    @($records)
+}
+function Get-WsmTextWizardJobs([string]$Workspace,[string]$PairId,[string]$Role) {
+    $root=[IO.Path]::GetFullPath((Join-Path $Workspace 'console-jobs'))
+    if(-not [IO.Directory]::Exists($root)){return @()}
+    Assert-WsmNoReparse $root
+    $workspaceRoot=[IO.Path]::GetFullPath($Workspace)
+    $knownStatuses=@('Running','CancelRequested','Interrupted','Succeeded','ReviewRequired','Failed','Cancelled','Blocked','Deferred','Completed','Saved')
+    $result=New-Object 'System.Collections.Generic.List[object]'
+    foreach($file in @(Get-ChildItem -LiteralPath $root -Filter '*.json' -File)){
+        Assert-WsmNoReparse $file.FullName
+        if($file.Length -gt 16777216){throw 'A local console job record exceeds its supported size; inspect the protected history before continuing.'}
+        $record=Read-WsmJson $file.FullName
+        if(-not $record -or -not $record.PSObject.Properties['jobId']){throw 'A local console job record has no operation identity; inspect the protected history before continuing.'}
+        $jobId=[string]$record.jobId;Assert-WsmId $jobId
+        if([IO.Path]::GetFileNameWithoutExtension($file.Name) -cne $jobId){throw 'A local console job filename does not match its recorded operation identity.'}
+        if($record.PSObject.Properties['operationId'] -and [string]$record.operationId -cne $jobId){throw 'A local console job operation identifier does not match its durable record identity.'}
+        if(-not $record.PSObject.Properties['workspace'] -or -not $record.workspace){continue}
+        try{if([IO.Path]::GetFullPath([string]$record.workspace) -ine $workspaceRoot){continue}}catch{throw 'A local console job has an invalid workspace binding.'}
+        if([string]$record.role -cne $Role -or [string]$record.pairId -cne $PairId){continue}
+        if(-not $record.PSObject.Properties['action'] -or (([string]$record.action -cne 'DeveloperProbe') -and -not (Get-WsmOperationActions).Contains([string]$record.action)) -or [string]$record.status -notin $knownStatuses){throw 'A matching local console job record has an invalid action or status.'}
+        $status=[string]$record.status
+        $outputs=@();if($record.PSObject.Properties['outputs']){
+            $rawOutputs=@($record.outputs);$outputs=@(Get-WsmHtmlResultProjection $rawOutputs)
+            for($i=0;$i -lt [Math]::Min($rawOutputs.Count,$outputs.Count);$i++){
+                if($rawOutputs[$i] -and $rawOutputs[$i].PSObject.Properties['SafeProjectedItemResults'] -and $rawOutputs[$i].SafeProjectedItemResults -is [bool] -and $rawOutputs[$i].SafeProjectedItemResults -and $rawOutputs[$i].PSObject.Properties['ItemResultsHash'] -and [string]$rawOutputs[$i].ItemResultsHash -match '^[a-fA-F0-9]{64}$'){
+                    $outputs[$i]|Add-Member NoteProperty SafeProjectedItemResults $true -Force
+                    $outputs[$i]|Add-Member NoteProperty ItemResultsHash ([string]$rawOutputs[$i].ItemResultsHash) -Force
+                }
+            }
+        }
+        $result.Add([pscustomobject][ordered]@{jobId=$jobId;action=[string]$record.action;status=$status;role=$Role;pairId=$PairId;workspace=$workspaceRoot;CompletedUtc=$(if($record.PSObject.Properties['CompletedUtc']){[string]$record.CompletedUtc}elseif($record.PSObject.Properties['completedUtc']){[string]$record.completedUtc}else{''});outputs=$outputs})
+    }
+    @($result.ToArray())
+}
+function Get-WsmTextJobStatus($Result) {
+    $code=Get-WsmOperationStatusCode $Result
+    if($code -eq 3){return 'Cancelled'}
+    if($code -eq 1){return 'Failed'}
+    if($code -eq 2){return 'ReviewRequired'}
+    'Succeeded'
+}
+function Get-WsmTextWizardTerminalOutputs($Record,[object[]]$Jobs) {
+    $recovered=@()
+    if(Get-Command Get-WsmHtmlWizardTerminalOutput -ErrorAction SilentlyContinue){try{$recovered=@(Get-WsmHtmlWizardTerminalOutput $Record $Jobs|Where-Object {$null -ne $_})}catch{$recovered=@()}}
+    @(Get-WsmHtmlResultProjection $recovered)
+}
+function Write-WsmTextJobRecord([string]$Workspace,$Record) {
+    $root=Join-Path ([IO.Path]::GetFullPath($Workspace)) 'console-jobs'
+    if(-not [IO.Directory]::Exists($root)){[void][IO.Directory]::CreateDirectory($root);Protect-WsmDirectory $root}
+    Assert-WsmNoReparse $root
+    $path=Join-Path $root ([string]$Record.jobId+'.json');Assert-WsmNoReparse $path
+    if([IO.File]::Exists($path)){throw 'This operation identifier already has a durable record; inspect it and create a new explicit operation instead of retrying.'}
+    Write-WsmJson $path $Record
+    $path
+}
 function Invoke-WsmTypedTextOperation {
     [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[scriptblock]$PromptReader)
     if(-not (Get-Command Get-WsmHtmlActionMetadata -ErrorAction SilentlyContinue)){throw 'Typed forms are unavailable; load the installed HTML schema helpers first.'}
     $roles=@('Source','Target','Manager');for($i=0;$i -lt $roles.Count;$i++){Write-Host ('{0}. {1}' -f ($i+1),$roles[$i])};$roleAnswer=Read-WsmTextEntry '選擇操作情境角色（只供上下文與指引，不代表授權）' $PromptReader;$roleIndex=0
     if(-not [int]::TryParse($roleAnswer,[ref]$roleIndex) -or $roleIndex -lt 1 -or $roleIndex -gt $roles.Count){throw 'Choose Source, Target, or Manager.'};$role=$roles[$roleIndex-1]
-    $fleet=Get-WsmFleet $Workspace;$pairs=@($fleet.Pairs);$pairId=''
+    $pairs=New-Object 'System.Collections.Generic.List[object]';$seenPairIds=@{};$fleetPath=Join-Path ([IO.Path]::GetFullPath($Workspace)) 'fleet.json'
+    if([IO.File]::Exists($fleetPath)){$fleet=Get-WsmFleet $Workspace;foreach($fleetPair in @($fleet.Pairs)){if($fleetPair -and $fleetPair.PairId -and -not $seenPairIds.ContainsKey([string]$fleetPair.PairId)){$seenPairIds[[string]$fleetPair.PairId]=$true;$pairs.Add($fleetPair)}}}
+    elseif($role -ceq 'Manager'){[void](Get-WsmFleet $Workspace)}
+    if($role -in @('Source','Target')){$enrolled=Read-WsmOutputProfile $Workspace;if($enrolled -and [string]$enrolled.Role -ceq $role){foreach($receivedPair in @(Get-WsmWizardReceivedPlanChoices $Workspace $enrolled)){if($receivedPair -and $receivedPair.pairId -and -not $seenPairIds.ContainsKey([string]$receivedPair.pairId)){$seenPairIds[[string]$receivedPair.pairId]=$true;$pairs.Add([pscustomobject]@{PairId=[string]$receivedPair.pairId;TargetName=[string]$receivedPair.targetName})}}}}
+    $pairs=@($pairs.ToArray());$pairId=''
     if($pairs.Count){Write-Host '可用配對：';for($i=0;$i -lt $pairs.Count;$i++){Write-Host ('{0}. {1} — {2}' -f ($i+1),$pairs[$i].PairId,$pairs[$i].TargetName)};$pairAnswer=Read-WsmTextEntry '選配對編號（Enter 使用不指定配對的本機操作）' $PromptReader;if($pairAnswer){$pairIndex=0;if(-not [int]::TryParse($pairAnswer,[ref]$pairIndex) -or $pairIndex -lt 1 -or $pairIndex -gt $pairs.Count){throw 'Invalid pair selection.'};$pairId=[string]$pairs[$pairIndex-1].PairId}}
     $pairLabel='未指定';if($pairId){$pairLabel=$pairId};Write-Host ('Core context：Workspace='+[IO.Path]::GetFullPath($Workspace)+'；操作情境角色='+$role+'；PairId='+$pairLabel)
     $metadata=@(Get-WsmHtmlActionMetadata -Role $role);$map=Get-WsmHtmlActionMap
     foreach($group in @('Source','Manager','Target')){Write-Host ('['+$(switch($group){Source{'來源端'}Manager{'管理端'}Target{'目標端'}})+']');$rows=@($metadata | Where-Object {(Get-WsmTextActionGroup ([string]$_.action)) -ceq $group});foreach($row in $rows){Write-Host ('  '+$row.action+' — '+(Get-WsmTextActionLabel ([string]$row.action)) )}}
     $action=Read-WsmTextEntry '輸入完整操作識別碼（0 取消）' $PromptReader;if($action -eq '0'){return [pscustomobject]@{Status='Cancelled';Executed=$false}}
     $entry=$metadata | Where-Object {$_.action -ceq $action} | Select-Object -First 1;if(-not $entry -or -not $map.Contains($action)){throw 'Unknown operation for this installed module.'}
+    if($action -ceq 'DeveloperProbe'){
+        $probeJobs=@(Get-WsmTextDeveloperProbeJobs $Workspace $role)
+        if($probeJobs.Count){foreach($probeJob in @($probeJobs|Sort-Object CompletedUtc -Descending|Select-Object -First 8)){Write-Host ('既有探測：'+$probeJob.jobId+' · '+$probeJob.status)};$probeChoice=Read-WsmTextEntry '輸入既有探測工作識別碼以查詢／取消；Enter 開始新探測' $PromptReader;if(-not [string]::IsNullOrWhiteSpace($probeChoice)){return Resolve-WsmTextDeveloperProbeJob $Workspace $role $probeChoice}}
+    }
     Write-Host ("`n操作指引："+(Get-WsmTextActionGuidance $action))
-    $command=Get-Command $map[$action] -CommandType Function;$raw=[ordered]@{};$secretValues=@{};$credentialValues=@{}
+    $command=Get-Command $map[$action] -CommandType Function;$raw=[ordered]@{};$secretValues=@{};$credentialValues=@{};$wizardAction=($action -in @(Get-WsmTextWizardActions));$durableJobAction=($wizardAction -or $action -ceq 'DeveloperProbe');$jobHistory=@();$jobRecord=$null;$jobPath='';$workerGuard=$null;$readOnlyResultCaptured=$false
     try {
+        if($wizardAction){
+            $profile=Read-WsmOutputProfile $Workspace
+            if(-not $profile -or [string]$profile.Role -cne $role){throw 'The selected operation role must match the currently enrolled workspace role.'}
+            if(-not $entry.roleAvailable){throw 'The selected operation is unavailable for this enrolled role.'}
+            if(-not $pairId -and $command.Parameters.ContainsKey('PairId') -and @($command.Parameters.PairId.Attributes|Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.Mandatory}).Count){throw 'Choose the current pair before starting this wizard operation.'}
+            if($pairId){$jobHistory=@(Get-WsmTextWizardJobs $Workspace $pairId $role)}
+        }elseif($action -ceq 'DeveloperProbe'){
+            if(-not $entry.roleAvailable){throw 'The selected developer probe is unavailable for this role.'}
+            $jobHistory=@(Get-WsmTextDeveloperProbeJobs $Workspace $role)
+        }
+        $trustedDefaultNames=@(switch($action){
+            'NonCTargetProofExport'{'StateDirectory';break}
+            'NonCTargetHandoffExport'{'ManifestHash','TransferPlanHash';break}
+            default{@()}
+        })
+        if($wizardAction -and $trustedDefaultNames.Count -and (Get-Command Get-WsmWizardNonCActionDefaults -ErrorAction SilentlyContinue)){
+            $defaults=Get-WsmWizardNonCActionDefaults -Workspace $Workspace -PairId $pairId -Role $role -Action $action -Jobs $jobHistory
+            if($defaults -and [string]$defaults.action -ceq $action -and [string]$defaults.requiredRole -ceq $role -and $defaults.roleAvailable -eq $true -and $defaults.args){
+                foreach($name in $trustedDefaultNames){
+                    if(-not $command.Parameters.ContainsKey($name)){continue}
+                    $property=$defaults.args.PSObject.Properties[$name]
+                    if($property -and $null -ne $property.Value -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)){$raw[$name]=$property.Value}
+                }
+            }
+        }
         foreach($parameter in @($entry.parameters)){
             if($parameter.name -in @('Workspace','PairId','Role','Secrets')){continue}
             if(-not $command.Parameters.ContainsKey($parameter.name)){continue}
+            if($raw.Contains($parameter.name)){Write-Host ($parameter.name+'：採用目前工作區核對的值；沒有要求重新輸入。');continue}
             $value=$null
             if($parameter.name -match '^(Expected.*Revision|DecisionRevision)$'){$value=Get-WsmTextCurrentRevision $parameter.name $Workspace $pairId $command.Name}
             if($null -ne $value){Write-Host ($parameter.name+'：目前核心 revision '+$value+'；按 Enter 採用，或輸入其他 revision。');$answer=Read-WsmTextEntry 'revision' $PromptReader;if($answer){$number=0;if(-not [int]::TryParse($answer,[Globalization.NumberStyles]::Integer,[Globalization.CultureInfo]::InvariantCulture,[ref]$number)){throw ('Invalid integer: '+$parameter.name)};$value=$number}else{$value=[int]$value}}
@@ -182,6 +358,7 @@ function Invoke-WsmTypedTextOperation {
         foreach($binding in @(@('Workspace',$Workspace),@('PairId',$pairId),@('Role',$role))){if($command.Parameters.ContainsKey($binding[0]) -and -not $raw.Contains($binding[0]) -and $binding[1]){$raw[$binding[0]]=$binding[1]}}
         $arguments=ConvertTo-WsmHtmlArguments $command ([pscustomobject]$raw)
         $operationId=[Guid]::NewGuid().ToString('D')
+        if($wizardAction -and $command.Parameters.ContainsKey('Jobs')){$arguments.Jobs=@($jobHistory)}
         if($command.Parameters.ContainsKey('OperationId')){$arguments.OperationId=$operationId;Write-Host ('本次工作識別碼：'+$operationId+'；保留此識別碼以查核中斷或未知寫入，不會自動重送。')}
         foreach($name in $credentialValues.Keys){$arguments[$name]=$credentialValues[$name]}
         foreach($binding in @(@('Workspace',$Workspace),@('PairId',$pairId),@('Role',$role))){if($command.Parameters.ContainsKey($binding[0]) -and -not $arguments.ContainsKey($binding[0]) -and $binding[1]){$arguments[$binding[0]]=$binding[1]}}
@@ -189,7 +366,7 @@ function Invoke-WsmTypedTextOperation {
         foreach($parameter in $command.Parameters.Values){$mandatory=@($parameter.Attributes | Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.Mandatory}).Count -gt 0;if($mandatory -and $parameter.Name -cne 'CancellationToken' -and -not $arguments.ContainsKey($parameter.Name)){throw ('Required parameter missing; interactive prompts are disabled in command execution: '+$parameter.Name)}}
         $revision=Get-WsmHtmlRevision $Workspace $pairId;$previewAction=$entry.previewAction;$preview=$null;$previewKind='ParametersOnly'
         if($previewAction -and $map.Contains($previewAction)){$previewCommand=Get-Command $map[$previewAction] -CommandType Function;$previewArgs=@{};foreach($key in $arguments.Keys){if($previewCommand.Parameters.ContainsKey($key)){$previewArgs[$key]=$arguments[$key]}};$preview=& $previewCommand @previewArgs;$previewKind='ResourcePreview'}
-        elseif($entry.readOnly){$preview=& $command @arguments;$previewKind='ResourcePreview'}
+        elseif($entry.readOnly){$preview=& $command @arguments;$previewKind='ResourcePreview';$readOnlyResultCaptured=$true}
         elseif($command.Parameters.ContainsKey('WhatIf')){$whatIfArgs=@{};foreach($key in $arguments.Keys){$whatIfArgs[$key]=$arguments[$key]};$whatIfArgs.WhatIf=$true;$preview=& $command @whatIfArgs;$previewKind='WhatIf'}
         $safePreview=ConvertTo-WsmHtmlPreview $preview $action $revision $previewKind
         Write-Host ("`n預覽："+$safePreview.summary)
@@ -200,12 +377,42 @@ function Invoke-WsmTypedTextOperation {
         $confirmation=Read-WsmTextEntry '若已逐項檢查並決定提交，請輸入大寫 APPLY；其他輸入取消' $PromptReader
         if(-not (Test-WsmTextApplyConfirmation $confirmation)){return [pscustomobject]@{Status='Cancelled';Executed=$false;Preview=$safePreview}}
         if($command.Parameters.ContainsKey('Confirm')){$arguments.Confirm=$false}
-        if($command.Parameters.ContainsKey('CancellationToken') -and (Get-Command New-WsmHtmlCancellation -ErrorAction SilentlyContinue)){$token=New-WsmHtmlCancellation $command $arguments $operationId;if($token){$arguments.CancellationToken=$token;Write-Host ('核心取消權杖已綁定。工作識別碼：'+$operationId+'；如需停止，請在另一個管理程序對同一工作上下文提出取消。')}else{Write-Host '本次參數沒有建立可用取消權杖；命令執行期間不可由此文字選單取消。'}}
-        $result=& $command @arguments
+        if($durableJobAction){
+            $workerGuard=Enter-WsmWorkspaceWorkerGuard -Workspace $Workspace -OperationId $operationId -Role $role -PairId $(if($action -ceq 'DeveloperProbe'){''}else{$pairId}) -Action $action
+            if($action -ceq 'DeveloperProbe'){$jobHistory=@(Recover-WsmTextWizardJobs $Workspace '' $role $workerGuard);$probeCancellation=New-WsmDeveloperProbeCancellationToken -Workspace $Workspace -OperationId $operationId;$arguments.CancellationToken=$probeCancellation;Write-Host ('本次開發者探測工作識別碼：'+$operationId+'；另一個 CLI 可用相同識別碼查詢或要求取消。')}
+            elseif($pairId){$jobHistory=@(Recover-WsmTextWizardJobs $Workspace $pairId $role $workerGuard);if($command.Parameters.ContainsKey('Jobs')){$arguments.Jobs=@($jobHistory)}}
+            $jobRecord=[pscustomobject][ordered]@{jobId=$operationId;operationId=$operationId;action=$action;status='Running';role=$role;workspace=[IO.Path]::GetFullPath($Workspace);pairId=$(if($action -ceq 'DeveloperProbe'){''}else{$pairId});StartedUtc=(Get-WsmUtc);CompletedUtc=$null;canCancel=($action -ceq 'DeveloperProbe');outputs=@()}
+            $jobPath=Write-WsmTextJobRecord $Workspace $jobRecord
+        }
+        if($action -ceq 'DeveloperProbe'){
+            if(-not $arguments.ContainsKey('CancellationToken')){throw 'Developer probe requires its operation-bound cancellation token.'}
+        }elseif($command.Parameters.ContainsKey('CancellationToken') -and (Get-Command New-WsmHtmlCancellation -ErrorAction SilentlyContinue)){
+            $token=New-WsmHtmlCancellation $command $arguments $operationId $jobHistory
+            $cancelRequired=@($command.Parameters.CancellationToken.Attributes|Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.Mandatory}).Count -gt 0
+            if($token){$arguments.CancellationToken=$token;Write-Host ('核心取消權杖已綁定。工作識別碼：'+$operationId+'；如需停止，請在另一個管理程序對同一工作上下文提出取消。')}
+            elseif($cancelRequired){throw 'This operation requires a hash-bound safe cancellation context before it can start.'}
+            else{Write-Host '本次參數沒有建立可用取消權杖；命令執行期間不可由此文字選單取消。'}
+        }
+        try {
+            if($readOnlyResultCaptured){$result=$preview}else{$result=& $command @arguments}
+            if($durableJobAction){
+                $safeOutputs=@(Get-WsmHtmlResultProjection @($result));$status=Get-WsmTextJobStatus $result
+                $jobRecord.status=$status;$jobRecord.CompletedUtc=Get-WsmUtc;$jobRecord|Add-Member NoteProperty canCancel $false -Force;$jobRecord.outputs=$safeOutputs
+                if(-not $jobRecord.pairId){foreach($output in $safeOutputs){if($output -and $output.PSObject.Properties['PairId'] -and $output.PairId){$jobRecord.pairId=[string]$output.PairId;break}}}
+                Write-WsmJson $jobPath $jobRecord
+                $result=$safeOutputs
+            }
+        } catch {
+            if($jobRecord){$jobRecord.status=Get-WsmWorkerFailureStatus $_;$jobRecord.CompletedUtc=Get-WsmUtc;$jobRecord|Add-Member NoteProperty canCancel $false -Force;$jobRecord.outputs=@(Get-WsmTextWizardTerminalOutputs $jobRecord (@($jobHistory)+@($jobRecord)));Write-WsmJson $jobPath $jobRecord}
+            throw
+        }
         Write-Host '核心命令已回傳；以下僅顯示安全欄位。'
-        if(Get-Command Get-WsmHtmlResultProjection -ErrorAction SilentlyContinue){Get-WsmHtmlResultProjection $result | Format-List | Out-Host}else{$result | Format-List | Out-Host}
+        if($durableJobAction){$result | Format-List | Out-Host}elseif(Get-Command Get-WsmHtmlResultProjection -ErrorAction SilentlyContinue){Get-WsmHtmlResultProjection $result | Format-List | Out-Host}else{$result | Format-List | Out-Host}
         [pscustomobject]@{Status='Applied';Executed=$true;Action=$action;Result=$result}
-    } finally {$secretValues.Clear();$credentialValues.Clear();$raw.Clear();$arguments=$null;$credential=$null}
+    } catch {
+        if($jobRecord -and [string]$jobRecord.status -ceq 'Running'){$jobRecord.status=Get-WsmWorkerFailureStatus $_;$jobRecord.CompletedUtc=Get-WsmUtc;$jobRecord|Add-Member NoteProperty canCancel $false -Force;$jobRecord.outputs=@(Get-WsmTextWizardTerminalOutputs $jobRecord (@($jobHistory)+@($jobRecord)));if($jobPath){Write-WsmJson $jobPath $jobRecord}}
+        throw
+    } finally {if($workerGuard){Exit-WsmWorkspaceWorkerGuard $workerGuard};$secretValues.Clear();$credentialValues.Clear();$raw.Clear();$arguments=$null;$credential=$null}
 }
 function Show-WsmMigrationMenu {
     param([string]$Workspace)

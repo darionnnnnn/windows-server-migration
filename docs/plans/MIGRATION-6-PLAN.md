@@ -1,4 +1,4 @@
-# 第 6 輪規劃：完成備份、管理交接與還原精靈
+﻿# 第 6 輪規劃：完成備份、管理交接與還原精靈
 
 > 2026-10-14（Asia/Taipei）。狀態：實作中。2026-10-14 使用者授權完整實作並補齊全部項目，逐段驗證後 commit／push 本輪分支。規劃階段的「不實作」紀錄屬當時狀態；本次依最新授權執行。本文件依使用者明確指示，承接第五輪未完成項目；第五輪只收尾已完成且可獨立驗證的交付範圍。原始需求與歷史證據保留於 [第五輪計畫](MIGRATION-5-PLAN.md)，現行能力以 [實作狀態](../IMPLEMENTATION-0.1.md) 為準。
 
@@ -11,7 +11,7 @@
 - 開發者探測是左側獨立一鍵入口及同收集器的 CLI 備援；只讀、遮蔽、ZIP／HTML／JSON、不自動上傳，不能改動搬移權威狀態。
 - 僅本機隔離資料與可控服務作驗收；現場資訊透過環境探測，不能直接在實際業務環境驗收。企業資格、真人研究與外部 Server／IIS／SMB／PKI 不列本輪代理驗收門檻；ProductionVerified／ProductionExecutionEnabled 保持 false。
 
-## 2. 接手材料與目前落差
+## 2. 接手時的材料與落差（實作起點）
 
 「已寫程式」不等於「已交付」。第五輪未提交的大型整合因跨 F0／E／F1／NonC／UI 相依且完整使用端未通過，已從本輪發行工作樹移出，完整保存供本輪重用，不刪除已投入的工作。
 
@@ -91,11 +91,11 @@
 
 ## 4. 執行順序與收尾規則
 
-採第 5 節子階段順序，不再以 P0–P6 編號當線性完成順序。本輪由主代理直接規劃與核對，尚未啟用委派；未來如委派另遵模型政策，共享檔單一寫入者。模組 import/export、ActionMap、defaults、projection、UI、測試必須成套；無法獨立交付時合併相依提交，不能只推孤立 helper。禁止未使用的新框架、第二套權威狀態、遠端服務或過度抽象。
+採第 5 節子階段順序，不再以 P0–P6 編號當線性完成順序。規劃由主代理直接核對；後續實作依本輪授權委派 gpt-6-luna，主代理接手及修正的範圍另記於實作紀錄，共享檔維持單一寫入者。模組 import/export、ActionMap、defaults、projection、UI、測試必須成套；無法獨立交付時合併相依提交，不能只推孤立 helper。禁止未使用的新框架、第二套權威狀態、遠端服務或過度抽象。
 
 每段主代理獨立驗證後 commit／push 當輪分支並核對遠端 SHA；不自行 force、merge 或推預設分支。大包和原生平台驗證只跑安全小資料，不重跑無效規模測試。實作／驗證模型與 effort 如實記錄；目前只有 gpt-6-luna low／medium／high 可委派，未能證明不同模型的檢查不能稱獨立換模型簽核。
 
-完成判準是上述可執行驗收與當前證據閉合，不包含代理不能代驗的企業現場或真人主觀接受。本次發現與後續評估確認的問題均納入本輪：實作授權後先重現、修正及回歸，不自行延期；若修法改變既定產品或授權邊界，先討論並更新本 PLAN。本次不修程式。交付結果逐項標明已完成、未完成或未驗證，禁止用第五輪舊 PASS 蓋過本輪新程式。
+完成判準是上述可執行驗收與當前證據閉合，不包含代理不能代驗的企業現場或真人主觀接受。本次發現與後續評估確認的問題均納入本輪：實作授權後先重現、修正及回歸，不自行延期；若修法改變既定產品或授權邊界，先討論並更新本 PLAN。規劃階段原先不實作的限制已由後續實作授權取代。交付結果逐項標明已完成、未完成或未驗證，禁止用第五輪舊 PASS 蓋過本輪新程式。
 
 ## 5. 已定案子階段、交付邊界與相依
 
@@ -220,7 +220,7 @@ P6 同步 README／IMPLEMENTATION／OPERATIONS／GENERAL-HOST-WORKFLOW／guide �
 - 身分／資料流：來源 volume 決定 C／非 C 通道；目標磁碟位置不改分類。Source／Manager／Target 固定 WorkRoot；choice id 只是已核驗材料索引，執行前重驗；多材料不得只選最新檔名。C／非 C 共享目的 reservation／ownership／未選 consumer 影響仍適用。
 - 失敗／回復：保留來源、原 journal、已完成材料與精確 prior；不整份 rollback 使用者 workspace，不刪仍被跨 Pair／世代引用或活躍作業使用的資料。程式提交可 revert，但執行中 Pair 必須使用原核准工具，不能熱換 UI 或舊 JS。
 - 規模／成本：不新增框架、第二狀態引擎、遠端常駐服务、自動安裝或整機備份；只移植有正式 consumer 的草稿。200 項用于選取，不把全部故障乘上大量檔案；沿用小檔及既有 64-bit／跨索引 fixture，外部吞吐不列本輪門檻。
-- 逐段開工／結束：查實際 diff 與所有相依、完整性核對→補漏→再核對→正式驗收→commit／push→核對遠端 SHA。全部子段及原始子條款都有實作證據才開始 P6；NotPassed／NotTested 不可改寫成通過。本次僅規劃，所有產品驗收仍待執行。
+- 逐段開工／結束：查實際 diff 與所有相依、完整性核對→補漏→再核對→正式驗收→commit／push→核對遠端 SHA。全部子段及原始子條款都有實作證據才開始 P6；NotPassed／NotTested 不可改寫成通過。規劃複核本身不構成產品驗收；實作與驗收現況依第 10 節及後續紀錄。
 - 明確不做：SourceOnly 備份、OS／安裝軟體／System State、任意覆寫既有檔、真人主觀研究、企業實機搬移／業務啟用、代簽正式責任證據、修改安全軟體政策、merge 至 dev／main。企業既有外部驗收與操作檢查表保留，但不轉嫁成本輪使用者確認門檻。
 
 2026-10-14 主代理規劃複核：已回查第五輪 A–H、第 9–12 節及第六輪全部既有條款；Q01–Q06 均有處置位置，未刪原驗收。P1b 消費 P2 選取、P4b 消費 P3 材料並完成合併、P5 真匯入前段產物，依賴無反向成功 gate。文件封裝衝突已在規劃修正，既有 NonC 防護列回歸。未證實的傳輸根因、草稿動態重現及本機能力探測保留明確狀態，不能當作已修／已測。此為當次複核結論；後續多角度複查另見第 9 節。實作授權仍未提供。
@@ -337,3 +337,73 @@ Target GET 整合發現：自動重跑 native software catalog 實測單次約 1
 主代理從已提交 HEAD 只封存既有 src、兩個啟動器與既有核心測試，再覆蓋本段 AssistiveNonC 及新增路徑測試，建立 `work/r6/nonc-core-independent-snapshot.txt` 不可變副本；兩引擎各通過 AssistiveNonC 34 checks 與 NonCSourceImportPath 8 checks，測後全部輸入 hash 不變。此段包含本機來源 host 檢查、密封 logical path／native collection proof／peer UNC 的 import-only 精確映射、Target share alias 與結果 account map／SACL requirement 核對；原生觀測接縫預設仍呼叫真系統 API，不放寬 SMB／物理範圍驗證。來源路徑比對使用純字串 Path.Combine，不要求 Manager 存在來源 D／E 磁碟。此核心可由既有已提交模組獨立載入及回復，與仍在本輪驗證的新精靈 family 分開提交；P4 整段及整輪不因此標通過。
 
 正式 Target 首次匯入亦重現必填 Role 綁定順序錯誤：已於參數驗證前綁定 Source／Target session，拒絕不同 caller role。獨立 `Test-HtmlConsole.ps1` 雙引擎 80 checks 通過，快照測前後 hash 一致；正式瀏覽器完整旅程續驗。
+
+### P3–P5 整合完整性再核對與本輪修正（2026-10-15）
+
+本段由主代理接手全部檔案寫入。先前 gpt-6-luna high 委派範圍包含 CLI、備份、NonC、runtime/UI；額度不足後未改用其他代理模型。主代理亦親自實作，因此既有代理檢查及下列主代理驗證均不宣稱不同於全部實作者的換模型簽核。
+
+- 作業接線：模組公開函式、typed action/defaults、伺服端 session／role／CAS／operation id、耐久 worker、投影及 UI/CLI 同步核對。遷移與只讀 Probe 使用不同 OS 排他鎖；重啟只能在取得自己通道鎖後把未完成作業標 Interrupted，不接管活躍 owner。
+- Source：固定工作根、每 attempt 格式／容量、獨立停寫授權及 prior state、取消不自動恢復來源、Directory 路徑預檢、真核心封裝及耐久成果均接入正式入口。NonC 不被描述為主包內的離線備份。
+- Target：第一次匯入前先綁 session 角色；GET 只讀目前已驗材料，不重新掃描軟體或追加 journal。明確預覽／還原才重查本機觀測。安全投影與核心預覽使用同一 canonical hash；核心耐久 ItemResults、不可變 journal 副本及精確 attempt／receipt／世代仍獨立核對。
+- 結果生命週期：修正 activation 被 FinalAccepted 循環封鎖、啟用後還原歷史消失、Final 投影誤讀 Staged 路徑，以及全 deferred 預覽錯顯可還原。啟用入口只開獨立審閱，寫入端仍執行完整 cutover gate。Final 與 Staged 的工作、檔案及 phase 必須一致。
+- 多共享：Source 逐共享證明與 ACL 觀察精確成套；Target 資料共享與固定 WorkRoot\pairs 狀態共享可分開。物理 identities 只涵蓋資料根，狀態目錄另外綁定。Target producer 將固定狀態 UNC 寫入已雜湊 physical proof，Manager 匯入及 transfer constructor 均拒絕另填位置；舊未綁定證明要求重新匯出。反例不變更已核准計畫。
+- CLI：TargetAcceptance 雖以 Get 命名，實際會產生驗證與 journal，已改為明確 APPLY 後才能執行。DeveloperProbe 使用同樣耐久作業機制、獨立取消及重連，不再讓 CLI 只剩同步直呼。
+
+已獨立確認的固定副本：`final-main-owned` 兩引擎 HtmlConsole 84、HtmlRuntimeProjection 175、NonCTargetHandoff 及 TextRuntime 65 通過；`final-lifecycle` 兩引擎 Target runtime 133 通過；Source runtime 兩引擎 133 及格式／停寫／取消測試通過。上述副本分別 116／109／109 個 runtime/test 輸入在測後 SHA256 不變。最後新增 Final phase 與狀態目錄綁定修正另以新固定副本驗證，不用舊 PASS 代替。
+
+`final-affected-regression` 兩引擎的 Flow 45、ReceivedPlan 真核心匯入、VersionSeparation 28、Progress、NonCPreparation 7、SourceImportPath 8 通過，113 輸入測後未變。UI 矩陣包含真 Edge 200% tabs zoom、四種寬度、三用途、Manager 主要／等待／錯誤／成果及 NonC 長中文路徑；普通控制項與選項點選區至少 48px。測試另發現 Playwright 在原生 zoom 的截圖寬度裁切，改用 CDP 的實際 layout bounds 擷取完整實體寬度，沒有調整產品 zoom 或用 CSS zoom 代替。
+
+整合測試的 Probe 為空 pair，不能被目前搬移 pair 的 session 比對拒絕；已修正正式 handler。Probe 自身 HTTP collector 會產生其他回應，擷取測試改用唯一 correlation id 找回正式 writer 的 bytes，不能假設全域序號。小資料封裝可在取消前結束，並行取消 fixture 改在既有 pre-export 邊界做有上限的測試排程，仍由原始取消驗證器讀取真正 durable request；不是產品延長 timeout，也不是原生 P0 通過證據。
+
+P0 原生傳輸仍 NotPassed；本節不宣告整輪完成、不移除原契約或把缺口移到下一輪。全部新增修正及正式 handler 旅程須完成新證據後才提交本段。
+
+### 冷啟動 ZIP 匯入相依修正：已獨立提交
+
+正式 Automatic ZIP 成果首次交給全新 Windows PowerShell 5.1 程序時，`Test-WsmZipVolume` 找不到 `IO.Compression.ZipArchiveMode`。先在同一程序匯出再匯入的測試會先載入組件，因而掩蓋問題。核心現在明確載入 System.IO.Compression；沒有改放寬封包／索引／hash 檢查。以 HEAD 基準僅覆蓋核心修正及新測試的固定副本，兩個全新 5.1／7 程序逐項核對實際 ZIP member 與 volume hash 通過。已 commit／push `21293cb390ceb5817bcb7ff6143b5afe2fba133f` 並核對遠端相同。
+
+新 Final phase 完整測試在 `final-phase-complete` 的 WinPS5.1／PS7 均通過 Target runtime 133（包含真還原／取消／重播、真正 Staged 與 Final core validation、精確安全投影讀回及 controlled activated-state observation）；109 個輸入測後未變。啟用狀態由測試受控觀察提供，沒有執行真服務啟用或代稱現場切換通過。
+
+`state-binding-complete` 兩引擎 ProofHandoff 25、雙 Source 共享／雙 Target 資料共享／獨立狀態共享 Operations、TargetHandoff 均通過；109 輸入測後不變。`ui-capture-final` 真 Edge 縮放／版面、兩引擎實際 x64 CMD（隔離入口 fixture）及帳號 ACL metadata-only 觀察通過，112 輸入未變。主代理實看完整 200% Target 成果、Manager 320px 錯誤及長路徑畫面；原生 zoom 截圖現在保留完整實體寬度。
+
+本次固定副本的原生 Edge 重驗仍在 30s DOMContentLoaded deadline 失敗：已發起 HTML／CSS／nonc.js／console.js，沒有取得完整可核對原生頁面。`native-final-observed.log` 保留原錯誤；未延長產品／測試時限或改動 AdGuard。測試先前未即時處理 response.body() 的拒絕也已修正，避免未處理 Promise 使診斷與 finally 清理被中斷。P0 仍 NotPassed，M04 原生頁保存與整輪 P6 仍未通過。
+
+### 非同步完成與 Probe 鎖相依修正
+
+正式旅程再重現兩個本輪接縫缺陷，已回到實作補齊，而不是把失敗列為下一輪：
+
+1. DeveloperProbe 雖有獨立 worker lane，提交前仍經搬移 `.wsm.lock` 讀 revision。改為只對這個無搬移權威的動作使用空 pair／零 revision vector；session、origin、token、角色、idempotency 及獨立 Probe 排他鎖仍保留。持有搬移鎖的反例確認 Probe 可取自己的提交 vector、Inventory 仍不得繞過鎖。
+2. TargetDirectoryImport 先回 Running、之後成功時，舊 runtime identity cache 未失效，畫面仍停 NeedsPackage。完成輪詢現在只刷新同 role／pair／context 的 runtime job；若上一筆 runtime 讀取尚在執行，排入一次新的唯讀刷新，不重送寫入。新增延遲完成的 API fixture，走完接收→盤點→比較→決策→預覽→還原→驗證。
+
+固定副本 `async-runtime-v2` 的延遲 Target UI 與兩引擎 HtmlConsole 86 通過；`last-ui-regression` Source／Target UI、NonC UI 17、真 Edge 200% 及 Manager 四寬度／四狀態、雙引擎投影 175 通過。正式 handler 的新快照另重驗。
+
+正式 Target fixture 過去使用受控空軟體盤點，明確比較操作的重新觀測卻讀取本機實際軟體，核心因此正確拒絕漂移。現改為僅在隔離 Target fingerprint 下提供與該盤點一致的 software collector 觀測；核心 catalog validator、facts hash／漂移比較、receipt、還原、journal 均未替換。此為測試觀測來源一致性修正，不放寬產品 gate，也不代表測得真實 Target 軟體相容。
+
+### 工作間邊界與執行畫面版本綁定
+
+- 材料開啟／下載與取消路由已接入同一上下文核對：精確 WorkRoot、角色及 pair；獨立 Probe 的 pair 必須為空。完整歷史摘要仍可檢視，來源不明的舊 job 不變成開啟材料或取消的權限。HtmlConsole 兩引擎現為 91 checks，包含跨 pair／角色／WorkRoot、缺來源及 malformed Probe 拒絕。
+- 新 `Test-WorkspaceWorkerIsolation.ps1` 在兩個全新 5.1／7 子程序實驗：主程序持有 migration OS lock 時，兩者都不能取得同 lane，但可各自取得 Probe lane；釋放後兩者均可取得 migration lane。四次實驗通過，不以同程序模擬跨程序 owner。
+- 真 Target 連續操作重現：新決策已保存、runtime 已顯示預覽入口，但提交仍從較舊 session 取 expected revision，核心正確回 stale_revision。`Get-WsmHtmlWizardRuntime` 現在讀取前後各核對一次 revision vector；途中改變則拒絕產生可用畫面，成功時明列該畫面的 viewContext。runtime 動作只採該審閱版本，不在提交前偷更新版本或移除 CAS。原有其他動作仍使用自己的既有審閱版本。
+- 兩引擎 read-context wrapper 正反例與 Source／Target UI 通過；Target UI fixture 刻意讓 session revision 舊於 runtime 審閱版本，並由伺服端拒絕舊版本。既有延遲完成案例保留。最後正式 handler 旅程使用新固定快照重驗，較早的 stale_revision 失敗不列通過。
+
+原始需求完整性再次對照：P1a／P2／P1b 的表單、選取、零備份 Target 註冊及 Manager 核准已提交；P3a／b 的備份／格式／停寫／耐久作業／取消／重播接正式 Source UI 與 CLI；P4a／b 的多共享證明／SID metadata／逐項映射／傳輸／Manager 及 Target 交接接正式 consumer；P5a／b／c 的兩格式 intake、比較、子集決策、預覽、逐項還原／取消續作及 Staged／Final 生命週期接正式 Target UI／CLI。U01–U08 均依原契約保留，不自動代認責任、來源信任、軟體相容或業務接受。P6 的縮放、畫面、文件及實際 ZIP 可由本機核對；P0 原生及 M04 原生啟動／保存仍 NotPassed，整輪不標完成。這些未通過項維持在本 PLAN，不移到後續輪次。
+
+### 最後一輪使用端補漏與獨立核心提交
+
+- 固定副本 `core-lock-independent`（HEAD 基準只覆蓋 Core 及測試，98 個輸入測後未變）通過雙引擎 Contracts 25、RecoveryContracts、OutputWorkspace，以及真跨程序釋放後取得／2 秒逾時不執行的四個案例。已推送 `a0c33827a49541330623fd7878255c30d9fc0e45` 並確認遠端 SHA。修正只對 Win32 sharing／lock violation 等待至多 2 秒，沒有刪鎖、接管 owner 或改 HTTP deadline。
+- 已核驗的 NonC 證明選項現在依 host／share、本機時間與 UTC offset、精確材料短識別區分；相同 kind／SHA 去重，同 fingerprint 但不同 Source HostId 的舊證明不再列成目前選項。`proof-choice-final` 的兩引擎 Preparation 7 及實際兩來源／兩資料目的／獨立狀態共享 Operations 均通過。
+- 作業輪詢只允許同時執行一輪，慢讀不再每三秒堆疊另一輪完整刷新。UI fixture 對每次 jobs 讀取延遲 3.5 秒，確認最大並行數為 1；仍維持原 10／15／30 秒用戶端時限。
+- runtime 審閱版本與舊 session 快取分開：寫入前的新鮮 session 必須與已顯示 viewContext 完全一致，才可更新本機 session 快取；不相符先拒絕，不能偷改 request 到新版本。Target fixture 驗舊 view 零 POST、明確重讀後允許新 view／舊 session 快取的合法組合。
+- 同 pair 重新載入新資料版本會撤下舊 runtime 快取；讀取開始與結束的用戶端版本不一致則不採用舊回應。完成回呼與普通讀取共用既有讀取，不重複排入刷新。Source 的資料版本切換與 NonC 草稿／匯入之後仍可接續備份，已以原使用端測試重驗。
+- 重繪時已有相同 runtime 讀取，不再對立即完成的空結果重複排入 render，修正慢機上的 microtask 重繪迴圈。失敗畫面僅提供明確重新讀取按鈕，不無限自動重試。Target fixture 以延遲 200ms 的 runtime 回應加上同時兩次重繪重現這個接縫；Source／Target 測試通過。runtime POST 已由自己的明確流程刷新，不再同時觸發通用刷新。
+
+WinPS5.1 的 Source 正式 handler 三子案例已完成：取消與 Probe 並行、逐項 Directory、Automatic ZIP 512MiB。ZIP 由全新程序真匯入後核對 manifest／artifacts／每個 payload hash，原 operation replay 與固定格式均核對。該次單一 runner 後續 Target 因當時的 UI 讀取／重繪缺陷失敗，不能把整個 runner 標 PASS；Source 子案例證據依執行已走到 Target startup 分開保留。PowerShell7 Target 的真 UI→正式 writer 擷取→核心接收／比較／決策／預覽／還原、檔案／journal hash 及同作業 replay 已通過；Native HTTP／origin／SMB 未由橋接證明。修正後 WinPS5.1 Target 另以新固定副本重驗，不沿用失敗結果。
+
+### P3–P5 相依整合段：本機可控驗證完成，準備提交
+
+最新 `formal-read-snapshot-final-powershell.log` 已通過 WinPS5.1 Target 的真 Edge UI→正式 handler／writer 擷取→核心 Directory 接收、比較匯入、明確 plan 子集決策、預覽、實際還原與檔案／journal hash 讀回、同 operation 重播。與已通過的 PS7 Target、Source 三子案例、雙引擎 CLI／核心／多共享／取消續作／Staged–Final 證據分開列範圍，未把曾失敗的單一 full runner 改標通過。
+
+最新受控副本 `read-snapshot-final` 兩引擎 HtmlConsole 91、RuntimeReadContext 正反例、ReceivedPlan 真 sealed plan／兩角色匯入全部通過；`renderer-final` 與 `runtime-cache-final` Source／Target UI 均通過，包含慢讀單次輪詢、並行重繪、舊 view 零 POST、明確再讀、來源版本變更及未知寫入查同 ID。`proof-choice-final` 雙引擎 Preparation 與完整多共享 Operations 通過。上述四副本測後逐檔雜湊未變。
+
+讀取效能修正採最小範圍：Get-WsmHtmlRevisionVector／Context 在同一次工作目錄鎖內，把剛經正式讀取器核驗的 received plan 傳給 data-version 計算，不再立即重讀同份材料；不做跨請求 fingerprint 快取，執行仍走完整核驗。WinPS5.1 的最終正式旅程已使用這個版本。
+
+本段把模組匯入／公開命令、typed metadata、角色／CAS／作業接線、UI／CLI 及所有必要輔助檔整組提交，避免推送不能獨立使用的 helper。實作／本機可控接線未發現待補項；P0 原生失敗、M04 原生啟動保存、整輪 P6 與可信不同模型體檢仍未通過／未完成，保持本輪開放，不移到下一輪。

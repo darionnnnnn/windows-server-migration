@@ -47,6 +47,15 @@ try {
             if((Get-WsmHtmlRevision $work $catalog.PairId) -ne [int]$roleState.Revision){throw 'Received-plan HTML/CLI revision tried to read a fabricated Manager catalog.'}
             $actionView=Get-WsmHtmlView $work $catalog.PairId actions $role
             if(-not @($actionView.actions|Where-Object action -CEQ ImportApprovedPlan).Count){throw 'Received-plan action metadata required a nonexistent Manager catalog.'}
+            $contextId=[Guid]::NewGuid().ToString();$sessionId=[Guid]::NewGuid().ToString()
+            $context=Get-WsmHtmlContext $work $catalog.PairId $role $contextId
+            if($context.revision -ne $roleState.Revision -or $context.pairId -cne $catalog.PairId){throw 'Received-plan session context lost its state binding.'}
+            $vector=Get-WsmHtmlRevisionVector $work $catalog.PairId
+            if($vector.revision -ne $roleState.Revision){throw 'Received-plan revision vector lost its state binding.'}
+            foreach($view in @('overview','inventory','software','actions')){
+                $viewSnapshot=Get-WsmHtmlViewSnapshot $work $catalog.PairId $view $role $sessionId $contextId ''
+                if($viewSnapshot.viewContext.revision -ne $roleState.Revision -or $viewSnapshot.viewContext.role -cne $role){throw ('Received-plan view snapshot is not bound: '+$view)}
+            }
             $blocked=$false;try{Import-WsmWizardApprovedPlan $work $role $planPath ('0'*64)|Out-Null}catch{$blocked=$true};if(-not $blocked){throw 'Wrong independent hash was accepted.'}
         }
         $script:receivedFixtureFingerprint=('a'*64)
