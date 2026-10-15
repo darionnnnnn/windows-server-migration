@@ -311,17 +311,20 @@ async function main() {
   assert.deepEqual([...sourceUi.operations, ...sourceHandoffUi.operations].map(row => row.action), ['Inventory', 'ExportSourceReviewHandoff']);
 
   const target = await startServer('Target');
-  const targetUi = await openUi(target);
   const targetIdentityRoot = path.join(target.workspace, 'targets');
   const identityFiles = fs.existsSync(targetIdentityRoot) ? fs.readdirSync(targetIdentityRoot, { recursive: true }).filter(name => String(name).endsWith('target-identity.json')) : [];
-  assert.equal(identityFiles.length, 0, 'Target identity must be absent before UI registration.');
+  assert.equal(identityFiles.length, 0, 'Target identity must be absent before UI enrollment.');
+  const targetUi = await openUi(target);
+  const enrolledIdentityFiles = fs.readdirSync(targetIdentityRoot, { recursive: true }).filter(name => String(name).endsWith('target-identity.json'));
+  assert.equal(enrolledIdentityFiles.length, 1, 'Choosing Target in the UI must create its enrolled physical identity.');
+  const enrolledIdentity = JSON.parse(fs.readFileSync(path.join(targetIdentityRoot, enrolledIdentityFiles[0]), 'utf8'));
   await selectWizardAction(targetUi.page, 'Inventory');
   await targetUi.page.waitForFunction(() => window.WsmConsole.state.wizard?.currentStep === 'prepare');
   assert.equal(await targetUi.page.evaluate(() => window.WsmConsole.state.wizard.currentStep), 'prepare', 'Target inventory must advance through the normal wizard flow.');
   await selectWizardAction(targetUi.page, 'RegisterTarget');
   const registrationJob = await targetUi.page.evaluate(() => [...window.WsmConsole.state.jobs.values()].filter(job => job.action === 'RegisterTarget').at(-1));
   assert.equal(registrationJob.status, 'Succeeded');
-  assert.ok(fs.readdirSync(targetIdentityRoot, { recursive: true }).some(name => String(name).endsWith('target-identity.json')), 'Target identity file must be created by the RegisterTarget UI operation.');
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(targetIdentityRoot, enrolledIdentityFiles[0]), 'utf8')), enrolledIdentity, 'RegisterTarget must retain the enrolled physical identity.');
   await selectWizardAction(targetUi.page, 'ExportTargetHandoff');
   const targetJob = await targetUi.page.evaluate(() => [...window.WsmConsole.state.jobs.values()].filter(job => job.action === 'ExportTargetHandoff').at(-1));
   const targetHandoff = targetJob.outputs[0];
@@ -384,7 +387,22 @@ async function main() {
   log('PASS native Edge/HTTP Manager approval; test-only controlled identities and observations; sealed plan independent SHA-256 readback.');
 }
 
-main().catch(error => { console.error(error); console.error(trace.join('\n')); process.exitCode = 1; }).finally(async () => {
+main().catch(async error => {
+  console.error(error);
+  if (browser) for (const context of browser.contexts()) for (const page of context.pages()) {
+    try {
+      const diagnostic = await page.evaluate(() => {
+        const state = window.WsmConsole?.state, wizard = state?.wizard;
+        return { role: state?.session?.role, step: wizard?.currentStep, revision: wizard?.revision,
+          scan: wizard?.scan, inventoryJobId: state?.wizardInventoryJobId, advancing: state?.wizardAdvancing,
+          busy: state?.busy, stale: state?.wizardStale, error: document.querySelector('#error-summary')?.textContent,
+          jobs: [...(state?.jobs?.values() || [])].map(job => ({ action: job.action, status: job.status, error: job.error })) };
+      });
+      log('TEST-ONLY failure state ' + JSON.stringify(diagnostic));
+    } catch {}
+  }
+  console.error(trace.join('\n')); process.exitCode = 1;
+}).finally(async () => {
   if (browser) await browser.close().catch(() => {});
   for (const server of servers) {
     try { fs.writeFileSync(server.stop, 'stop'); } catch {}
