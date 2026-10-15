@@ -1,6 +1,6 @@
 # 第 6 輪規劃：完成備份、管理交接與還原精靈
 
-> 2026-10-14（Asia/Taipei）。狀態：實作中。2026-10-14 使用者授權完整實作並補齊全部項目，逐段驗證後 commit／push 本輪分支。規劃階段的「不實作」紀錄屬當時狀態；本次依最新授權執行。本文件依使用者明確指示，承接第五輪未完成項目；第五輪只收尾已完成且可獨立驗證的交付範圍。原始需求與歷史證據保留於 [第五輪計畫](MIGRATION-5-PLAN.md)，現行能力以 [實作狀態](../IMPLEMENTATION-0.1.md) 為準。
+> 2026-10-14（Asia/Taipei）。狀態：實作完成、代理可執行驗收完成，待不同模型體檢。2026-10-14 使用者授權完整實作並補齊全部項目，逐段驗證後 commit／push 本輪分支。規劃階段的「不實作」紀錄屬當時狀態；本次依最新授權執行。本文件依使用者明確指示，承接第五輪未完成項目；第五輪只收尾已完成且可獨立驗證的交付範圍。原始需求與歷史證據保留於 [第五輪計畫](MIGRATION-5-PLAN.md)，現行能力以 [實作狀態](../IMPLEMENTATION-0.1.md) 為準。
 
 ## 1. 不變的定案
 
@@ -516,7 +516,7 @@ CI 38694316646 雙引擎在 Inventory 成功後仍停於 scan。主代理核對�
 本節更新前面按時間保留的 P0／M04 NotPassed 紀錄，不改寫當時失敗。第 3 節 P0 要求的真 Edge、正式 HTTP／資源 bytes、可逆保存與錯誤處理，已由獨立 Windows 主機的雙引擎 CI 38686507492 及後續 38692554968 提供原生證據；M04 的真發行／解壓 CMD 啟頁、用途保存讀回與離線說明亦由 38689090862 完成。因此 P0／M04 的隔離原生驗收範圍可認列通過；這台開發電腦的傳輸仍 NotPassed，保留 AdGuard 設定與未明根因，不能宣稱所有部署主機皆可用。兩種狀態分開列示，不以 bridge 或 mock 代過 P0。最新工具 bytes 的最終發行包仍須另建並核對。
 
 CI 38695946760 的 Manager 已完成目標 handoff commit；runner 只等待作業終態，早於 session/context reconciliation 完成即提交下一步，核心以 stale_revision 正確拒絕。6c08873 讓 runner 等待現有 UI 更新生命週期，沒有修改產品 CAS、timeout 或自動重送。CI 38697112155 雙引擎均進一步完成 BulkPreparationPreview／BulkPreparationSave，證實上述等待修正有效；但自己的批次保存後 wizardDirty 未消除，投影更新被視為另一視窗變更，下一個 PublishComparison 表單無法載入。這是新確認的 UI 缺陷，保留本輪修正與定點回歸，不把已保存核心規格誤記失敗或宣稱完整 Manager 驗收通過。
-## 11. 最終完整性對照（持續更新）
+## 11. 最終完整性對照（實作及代理驗收完成）
 
 本節對照第 1–9 節全部定案與子條款，歷史紀錄不等同當前狀態；本表不是換模型簽核。基準仍為 1dbbc713f39b85276bd6de25b61fd39e282edd53。只把實際相同程式／依賴／環境及覆蓋範圍的證據沿用到目前版本，後續修改另按受影響使用端補驗。
 
@@ -525,7 +525,7 @@ CI 38695946760 的 Manager 已完成目標 handoff commit；runner 只等待作�
 | P0 | HtmlConsole 正式 listener、session、資源 bytes、錯誤與未知寫入 | 隔離 Windows CI 雙引擎原生通過；開發電腦傳輸 NotPassed 另列，保留原 deadline 及安全設定。 |
 | P1a | WizardPreparation／AssistiveReviewForms → typed HTML／CLI → 真 sealed spec | 12 adapters、88 checks 與真 handler Save→Submit／檔案 hash；CER、SecretRef、巢狀 Desired、CAS 及人工 WindowsFeature 邊界按第 10 節沿用。 |
 | P2 | WizardGrouping／WizardFlow → source intent／Manager catalog | 200 項、來源 11 checks、Flow 45 與 UI 模式／相依／排除保存；原生唯一 inventory 綁定窄修已通過 Source／Target 第一段。 |
-| P1b | WizardHandoff／WizardPreparationBulk → Target 身分／比較／ApproveMigration | 雙引擎核心與 bridge 原有證據有效；原生 Manager 批次保存後畫面 stale 缺陷修正中，完整 J3 尚未通過。 |
+| P1b | WizardHandoff／WizardPreparationBulk → Target 身分／比較／ApproveMigration | 雙引擎完整原生 J3／重開交接於 38698158215 通過；批次保存與同頁核准草稿缺陷已修正，最新 PS7 原生 38700109504 含同頁狀態斷言通過。 |
 | P3a | WizardBackup／OutputWorkflow → 真 Directory／ZIP payload | 雙引擎核心與 CI 38689090862 原生兩格式、逐檔 hash、新程序解包；原有容量／漂移／重疊／核准／scope 反例沿用。 |
 | P3b | HtmlConsole worker／OperationRequests／WizardBackupProjection → UI／CLI durable 結果 | 缺時間欄位、未知總量、取消／中斷／query-only；CI 38690279623 真第二頁 Probe／查詢／取消，沒有重跑不受影響格式。 |
 | P4a | WizardNonCProofHandoff／AccountObservation → typed 多共享審閱與精確 transfer plan | 雙來源共享、雙資料目的共享與獨立狀態共享；逐 Principal、獨立指紋、材料去重／歧義／過期／錯 host 的隔離雙引擎證據。 |
@@ -533,11 +533,11 @@ CI 38695946760 的 Manager 已完成目標 handoff commit；runner 只等待作�
 | P5a | WizardTargetPackage／WizardHandoff／WizardRestore → package／comparison／receipt | ReceivedPlan、版本分離、超集合／錯 hash／錯機／世代／比較失效；U07 真兩代多卷 ZIP 混卷，兩引擎各 12 checks。 |
 | P5b | WizardRestore／Restore → 明確 restore／續作／journal | 雙引擎核心 partial 取消／續作與 readback；CI 38689090862 真 Target Directory 接收到還原、hash、同 OperationId replay。 |
 | P5c | WizardRuntime／WizardRestore → 結果、Staged／Final、獨立啟用 gate | Runtime 133、受影響投影／typed CLI／版本分離等既有定點證據；Failed／Cancelled／deferred 不假成功，追加日誌不抹去還原成果。 |
-| P6 | DeveloperProbe、UI、HTML 文件、ToolRelease／正式入口 | J5 雙引擎原生與 CLI、版面／真 200% 縮放已有證據；等待 J3 修正後完成最終文件、精確發行包與收尾。 |
+| P6 | DeveloperProbe、UI、HTML 文件、ToolRelease／正式入口 | J5 雙引擎原生／CLI、版面／真 200% 縮放、正式 HTML 與引用核對、最終 131 檔發行包及真 WinPS5.1 入口通過。僅不同模型收尾體檢尚待完成。 |
 
-交叉條款的落點：U01 為空 Target 身分與交接，已走原生 UI，完整核准仍依 J3；U02 停寫影響與取消不自動恢復由 Backup／SourceRecovery 及取消旅程核對；U03 多共享實際目的／狀態與 U05 獨立 C 分流由 NonC／Restore consumers 核對；U04 獨立信任與內容 hash 分離、U07 分卷完整性由正式 importer 及反例核對；U06 來源 facts／選版／目標觀測及局部失效沿用 VersionSeparation 28 checks；U08 同頁明確重連、版本相容草稿、未知寫入同 ID、不落盤已有 Test-SessionDraftReconnect 和 38692554968 原生回歸。批次保存後的新 stale 缺陷亦屬 U08，尚待本輪閉合。
+交叉條款的落點：U01 為空 Target 身分與交接，已由雙引擎原生 J3 完成零備份起步至完整核准；U02 停寫影響與取消不自動恢復由 Backup／SourceRecovery 及取消旅程核對；U03 多共享實際目的／狀態與 U05 獨立 C 分流由 NonC／Restore consumers 核對；U04 獨立信任與內容 hash 分離、U07 分卷完整性由正式 importer 及反例核對；U06 來源 facts／選版／目標觀測及局部失效沿用 VersionSeparation 28 checks；U08 同頁明確重連、版本相容草稿、未知寫入同 ID、不落盤已有 Test-SessionDraftReconnect 和 38692554968 原生回歸。批次保存與同頁核准後的 stale 缺陷亦屬 U08，均在本輪修正並取得反例及原生回歸。
 
-M01 的耐久來源意圖／材料／責任／作業紀錄有核心與 Source 重開證據；Manager 完整核准 runner 補上關頁後從原耐久作業恢復同一 plan 路徑與 hash、可見摘要及零新操作，隨 J3 驗。M02 以 bootstrap／worker／pair locks、operation／attempt／journal 故障與重播證據判定，不刪活躍鎖；M03 真第二頁並行與兩工作 Probe 存取隔離已通過；M04 正式 CMD／離線說明原生證據有效，最終版本 ZIP bytes 仍須重新核對。
+M01 的耐久來源意圖／材料／責任／作業紀錄有核心與 Source 重開證據；Manager 完整核准 runner 已由雙引擎 J3 驗證關頁後從原耐久作業恢復同一 plan 路徑與 hash、可見摘要及零新操作。M02 以 bootstrap／worker／pair locks、operation／attempt／journal 故障與重播證據判定，不刪活躍鎖；M03 真第二頁並行與兩工作 Probe 存取隔離已通過；M04 正式 CMD／離線說明原生證據有效；最終 ZIP 已核對精確 bytes、解壓內容與真 WinPS5.1 入口。
 
 主代理直接核對本輪 diff、入口及已提交來源；Luna high 的唯讀完整性複核未另找到 P1–P5 未接入 consumer，但其摘要中沿用的歷史 P0 全域 NotPassed 已由本 PLAN 上一節按實際 CI 範圍裁定。該複核不代替主代理查證，不構成不同實作模型的收尾簽核。未完成項保留本輪，不轉至下一輪。
 Manager 批次保存窄修由 gpt-6-luna/high 實作：批次卡本來已有獨立 wizardBulkPreparationInputs／Dirty 與離開提醒；其 input/change 不再同時污染一般 wizardDirty，未清空其他表單草稿，也未改 CAS 或未知寫入。新增動態 wizard revision 的順序案例在舊 UI 不可變副本重現 wizardStale=true；修正版副本 manager-bulk-save-stale-fixed-4ba2269e0a234df4906c373688bc902d 通過保存→可見 PublishComparison 表單→提交，並保留既有未知提交同 ID 查詢反例。主代理直接核對單一產品條件變更、草稿 Map／dirty consumer 及受測來源雜湊。這是 Edge API fixture；仍以接續真原生 J3 補驗完整結果。
@@ -549,3 +549,12 @@ J3 已通過完整核心／原生旅程及重開頁面交接，另補查同頁�
 舊版不可變副本 manager-approval-stale-negative-async-6a4fc1081161405da2c691737ae7c40c 重現成功核准仍 wizardStale=true。修正版 manager-approval-stale-fixed-submitted-history-5ec3f3f8481f48fd8ac82bc173d0b22c 的 Test-WizardHandoffUi 通過先成功 Target 預覽、再非同步核准後正確刷新，以及提交預覽後再次編輯仍保留草稿的反例。主代理直接讀程式、失敗／成功 log，核對 107 個快照輸入未變，console.js／測試與工作樹 hash 一致（D46C9574…／E10CA79C…）。第一次比對腳本的正反斜線路徑未正規化造成找不到索引列，修正查找後雜湊一致，沒有為此重跑行為測試。
 
 這是純前端生命週期修正；接續 native Manager runner 加入同頁 wizardStale=false／零 stale notice，僅補 PS7 真 Edge／HTTP 驗證。雙引擎核心、完整 J3 與重開交接沿用 38698158215，不再重跑未受影響的 Source 備份、Target 還原、Probe 與封裝矩陣。產品提交 skip-ci，下一個 runner 提交精確觸發受影響旅程。
+### 最終代理驗收與交付紀錄（2026-10-15）
+
+- 最後產品修正 bbbe772bd118da71b003c7cb365970e718f3ef8b、原生同頁斷言 2c1f90257f1d3128e2c3611abda4fb9a674500e3 均已 commit／push codex/migration-6 並核對遠端 SHA。CI [38700109504](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38700109504) 的 PS7 Manager job 116306061458 success，主代理讀取原始 log，確認真 UI 明確 ISOLATED-PILOT 核准、sealed plan SHA256、同頁無 stale 與重開交接均通過。僅跑受改動影響的 Manager；沒有重跑未變的雙引擎核心、備份／還原與 Probe 矩陣。
+- 正式文件於 4d9f631 同步 11 份完整 HTML 與索引，主代理直接核對 11 個來源 hash、99 個本地引用及 14 個 HTML 頁面；產生器未變，沿用既有 24 項產生器測試，未為文件重跑同一 fixture。
+- 最終不可變完整副本由 work/r6/final-release-snapshot-path.txt 指向；327 個輸入測後及與當時工作樹逐檔 hash 一致。Test-ReleaseWizardSmoke.ps1 一次通過，輸出 work/r6/release-final-b9b28775e23e4095ac19f59576402646/migration-tool.zip，131 個 payload 檔案。主代理另逐一核對 release.json 的長度／hash 與工作樹相符，archive 實際 SHA256 為 6D17A87D92F54A2A84537A791FDDD97E4E01510A2570832A85A63DF65BC03329，ToolFingerprint 為 f485189575bff8d83c42116b29b66f8a990224c1effb11929edefa5c32d59da6。這份取代前述舊 delivery-native 包作為本輪交付物。
+- 真 WinPS5.1 5.1.26100.9711 x64 從中文／空白解壓目錄載入正式模組與 PS1，保存 prepare／revision 1 並讀回；超長 WorkRoot 在任何建立前拒絕。最終包排除 archive、docs/plans、PLAN HTML、tests、work、私人盤點腳本，保留既有頂層 MIGRATION-3-PLAN.md。未簽章、ProductionVerified=false；NativeHttp=NotProvenByThisSmoke，正式 CMD／原生頁證據另由上述 CI 提供，沒有混稱 smoke 已驗瀏覽器。
+- 主代理最後再次對照本 PLAN 第 1–9 節及第 11 節 12 子段、U01–U08、M01–M04 與五旅程，已定案實作、跨段 consumer、文件與交付包均有落點，沒有將未實作項移到下一輪。後續只改不入包的 PLAN／AGENTS 驗收紀錄，不改受驗證 payload，因此不重建同一包、不重跑無變更測試。
+- 尚未取得的只有完整流程的不同模型體檢簽核：主代理及 gpt-6-luna/high 均實作，主代理確切模型版本無可信可區分紀錄；先前 Astra medium 只有未完成的唯讀工作，不能代作簽核。待可確認未參與實作的模型審查原基準 1dbbc713f39b85276bd6de25b61fd39e282edd53 至本輪全部提交，或使用者明確覆寫同模型體檢規則。現有主代理／Luna 複核與驗收不冒稱獨立換模型體檢。
+- 開發電腦原生 reset／逾時仍 NotPassed、根因未定，AdGuard 設定保留；獨立 Windows CI 原生驗收已通過。外部 Server／SMB／企業 PKI／真業務／規模仍 NotTested，ProductionExecutionEnabled=false，按第 1／7 節既定範圍不轉成要求使用者主觀確認的開發驗收門檻。
