@@ -307,3 +307,8 @@ Target 可在零備份下匯出已註冊身分及本機盤點；Manager 以獨�
 - 原生機器層級 SoftwareCatalog Coverage 合法省略 ItemId；StrictMode 下原直接讀取會阻止 Target 比較與 NonC 復原接縫。
 - 指紋計算將缺省 ItemId 正規化為空字串，保留明確項目及狀態差異的指紋綁定，不修改 sealed source facts。
 - 驗證：不可變來源副本 `work/r6/software-facts-snapshot.txt` 所指目錄，`tests/Test-SoftwareFactsCoverage.ps1` 在 PowerShell 5.1 / 7 皆通過。此結果僅涵蓋該指紋契約，不代表 P5 或整輪驗收通過。
+### 本輪整合發現修正：NonC 目的地的原生實體路徑比較（2026-10-15）
+
+- `Get-WsmAssistiveNonCTargetNativePath` 原先對 peer proof 的 NT 實體路徑再做 `GetFullPath`，並與磁碟代號目的地比較，會拒絕正確的本機目的檔案。改為兩側皆用已觀測的實體路徑比較，保留 exact peer 身分、sealed destination、相對路徑及防穿越檢查；不把 NT 路徑當 I/O 路徑。
+- 主代理在固定來源副本 `work/r6/native-path-snapshot.txt` 所指目錄，獨立跑 `Test-NonCTargetNativePath.ps1`：PowerShell 5.1 / 7 皆通過。使用實際 temp 目錄的原生 NT volume 觀測；peer metadata 為 fixture，不代表實際 SMB 認證／傳輸通過。
+- 此為既有核心的可獨立修正，不標記 P4／P5 或整輪完成。另已發現 Target 交接 helper 把 sealed physical StateDirectory 再當 logical I/O 路徑的問題，正在本輪接回固定 Target WorkRoot\pairs 並驗證，不延至後輪。
