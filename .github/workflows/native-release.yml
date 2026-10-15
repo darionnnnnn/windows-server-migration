@@ -8,6 +8,9 @@ on:
       - 'tests/Test-NativeHtmlBridge.js'
       - 'tests/Start-HtmlTestServer.ps1'
       - 'tests/Test-ReleaseWizardSmoke.ps1'
+      - 'tests/Test-ReleaseNativeLauncher.js'
+      - 'tests/Test-NativeWizardRuntimeHandler.js'
+      - 'tests/Start-WizardRuntimeTestServer.ps1'
       - 'Start-ServerMigration.*'
   workflow_dispatch:
 permissions:
@@ -15,7 +18,7 @@ permissions:
 jobs:
   native:
     runs-on: windows-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -48,6 +51,20 @@ jobs:
         run: |
           node ./tests/Test-NativeHtmlBridge.js 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wsm-native.log')
           if ($LASTEXITCODE -ne 0) { throw 'Native browser acceptance failed; fixture captures do not substitute for this gate.' }
+      - name: Actual released CMD launch and native purpose save
+        if: matrix.engine == 'powershell'
+        shell: pwsh
+        run: |
+          node ./tests/Test-ReleaseNativeLauncher.js 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wsm-launcher.log')
+          if ($LASTEXITCODE -ne 0) { throw 'Actual released CMD browser acceptance failed.' }
+      - name: Source and Target native runtime journeys with small controlled fixtures
+        shell: pwsh
+        env:
+          WSM_RUNTIME_NATIVE_TRANSPORT: '1'
+        run: |
+          $env:WSM_RUNTIME_FORMAL_SOURCE_ROOT = Split-Path (Split-Path $env:WSM_HTML_TEST_MODULE)
+          node ./tests/Test-NativeWizardRuntimeHandler.js 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wsm-runtime.log')
+          if ($LASTEXITCODE -ne 0) { throw 'Native Source/Target runtime acceptance failed.' }
       - name: Retain sanitized fixture diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -55,5 +72,7 @@ jobs:
           name: native-release-${{ matrix.engine }}
           path: |
             ${{ runner.temp }}/wsm-native.log
+            ${{ runner.temp }}/wsm-launcher.log
+            ${{ runner.temp }}/wsm-runtime.log
             ${{ runner.temp }}/wsm-native-release/release-evidence.json
           retention-days: 7

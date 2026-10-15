@@ -433,3 +433,6 @@ Release smoke 改按正式設計分離安裝目錄與固定工作根，保留含
 
 本段提交前 JavaScript syntax、249 份腳本 encoding／PowerShell parsing、workflow YAML／雙引擎矩陣及 diff whitespace 檢查通過。原生執行結果以 GitHub Actions 實際 run／job log 補記；未取得結果前不標 P0 或 M04 通過。此 CI 只使用小型 fixture，不執行實體 4GiB／企業環境或放寬 deadline。
 CI run 38686260214 的兩引擎均通過實際發行 smoke，原生頁面／session／125 項盤點已載入，但資源雜湊測試停止。精確追查 console.js：檔案 SHA cfe4cce0…，移除 UTF-8 BOM 後 SHA 67780bee…，正好等於 Playwright response.body 的結果。正式 handler 使用 ReadAllBytes，session 使用同檔 SHA，沒有改寫產品；差異來自 CDP 提供解碼文字時省略 BOM。測試改以真瀏覽器 fetch ArrayBuffer 核對未經文字解碼的實際 bytes 與原 session hash，另確認載入資源只允許完全相同或 CDP 省略單一既有 BOM；不修改 session hash、不忽略任意差異。其餘原生／寫入／錯誤斷言保留，需新 CI 完整通過才可判驗收。
+CI run [38686507492](https://github.com/darionnnnnn/windows-server-migration/actions/runs/38686507492)，commit 25e7a0f，WinPS5.1 job 116262459381 與 PS7 job 116262459062 均 success。兩者使用原封實際發行／解壓模組；真原生 Edge 載入完整頁、未解碼 bytes 與 session asset hash、125 項盤點、一次真保存，以及明確注入非 JSON／reset／timeout／expired session 的錯誤處理通過。此為 GitHub Windows 隔離主機的原生有限旅程通過；本機環境 reset／逾時仍 NotPassed，責任元件未定，不把 CI 通過改寫成這台電腦已恢復。
+
+下一段將以獨立測試走真解壓 CMD／PS1 預設入口、原生用途保存重讀及完整離線手冊，補 M04；既有 Source／Target 小資料 runtime fixture 增加原生 HTTP 模式，略過 writer capture bridge 並以實際 browser requests 記錄寫入。受控身分／盤點／software／取消排程觀察仍明列，不代稱實際服務／SMB／生產通過。保留原 30s 原生讀取時限，CI job 整體上限增加供四子案例使用，不放寬產品 deadline。
