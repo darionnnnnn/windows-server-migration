@@ -1,4 +1,4 @@
-function Get-WsmFileScopeGuardReason {
+﻿function Get-WsmFileScopeGuardReason {
     param([Parameter(Mandatory)][string]$Path)
     if($Path -match '^\\Device\\HarddiskVolume[^\\]+\\?'){
         $full=$Path.TrimEnd('\');$root=[regex]::Match($Path,'^\\Device\\HarddiskVolume[^\\]+').Value
@@ -90,6 +90,13 @@ function Assert-WsmFileScopeInstalledRoots {
     $inventoryRoots=Get-WsmTrustedInstalledSoftwareRoots $SourceInventory
     $sourceRoot=ConvertTo-WsmCanonicalPath ([string]$Spec.SourcePath)
     $sourceComparable=$sourceRoot;if($NativeSource){try{$sourceComparable=Get-WsmPhysicalPath $sourceRoot}catch{}}
+    if($Spec.PSObject.Properties['ContentSelection'] -and [string]$Spec.ContentSelection -ceq 'ExactMembers'){
+        foreach($member in @($Spec.Members)){
+            $memberPath=ConvertTo-WsmCanonicalPath (Join-Path $sourceRoot ([string]$member.RelativePath));$memberComparable=$memberPath;if($NativeSource){$memberComparable=Get-WsmPhysicalPath $memberPath}
+            foreach($install in @($inventoryRoots.Roots)){$installPath=[string]$install.Path;$installComparable=$installPath;if($NativeSource){$installComparable=Get-WsmPhysicalPath $installPath};if((Test-WsmPathOverlap $memberPath $installPath) -or (Test-WsmPathOverlap $memberComparable $installComparable)){throw ('ExactMembers includes a member covered by trusted installed-software evidence ('+[string]$install.SoftwareId+'): '+$memberPath+'. Review it as product configuration or exclude it from general data.')}}
+        }
+        return [pscustomobject]@{Status=$inventoryRoots.Status;RootsChecked=@($inventoryRoots.Roots).Count;Diagnostics=@($inventoryRoots.Diagnostics)}
+    }
     $excluded=@(if($Spec.PSObject.Properties['ExcludedRelativePaths']){@($Spec.ExcludedRelativePaths)})
     $excludedPaths=New-Object 'System.Collections.Generic.List[object]'
     foreach($relative in $excluded){
@@ -142,19 +149,21 @@ function Assert-WsmFileScopeGuard {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Path,
-        [ValidateSet('Root','Collected','ExactConfig')][string]$Mode='Collected',
+        [ValidateSet('Root','Collected','ExactConfig','ExactMembers')][string]$Mode='Collected',
         [string]$SourceRoot='',
         [string]$RelativePath='',
         [switch]$IsDirectory,
         [switch]$PathOnly,
         [switch]$MetadataOnly,
         [switch]$CheckPhysicalAlias,
-        [switch]$AllowProtectedExactRoot
+        [switch]$AllowProtectedExactRoot,
+        [switch]$AllowDriveRoot
     )
     $canonical=if($Path -match '^\\Device\\HarddiskVolume[^\\]+(?:\\|$)'){$Path.TrimEnd('\')}else{ConvertTo-WsmCanonicalPath $Path}
     $reason=Get-WsmFileScopeGuardReason $canonical
     if($reason){
-        if($Mode -eq 'Root' -and $AllowProtectedExactRoot -and $reason -ne 'drive root' -and (Test-WsmProtectedSoftwareInstallPath $canonical)){$reason=$null}
+        if($Mode -eq 'Root' -and $AllowDriveRoot -and $reason -eq 'drive root'){$reason=$null}
+        elseif($Mode -eq 'Root' -and $AllowProtectedExactRoot -and $reason -ne 'drive root' -and (Test-WsmProtectedSoftwareInstallPath $canonical)){$reason=$null}
         elseif($Mode -eq 'ExactConfig' -and $IsDirectory -and (Test-WsmProtectedSoftwareInstallPath $canonical)){$reason=$null}
         elseif($Mode -eq 'ExactConfig' -and (Test-WsmExactConfigPath $(if($RelativePath){$RelativePath}else{$canonical}) $SourceRoot) -and (Test-WsmProtectedSoftwareInstallPath $canonical)){$reason=$null}
     }
@@ -162,7 +171,7 @@ function Assert-WsmFileScopeGuard {
     if($Mode -eq 'ExactConfig' -and -not $IsDirectory -and -not (Test-WsmExactConfigPath $(if($RelativePath){$RelativePath}else{$canonical}) $SourceRoot)){
         throw ('ExactFiles only accepts recognized configuration files; binary and arbitrary payload files are not configuration: '+$canonical)
     }
-    if(-not $PathOnly -and -not $MetadataOnly -and -not $IsDirectory -and $Mode -in @('Collected','ExactConfig') -and [IO.File]::Exists($canonical)){
+    if(-not $PathOnly -and -not $MetadataOnly -and -not $IsDirectory -and $Mode -in @('Collected','ExactConfig','ExactMembers') -and [IO.File]::Exists($canonical)){
         Assert-WsmNoReparse $canonical
         Assert-WsmFileScopeContent $canonical -ExactConfig:($Mode -eq 'ExactConfig')
     }
@@ -170,7 +179,7 @@ function Assert-WsmFileScopeGuard {
         $physical=Get-WsmPhysicalPath $canonical
         $physicalReason=Get-WsmFileScopeGuardReason $physical
         $allowedPhysicalExact=($Mode -eq 'ExactConfig' -and (($IsDirectory -and (Test-WsmProtectedSoftwareInstallPath $physical)) -or ((Test-WsmExactConfigPath $(if($RelativePath){$RelativePath}else{$physical}) $SourceRoot) -and (Test-WsmProtectedSoftwareInstallPath $physical))))
-        if($physicalReason -and -not (($Mode -eq 'Root' -and $AllowProtectedExactRoot -and $physicalReason -ne 'drive root' -and (Test-WsmProtectedSoftwareInstallPath $physical)) -or $allowedPhysicalExact)){
+        if($physicalReason -and -not (($Mode -eq 'Root' -and $AllowDriveRoot -and $physicalReason -eq 'drive root') -or ($Mode -eq 'Root' -and $AllowProtectedExactRoot -and $physicalReason -ne 'drive root' -and (Test-WsmProtectedSoftwareInstallPath $physical)) -or $allowedPhysicalExact)){
             throw ('FileScope resolves through a physical alias into a protected boundary ('+$physicalReason+'): '+$canonical)
         }
     }

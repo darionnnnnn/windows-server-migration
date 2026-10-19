@@ -1,0 +1,102 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "D1",
+  "sourceCommit": "2770450d80518f544878af9ba25b16fdf3b04bd0",
+  "verifier": "Primary independent original ZIP digest and suite validator",
+  "suiteRecords": [
+    {
+      "artifactId": 12162651015,
+      "artifactName": "native-release-pwsh",
+      "runId": 39197085444,
+      "archiveSha256": "2f8947dd3601c2072c87d782eea8c9abcca52f4ce1f70f4248a57cadaa0b4e8b",
+      "entry": "native-evidence/native-html-bridge.json",
+      "sha256": "7a37332a7f5a5c29ffee236472a641e57c293f8f89b48bc9225d380e3fe90e1b",
+      "originalJson": "{\n  \"schemaVersion\": 1,\n  \"status\": \"Passed\",\n  \"suite\": \"native-html-bridge\",\n  \"engine\": \"pwsh\",\n  \"engineVersion\": \"7.6.6\",\n  \"transport\": \"native-http-edge\",\n  \"mode\": \"full\",\n  \"sourceCommit\": \"2770450d80518f544878af9ba25b16fdf3b04bd0\",\n  \"runId\": \"39197085444-1\",\n  \"measure\": \"completed-journeys\",\n  \"expectedJourneyCount\": 1,\n  \"completedJourneyCount\": 1,\n  \"completedJourneys\": [\n    {\n      \"name\": \"edge-loopback-handler-success-and-injected-faults\",\n      \"successfulFaultDisplays\": 4\n    }\n  ],\n  \"fixtureLimits\": {\n    \"productionQualification\": false,\n    \"liveWorkloads\": false,\n    \"realEdge\": true,\n    \"loopbackHandler\": true,\n    \"injectedFaultResponses\": true\n  },\n  \"startedUtc\": \"2026-10-19T03:57:33.199Z\",\n  \"finishedUtc\": \"2026-10-19T03:58:04.494Z\"\n}\n"
+    },
+    {
+      "artifactId": 12162651015,
+      "artifactName": "native-release-pwsh",
+      "runId": 39197085444,
+      "archiveSha256": "2f8947dd3601c2072c87d782eea8c9abcca52f4ce1f70f4248a57cadaa0b4e8b",
+      "entry": "native-evidence/native-runtime.json",
+      "sha256": "92419209c532c52fb2bb0dc59dd6b3bbf89c49cb2e05988b9f58dc5ba863032c",
+      "originalJson": "{\n  \"schemaVersion\": 1,\n  \"status\": \"Passed\",\n  \"suite\": \"native-runtime\",\n  \"engine\": \"pwsh\",\n  \"engineVersion\": \"7.6.6\",\n  \"transport\": \"native-http-edge\",\n  \"mode\": \"all\",\n  \"sourceCommit\": \"2770450d80518f544878af9ba25b16fdf3b04bd0\",\n  \"runId\": \"39197085444-1\",\n  \"measure\": \"completed-journeys\",\n  \"expectedJourneyCount\": 4,\n  \"completedJourneyCount\": 4,\n  \"completedJourneys\": [\n    {\n      \"name\": \"Source-cancel-with-concurrent-Probe\",\n      \"role\": \"Source\",\n      \"expectedTerminal\": \"Cancelled\"\n    },\n    {\n      \"name\": \"Source-Directory-backup\",\n      \"role\": \"Source\",\n      \"deliveryMode\": \"Directory\"\n    },\n    {\n      \"name\": \"Source-ZIP-backup\",\n      \"role\": \"Source\",\n      \"deliveryMode\": \"Zip\"\n    },\n    {\n      \"name\": \"Target-package-import-comparison-decision-restore\",\n      \"role\": \"Target\",\n      \"terminal\": \"Succeeded\"\n    }\n  ],\n  \"fixtureLimits\": {\n    \"productionQualification\": false,\n    \"liveWorkloads\": false,\n    \"controlledWindowsHost\": true,\n    \"externalSmbQualification\": false,\n    \"actualServices\": false\n  },\n  \"startedUtc\": \"2026-10-19T03:58:07.829Z\",\n  \"finishedUtc\": \"2026-10-19T03:59:18.896Z\"\n}\n"
+    },
+    {
+      "artifactId": 12162263221,
+      "artifactName": "native-release-powershell",
+      "runId": 39197085444,
+      "archiveSha256": "83e9b19aa16001784c94c6e27ad7f18813e89e84e04fc81006165a0028688d90",
+      "entry": "native-evidence/native-html-bridge.json",
+      "sha256": "a8d84b7af63ef495cf64ab1c08c6e7cfe70176bcfbf68fc5a5fda1677921b7d1",
+      "originalJson": "{\n  \"schemaVersion\": 1,\n  \"status\": \"Passed\",\n  \"suite\": \"native-html-bridge\",\n  \"engine\": \"powershell\",\n  \"engineVersion\": \"5.1.26100.33438\",\n  \"transport\": \"native-http-edge\",\n  \"mode\": \"full\",\n  \"sourceCommit\": \"2770450d80518f544878af9ba25b16fdf3b04bd0\",\n  \"runId\": \"39197085444-1\",\n  \"measure\": \"completed-journeys\",\n  \"expectedJourneyCount\": 1,\n  \"completedJourneyCount\": 1,\n  \"completedJourneys\": [\n    {\n      \"name\": \"edge-loopback-handler-success-and-injected-faults\",\n      \"successfulFaultDisplays\": 4\n    }\n  ],\n  \"fixtureLimits\": {\n    \"productionQualification\": false,\n    \"liveWorkloads\": false,\n    \"realEdge\": true,\n    \"loopbackHandler\": true,\n    \"injectedFaultResponses\": true\n  },\n  \"startedUtc\": \"2026-10-19T03:58:02.825Z\",\n  \"toolFingerprint\": \"d4e6592542b152b700b2291fd9f45f7a37d39f1c413ba17c7899adf388b44101\",\n  \"finishedUtc\": \"2026-10-19T03:58:39.598Z\"\n}\n"
+    },
+    {
+      "artifactId": 12162263221,
+      "artifactName": "native-release-powershell",
+      "runId": 39197085444,
+      "archiveSha256": "83e9b19aa16001784c94c6e27ad7f18813e89e84e04fc81006165a0028688d90",
+      "entry": "native-evidence/native-release-package.json",
+      "sha256": "dd3cb770b3ae899fde0b4b2276fbb01221633c3140df944be2d4a3b86d9655c9",
+      "originalJson": "{\r\n    \"schemaVersion\":  1,\r\n    \"status\":  \"Passed\",\r\n    \"suite\":  \"native-release-package\",\r\n    \"engine\":  \"powershell\",\r\n    \"engineVersion\":  \"5.1.26100.33438\",\r\n    \"runtime\":  \"5.1.26100.33438\",\r\n    \"edition\":  \"Desktop\",\r\n    \"processArchitecture\":  \"x64\",\r\n    \"transport\":  \"release-module-smoke\",\r\n    \"mode\":  \"release-smoke\",\r\n    \"sourceCommit\":  \"2770450d80518f544878af9ba25b16fdf3b04bd0\",\r\n    \"runId\":  \"39197085444-1\",\r\n    \"measure\":  \"completed-journeys\",\r\n    \"expectedJourneyCount\":  1,\r\n    \"completedJourneyCount\":  1,\r\n    \"completedJourneys\":  [\r\n                              {\r\n                                  \"fileCount\":  132,\r\n                                  \"name\":  \"exact-release-archive-extraction-module-import-save-readback\",\r\n                                  \"toolFingerprint\":  \"d4e6592542b152b700b2291fd9f45f7a37d39f1c413ba17c7899adf388b44101\",\r\n                                  \"archiveSHA256\":  \"C7130EFD371398845C2FF198A1B87726B691459380C849B88965FAFA40C22004\"\r\n                              }\r\n                          ],\r\n    \"fixtureLimits\":  {\r\n                          \"productionQualification\":  false,\r\n                          \"liveWorkloads\":  false,\r\n                          \"extractedReleaseModule\":  true,\r\n                          \"testOnlyWorkspace\":  true\r\n                      },\r\n    \"startedUtc\":  \"2026-10-19T03:57:47.0987240Z\",\r\n    \"toolFingerprint\":  \"d4e6592542b152b700b2291fd9f45f7a37d39f1c413ba17c7899adf388b44101\",\r\n    \"finishedUtc\":  \"2026-10-19T03:58:01.9929776Z\"\r\n}"
+    },
+    {
+      "artifactId": 12162263221,
+      "artifactName": "native-release-powershell",
+      "runId": 39197085444,
+      "archiveSha256": "83e9b19aa16001784c94c6e27ad7f18813e89e84e04fc81006165a0028688d90",
+      "entry": "native-evidence/native-release-launcher.json",
+      "sha256": "ca7a254de0c481044e130a2930c4b31f6100f3bfc31bb8b89f5885d880361c16",
+      "originalJson": "{\n  \"schemaVersion\": 1,\n  \"status\": \"Passed\",\n  \"suite\": \"native-release-launcher\",\n  \"engine\": \"powershell\",\n  \"engineVersion\": \"5.1.26100.33438\",\n  \"transport\": \"cmd-native-http-edge\",\n  \"mode\": \"released-cmd\",\n  \"sourceCommit\": \"2770450d80518f544878af9ba25b16fdf3b04bd0\",\n  \"runId\": \"39197085444-1\",\n  \"measure\": \"completed-journeys\",\n  \"expectedJourneyCount\": 1,\n  \"completedJourneyCount\": 1,\n  \"completedJourneys\": [\n    {\n      \"name\": \"extracted-cmd-manager-purpose-and-offline-guides\"\n    }\n  ],\n  \"fixtureLimits\": {\n    \"productionQualification\": false,\n    \"liveWorkloads\": false,\n    \"exactExtractedRelease\": true,\n    \"realCmd\": true,\n    \"realEdge\": true\n  },\n  \"startedUtc\": \"2026-10-19T03:58:42.825Z\",\n  \"toolFingerprint\": \"d4e6592542b152b700b2291fd9f45f7a37d39f1c413ba17c7899adf388b44101\",\n  \"finishedUtc\": \"2026-10-19T03:58:53.208Z\"\n}\n"
+    },
+    {
+      "artifactId": 12162263221,
+      "artifactName": "native-release-powershell",
+      "runId": 39197085444,
+      "archiveSha256": "83e9b19aa16001784c94c6e27ad7f18813e89e84e04fc81006165a0028688d90",
+      "entry": "native-evidence/native-runtime.json",
+      "sha256": "72735ed4cb8dc1a041e222838b849151d116582dcc2485413b5e2d831b8ff0dc",
+      "originalJson": "{\n  \"schemaVersion\": 1,\n  \"status\": \"Passed\",\n  \"suite\": \"native-runtime\",\n  \"engine\": \"powershell\",\n  \"engineVersion\": \"5.1.26100.33438\",\n  \"transport\": \"native-http-edge\",\n  \"mode\": \"all\",\n  \"sourceCommit\": \"2770450d80518f544878af9ba25b16fdf3b04bd0\",\n  \"runId\": \"39197085444-1\",\n  \"measure\": \"completed-journeys\",\n  \"expectedJourneyCount\": 4,\n  \"completedJourneyCount\": 4,\n  \"completedJourneys\": [\n    {\n      \"name\": \"Source-cancel-with-concurrent-Probe\",\n      \"role\": \"Source\",\n      \"expectedTerminal\": \"Cancelled\"\n    },\n    {\n      \"name\": \"Source-Directory-backup\",\n      \"role\": \"Source\",\n      \"deliveryMode\": \"Directory\"\n    },\n    {\n      \"name\": \"Source-ZIP-backup\",\n      \"role\": \"Source\",\n      \"deliveryMode\": \"Zip\"\n    },\n    {\n      \"name\": \"Target-package-import-comparison-decision-restore\",\n      \"role\": \"Target\",\n      \"terminal\": \"Succeeded\"\n    }\n  ],\n  \"fixtureLimits\": {\n    \"productionQualification\": false,\n    \"liveWorkloads\": false,\n    \"controlledWindowsHost\": true,\n    \"externalSmbQualification\": false,\n    \"actualServices\": false\n  },\n  \"startedUtc\": \"2026-10-19T03:58:54.109Z\",\n  \"toolFingerprint\": \"d4e6592542b152b700b2291fd9f45f7a37d39f1c413ba17c7899adf388b44101\",\n  \"finishedUtc\": \"2026-10-19T04:01:53.560Z\"\n}\n"
+    },
+    {
+      "artifactId": 12162840236,
+      "artifactName": "round6-probe-pwsh",
+      "runId": 39197085462,
+      "archiveSha256": "7de10e036f3e6daebe1ad760ac1e72f3c2c8163004d3f69a95b1bbc38552472b",
+      "entry": "native-evidence/native-probe.json",
+      "sha256": "9ef05d230caee8736708456d9b59e5e0267aa1bd392fc619563a792320fd8c40",
+      "originalJson": "{\n  \"schemaVersion\": 1,\n  \"status\": \"Passed\",\n  \"suite\": \"native-probe\",\n  \"engine\": \"pwsh\",\n  \"engineVersion\": \"7.6.6\",\n  \"transport\": \"native-http-edge\",\n  \"mode\": \"full\",\n  \"sourceCommit\": \"2770450d80518f544878af9ba25b16fdf3b04bd0\",\n  \"runId\": \"39197085462-1\",\n  \"measure\": \"completed-journeys\",\n  \"expectedJourneyCount\": 4,\n  \"completedJourneyCount\": 4,\n  \"completedJourneys\": [\n    {\n      \"name\": \"Source-DeveloperProbe-artifact-readback\",\n      \"role\": \"Source\",\n      \"terminal\": \"Cancelled\"\n    },\n    {\n      \"name\": \"Target-DeveloperProbe-artifact-readback\",\n      \"role\": \"Target\",\n      \"terminal\": \"ReviewRequired\"\n    },\n    {\n      \"name\": \"Manager-DeveloperProbe-artifact-readback\",\n      \"role\": \"Manager\",\n      \"terminal\": \"ReviewRequired\"\n    },\n    {\n      \"name\": \"Manager-real-DeveloperProbe-CLI\",\n      \"role\": \"Manager\"\n    }\n  ],\n  \"fixtureLimits\": {\n    \"productionQualification\": false,\n    \"liveWorkloads\": false,\n    \"controlledHostFixtures\": true,\n    \"realEdge\": true,\n    \"loopbackHandler\": true\n  },\n  \"startedUtc\": \"2026-10-19T03:57:38.550Z\",\n  \"finishedUtc\": \"2026-10-19T03:59:06.343Z\"\n}\n"
+    },
+    {
+      "artifactId": 12162089200,
+      "artifactName": "round6-manager-powershell",
+      "runId": 39197085462,
+      "archiveSha256": "4b055b4686ce03c6ee6ec44aa7e3581c6edffd13cd89cb9ede4d88613f0c3072",
+      "entry": "native-evidence/native-manager.json",
+      "sha256": "ece0c91926b7a627fbea6c3a793a7944895e16e7362dbe0670070d8d03f02b18",
+      "originalJson": "{\n  \"schemaVersion\": 1,\n  \"status\": \"Passed\",\n  \"suite\": \"native-manager\",\n  \"engine\": \"powershell\",\n  \"engineVersion\": \"5.1.26100.33438\",\n  \"transport\": \"native-http-edge\",\n  \"mode\": \"full\",\n  \"sourceCommit\": \"2770450d80518f544878af9ba25b16fdf3b04bd0\",\n  \"runId\": \"39197085462-1\",\n  \"measure\": \"completed-journeys\",\n  \"expectedJourneyCount\": 1,\n  \"completedJourneyCount\": 1,\n  \"completedJourneys\": [\n    {\n      \"name\": \"manager-comparison-approval-sealed-plan-reopen-readback\"\n    }\n  ],\n  \"fixtureLimits\": {\n    \"productionQualification\": false,\n    \"liveWorkloads\": false,\n    \"testOnlyIdentities\": true,\n    \"realEdge\": true,\n    \"loopbackHandler\": true\n  },\n  \"startedUtc\": \"2026-10-19T03:57:50.079Z\",\n  \"finishedUtc\": \"2026-10-19T03:58:57.155Z\"\n}\n"
+    },
+    {
+      "artifactId": 12161778592,
+      "artifactName": "round6-manager-pwsh",
+      "runId": 39197085462,
+      "archiveSha256": "083cee80a2315c7b0b155e79d98dc678e3f984dfecef738c6a935e600fb26f59",
+      "entry": "native-evidence/native-manager.json",
+      "sha256": "4f779713c55fa1755334cfbd142946c7a3bca463cf3127870b0df19c253f5fe3",
+      "originalJson": "{\n  \"schemaVersion\": 1,\n  \"status\": \"Passed\",\n  \"suite\": \"native-manager\",\n  \"engine\": \"pwsh\",\n  \"engineVersion\": \"7.6.6\",\n  \"transport\": \"native-http-edge\",\n  \"mode\": \"full\",\n  \"sourceCommit\": \"2770450d80518f544878af9ba25b16fdf3b04bd0\",\n  \"runId\": \"39197085462-1\",\n  \"measure\": \"completed-journeys\",\n  \"expectedJourneyCount\": 1,\n  \"completedJourneyCount\": 1,\n  \"completedJourneys\": [\n    {\n      \"name\": \"manager-comparison-approval-sealed-plan-reopen-readback\"\n    }\n  ],\n  \"fixtureLimits\": {\n    \"productionQualification\": false,\n    \"liveWorkloads\": false,\n    \"testOnlyIdentities\": true,\n    \"realEdge\": true,\n    \"loopbackHandler\": true\n  },\n  \"startedUtc\": \"2026-10-19T03:57:41.410Z\",\n  \"finishedUtc\": \"2026-10-19T03:58:33.632Z\"\n}\n"
+    },
+    {
+      "artifactId": 12161618832,
+      "artifactName": "round6-probe-powershell",
+      "runId": 39197085462,
+      "archiveSha256": "e00930a32fefd50257be80a00f0476a7cbbf94764a524e616001b91797b5d714",
+      "entry": "native-evidence/native-probe.json",
+      "sha256": "790ed86d82d1e426e237a6e5247285dc0c91f489256bc935e91cb71ec400e1a1",
+      "originalJson": "{\n  \"schemaVersion\": 1,\n  \"status\": \"Passed\",\n  \"suite\": \"native-probe\",\n  \"engine\": \"powershell\",\n  \"engineVersion\": \"5.1.26100.33438\",\n  \"transport\": \"native-http-edge\",\n  \"mode\": \"full\",\n  \"sourceCommit\": \"2770450d80518f544878af9ba25b16fdf3b04bd0\",\n  \"runId\": \"39197085462-1\",\n  \"measure\": \"completed-journeys\",\n  \"expectedJourneyCount\": 3,\n  \"completedJourneyCount\": 3,\n  \"completedJourneys\": [\n    {\n      \"name\": \"Source-DeveloperProbe-artifact-readback\",\n      \"role\": \"Source\",\n      \"terminal\": \"Cancelled\"\n    },\n    {\n      \"name\": \"Target-DeveloperProbe-artifact-readback\",\n      \"role\": \"Target\",\n      \"terminal\": \"ReviewRequired\"\n    },\n    {\n      \"name\": \"Manager-DeveloperProbe-artifact-readback\",\n      \"role\": \"Manager\",\n      \"terminal\": \"ReviewRequired\"\n    }\n  ],\n  \"fixtureLimits\": {\n    \"productionQualification\": false,\n    \"liveWorkloads\": false,\n    \"controlledHostFixtures\": true,\n    \"realEdge\": true,\n    \"loopbackHandler\": true\n  },\n  \"startedUtc\": \"2026-10-19T03:57:34.896Z\",\n  \"finishedUtc\": \"2026-10-19T03:58:24.967Z\"\n}\n"
+    }
+  ],
+  "limitations": [
+    "20 existing native HTTP/Edge journeys and 1 release module smoke; no dedicated candidate-scan browser journey.",
+    "D1 incomplete and original 6eac316 intermittent failures remain unresolved."
+  ]
+}

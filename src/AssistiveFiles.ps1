@@ -1,4 +1,4 @@
-function Assert-WsmAssistiveSourceScope {
+﻿function Assert-WsmAssistiveSourceScope {
     param($Spec,[ValidateSet('SourceCOnly')][string]$Policy='SourceCOnly',[switch]$Native)
     if($Spec.Adapter -cne 'FileScope'){throw 'Source channel policy requires FileScope.'}
     $path=ConvertTo-WsmCanonicalPath ([string]$Spec.SourcePath)
@@ -85,6 +85,29 @@ public static class WsmFileTopology {
     if(-not [IO.Directory]::Exists($Path) -and [WsmFileTopology]::Links($Path) -gt 1){throw 'Hard-linked files require a dedicated qualified topology workflow.'}
 }
 
+function Get-WsmExactMemberEntries {
+    param($Spec,[string]$PackageRoot,$CancellationToken=$null)
+    if(-not $Spec -or -not $Spec.PSObject.Properties['Members'] -or $Spec.Members -isnot [array] -or -not $Spec.Members.Count){throw 'ExactMembers requires a nonempty approved member set.'}
+    if($Spec.PSObject.Properties['ExcludedRelativePaths'] -and @($Spec.ExcludedRelativePaths).Count){throw 'ExactMembers cannot combine Members with ExcludedRelativePaths; remove excluded files from the reviewed Members set.'}
+    $members=@($Spec.Members)
+    $root=ConvertTo-WsmCanonicalPath ([string]$Spec.SourcePath);Assert-WsmFileScopeGuard -Path $root -Mode Root -AllowDriveRoot
+    $physicalRoot=Get-WsmPhysicalPath $root;Assert-WsmFileScopeGuard -Path $physicalRoot -Mode Root -AllowDriveRoot;$packageFull=[IO.Path]::GetFullPath($PackageRoot);$seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach($member in $members){
+        Assert-WsmCancellationBoundary $CancellationToken 'ExactMemberFile'
+        Assert-WsmFields $member @('RelativePath','SHA256') @('RelativePath','SHA256');$relative=[string]$member.RelativePath;Assert-WsmRelativePath $relative
+        if($relative -cne $relative.Replace('/','\') -or $relative.Trim() -cne $relative -or -not $seen.Add($relative)){throw 'ExactMembers contains a noncanonical or duplicate member path.'}
+        if([string]$member.SHA256 -cnotmatch '^[a-f0-9]{64}$'){throw 'ExactMembers member has no canonical SHA256 baseline.'}
+        $path=[IO.Path]::GetFullPath((Join-Path $root $relative));if($path.Length -gt 239){throw 'Exact member exceeds the verified path limit.'}
+        Assert-WsmNoReparse $path;Assert-WsmFileScopeGuard -Path $path -Mode ExactMembers -SourceRoot $root -RelativePath $relative -CheckPhysicalAlias
+        Assert-WsmAssistiveFileTopology -Path $path
+        if(-not [IO.File]::Exists($path)){throw ('Approved exact member is absent: '+$relative)}
+        $physical=Get-WsmPhysicalPath $path;if($physical -ine $physicalRoot -and -not $physical.StartsWith($physicalRoot.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Exact member resolves outside the reviewed physical source root.'}
+        if(Test-WsmPathOverlap $physical (Get-WsmPhysicalPath $packageFull)){throw 'Exact member overlaps package workspace.'}
+        if((Get-WsmCancellableFileHash $path $CancellationToken 'ExactMemberHash') -cne [string]$member.SHA256){throw ('Approved exact member bytes changed: '+$relative)}
+        [pscustomobject]@{SourcePath=$path;RelativePath=$relative;Directory=$false}
+    }
+}
+
 function Get-WsmExactConfigEntries {
     param($Spec,[string]$PackageRoot,$CancellationToken=$null)
     Assert-WsmConfigArtifactSpec $Spec
@@ -153,7 +176,7 @@ function Get-WsmFilePlacementPreview {
                     $topologyVerified=$true
                     $key=$item.ItemId+'|'+$relative
                     try{
-                        if($spec.PSObject.Properties['ContentSelection'] -and [string]$spec.ContentSelection -ceq 'ExactFiles'){
+                        if($spec.PSObject.Properties['ContentSelection'] -and [string]$spec.ContentSelection -cin @('ExactFiles','ExactMembers')){
                             if($row.Directory -and [string]::IsNullOrEmpty($relative)){
                                 Assert-WsmAssistiveTargetScopeTopology -Path $destination -Spec $spec -TargetRoot $spec.TargetPath -Kind Root
                             }else{

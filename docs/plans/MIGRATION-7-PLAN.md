@@ -515,3 +515,13 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 主代理固定快照雙引擎各 48 項檢查通過，另通過正式 OperationRequests 回歸、WizardFlow 45、HTML parser／typed action 92 及編碼／解析 262 檔。受測 bytes 與原始輸出見 MIGRATION-7-D1.json。
 - 本段仍是 D1 部分實作：50,000 筆累計上限後的受控分段續查、重掃 cursor 的時間預算及完整相依矩陣仍待補齊；D2 的確認到精確集合核准也未完成。索引保持 in-progress，不將候選探索成功標為全 C 槽覆蓋或整輪完成。
 - 1897568 文件提交之 CI 已獨立核對原始 scope log 及 API job steps：Manager／Probe 矩陣為空且跳過，release 兩引擎產品旅程均跳過；這是 B1 文件範圍選擇證據，不計作原生旅程 PASS。永久記錄見 MIGRATION-7-B2-docs-only-1897568.json。
+
+### 17.8 D2 精確檔案集合核心（部分完成）
+
+- 新增 schema 3 Assistive 的 ExactMembers 檔案白名單，逐檔綁 RelativePath／SHA256；C 根目錄只能藉精確成員納入，不能擴為整盤。保護區、套裝根、實體別名、reparse／拓撲、工具工作區重疊及大小寫碰撞仍拒絕，業務 DLL／EXE 與零長度檔可讀回。非空排除清單與 Members 不可並存，改選須改成員集合。
+- 正式 Set-WsmMigrationSpec 改為在鎖內讀取 catalog schema 後驗證，避免 schema 3 的精確根檔被舊規則先行拒絕；legacy schema 不得使用新成員模式。封裝 reader 要求成員集合及雜湊完全相等；legacy NonC 直傳及 delta/base-linked 明確拒絕此模式，未假裝已支援 D3。
+- 詳情／報告列出相同成員與 hash，不列旁邊未選檔案、不宣稱整個目錄已涵蓋。工作負載映射也依實際選取模式核對，精確檔案不能滿足整個 WorkingDirectory；WholeScope 排除的子樹不能算已備份相依。
+- 主代理固定快照雙引擎各 29 項新測試通過，含正式 setter／sealed plan reader、實際封裝與檔案還原讀回，以及真套裝根／workspace 防護。WinPS5.1 回歸：AssistiveRestore 120、FileScopeGuard 36、NonC 34、AssistiveFiles 35、WizardDetails、候選探索 48、編碼解析 263 檔通過。E0 雙引擎各 28 及公開 workload discovery 通過；C1 雙引擎各 13 通過，更新受影響輸入雜湊及證據引用。
+- 修正既有 AssistiveRestore 測試硬編碼不存在 D 槽導致失敗的 fixture，以本次測試建立的真實目錄與 physical identity 核驗原同一契約，未放寬產品驗證。精確集合測試仍使用機器／盤點 fixture 與 journal stub，不能宣稱耐久還原或 Server 實機驗收。
+- D2 保持未完成：候選確認到新鮮成員 hash／sealed plan、非 C 離線全量及跨段旅程仍待接線。ExactMembers 是檔案集合，不涵蓋空目錄。證據保存於 MIGRATION-7-D2.json。
+- D1 提交 2770450 的 release 39197085444 與 Manager/Probe 39197085462 均通過；主代理另核對六個 ZIP digest 及十份原始 suite JSON，共 20 個既有原生旅程與 1 個模組 smoke，保存於 MIGRATION-7-D1-native-2770450.json。沒有把既有旅程當成新的完整離線功能驗收。

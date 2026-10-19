@@ -1,4 +1,4 @@
-function Get-WsmWorkloadPathChannel([string]$Path) {
+﻿function Get-WsmWorkloadPathChannel([string]$Path) {
     if([string]::IsNullOrWhiteSpace($Path)){return 'Unknown'}
     $expanded=[Environment]::ExpandEnvironmentVariables($Path)
     if($expanded -match '%[^%]+%'){return 'Unknown'}
@@ -335,14 +335,43 @@ function Resolve-WsmWorkloadReferenceMapping($Catalog,$Reference) {
         if(-not $item.PSObject.Properties['ReviewedBy'] -or -not $item.ReviewedBy -or -not $item.PSObject.Properties['ReviewedUtc'] -or -not $item.ReviewedUtc){continue}
         if($Catalog.PSObject.Properties['Assistive'] -and $Catalog.Assistive.Selections){$selected=@($Catalog.Assistive.Selections.Items | Where-Object {$_.ItemId -ceq $item.ItemId -and $_.Selected});if($selected.Count -ne 1){continue}}
         $spec=$item.MigrationSpec
-        $root=[string]$spec.SourcePath;if(-not $root){continue};$root=$root.Replace('/','\').TrimEnd('\');$candidate=$normalized
+        $rootPath=[string]$spec.SourcePath;if(-not $rootPath){continue};try{$rootPath=ConvertTo-WsmCanonicalPath $rootPath}catch{continue};$root=$rootPath.TrimEnd('\');$rootBoundary=if($rootPath.Length -eq 3 -and $rootPath[1] -eq ':' -and $rootPath[2] -eq '\'){$rootPath}else{$root+'\'};$candidate=$normalized
         if($matchingValue){try{$candidate=ConvertTo-WsmCanonicalPath $matchingValue}catch{}}
-        if($candidate -ine $root -and -not $candidate.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)){continue}
+        $selection=if($spec.PSObject.Properties['ContentSelection']){[string]$spec.ContentSelection}else{'WholeScope'}
+        $fileReference=([string]$Reference.ReferenceKind -cin @('TaskCommand','IISConfigSource'))
+        $relative=''
+        if($selection -ceq 'ExactMembers'){
+            if(-not $fileReference -or -not $spec.PSObject.Properties['Members']){continue}
+            $memberMatch=$null
+            foreach($member in @($spec.Members)){
+                $memberPath='';try{$memberPath=ConvertTo-WsmCanonicalPath (Join-Path $rootPath ([string]$member.RelativePath))}catch{continue}
+                if($candidate.Equals($memberPath,[StringComparison]::OrdinalIgnoreCase)){$memberMatch=$member;break}
+            }
+            if($null -eq $memberMatch){continue}
+            $relative=[string]$memberMatch.RelativePath
+        }elseif($selection -ceq 'ExactFiles'){
+            if(-not $fileReference -or -not $spec.PSObject.Properties['ConfigFiles']){continue}
+            $configMatch=$null
+            foreach($config in @($spec.ConfigFiles)){
+                $configPath='';try{$configPath=ConvertTo-WsmCanonicalPath (Join-Path $rootPath ([string]$config.RelativePath))}catch{continue}
+                if($candidate.Equals($configPath,[StringComparison]::OrdinalIgnoreCase)){$configMatch=$config;break}
+            }
+            if($null -eq $configMatch){continue}
+            $relative=[string]$configMatch.RelativePath
+        }else{
+            if($candidate -ine $root -and -not $candidate.StartsWith($rootBoundary,[StringComparison]::OrdinalIgnoreCase)){continue}
+            if($candidate.Length -gt $root.Length){$relative=$candidate.Substring($root.Length).TrimStart('\')}
+            $excluded=$false;$isDirectoryReference=([string]$Reference.ReferenceKind -cin @('TaskWorkingDirectory','IISPhysicalPath'))
+            foreach($excludedRelative in @($spec.ExcludedRelativePaths)){
+                $excludedPath='';try{$excludedPath=ConvertTo-WsmCanonicalPath (Join-Path $rootPath ([string]$excludedRelative))}catch{continue};$excludedRoot=$excludedPath.TrimEnd('\')
+                if($candidate.Equals($excludedPath,[StringComparison]::OrdinalIgnoreCase) -or $candidate.StartsWith($excludedRoot+'\',[StringComparison]::OrdinalIgnoreCase) -or ($isDirectoryReference -and $excludedPath.StartsWith($candidate.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase))){$excluded=$true;break}
+            }
+            if($excluded){continue}
+        }
         if(-not $spec.TargetPath){continue}
-        $relative='';if($candidate.Length -gt $root.Length){$relative=$candidate.Substring($root.Length).TrimStart('\')}
         $matches.Add([pscustomobject]@{Item=$item;Relative=$relative})
     }
-    if($matches.Count -eq 1){$m=$matches[0];$target=Join-WsmWorkloadMappedPath ([string]$m.Item.MigrationSpec.TargetPath) ([string]$m.Relative);return [pscustomobject]@{Status='Mapped';OldRawValue=[string]$Reference.RawValue;TargetValue=$target;Reason='Unique approved FileScope source-root containment match; relative path preserved.';FileScopeItemId=[string]$m.Item.ItemId}}
+    if($matches.Count -eq 1){$m=$matches[0];$target=Join-WsmWorkloadMappedPath ([string]$m.Item.MigrationSpec.TargetPath) ([string]$m.Relative);$selection=if($m.Item.MigrationSpec.PSObject.Properties['ContentSelection']){[string]$m.Item.MigrationSpec.ContentSelection}else{'WholeScope'};$reason=if($selection -ceq 'ExactMembers'){'Unique approved ExactMembers file match; only an explicit hash-bound member reference is mapped.'}elseif($selection -ceq 'ExactFiles'){'Unique approved ExactFiles configuration member match; no broad directory mapping is implied.'}else{'Unique approved FileScope source-root containment match outside excluded paths; relative path preserved.'};return [pscustomobject]@{Status='Mapped';OldRawValue=[string]$Reference.RawValue;TargetValue=$target;Reason=$reason;FileScopeItemId=[string]$m.Item.ItemId}}
     if($matches.Count -gt 1){return [pscustomobject]@{Status='ReviewRequired';OldRawValue=[string]$Reference.RawValue;TargetValue='';Reason='Multiple approved FileScope maps match; owner must resolve ambiguity.';FileScopeItemId=''}}
     [pscustomobject]@{Status='Unmapped';OldRawValue=[string]$Reference.RawValue;TargetValue='';Reason='No exact approved FileScope map matches this source path; broad/nearest-root substitution is not automatic.';FileScopeItemId=''}
 }

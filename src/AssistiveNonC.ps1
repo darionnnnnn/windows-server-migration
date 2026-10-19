@@ -173,6 +173,7 @@ function Assert-WsmAssistiveFileTopologyWithPeers {
 
 function Assert-WsmAssistiveNonCScopeTopology {
     param([Parameter(Mandatory)][string]$Path,[object[]]$PeerShareProofs=@(),[Parameter(Mandatory)]$Spec,[Parameter(Mandatory)][AllowEmptyString()][string]$RelativePath,[switch]$Target,[switch]$IsDirectory)
+    if($Spec.PSObject.Properties['ContentSelection'] -and [string]$Spec.ContentSelection -ceq 'ExactMembers'){throw 'ExactMembers is not supported by the legacy NonC topology reader.'}
     if($Spec.PSObject.Properties['ContentSelection'] -and [string]$Spec.ContentSelection -ceq 'ExactFiles'){
         $relative=[string]$RelativePath;$approved=$false
         foreach($config in @($Spec.ConfigFiles)){$configRelative=[string]$config.RelativePath;if($IsDirectory){if(-not $relative -or $configRelative.StartsWith($relative.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){$approved=$true;break}}elseif($configRelative -ceq $relative){$approved=$true;break}}
@@ -183,6 +184,7 @@ function Assert-WsmAssistiveNonCScopeTopology {
 
 function Assert-WsmAssistiveNonCTargetBoundary {
     param([Parameter(Mandatory)][string]$Path,[object[]]$PeerShareProofs=@(),[Parameter(Mandatory)]$Spec,[Parameter(Mandatory)][AllowEmptyString()][string]$RelativePath,[switch]$IsDirectory)
+    if($Spec.PSObject.Properties['ContentSelection'] -and [string]$Spec.ContentSelection -ceq 'ExactMembers'){throw 'ExactMembers is not supported by the legacy NonC target boundary; no WholeScope fallback is allowed.'}
     $full=[IO.Path]::GetFullPath($Path).TrimEnd('\');$targetRoot=[IO.Path]::GetFullPath([string]$Spec.TargetPath).TrimEnd('\');$relative=[string]$RelativePath
     if($relative -match '(^|\\)\.{1,2}(?:\\|$)' -or $relative.StartsWith('\\') -or $relative -match '^[A-Za-z]:'){throw 'Target scope relative path is not a safe descendant of its reviewed root.'}
     $contentSelection=if($Spec.PSObject.Properties['ContentSelection']){[string]$Spec.ContentSelection}else{'WholeScope'}
@@ -267,6 +269,7 @@ function ConvertTo-WsmAssistiveAccountMap($AccountMap) {
 
 function Get-WsmAssistiveTransferScopeRows {
     param([string]$ItemId,[string]$SourceRoot,[string]$TargetRoot,$Spec,[string]$Channel,[string[]]$ConsumerRefs,$AccountMap,$PeerProof,[object[]]$TargetPeerProofs,[string]$ProviderId,[string]$CollectionPhysicalPath)
+    if($Spec.PSObject.Properties['ContentSelection'] -and [string]$Spec.ContentSelection -ceq 'ExactMembers'){throw 'ExactMembers is not supported by the legacy NonC direct-transfer reader; no directory expansion or WholeScope fallback is allowed.'}
     $sourceFull=[IO.Path]::GetFullPath($SourceRoot);$targetFull=[IO.Path]::GetFullPath($TargetRoot);$isRemote=$sourceFull.StartsWith('\\')
     $sourceIoRoot=$sourceFull;$sourcePhysicalRoot=''
     if($isRemote){if(-not $PeerProof){throw 'Remote source scope requires an exact imported source peer proof.'};$sourcePhysicalRoot=Resolve-WsmAssistivePeerPhysicalPath $sourceFull $PeerProof}else{$sourcePhysicalRoot=Get-WsmPhysicalPath $sourceFull}

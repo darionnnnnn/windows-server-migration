@@ -45,7 +45,7 @@ function Assert-WsmFields($Object,[string[]]$Allowed,[string[]]$Required=@()) {
 function Assert-WsmWorkspaceSeparation($Plan,[string]$Workspace,[ValidateSet('SourcePath','TargetPath')][string]$ScopeField) {
     $workspacePath=[IO.Path]::GetFullPath($Workspace).TrimEnd('\');Assert-WsmNoReparse $workspacePath
     $physicalWorkspace=Get-WsmPhysicalPath $workspacePath;$destinations=New-Object 'System.Collections.Generic.List[string]'
-    foreach($i in $Plan.Items){if($i.Decision -eq 'Include' -and $i.MigrationSpec.Adapter -eq 'FileScope'){$root=[IO.Path]::GetFullPath($i.MigrationSpec.$ScopeField).TrimEnd('\');$physicalRoot=Get-WsmPhysicalPath $root;if((Test-WsmPathOverlap $workspacePath $root) -or (Test-WsmPathOverlap $physicalWorkspace $physicalRoot)){throw ($ScopeField+' overlaps operation evidence/state workspace; move the tool workspace outside business data before any operation.')};if($ScopeField -eq 'TargetPath'){foreach($prior in $destinations){if(Test-WsmPathOverlap $prior $physicalRoot){throw 'Target scopes overlap through physical aliases.'}};$destinations.Add($physicalRoot)}}}
+    foreach($i in $Plan.Items){if($i.Decision -eq 'Include' -and $i.MigrationSpec.Adapter -eq 'FileScope'){$spec=$i.MigrationSpec;$root=[IO.Path]::GetFullPath($spec.$ScopeField).TrimEnd('\');$scopePaths=@($root);if($spec.PSObject.Properties['ContentSelection'] -and [string]$spec.ContentSelection -ceq 'ExactMembers'){$scopePaths=@(foreach($member in $spec.Members){[IO.Path]::GetFullPath((Join-Path $root ([string]$member.RelativePath))).TrimEnd('\')})};foreach($scopePath in $scopePaths){$physicalPath=Get-WsmPhysicalPath $scopePath;if((Test-WsmPathOverlap $workspacePath $scopePath) -or (Test-WsmPathOverlap $physicalWorkspace $physicalPath)){throw ($ScopeField+' overlaps operation evidence/state workspace; move the tool workspace outside approved member data before any operation.')};if($ScopeField -eq 'TargetPath'){foreach($prior in $destinations){if(Test-WsmPathOverlap $prior $physicalPath){throw 'Target scopes overlap through physical aliases.'}};$destinations.Add($physicalPath)}}}}
 }
 function Assert-WsmSourceWorkspaceSeparation($Plan,[string]$Workspace) {
     Assert-WsmWorkspaceSeparation $Plan $Workspace SourcePath
@@ -178,13 +178,29 @@ function Assert-WsmAssistiveMigrationSpec($Spec) {
         if($Spec.Adapter -cne 'FileScope' -or [string]$Spec.TransferChannel -cnotin @('C','NonC','External')){throw (New-WsmContractError 'TransferChannel is only valid on a schema 3 FileScope and must be C, NonC, or External.')}
     }
     if($Spec.PSObject.Properties['ContentSelection']){
-        if($Spec.Adapter -cne 'FileScope' -or [string]$Spec.ContentSelection -cnotin @('WholeScope','ExactFiles')){throw (New-WsmContractError 'ContentSelection is only valid on a schema 3 FileScope and must be WholeScope or ExactFiles.')}
+        if($Spec.Adapter -cne 'FileScope' -or [string]$Spec.ContentSelection -cnotin @('WholeScope','ExactFiles','ExactMembers')){throw (New-WsmContractError 'ContentSelection is only valid on a schema 3 FileScope and must be WholeScope, ExactFiles or ExactMembers.')}
         if($Spec.ContentSelection -ceq 'ExactFiles' -and @($Spec.ConfigFiles).Count -eq 0){throw (New-WsmContractError 'ExactFiles requires a nonempty approved ConfigFiles whitelist.')}
         $exact=($Spec.ContentSelection -ceq 'ExactFiles')
+        $exactMembers=($Spec.ContentSelection -ceq 'ExactMembers')
+        if($exactMembers){
+            if($Spec.PSObject.Properties['ConfigFiles'] -or $Spec.PSObject.Properties['ConfigOverrides']){throw (New-WsmContractError 'ExactMembers is a general data whitelist and cannot carry configuration-only ConfigFiles or ConfigOverrides.')}
+            if($Spec.TransferChannel -ceq 'NonC'){throw (New-WsmContractError 'ExactMembers is not supported by the legacy NonC direct-transfer channel; select C or use an explicitly supported workflow.')}
+            if(@($Spec.ExcludedRelativePaths).Count -gt 0){throw (New-WsmContractError 'ExactMembers cannot combine Members with ExcludedRelativePaths; remove excluded files from the reviewed Members set.')}
+            if(-not $Spec.PSObject.Properties['Members'] -or $Spec.Members -isnot [array] -or $Spec.Members.Count -eq 0){throw (New-WsmContractError 'ExactMembers requires a nonempty approved Members array.')}
+            $memberPaths=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+            foreach($member in $Spec.Members){
+                Assert-WsmFields $member @('RelativePath','SHA256') @('RelativePath','SHA256')
+                $relative=[string]$member.RelativePath;Assert-WsmRelativePath $relative
+                if($relative -cne $relative.Replace('/','\') -or $relative.Trim() -cne $relative){throw (New-WsmContractError 'ExactMembers requires canonical backslash-separated relative paths.')}
+                if(-not $memberPaths.Add($relative)){throw (New-WsmContractError 'ExactMembers contains duplicate/case-colliding canonical relative paths.')}
+                if([string]$member.SHA256 -cnotmatch '^[a-f0-9]{64}$'){throw (New-WsmContractError 'Every ExactMembers entry requires a lowercase SHA256 baseline.')}
+                if([IO.Path]::GetFileName($relative) -imatch '\.(sys|drv|ocx|com|msi|msp|cab|iso|wim|esd|vhd|vhdx|appx|msix)$'){throw (New-WsmContractError 'ExactMembers does not accept operating-system drivers, installers, or image formats.')}
+            }
+        }elseif($Spec.PSObject.Properties['Members']){throw (New-WsmContractError 'Members is only valid with ContentSelection=ExactMembers.')}
         # These paths describe remote source/target hosts at Manager approval time;
         # local drive letters are not evidence about either remote host's aliases.
-        Assert-WsmFileScopeGuard -Path ([string]$Spec.SourcePath) -Mode Root -AllowProtectedExactRoot:$exact
-        Assert-WsmFileScopeGuard -Path ([string]$Spec.TargetPath) -Mode Root -AllowProtectedExactRoot:$exact
+        Assert-WsmFileScopeGuard -Path ([string]$Spec.SourcePath) -Mode Root -AllowProtectedExactRoot:$exact -AllowDriveRoot:$exactMembers
+        Assert-WsmFileScopeGuard -Path ([string]$Spec.TargetPath) -Mode Root -AllowProtectedExactRoot:$exact -AllowDriveRoot:$exactMembers
         if($exact){
             foreach($entry in (Get-WsmConfigSpecEntries $Spec 'ConfigFiles')){
                 $relative=[string]$entry.RelativePath
@@ -192,6 +208,7 @@ function Assert-WsmAssistiveMigrationSpec($Spec) {
                 Assert-WsmFileScopeGuard -Path $configPath -Mode ExactConfig -SourceRoot ([string]$Spec.SourcePath) -PathOnly
             }
         }
+        if($exactMembers){foreach($member in $Spec.Members){$relative=[string]$member.RelativePath;Assert-WsmFileScopeGuard -Path (Join-Path ([string]$Spec.SourcePath) $relative) -Mode ExactMembers -RelativePath $relative -SourceRoot ([string]$Spec.SourcePath) -PathOnly;Assert-WsmFileScopeGuard -Path (Join-Path ([string]$Spec.TargetPath) $relative) -Mode ExactMembers -RelativePath $relative -SourceRoot ([string]$Spec.TargetPath) -PathOnly}}
     }
     if($Spec.Adapter -eq 'FileScope' -and (-not $Spec.PSObject.Properties['TransferChannel'] -or -not $Spec.PSObject.Properties['ContentSelection'])){throw (New-WsmContractError 'Schema 3 FileScope requires reviewed TransferChannel and ContentSelection fields.')}
     foreach($field in @('SourceXml','ActivationPolicyFieldPointer')){if($Spec.PSObject.Properties[$field] -and [string]$Spec.$field -match '[\x00-\x08\x0b\x0c\x0e-\x1f]'){throw (New-WsmContractError ($field+' contains control characters.'))}}
@@ -227,8 +244,9 @@ function Assert-WsmAssistiveMigrationSpec($Spec) {
     }
 }
 function Assert-WsmMigrationSpec($Spec,[switch]$Assistive) {
-    $allowed=@('Adapter','Desired','SourcePath','TargetPath','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy','SecretRef','Owner','Evidence','DesiredFinalState','BusinessChecks','Product','Procedure','Artifacts','RequiredCommands','AclControlPolicy','CatchUpPolicy','RemoteStorage','AccountMode','ManagedAccountEvidence','ConfigFiles','ConfigOverrides','SettingTransition','TransferChannel','ContentSelection','SourceXml','SourceAutoStart','StagedDisabled','ActivationPolicyFieldPointer','ReviewedActivation','WorkloadMappingReview','SharedResourceImpacts')
+    $allowed=@('Adapter','Desired','SourcePath','TargetPath','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy','SecretRef','Owner','Evidence','DesiredFinalState','BusinessChecks','Product','Procedure','Artifacts','RequiredCommands','AclControlPolicy','CatchUpPolicy','RemoteStorage','AccountMode','ManagedAccountEvidence','ConfigFiles','ConfigOverrides','Members','SettingTransition','TransferChannel','ContentSelection','SourceXml','SourceAutoStart','StagedDisabled','ActivationPolicyFieldPointer','ReviewedActivation','WorkloadMappingReview','SharedResourceImpacts')
     Assert-WsmFields $Spec $allowed @('Adapter','Owner','Evidence')
+    if(-not $Assistive -and ($Spec.PSObject.Properties['Members'] -or ($Spec.PSObject.Properties['ContentSelection'] -and [string]$Spec.ContentSelection -ceq 'ExactMembers'))){throw (New-WsmContractError 'ExactMembers requires a schema 3 Assistive migration contract.')}
     if(($Spec.PSObject.Properties['ConfigFiles'] -or $Spec.PSObject.Properties['ConfigOverrides']) -and $Spec.Adapter -cne 'FileScope'){throw (New-WsmContractError 'Configuration artifact classification requires FileScope.')}
     if(($Spec.PSObject.Properties['AccountMode'] -or $Spec.PSObject.Properties['ManagedAccountEvidence']) -and $Spec.Adapter -cne 'Service'){throw 'Service identity fields require a Service adapter.'}
     if($Spec.PSObject.Properties['RemoteStorage']){if($Spec.Adapter -cne 'ManualWorkflow'){throw (New-WsmContractError 'RemoteStorage requires a dedicated ManualWorkflow.')};[void](Assert-WsmRemoteStorageContract $Spec.RemoteStorage ([string]$Spec.Owner))}
@@ -247,8 +265,9 @@ function Assert-WsmMigrationSpec($Spec,[switch]$Assistive) {
         foreach ($f in @('SourcePath','TargetPath','ExcludedRelativePaths','Consistency','Metadata','ConflictPolicy')) { if (-not $Spec.PSObject.Properties[$f]) { throw ('FileScope requires '+$f) } }
         [void](ConvertTo-WsmCanonicalPath $Spec.SourcePath); [void](ConvertTo-WsmCanonicalPath $Spec.TargetPath)
         $allowProtectedExactRoot=($Assistive -and $Spec.PSObject.Properties['ContentSelection'] -and [string]$Spec.ContentSelection -ceq 'ExactFiles')
-        Assert-WsmFileScopeGuard -Path ([string]$Spec.SourcePath) -Mode Root -AllowProtectedExactRoot:$allowProtectedExactRoot
-        Assert-WsmFileScopeGuard -Path ([string]$Spec.TargetPath) -Mode Root -AllowProtectedExactRoot:$allowProtectedExactRoot
+        $allowExactDriveRoot=($Assistive -and $Spec.PSObject.Properties['ContentSelection'] -and [string]$Spec.ContentSelection -ceq 'ExactMembers')
+        Assert-WsmFileScopeGuard -Path ([string]$Spec.SourcePath) -Mode Root -AllowProtectedExactRoot:$allowProtectedExactRoot -AllowDriveRoot:$allowExactDriveRoot
+        Assert-WsmFileScopeGuard -Path ([string]$Spec.TargetPath) -Mode Root -AllowProtectedExactRoot:$allowProtectedExactRoot -AllowDriveRoot:$allowExactDriveRoot
         if($Spec.SourcePath.StartsWith('\\') -or $Spec.TargetPath.StartsWith('\\')){throw (New-WsmContractError 'UNC/DFS/NAS scope requires an owner-reviewed dedicated provider identity, alias/ownership and consistency workflow; generic FileScope cannot approve an unresolved remote scope.')}
         if (@('Immutable','OwnerFreeze','ProductBackup') -cnotcontains $Spec.Consistency -or @('DaclOwner','DaclOwnerSacl') -cnotcontains $Spec.Metadata -or @('Block','ReplaceOwned') -cnotcontains $Spec.ConflictPolicy) { throw 'Invalid file scope policy.' }
         foreach ($p in $Spec.ExcludedRelativePaths) { Assert-WsmRelativePath $p }
@@ -266,11 +285,12 @@ function Assert-WsmMigrationSpec($Spec,[switch]$Assistive) {
 }
 function Set-WsmMigrationSpec {
     param([string]$Workspace,[string]$PairId,[string]$ItemId,[string]$Path,[string]$ExpectedHash,[int]$ExpectedRevision)
-    $spec=Read-WsmTrustedJson $Path $ExpectedHash; Assert-WsmMigrationSpec $spec
+    $spec=Read-WsmTrustedJson $Path $ExpectedHash
     Invoke-WsmLocked $Workspace {
         $c=Get-WsmCatalog $Workspace $PairId; if ($c.DecisionRevision -ne $ExpectedRevision) { throw 'Review changed.' }
         $rows=@($c.Items | Where-Object ItemId -CEQ $ItemId); if ($rows.Count -ne 1) { throw 'Unknown ItemId.' }
-        if($c.SchemaVersion -eq 3){Assert-WsmMigrationSpec $spec -Assistive;if(-not $c.Assistive.Selections.Items.Where({$_.ItemId -ceq $ItemId -and $_.Selected}).Count){throw 'Assistive migration specs can only be assigned to currently selected items.'}}
+        Assert-WsmMigrationSpec $spec -Assistive:($c.SchemaVersion -eq 3)
+        if($c.SchemaVersion -eq 3 -and -not $c.Assistive.Selections.Items.Where({$_.ItemId -ceq $ItemId -and $_.Selected}).Count){throw 'Assistive migration specs can only be assigned to currently selected items.'}
         $rows[0] | Add-Member NoteProperty MigrationSpec $spec -Force
         $rows[0].Owner=$spec.Owner;$rows[0].Evidence=$spec.Evidence
         $c.DecisionRevision++; $c.Approval=$null;if($c.SchemaVersion -eq 3){Clear-WsmAssistiveComparison $c}
@@ -309,7 +329,7 @@ function Approve-WsmMigrationPlan {
                 [void](Assert-WsmAssistiveSourceScope $i.MigrationSpec SourceCOnly)
             }
             if ($i.Status -ne 'Success' -and $i.MigrationSpec.Adapter -ne 'ManualWorkflow' -and $i.MigrationSpec.Adapter -ne 'FileScope') { throw ('Incomplete configuration: '+$i.ItemId) }
-            if ($i.MigrationSpec.Adapter -eq 'FileScope') { $dest=(ConvertTo-WsmCanonicalPath $i.MigrationSpec.TargetPath).TrimEnd('\'); foreach ($prior in $destinations.Keys) { if ($dest -ieq $prior -or $dest.StartsWith($prior+'\',[StringComparison]::OrdinalIgnoreCase) -or $prior.StartsWith($dest+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Migration scopes have overlapping destinations.' } }; $destinations[$dest]=$i.ItemId }
+            if ($i.MigrationSpec.Adapter -eq 'FileScope') { $root=(ConvertTo-WsmCanonicalPath $i.MigrationSpec.TargetPath).TrimEnd('\');$scopeDestinations=@($root);if($i.MigrationSpec.PSObject.Properties['ContentSelection'] -and $i.MigrationSpec.ContentSelection -ceq 'ExactMembers'){$scopeDestinations=@(foreach($member in $i.MigrationSpec.Members){(ConvertTo-WsmCanonicalPath (Join-Path $root ([string]$member.RelativePath))).TrimEnd('\')})};foreach($dest in $scopeDestinations){foreach ($prior in $destinations.Keys) { if ($dest -ieq $prior -or $dest.StartsWith($prior+'\',[StringComparison]::OrdinalIgnoreCase) -or $prior.StartsWith($dest+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Migration scopes have overlapping destinations.' } }; $destinations[$dest]=$i.ItemId } }
         }
         $planItems=$c.Items
         if($c.SchemaVersion -eq 3){$planItems=$included}

@@ -373,7 +373,7 @@
         },
         {
           "path": "src/AssistiveReports.ps1",
-          "sha256": "F815B1533491CC995415996402E82B315AA176C66E7AC7070696E816E2A69888"
+          "sha256": "797212F7ED9DD1F69B34FDC61CA09520CB9D09B2CD03DE6C9DED094A44ACC384"
         },
         {
           "path": "src/EnvironmentConfirmation.ps1",
@@ -396,6 +396,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-C1.json",
           "sha256": "5DF40BE84334D57CB0E68E2ABC3323D6278736A51A3BE6FCACEC50A69D308ED9"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2.json",
+          "sha256": "DA6B33BF32909F8EA8749A69993546EC84B1CEAF159953C212BEB4B1C223EDB6"
         }
       ],
       "evidenceLog": {
@@ -403,7 +407,7 @@
         "sha256": "5DF40BE84334D57CB0E68E2ABC3323D6278736A51A3BE6FCACEC50A69D308ED9"
       },
       "casesExecuted": 68,
-      "result": "13 cross-consumer assertions per engine plus 42 existing comparison checks; environment confirmation export regression passed with 6 rows; script encoding/parser passed. Preserves all discovered source rows and bound target evidence with explicit unknown/coverage gaps.",
+      "result": "13 cross-consumer assertions per engine plus 42 existing comparison checks; environment confirmation export regression passed with 6 rows; script encoding/parser passed. Preserves all discovered source rows and bound target evidence with explicit unknown/coverage gaps. D2 core snapshot reverified changed consumers: software projection 13 per engine; workload mapping 28 per engine plus public discovery regression.",
       "limitations": [
         "Registry snapshots are controlled fixtures, not a live full-server software inventory. 68 counts assertions, not native migrations. Full 2501-row baseline passed before this change; not represented as post-change acceptance."
       ],
@@ -526,6 +530,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-D1.json",
           "sha256": "2A3E900BE6B243C0EE165CE690FEDCD00B40AA3BC8F16BC48FF04A858472F693"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D1-native-2770450.json",
+          "sha256": "731207C92BA35F5F4D389C2EC71530FF15FD77695D1C523EBAB19E1523B20D7F"
         }
       ],
       "evidenceLog": {
@@ -554,20 +562,138 @@
           "D2：候選到核准範圍的閉合"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "in-progress",
+      "evidenceStatus": "implemented-unverified",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
-      "openIssues": [],
+      "consumers": [
+        {
+          "name": "src/MigrationContracts.ps1",
+          "path": "src/MigrationContracts.ps1"
+        },
+        {
+          "name": "src/AssistiveFiles.ps1",
+          "path": "src/AssistiveFiles.ps1"
+        },
+        {
+          "name": "src/AssistiveNonC.ps1",
+          "path": "src/AssistiveNonC.ps1"
+        },
+        {
+          "name": "src/AssistiveRestore.ps1",
+          "path": "src/AssistiveRestore.ps1"
+        },
+        {
+          "name": "src/Payload.ps1",
+          "path": "src/Payload.ps1"
+        },
+        {
+          "name": "src/FileScopeGuard.ps1",
+          "path": "src/FileScopeGuard.ps1"
+        },
+        {
+          "name": "src/WorkloadDiscovery.ps1",
+          "path": "src/WorkloadDiscovery.ps1"
+        },
+        {
+          "name": "src/WizardDetails.ps1",
+          "path": "src/WizardDetails.ps1"
+        },
+        {
+          "name": "src/AssistiveReports.ps1",
+          "path": "src/AssistiveReports.ps1"
+        },
+        {
+          "name": "tests/Test-ExactMembers.ps1",
+          "path": "tests/Test-ExactMembers.ps1"
+        },
+        {
+          "name": "tests/Test-AssistiveRestore.ps1",
+          "path": "tests/Test-AssistiveRestore.ps1"
+        },
+        {
+          "name": "tests/Test-WorkloadActionIndex.ps1",
+          "path": "tests/Test-WorkloadActionIndex.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+        "runtime": "Windows isolated immutable snapshot",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/MigrationContracts.ps1",
+          "sha256": "76A02B6E260E8401E93689B6C5EE27CDCA2B75CF8119FE016C959B795E249685"
+        },
+        {
+          "path": "src/AssistiveFiles.ps1",
+          "sha256": "C680EB880D33CA8314DC11D02D147B2C54E24848501528A6F1735CB71CDF0A4B"
+        },
+        {
+          "path": "src/AssistiveNonC.ps1",
+          "sha256": "656FAE2E3A63068C88F384D0EF220D2AFF81F0939CE58A1050BF99AD8A3238D5"
+        },
+        {
+          "path": "src/AssistiveRestore.ps1",
+          "sha256": "C97AD3319BCE665A7C366254311425EDAA86018EF9FC8C3A4FB2EEA4CC938BC2"
+        },
+        {
+          "path": "src/Payload.ps1",
+          "sha256": "883FCE1A5B45863E4A755BFFBA87EEEBC6BE3FB7BAEB9FC1F77424DDD2AEC640"
+        },
+        {
+          "path": "src/FileScopeGuard.ps1",
+          "sha256": "52A847AFBFD6958216558D57211C1B319F636BEAB8F109EBCCC3F1C990F904B7"
+        },
+        {
+          "path": "src/WorkloadDiscovery.ps1",
+          "sha256": "BD3BD21C205254ACC921E9D1626C72B7349260DBC53CF6D8443B7C8836D02934"
+        },
+        {
+          "path": "src/WizardDetails.ps1",
+          "sha256": "6A7C2524EFACD7BCF6328CD748DC1B405C195D9FDD8FF6987DED4D9C7D87348E"
+        },
+        {
+          "path": "src/AssistiveReports.ps1",
+          "sha256": "797212F7ED9DD1F69B34FDC61CA09520CB9D09B2CD03DE6C9DED094A44ACC384"
+        },
+        {
+          "path": "tests/Test-ExactMembers.ps1",
+          "sha256": "F8916C3FE95BC659286175A8216C8F9F7F4BAD50B52CB5EF0B62626CBABDA986"
+        },
+        {
+          "path": "tests/Test-AssistiveRestore.ps1",
+          "sha256": "55797997649699EA5B2324CD5CB1117F7152E9EC9618CBB46ABC1583BBC5DA3B"
+        },
+        {
+          "path": "tests/Test-WorkloadActionIndex.ps1",
+          "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2.json",
+          "sha256": "DA6B33BF32909F8EA8749A69993546EC84B1CEAF159953C212BEB4B1C223EDB6"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-D2.json",
+        "sha256": "DA6B33BF32909F8EA8749A69993546EC84B1CEAF159953C212BEB4B1C223EDB6"
+      },
+      "casesExecuted": 58,
+      "result": "ExactMembers core slice: 29 checks per engine including real setter, plan reader, package writer/reader, placement and file restore. Regression outputs retained separately.",
+      "limitations": [
+        "Candidate-to-human-confirmation-to-hash-bound-spec integration remains pending.",
+        "C-only contract; legacy NonC and delta explicitly rejected.",
+        "Files only; empty directories require other scope semantics.",
+        "Fixture machine identity/inventory and restore journal mocks; not full durable restore or production acceptance."
+      ],
+      "openIssues": [
+        "Connect confirmed candidates to sealed exact member set.",
+        "Complete non-C offline full-set route and integrated D2 acceptance."
+      ],
       "historicalEvidence": []
     },
     {
@@ -660,7 +786,7 @@
       "inputs": [
         {
           "path": "src/WorkloadDiscovery.ps1",
-          "sha256": "318296FCF3D52DDD97AB4573E1EBF47C93D02D955E96DCE8CCD0321E46A23584"
+          "sha256": "BD3BD21C205254ACC921E9D1626C72B7349260DBC53CF6D8443B7C8836D02934"
         },
         {
           "path": "src/MigrationWizard.ps1",
@@ -668,7 +794,7 @@
         },
         {
           "path": "tests/Test-WorkloadActionIndex.ps1",
-          "sha256": "AA067BE93FCF869CCCFBAC3845777D559BE2F5FC602F28262BD65C424A0E427E"
+          "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
         },
         {
           "path": "tests/Test-WorkloadDiscovery.ps1",
@@ -679,6 +805,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-E0.json",
           "sha256": "CA17DC58988E8CBA6F55C422758DBCEB127F9E630DF631EF9CAA70C7091D69F8"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2.json",
+          "sha256": "DA6B33BF32909F8EA8749A69993546EC84B1CEAF159953C212BEB4B1C223EDB6"
         }
       ],
       "evidenceLog": {
@@ -686,7 +816,7 @@
         "sha256": "CA17DC58988E8CBA6F55C422758DBCEB127F9E630DF631EF9CAA70C7091D69F8"
       },
       "casesExecuted": 38,
-      "result": "19 focused assertions passed independently per engine; existing public workload discovery regression also passed on WinPS5.1. Mixed unsupported actions remain manual, exact Exec indices and same-location mapping preserved.",
+      "result": "19 focused assertions passed independently per engine; existing public workload discovery regression also passed on WinPS5.1. Mixed unsupported actions remain manual, exact Exec indices and same-location mapping preserved. D2 core snapshot reverified changed consumers: software projection 13 per engine; workload mapping 28 per engine plus public discovery regression.",
       "limitations": [
         "Fixture XML/draft tests; no live task registration or execution. Existing regression additional to 38 counted assertions."
       ],

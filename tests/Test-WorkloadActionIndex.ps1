@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 $ErrorActionPreference='Stop'
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
 $script:assertionCount=0
@@ -74,6 +74,38 @@ $ambiguousRow=@($ambiguousDraft.WorkloadMappingReview | Where-Object { $_.Refere
 Check ($ambiguousRow.Count -eq 1 -and -not $ambiguousRow[0].Applied -and $ambiguousRow[0].Status -ceq 'ReviewRequired') 'Overlapping approved FileScope maps did not remain an explicit review ambiguity.'
 Check ($ambiguousCommand -ceq 'D:\Jobs\Scripts\one.exe') 'Ambiguous mapping silently changed the task command.'
 Check ($ambiguousDraft.Desired.Xml -notmatch 'stays private') 'Opaque arguments leaked in ambiguous mapping case.'
+
+$exactScopeFixture=New-Catalog $execOnlyXml
+$exactScope=@($exactScopeFixture.Catalog.Items | Where-Object {$_.MigrationSpec -and $_.MigrationSpec.Adapter -ceq 'FileScope'})[0]
+$exactScope.MigrationSpec.SourcePath='C:\';$exactScope.MigrationSpec.TargetPath='F:\Moved';$exactScope.MigrationSpec | Add-Member NoteProperty ContentSelection 'ExactMembers';$exactScope.MigrationSpec | Add-Member NoteProperty Members @([pscustomobject]@{RelativePath='Data\worker.exe';SHA256=('a'*64)})
+$exactMemberReference=[pscustomobject]@{ResolvedPath='C:\Data\worker.exe';RawValue='C:\Data\worker.exe';Opaque=$false;ReferenceKind='TaskCommand'}
+$exactMemberMapping=& $module {param($catalog,$reference) Resolve-WsmWorkloadReferenceMapping $catalog $reference} $exactScopeFixture.Catalog $exactMemberReference
+Check ($exactMemberMapping.Status -ceq 'Mapped' -and $exactMemberMapping.TargetValue -ceq 'F:\Moved\Data\worker.exe') 'A command reference to an explicit ExactMembers file did not map to its reviewed target path.'
+$exactNeighborReference=[pscustomobject]@{ResolvedPath='C:\Data\neighbor.exe';RawValue='C:\Data\neighbor.exe';Opaque=$false;ReferenceKind='TaskCommand'}
+$exactNeighborMapping=& $module {param($catalog,$reference) Resolve-WsmWorkloadReferenceMapping $catalog $reference} $exactScopeFixture.Catalog $exactNeighborReference
+Check ($exactNeighborMapping.Status -ceq 'Unmapped' -and -not $exactNeighborMapping.TargetValue) 'An unselected neighbor under an ExactMembers root was reported as covered.'
+$exactDirectoryReference=[pscustomobject]@{ResolvedPath='C:\Data';RawValue='C:\Data';Opaque=$false;ReferenceKind='TaskWorkingDirectory'}
+$exactDirectoryMapping=& $module {param($catalog,$reference) Resolve-WsmWorkloadReferenceMapping $catalog $reference} $exactScopeFixture.Catalog $exactDirectoryReference
+Check ($exactDirectoryMapping.Status -ceq 'Unmapped' -and -not $exactDirectoryMapping.TargetValue) 'A directory reference was mapped as if an ExactMembers file set covered the directory.'
+$exactScope.MigrationSpec.ContentSelection='ExactFiles';$exactScope.MigrationSpec | Add-Member NoteProperty ConfigFiles @([pscustomobject]@{RelativePath='Data\settings.ini';SHA256=('b'*64)})
+$exactConfigReference=[pscustomobject]@{ResolvedPath='C:\Data\settings.ini';RawValue='C:\Data\settings.ini';Opaque=$false;ReferenceKind='IISConfigSource'}
+$exactConfigMapping=& $module {param($catalog,$reference) Resolve-WsmWorkloadReferenceMapping $catalog $reference} $exactScopeFixture.Catalog $exactConfigReference
+Check ($exactConfigMapping.Status -ceq 'Mapped' -and $exactConfigMapping.TargetValue -ceq 'F:\Moved\Data\settings.ini') 'An exact configuration artifact reference did not map through its ConfigFiles allowlist.'
+$unlistedConfigReference=[pscustomobject]@{ResolvedPath='C:\Data\web.config';RawValue='C:\Data\web.config';Opaque=$false;ReferenceKind='IISConfigSource'}
+$unlistedConfigMapping=& $module {param($catalog,$reference) Resolve-WsmWorkloadReferenceMapping $catalog $reference} $exactScopeFixture.Catalog $unlistedConfigReference
+Check ($unlistedConfigMapping.Status -ceq 'Unmapped' -and -not $unlistedConfigMapping.TargetValue) 'An unlisted config file under ExactFiles was reported as covered.'
+$exactDirectoryConfigMapping=& $module {param($catalog,$reference) Resolve-WsmWorkloadReferenceMapping $catalog $reference} $exactScopeFixture.Catalog $exactDirectoryReference
+Check ($exactDirectoryConfigMapping.Status -ceq 'Unmapped' -and -not $exactDirectoryConfigMapping.TargetValue) 'A directory reference was mapped through the ExactFiles configuration list.'
+$exactScope.MigrationSpec.PSObject.Properties.Remove('ContentSelection');$exactScope.MigrationSpec.PSObject.Properties.Remove('ConfigFiles');$exactScope.MigrationSpec.ExcludedRelativePaths=@('Data\Private')
+$excludedFileReference=[pscustomobject]@{ResolvedPath='C:\Data\Private\secret.exe';RawValue='C:\Data\Private\secret.exe';Opaque=$false;ReferenceKind='TaskCommand'}
+$excludedFileMapping=& $module {param($catalog,$reference) Resolve-WsmWorkloadReferenceMapping $catalog $reference} $exactScopeFixture.Catalog $excludedFileReference
+Check ($excludedFileMapping.Status -ceq 'Unmapped' -and -not $excludedFileMapping.TargetValue) 'A WholeScope reference beneath ExcludedRelativePaths was reported as covered.'
+$excludedDirectoryReference=[pscustomobject]@{ResolvedPath='C:\Data';RawValue='C:\Data';Opaque=$false;ReferenceKind='TaskWorkingDirectory'}
+$excludedDirectoryMapping=& $module {param($catalog,$reference) Resolve-WsmWorkloadReferenceMapping $catalog $reference} $exactScopeFixture.Catalog $excludedDirectoryReference
+Check ($excludedDirectoryMapping.Status -ceq 'Unmapped' -and -not $excludedDirectoryMapping.TargetValue) 'A WholeScope directory reference containing an excluded subtree was reported as fully covered.'
+$includedFileReference=[pscustomobject]@{ResolvedPath='C:\Data\worker.exe';RawValue='C:\Data\worker.exe';Opaque=$false;ReferenceKind='TaskCommand'}
+$includedFileMapping=& $module {param($catalog,$reference) Resolve-WsmWorkloadReferenceMapping $catalog $reference} $exactScopeFixture.Catalog $includedFileReference
+Check ($includedFileMapping.Status -ceq 'Mapped' -and $includedFileMapping.TargetValue -ceq 'F:\Moved\Data\worker.exe') 'A WholeScope file reference outside excluded paths no longer mapped.'
 
 $unsupportedXml='<Task><Actions><ComHandler><ClassId>{ONLY}</ClassId></ComHandler></Actions></Task>'
 $unsupported=New-Catalog $unsupportedXml

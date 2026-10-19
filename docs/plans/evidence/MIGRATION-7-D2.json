@@ -1,0 +1,138 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "D2",
+  "verifiedUtc": "2026-10-19T04:33:12.2648591Z",
+  "verifier": "Primary agent independent isolated execution",
+  "snapshotDirectory": "d2-core-eac9c28ad7b34deaba062fb1847e59ef",
+  "inputs": [
+    {
+      "path": "src/MigrationContracts.ps1",
+      "sha256": "76A02B6E260E8401E93689B6C5EE27CDCA2B75CF8119FE016C959B795E249685"
+    },
+    {
+      "path": "src/AssistiveFiles.ps1",
+      "sha256": "C680EB880D33CA8314DC11D02D147B2C54E24848501528A6F1735CB71CDF0A4B"
+    },
+    {
+      "path": "src/AssistiveNonC.ps1",
+      "sha256": "656FAE2E3A63068C88F384D0EF220D2AFF81F0939CE58A1050BF99AD8A3238D5"
+    },
+    {
+      "path": "src/AssistiveRestore.ps1",
+      "sha256": "C97AD3319BCE665A7C366254311425EDAA86018EF9FC8C3A4FB2EEA4CC938BC2"
+    },
+    {
+      "path": "src/Payload.ps1",
+      "sha256": "883FCE1A5B45863E4A755BFFBA87EEEBC6BE3FB7BAEB9FC1F77424DDD2AEC640"
+    },
+    {
+      "path": "src/FileScopeGuard.ps1",
+      "sha256": "52A847AFBFD6958216558D57211C1B319F636BEAB8F109EBCCC3F1C990F904B7"
+    },
+    {
+      "path": "src/WorkloadDiscovery.ps1",
+      "sha256": "BD3BD21C205254ACC921E9D1626C72B7349260DBC53CF6D8443B7C8836D02934"
+    },
+    {
+      "path": "src/WizardDetails.ps1",
+      "sha256": "6A7C2524EFACD7BCF6328CD748DC1B405C195D9FDD8FF6987DED4D9C7D87348E"
+    },
+    {
+      "path": "src/AssistiveReports.ps1",
+      "sha256": "797212F7ED9DD1F69B34FDC61CA09520CB9D09B2CD03DE6C9DED094A44ACC384"
+    },
+    {
+      "path": "tests/Test-ExactMembers.ps1",
+      "sha256": "F8916C3FE95BC659286175A8216C8F9F7F4BAD50B52CB5EF0B62626CBABDA986"
+    },
+    {
+      "path": "tests/Test-AssistiveRestore.ps1",
+      "sha256": "55797997649699EA5B2324CD5CB1117F7152E9EC9618CBB46ABC1583BBC5DA3B"
+    },
+    {
+      "path": "tests/Test-WorkloadActionIndex.ps1",
+      "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+    }
+  ],
+  "environment": "Windows; Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+  "casesExecuted": 58,
+  "result": "ExactMembers core slice: 29 checks per engine including real setter, plan reader, package writer/reader, placement and file restore. Regression outputs retained separately.",
+  "limitations": [
+    "Candidate-to-human-confirmation-to-hash-bound-spec integration remains pending.",
+    "C-only contract; legacy NonC and delta explicitly rejected.",
+    "Files only; empty directories require other scope semantics.",
+    "Fixture machine identity/inventory and restore journal mocks; not full durable restore or production acceptance."
+  ],
+  "logs": [
+    {
+      "name": "d2-core-ps51.log",
+      "sha256": "EA2998DB6D0FDCB97C9B41E5581453D50A8A0B97F685D24EC8DCCEA11E6BFA4B",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: 29 ExactMembers contract, source hashing, package set equality, placement and restore checks; source candidate-to-approval hashing remains a separate D1/D2 connection.\r\n"
+    },
+    {
+      "name": "d2-core-ps7.log",
+      "sha256": "358D44B85E41085DFD2D60908D41442388A94F6D76EC4397422F23937D98B27D",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: 29 ExactMembers contract, source hashing, package set equality, placement and restore checks; source candidate-to-approval hashing remains a separate D1/D2 connection.\r\n"
+    },
+    {
+      "name": "d2-core-Test-AssistiveRestore.log",
+      "sha256": "DE6629A4C42EC2FF7C6C15CEAE78833CB0FA5B4B40C58065362BC75DEA0332C8",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: 120 Assistive file ownership, per-file conflict, typed IIS mapping and safe manual-gap checks.\r\n"
+    },
+    {
+      "name": "d2-core-Test-FileScopeGuard.log",
+      "sha256": "F33573DDA9053BE7C558902B7F6D880CC32C6A6353017BBA35748CE2CA4210F8",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: 36 FileScope boundary and collector checks.\r\n"
+    },
+    {
+      "name": "d2-core-Test-AssistiveNonC.log",
+      "sha256": "0937FCA2A8A991C42CFF9E95A7F35EBBC55AFC84684260BA0B531A947018CF01",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: 34 Assistive non-C transfer checks.\r\n"
+    },
+    {
+      "name": "d2-core-Test-AssistiveFiles.log",
+      "sha256": "D087EDB770FC36704D90B8148AC8296D688C480D3808CE1C3DDDC1A9422DA43D",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: 35 physical C / exact configuration / topology / native placement checks.\r\n"
+    },
+    {
+      "name": "d2-core-Test-WizardDetails.log",
+      "sha256": "6E21006F6C6E0E8B3F2560854D81141D08D9001562BC4D7B24BDB17D89F894CB",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: durable real metadata, exact files, excluded paths, budgets, overlap, UNC/device/ADS and junction boundaries; no file contents or approval.\r\n"
+    },
+    {
+      "name": "d2-core-Test-SourceCandidateDiscovery.log",
+      "sha256": "41E9EF890EBE6B50AF4755C0D91AC868B24C594816775C9D71B4C2B1560DBB3A",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS verified unpaired Source projection offers candidate scan\r\nPASS source candidate action resolves through registered operation map\r\nPASS HTML action metadata exposes source candidate scan only for enrolled Source role\r\nPASS public scan accepts continuation ID and no caller-controlled root\r\nPASS candidate scan root remains explicit local C even when Windows uses another system volume\r\nPASS scan rejects missing successful source inventory jobs\r\nPASS entry budget produces durable partial result with continuation ID\r\nPASS partial candidate data and review HTML are written\r\nPASS review HTML presents Traditional Chinese status and coverage labels without file content\r\nPASS same ScanId cannot be concurrently resumed from a second CLI or HTML process\r\nPASS HTML report link is allowlisted, source-workspace-contained and hash-bound\r\nPASS malformed checkpoint cannot redirect the resumed scan outside its enrolled volume\r\nPASS same ScanId resumes durable frontier to a terminal bounded scan result\r\nPASS root loose file appears as one exact-file candidate\r\nPASS unrelated business directory appears as a review candidate\r\nPASS ProgramData business directory remains discoverable as a candidate\r\nPASS ProgramData package cache and Microsoft Windows state remain explicit protected exclusions\r\nPASS trusted custom installed and requested Portable roots are excluded with captured coverage evidence\r\nPASS scan workspace output subtree is excluded from its own candidate input\r\nPASS protected Windows subtree is explicitly excluded and never traversed\r\nPASS shared FileScope guard excludes Windows.old, Boot, WindowsImageBackup, WinSxS and ProgramW6432 roots and descendants\r\nPASS shared FileScope guard excludes root paging and boot files\r\nPASS business executable and library files remain eligible candidates outside protected roots\r\nPASS candidate artifact carries metadata only and grants no approval\r\nPASS validated workload path reference is linked to and prioritizes its discovered candidate\r\nPASS review report shows known task references alongside prioritized candidates\r\nPASS terminal scan reports bounded-policy coverage without claiming whole-volume completeness\r\nPASS registered operation fixture safely replaces only the enrolled-source root resolver\r\nPASS fixture source inventory job is stored as a valid unpaired text job: action=EnrolledInventory status=Succeeded pairId=\r\n1. Source\r\n2. Target\r\n3. Manager\r\nCore context：Workspace=C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-c-24cbf900\\s；操作情境角色=Source；PairId=未指定\r\n[來源端]\r\n  SourceCandidateScan — 探索來源 C 槽候選與覆蓋缺口\r\n  NonCSourceProofExport — 具名操作：NonCSourceProofExport\r\n  BackupImpactPreview — 具名操作：BackupImpactPreview\r\n  ImportNonCTransferPlan — 具名操作：ImportNonCTransferPlan\r\n  StartBackup — 具名操作：StartBackup\r\n  StartNonCTransfer — 具名操作：StartNonCTransfer\r\n  OsProvidedCapture — 擷取 OS 提供排程工作證據（來源／目標）\r\n  NonCPeerProof — 具名操作：NonCPeerProof\r\n  EnrolledInventory — 具名操作：EnrolledInventory\r\n  SourceTaskTemplate — 具名操作：SourceTaskTemplate\r\n  SourceResume — 具名操作：SourceResume\r\n  SourceResult — 具名操作：SourceResult\r\n  FreezeSource — 具名操作：FreezeSource\r\n  ImportApprovedPlan — 具名操作：ImportApprovedPlan\r\n  InspectWizardFiles — 查看已核准範圍的檔案清單\r\n  ExportSourceReviewHandoff — 匯出來源盤點與已確認選擇\r\n  Inventory — 具名操作：Inventory\r\n[管理端]\r\n  NonCTargetHandoffExport — 具名操作：NonCTargetHandoffExport\r\n  NonCProofPreview — 具名操作：NonCProofPreview\r\n  NonCProofImport — 具名操作：NonCProofImport\r\n  ComparisonExport — 具名操作：ComparisonExport\r\n  CreateNonCTransferPlan — 具名操作：CreateNonCTransferPlan\r\n  ImportNonCResult — 具名操作：ImportNonCResult\r\n  NonCAccountObservation — 具名操作：NonCAccountObservation\r\n  NonCPreparation — 具名操作：NonCPreparation\r\n  WizardRuntimeProjection — 具名操作：WizardRuntimeProjection\r\n  BulkPreparationPreview — 具名操作：BulkPreparationPreview\r\n  BulkPreparationSave — 具名操作：BulkPreparationSave\r\n  GetTargetHandoffPreview — 檢視或檢查：GetTargetHandoffPreview\r\n  CommitTargetHandoff — 具名操作：CommitTargetHandoff\r\n  GetPreparationReview — 檢視或檢查：GetPreparationReview\r\n  SavePreparationReview — 具名操作：SavePreparationReview\r\n  OsProvidedBaseline — 建立 OS 提供排程工作可信基準\r\n  OsProvidedReview — 比對 OS 提供排程工作證據\r\n  OsProvidedSubmit — 提交 OS 提供排程工作審閱\r\n  RequirementReview — 預覽主機需求審閱\r\n  RequirementDecisionSubmit — 提交主機需求決策\r\n  WindowsSettingsPreviewExport — 匯出 Windows 設定審閱預覽\r\n  WindowsSettingsSubmit — 提交 Windows 設定審閱\r\n  DispositionSubmit — 具名操作：DispositionSubmit\r\n  RequirementSubmit — 具名操作：RequirementSubmit\r\n  HttpIntegrityProbe — 檢查本機頁面傳輸完整性\r\n  SpecReview — 查看規格審閱\r\n  SaveSpecReview — 保存規格審閱\r\n  AssistiveReport — 匯出管理報告\r\n  AssistiveReportCheck — 檢查管理報告\r\n  AssistiveComparison — 具名操作：AssistiveComparison\r\n  PublishComparison — 具名操作：PublishComparison\r\n  TargetSnapshot — 擷取目標主機快照\r\n  SetSoftwareVersion — 具名操作：SetSoftwareVersion\r\n  FilePlacementPreview — 具名操作：FilePlacementPreview\r\n  NonCPlan — 具名操作：NonCPlan\r\n  NonCImport — 具名操作：NonCImport\r\n  RegisterMaterial — 具名操作：RegisterMaterial\r\n  CloseMaterial — 具名操作：CloseMaterial\r\n  JobLock — 具名操作：JobLock\r\n  EnvironmentProbe — 具名操作：EnvironmentProbe\r\n  ProbeImport — 具名操作：ProbeImport\r\n  AssistiveEnable — 具名操作：AssistiveEnable\r\n  AssistiveSelections — 具名操作：AssistiveSelections\r\n  WorkspaceTransferPreview — 具名操作：WorkspaceTransferPreview\r\n  WorkspaceTransfer — 具名操作：WorkspaceTransfer\r\n  DeliveryDocument — 具名操作：DeliveryDocument\r\n  ImportedDeliveryReceipt — 具名操作：ImportedDeliveryReceipt\r\n  DeliveryReceiptImport — 具名操作：DeliveryReceiptImport\r\n  WindowsSettingsPreview — 具名操作：WindowsSettingsPreview\r\n  WindowsSettingsApply — 具名操作：WindowsSettingsApply\r\n  QualificationSigningRequest — 具名操作：QualificationSigningRequest\r\n  QualificationSigningComplete — 具名操作：QualificationSigningComplete\r\n  DeltaDirectory — 具名操作：DeltaDirectory\r\n  DeltaDirectoryImport — 具名操作：DeltaDirectoryImport\r\n  GeneralHostMode — 具名操作：GeneralHostMode\r\n  SoftwareAttach — 具名操作：SoftwareAttach\r\n  DispositionPreview — 具名操作：DispositionPreview\r\n  DispositionApply — 具名操作：DispositionApply\r\n  RequirementPreview — 具名操作：RequirementPreview\r\n  RequirementApply — 具名操作：RequirementApply\r\n  GeneralHostEvidence — 具名操作：GeneralHostEvidence\r\n  SoftwareEvidence — 具名操作：SoftwareEvidence\r\n  OutputInitialize — 具名操作：OutputInitialize\r\n  OutputResolve — 具名操作：OutputResolve\r\n  OutputRegisterPair — 具名操作：OutputRegisterPair\r\n  OutputConfirmState — 具名操作：OutputConfirmState\r\n  OutputPreferences — 具名操作：OutputPreferences\r\n  EnrolledDelivery — 具名操作：EnrolledDelivery\r\n  DirectoryDelivery — 具名操作：DirectoryDelivery\r\n  DirectoryImport — 具名操作：DirectoryImport\r\n  OracleBindingTemplate — 具名操作：OracleBindingTemplate\r\n  OracleConfigDraft — 具名操作：OracleConfigDraft\r\n  EnvironmentConfirmation — 具名操作：EnvironmentConfirmation\r\n  DeltaVolumes — 具名操作：DeltaVolumes\r\n  DeltaVolumeImport — 具名操作：DeltaVolumeImport\r\n  LabReport — 具名操作：LabReport\r\n  ConfigReview — 具名操作：ConfigReview\r\n  ConfigScopeDraft — 具名操作：ConfigScopeDraft\r\n  DeltaManifest — 具名操作：DeltaManifest\r\n  DeltaCheck — 具名操作：DeltaCheck\r\n  DeltaZip — 具名操作：DeltaZip\r\n  DeltaImport — 具名操作：DeltaImport\r\n  DeltaRepair — 具名操作：DeltaRepair\r\n  CancellationToken — 具名操作：CancellationToken\r\n  RequestCancellation — 具名操作：RequestCancellation\r\n  GroupPlan — 具名操作：GroupPlan\r\n  GroupReceipt — 具名操作：GroupReceipt\r\n  GroupBarrier — 具名操作：GroupBarrier\r\n  QualificationKey — 具名操作：QualificationKey\r\n  QualificationRecord — 具名操作：QualificationRecord\r\n  QualificationAdd — 具名操作：QualificationAdd\r\n  QualificationRevoke — 具名操作：QualificationRevoke\r\n  QualificationLookup — 具名操作：QualificationLookup\r\n  QualificationMatrix — 具名操作：QualificationMatrix\r\n  SpecBundleExport — 具名操作：SpecBundleExport\r\n  SpecBundlePreview — 具名操作：SpecBundlePreview\r\n  SpecBundleImport — 具名操作：SpecBundleImport\r\n  RepairWorkspace — 具名操作：RepairWorkspace\r\n  RawEvidence — 具名操作：RawEvidence\r\n  IdentityMap — 具名操作：IdentityMap\r\n  ConfigureMigration — 具名操作：ConfigureMigration\r\n  ApproveMigration — 具名操作：ApproveMigration\r\n  EstimatePackage — 具名操作：EstimatePackage\r\n  ExportPackage — 具名操作：ExportPackage\r\n  CheckPackage — 具名操作：CheckPackage\r\n  Validate — 執行驗證\r\n  Acceptance — 檢視驗收條件\r\n  ExportResult — 具名操作：ExportResult\r\n  Repair — 具名操作：Repair\r\n  CheckJournal — 具名操作：CheckJournal\r\n  PackageZip — 具名操作：PackageZip\r\n  ImportPackageZip — 具名操作：ImportPackageZip\r\n  MigrationReport — 具名操作：MigrationReport\r\n  ImportSourceReviewHandoff — 匯入來源盤點與選擇\r\n  Initialize — 具名操作：Initialize\r\n  ImportInventory — 具名操作：ImportInventory\r\n  Items — 具名操作：Items\r\n  ReviewIssues — 具名操作：ReviewIssues\r\n  Decision — 具名操作：Decision\r\n  Mapping — 具名操作：Mapping\r\n  Evidence — 具名操作：Evidence\r\n  Dependencies — 具名操作：Dependencies\r\n  ManualItem — 具名操作：ManualItem\r\n  ReviewMetadata — 具名操作：ReviewMetadata\r\n  ReviewTemplate — 具名操作：ReviewTemplate\r\n  TemplatePreview — 具名操作：TemplatePreview\r\n  ApplyTemplate — 具名操作：ApplyTemplate\r\n  Fleet — 具名操作：Fleet\r\n  PairPlan — 具名操作：PairPlan\r\n  CrossHostDependency — 具名操作：CrossHostDependency\r\n  Report — 具名操作：Report\r\n  FleetReport — 具名操作：FleetReport\r\n  SaveSelection — 具名操作：SaveSelection\r\n  DeveloperProbe — 具名操作：DeveloperProbe\r\n[目標端]\r\n  NonCTargetHandoffPreview — 具名操作：NonCTargetHandoffPreview\r\n  NonCTargetHandoffImport — 具名操作：NonCTargetHandoffImport\r\n  NonCTargetProofExport — 具名操作：NonCTargetProofExport\r\n  TargetZipImport — 具名操作：TargetZipImport\r\n  TargetDirectoryImport — 具名操作：TargetDirectoryImport\r\n  ComparisonImport — 具名操作：ComparisonImport\r\n  CreateTargetDecisionReceipt — 具名操作：CreateTargetDecisionReceipt\r\n  TargetAcceptance — 具名操作：TargetAcceptance\r\n  TargetActivation — 具名操作：TargetActivation\r\n  TargetRestore — 具名操作：TargetRestore\r\n  TargetRestorePreview — 具名操作：TargetRestorePreview\r\n  TargetValidation — 具名操作：TargetValidation\r\n  ExportTargetHandoff — 具名操作：ExportTargetHandoff\r\n  PreparationPreview — 預覽目標準備需求\r\n  PreparationEvidence — 匯出準備佐證\r\n  TargetReceipt — 具名操作：TargetReceipt\r\n  NonCPhysicalProof — 具名操作：NonCPhysicalProof\r\n  NonCTransfer — 具名操作：NonCTransfer\r\n  ReservationPreview — 具名操作：ReservationPreview\r\n  ReserveResource — 具名操作：ReserveResource\r\n  ResourceEvidence — 具名操作：ResourceEvidence\r\n  ReleaseResource — 具名操作：ReleaseResource\r\n  MaterialJobStatus — 具名操作：MaterialJobStatus\r\n  CleanupPreview — 具名操作：CleanupPreview\r\n  Cleanup — 具名操作：Cleanup\r\n  AssistiveTargetDecisionReceipt — 具名操作：AssistiveTargetDecisionReceipt\r\n  WorkspaceTransferRestorePreview — 具名操作：WorkspaceTransferRestorePreview\r\n  WorkspaceTransferRestore — 具名操作：WorkspaceTransferRestore\r\n  CheckToolRelease — 具名操作：CheckToolRelease\r\n  DeltaRestore — 具名操作：DeltaRestore\r\n  RollbackResult — 具名操作：RollbackResult\r\n  RegisterTarget — 具名操作：RegisterTarget\r\n  ToolRelease — 具名操作：ToolRelease\r\n  RestorePreview — 預覽還原\r\n  Restore — 執行還原\r\n  ValidationEvidence — 具名操作：ValidationEvidence\r\n  CutoverPlan — 預覽切換計畫\r\n  Cutover — 執行切換\r\n  RollbackPreview — 預覽回復\r\n  Rollback — 執行回復\r\n  SetRestoreChoice — 具名操作：SetRestoreChoice\r\n\r\n操作指引：目的：在已登錄來源 C 槽執行有界唯讀中繼資料探索；只列候選與覆蓋缺口，不讀檔案內容、不執行腳本、不建立 FileScope 或核准。部分結果以相同 ScanId 明確續作。\r\n本次工作識別碼：ed45418f-fee2-4665-89ec-ecf0f69a25f7；保留此識別碼以查核中斷或未知寫入，不會自動重送。\r\n\r\n預覽：Parameters reviewed; native readiness has not been verified.\r\n  Parameter review only. Resource readiness requires the applicable native preview, sealed evidence and execution gates.\r\n此處僅檢查參數形狀，未評估資源就緒、核准、目標讀回或執行閘門。請另用專屬預覽操作；只有確認接受此限制才可明確套用。\r\n核心取消權杖已綁定。工作識別碼：ed45418f-fee2-4665-89ec-ecf0f69a25f7；如需停止，請在另一個管理程序對同一工作上下文提出取消。\r\n核心命令已回傳；以下僅顯示安全欄位。\r\n\r\n\r\nStatus                  : ReviewRequired\r\nSourceHostId            : 1ec5000d-1821-4b7c-9b61-49789bba82f6\r\nInventoryHash           : f331953971def977eb9d8eaf718d413d105787aeafcfa3b19b9376dc3162281d\r\nInventoryRevision       : 1\r\nAuthoritativeApproval   : False\r\nContentRead             : False\r\nReportPath              : C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-c-24cbf900\\s\\hosts\\d693bd2890a762c220116cd1492f65772f64\r\n                          dd9a284fb1b249da6c315d5ada3c\\source-candidate-scans\\04fcd77e-8473-44ec-846e-7250773a0d1d\\revi\r\n                          ew.html\r\nGapCount                : 1\r\nScanId                  : 04fcd77e-8473-44ec-846e-7250773a0d1d\r\nScanStatus              : Partial\r\nCandidateCount          : 0\r\nCandidatePath           : C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-c-24cbf900\\s\\hosts\\d693bd2890a762c220116cd1492f65772f64\r\n                          dd9a284fb1b249da6c315d5ada3c\\source-candidate-scans\\04fcd77e-8473-44ec-846e-7250773a0d1d\\cand\r\n                          idates.json\r\nCandidateHash           : cbba8d73dab88cc59a919e1007bc456f3b7f169fed2f0390a59127d28ea83879\r\nScannedEntryCount       : 0\r\nVisitedDirectoryCount   : 0\r\nExcludedAreaCount       : 0\r\nRemainingDirectoryCount : 1\r\nContinuationRequired    : True\r\nContinuationScanId      : 04fcd77e-8473-44ec-846e-7250773a0d1d\r\n\r\n\r\n\r\nPASS typed text CLI discovers source inventory, dispatches the registered scan, and stores its resumable job result\r\nPASS typed CLI cancellation request, durable job and inventory-bound token share the same operation identity\r\nPASS durable text job preserves scan continuation ID and hash-bound candidate artifact fields\r\nPASS HTML durable-job projection exposes the persisted scan continuation and hash-bound artifact fields\r\nPASS HTML job projection injects the verified source inventory record into operation dispatch\r\nPASS registered source candidate operation consumes bound inventory and emits fixture candidates plus review report\r\nPASS HTML result projection retains only the candidate scan continuation and integrity fields\r\nPASS HTML cancellation token binds the registered source operation to its verified inventory and operation ID\r\nPASS registered operation observes HTML cancellation token and publishes a resumable review report\r\nPASS missing SoftwareCatalog is disclosed as incomplete installed-software root coverage in review output\r\nPASS resume rejects a queued directory whose ancestor was replaced by a junction and never scans its target\r\nPASS missing queued directory becomes a durable coverage gap and does not abort the scan\r\nPASS resume rejects a changed source inventory hash\r\nPASS cumulative entry cap stops at its fixed maximum and records a durable coverage gap\r\nPASS budget-exhausted report explains the actual limitation and does not promise unsupported scope or policy controls\r\nPASS cumulative-budget checkpoint is terminal and cannot silently resume or reset\r\nPASS cancellation stops at a durable boundary and preserves a resumable partial checkpoint\r\nPASS mid-directory cancellation retains its exact seen cursor and visibly lists the remaining directory path\r\nPASS arbitrary HTML paths are not published as source scan reports\r\nTOTAL CHECKS: 48\r\n"
+    },
+    {
+      "name": "d2-core-Test-ScriptEncoding.log",
+      "sha256": "81057E04D2016AF6F72D209BD992C673A2D5F71BD85D105A52258A055403D6FA",
+      "text": "PASS: strict UTF-8, BOM for every non-ASCII script, and parsing across 263 runtime/test/entry files.\r\n"
+    },
+    {
+      "name": "d2-core-Test-WorkloadActionIndex-ps51.log",
+      "sha256": "9525F4F9E74E929E13BEA778E0DA973CE5CBED7938CBB7751FC9FC0DD247D193",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: E0 original action indices, typed draft consumer, opaque argument redaction, Exec-only and same-location regression, and ambiguous/unsupported action handling. Assertions: 28\r\n"
+    },
+    {
+      "name": "d2-core-Test-WorkloadActionIndex-ps7.log",
+      "sha256": "2809C663B89F73F6491C937B728DD7FB64CDE3C70242F300AC3FC53CB2E18010",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: E0 original action indices, typed draft consumer, opaque argument redaction, Exec-only and same-location regression, and ambiguous/unsupported action handling. Assertions: 28\r\n"
+    },
+    {
+      "name": "d2-core-Test-R7SoftwareAssessment-ps51.log",
+      "sha256": "FD599BA506F8C2A51025BFDC18BEFDEA4242DAD98FCCCCF702ADE4066E399794",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: R7 software assessment preserved 5 collected rows through comparison and report projection; 13 assertions.\r\n"
+    },
+    {
+      "name": "d2-core-Test-R7SoftwareAssessment-ps7.log",
+      "sha256": "F7CF7758651DBB56B6A3976A9E0B8F05BDD43E981E48A7CBE3FACF2AFF8A41F6",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: R7 software assessment preserved 5 collected rows through comparison and report projection; 13 assertions.\r\n"
+    },
+    {
+      "name": "d2-core-Test-WorkloadDiscovery.log",
+      "sha256": "470D864A14E9E4E7056CA164BFB6A8B2C8E22DCA746200D8B6BD2C038FBAE3E3",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: R3-B workload graph and schema3 public draft consumer. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-workload-fccbf5e6689b43db9355959a30d7a676\r\n"
+    }
+  ]
+}

@@ -23,6 +23,7 @@
             $path=[string]$file.RelativePath;$hash='';if($file.PSObject.Properties['SHA256']){$hash=[string]$file.SHA256}
             Add-Detail $path 'ReviewedExactFile' $hash 'Exact file recorded in the reviewed migration specification; live content is revalidated by export.'
         }}
+        if($spec.PSObject.Properties['ContentSelection'] -and [string]$spec.ContentSelection -ceq 'ExactMembers' -and $spec.PSObject.Properties['Members']){foreach($member in @($spec.Members)){Add-Detail ([string]$member.RelativePath) 'ReviewedExactMember' ([string]$member.SHA256) 'Hash-bound file member only; sibling files and directory contents are not included.'}}
         if(-not $rows.Count){Add-Detail ([string]$spec.SourcePath) 'ScopeNotEnumerated' '' 'Reviewed source scope; a bounded file listing is a separate read-only operation.'}
     }
     $rows.ToArray()
@@ -63,6 +64,18 @@ function Export-WsmWizardFileDetails {
         $path=$stack.Pop();$relative=$path.Substring($source.Length).TrimStart('\');$excluded=$false
         foreach($entry in @($spec.ExcludedRelativePaths)){if($relative -ieq $entry -or $relative.StartsWith(([string]$entry).TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){$excluded=$true;break}}
         if($excluded){continue}
+        if($spec.PSObject.Properties['ContentSelection'] -and [string]$spec.ContentSelection -ceq 'ExactMembers'){
+            if($relative){continue}
+            if(-not $spec.PSObject.Properties['Members'] -or @($spec.Members).Count -eq 0){throw 'ExactMembers file details require the nonempty sealed member allowlist.'}
+            $attempts=0
+            foreach($member in @($spec.Members)){
+                Assert-WsmCancellationBoundary $CancellationToken 'WizardExactMemberDetail'
+                if($attempts -ge $MaxEntries -or $watch.Elapsed.TotalSeconds -ge $TimeoutSeconds){$status='Partial';$gaps.Add([pscustomobject]@{reason='ListingBudgetExceeded';pendingEntries=1});break};$attempts++
+                $memberRelative=[string]$member.RelativePath;Assert-WsmRelativePath $memberRelative;$exact=Join-Path $source $memberRelative
+                try{[void](Assert-WsmWizardDetailLocalPath $exact);$info=New-Object IO.FileInfo($exact);if(-not $info.Exists){throw 'Exact member is unavailable.'};if($rows.Count -ge $MaxEntries){$status='Partial';$gaps.Add([pscustomobject]@{reason='ListingBudgetExceeded';pendingEntries=1});break};$rows.Add([pscustomobject]@{path=$memberRelative;directory=$false;bytes=[long]$info.Length;lastWriteUtc=$info.LastWriteTimeUtc.ToString('o');status='ObservedMetadata';approvedSha256=[string]$member.SHA256;contentRead=$false})}catch{$status='Partial';$gaps.Add([pscustomobject]@{path=$memberRelative;reason='UnavailableOrUnsafe';errorType=$_.Exception.GetType().FullName})}
+            }
+            break
+        }
         if($spec.PSObject.Properties['ContentSelection'] -and $spec.ContentSelection -ceq 'ExactFiles'){
             if($relative){continue}
             $attempts=0
