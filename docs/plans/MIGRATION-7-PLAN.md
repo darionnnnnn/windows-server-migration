@@ -1,6 +1,6 @@
 # 第 7 輪規劃：以原位置還原降低 EOS 移機負擔
 
-> 日期：2026-10-19（Asia/Taipei）。狀態：使用者已定案 C 主動探索與非 C 獨立離線備份，新增 HTML 一鍵備份／勾選還原／按需帳密輸入；第三次整體相依複核完成。僅規劃，未授權實作、未開始產品驗收。
+> 日期：2026-10-19（Asia/Taipei）。狀態：使用者已定案 C 主動探索與非 C 獨立離線備份；第四次端到端複查已補強離線起步、帳密／作業狀態與中斷續作契約（第 16 節）。僅規劃，未授權實作、未開始產品驗收。
 > 來源：使用者三項專案目標，加上本次完成度／CI／證據／連線診斷評估。
 > 規劃基準：codex/migration-6@177e02c9f4a19de7a763ba05988ecd4cc343e71c；遠端 dev@1dbbc713f39b85276bd6de25b61fd39e282edd53 尚未包含第六輪。不是宣稱此基準已重新全套測試通過。
 > 本文件由主代理撰寫；本次只改規劃，不改程式、現況能力聲明或生產資格。不讀取／搜尋／搬移 docs/archive，不接觸私人 Get-ServerMigrationInventory.ps1。
@@ -54,7 +54,7 @@
 | F | F1 引導、F2 診斷、F3 完整 HTML 清單、F4 按需帳密 | C–E；大，含耐久作業生命週期 |
 | G | 五旅程整合、文件及發行核驗 | A–F；中 |
 
-本次定案後順序為 A→B→C→D1→E0→D2→D3a→D3b→E1/E2→E3→F3→F4→F1/F2→G；各新增階段見第 15 節。先確立備份／還原／secret handoff 契約再寫 UI；D3a 對外功能需與可驗 reader 成套交付。每階段完整相依才提交。規劃由主代理負責，實作方式暫定主代理逐段執行；本文件不啟動委派。
+第四次複查後順序為 A→B→C→D1→E0→D2→D3a→D3b→E1/E2→E3a→F4a→E3b→F3/F4b→F1/F2→G。E3a 是離線起步／選取／預覽，F4a 是耐久等待與秘密交付核心，E3b 才接還原／續作編排，F4b 接 HTML 提示，詳第 16 節。D3a 先確立共用父作業／子階段與 crash 契約，對外能力須與 reader 成套交付。未完整功能不得先顯示可執行按鈕。每階段完整相依才提交；本文件不啟動實作或委派。
 
 ## 4. 作業 A：可核驗的完成度與證據
 
@@ -161,11 +161,12 @@
 | 規劃 | 主代理 | 已撰寫與靜態複核 | 引用／範圍／相依與矛盾檢查 | 非產品驗收 |
 | 第二次複查 | 主代理 | 已補 14 類情境、E0 及全鏈契約 | 正式草稿函式記憶體反例重現；文件核對 | 當時 Q1/Q2 待決，現已依使用者答覆定案；產品尚未修正 |
 | 第三次定案複核 | 主代理 | Q1/Q2 定案，補 D3/E3/F3/F4 及驗收鏈 | 文件／實際核心限制及 UI secret 入口核對 | 無實作、無新產品 PASS |
+| 第四次端到端複查 | 主代理 | 補離線起步、狀態／鎖／秘密、續作與交付契約 | 正式呼叫路徑及現有狀態白名單靜態核對 | 第 16 節；未跑新動態測試、未修產品 |
 | A–G | 未開始 | 未實作 | 未執行 | 待使用者授權實作 |
 
 ## 13. 規劃複檢與明確不做
 
-初次及第二次複查過程見第 14 節；使用者後續定案與第三次複核見第 15 節。第 14 節的直接傳輸評估保留為決策背景，本輪一律依第 1／3／15 節離線契約執行，不採先前較窄方案。
+初次及第二次複查過程見第 14 節；使用者定案見第 15 節；第四次端到端補強見第 16 節，與第 15 節共同作為驗收契約。第 14 節的直接傳輸評估保留為決策背景，不採先前較窄方案。
 
 本輪不做整機／OS／安裝本體備份、自動安裝套裝軟體、任意腳本執行探測、自動合併外部檔案、任意目的地改寫、自動啟用、不受控 UNC 複製、全新前端框架或大規模架構重寫。未證明的特殊路徑支援不預先承諾；不取消外部實機資格或第六輪簽核要求。
 
@@ -352,3 +353,101 @@ G 必跑新增旅程：舊機 HTML 主動探索→確認 C/D/E＋IIS／排程混
 反例須涵蓋少卷、錯包 HTML、錯主機、目標原位置漂移、來源嘗試回連、root 散檔旁新增未核准檔、選取為零、套裝本體偷入、非 C 部分封存、secret challenge 重播、斷線重啟及補裝漂移。未通過任一必要層不能以報告成功代替。
 
 第三次複核結果：已修訂「不增封包契約」「NonC 直接傳輸即足夠」「Q1/Q2 待決」「schema 3 一律不變」等舊敘述，新增 producer→portable set→reader→subset receipt→worker 的整體相依。現有目標綁定及獨立啟用保留，不默認加入無目標備份或自動啟動。舊機離線驗收同時禁止依賴舊工作區及舊機解密能力。未再發現需要改變已定產品方向的待決項；內部版本號、掃描預算與 secret handoff 實作細節留實作前契約核對，不能以尚未實測的選型當既有能力。全程僅更新規劃。
+
+## 16. 第四次複查：將一鍵操作與離線續作接成完整流程
+
+本次以 6e39953 規劃及現行產品程式靜態核對，沒有再執行產品測試、沒有修改程式。以下指出的是新能力必須補上的契約及既有程式限制，不把尚未新增的能力稱為既有產品 bug。前次已重現的 E0 缺陷仍未修正。
+
+### 16.1 操作、程式及管理端的接縫核對
+
+| 編號／實際質疑 | 查證與缺漏 | 本輪補強／驗收落點 |
+|---|---|---|
+| R7-15「新機只拿備份，為何還要找舊 Manager 的比較檔？」 | WizardTargetPackage 的 context 先要求已接收核准 plan；WizardRestore 的 comparison 匯入綁目前目標 snapshot，既有 export 則要求 Manager workspace。初版缺離線重建這些材料的正式路徑。 | E3a 新增離線起步／目前比較契約，見 16.3；來源與舊 Manager 均不可存取時走真 caller。 |
+| R7-16「畫面叫我輸密碼，輸完卻說另一個工作執行中？」 | HtmlConsole 開始 worker 前取得 WorkspaceWorkerGuard，EndInvoke 後才釋放；一般新 mutation 也取得 guard。等待作業若仍占鎖，新 submit 不應再競爭同一把鎖。 | F4a 定義等待 checkpoint、控制訊息與執行鎖的不同責任，見 16.4。 |
+| R7-17「等待密碼怎麼變成完成？重開又看不見？」 | OperationRequests 的 job 狀態白名單尚無 WaitingForInput；HtmlConsole 的 EndInvoke 統一轉 Succeeded／Cancelled／Failed／ReviewRequired 並寫 CompletedUtc。現有啟動復原主要處理 Running／CancelRequested。 | 新狀態一起更新 API、持久化、CLI、UI 輪詢、重啟、結果／完成時間投影，不能只新增 enum。 |
+| R7-18「密碼送出了但網頁斷線，我到底該不該再送？」 | F4 只有通則，沒有秘密已接收、已消耗及 native 寫入已完成但 journal 未落盤的邊界。 | challenge 狀態與 item journal 分開；重查不重送，未知原生結果先對帳，不能以再問密碼重做副作用。 |
+| R7-19「重開頁面還是原工作，但 session 換了怎麼繼續？」 | session 每次啟動重建；舊 challenge 綁 session，禁止 replay 正確但缺新 session 接手。 | 重開先驗目前操作者／Target／attempt／revision，撤銷舊 challenge 並產生新 challenge；不重建搬移、不復原密碼。 |
+| R7-20「我取消了，另一頁晚到的密碼卻讓它繼續？」 | 取消、暫緩、關閉視窗、失聯及正式新一輪續作未拆清。 | 16.2 的終態與 continuation 契約；Cancel sticky，晚到回覆不得復活，重啟不等於自動續跑。 |
+| R7-21「檔案已複製完，斷電後卻說是外部衝突？」 | 初版沒有逐項 intent／native result／durable commit 間的故障驗收。 | E3b 對帳 ownership＋內容／metadata／journal；不能刪除完成項或重放不明變更來讓測試綠。 |
+| R7-22「只剩把備份複製到隨身碟，失敗就要再停機？」 | 擷取、封存、獨立副本階段未明確分開。 | D3b 從已驗不可變封存集續作交付，不重新讀來源；來源擷取未完成且一致性失效則另開 generation，不拼接不同時點。 |
+| R7-23「我拔掉媒體／換插槽，工具要我重建整個工作？」 | 交付身分與絕對媒體路徑尚未區分。 | 相同備份集可重新定位媒體並核完整性，不改 Pair／選取；不同備份集或卷替換拒絕。未本機完整匯入前不可提示安全拔除。 |
+| R7-24「清單寫全好，實際少卷；驗完報告又被改寫？」 | 來源 sealed report 與後續獨立副本驗證收據容易循環引用或改壞原 hash。 | 固定備份內容及清單後封存；交付驗證收據另存並綁該集合，不能為更新狀態修改 sealed payload，見 16.5。 |
+
+另核對 HtmlConsole 的 Get-WsmHtmlRequestHashForBody 將 Body.args 交給 request hash，且 RequestHash 會持久保存。新 secret challenge 不能直接套此路徑而把密碼納入持久可重算摘要；F4a 須以非秘密 intent、challenge ID 與受控狀態完成去重，不保存密碼本身或可供離線猜測的衍生驗證值。這是新流程設計要求，本次未建立既有秘密外洩的動態重現。
+
+### 16.2 父作業、子階段與中斷續作契約
+
+下列為語意狀態，名稱可依既有模型定案；不能新增多套互相矛盾的成功真相。父作業呈現一次使用者意圖，子階段／續作各有唯一執行識別與 lineage。原 request 及其結果不可改成另一份請求；後續 continuation 有自己的 idempotency key，但綁原父作業、已完成 checkpoint、核准及當前 revision。
+
+| 階段／狀態 | 使用者可做什麼 | 中斷或恢復時必須如何判定 |
+|---|---|---|
+| 備份 Prepared→Capturing | 一次開始、查進度、取消 | 重啟先驗 owner／鎖與 journal；缺乏同一有效一致性範圍不能把新讀到檔案接進舊 generation。 |
+| Captured→Sealing→Sealed | 查分卷／完整性結果 | publication 前的中間索引不得被 importer 視為完整；重啟驗已寫成員，未完成不覆蓋前份有效集合。 |
+| Sealed→Delivering→IndependentCopyVerified | 查交付進度、重新選相同媒體位置 | 只複製／驗證 immutable bytes，可在來源業務已恢復時進行；不再凍結／讀取來源資料。最終「備份就緒」須同時具 Sealed 與有效交付證據。 |
+| 還原 ImportedVerified→Selected→Previewed | 勾選、檢視相依、明確開始 | 只有單純顯示清單的 GET 不產生 receipt、不重盤點、不寫入；開始前正式 writer 重查必要條件。 |
+| Restoring→WaitingForInput | 輸入帳密、暫緩該組、取消全作業 | 只在安全 checkpoint 等待。已完成項保留；等待不是 terminal CompletedUtc，不當成功，也不以無 CPU 進度判崩潰。 |
+| WaitingForInput→Restoring | 回覆有效 challenge | 同 revision／帳號／授權不需再確認全部範圍；外部目標漂移則暫停並要求新預覽，不沿用舊確認。 |
+| BrowserDisconnected | 關頁、重新開啟 | 只是觀察端失聯，活著的 worker 繼續或安全等待；重開查同一作業，不建立第二 writer。 |
+| ProcessInterrupted | 開工具、檢視恢復預覽並續作 | 只有確認原 owner 已不存活且取得鎖才能接手；對帳 native／journal 後續作，需要的秘密重新輸入。不得自動回退或自動啟動業務。 |
+| Deferred／Partial | 補裝、補磁碟／權限後續作 | 逐項重查，成功歷史不消失；父作業未達完整條件不能顯示全部還原完成。 |
+| CancelRequested→Cancelled | 查看安全停止及來源恢復指引 | 取消即撤銷未消耗 challenge、停止後續可取消邊界；已開始不可原子取消的 native 操作先完成／對帳。晚到回覆不能復活，續作需新的明確 continuation。 |
+| RestoreCompleted | 查看結果、另作啟用審閱 | 僅代表所選可執行還原集合及必要相依均完成 readback；不代表套裝補裝／業務驗收或啟用完成。 |
+
+本輪不承諾任意中斷都能從同一位元組續傳；承諾不丟可驗 checkpoint、不誤成功、不覆寫不明內容，必要時明確重做尚未完成子段。選取在 Running／Waiting 期間不得靜默變更；要改選先停止原操作至安全狀態，再建立新 receipt／preview，先前已完成項繼續受 ownership 保護。
+
+### 16.3 E3a：離線新機起步與比較材料閉合
+
+1. 獨立交付必須附具相容工具取得方式、離線使用說明、被信任的來源核准材料與完整必要資料；新機不能為讀包要求連舊機下載 reader。工具本身須可信且版本吻合，不能直接執行包內任意程式。
+2. 空 Target workspace 先由本機真實身分建立／確認 enrollment，再驗目標綁定 plan 並匯入；不複製來源或 Manager 的 workspace／lock／job 身分。此「空 workspace」是同一已核准目標主機的新工作區，不代表任意新硬體或重裝後身分改變可跳過重新授權。
+3. 使用可信封存 source inventory／software catalog 與新機即時 target inventory，在新機正式核心入口產生當前比較及受限子集決策。此為新離線流程必要擴充；重用既有比較演算法，不能捏造舊 Manager 匯出或僅改 HTML 使其看似已核准。既有初始 Manager 核准仍是範圍上限，Target 的本機操作者只決定合法子集及已允許的新機準備事項。
+4. 比較、receipt、preview 都綁相同 source bundle、目前 target snapshot、選取版本與 actor；補裝／重啟／重盤點後可在新機重新產生，不必回找舊 Source 或原 Manager 程序。增加來源集合、變更目標身分或超出初始核准的帳號／設定仍走正式新核准，UI 明列原因，不暗中擴權。
+5. 獨立可信 hash／簽署／來源核准的取得與驗證須在 HTML 引導可操作，不能為免手填就從同一不可信包計算 hash 當授權。可由既有可信交接材料自動辨識，找不到時明列需補的材料與取得途徑。
+6. 備份集的 read-only 匯入與清單檢視不宣稱 ProductionExecutionEnabled；缺企業執行資格仍沿既有 gate。未支援環境能看清原因及保留材料，不能讓「一鍵」繞過實際執行限制。
+
+驗收：全新 Target workspace、舊 Source／Manager workspace 與程序均不可讀／不可達；正式 enrollment→plan import→bundle import→fresh inventory→本機 comparison→receipt→preview 全走真 caller。另驗錯目標、同名不同機、來源材料過期但擷取當時有效、當下目標 snapshot 過期、偽造核准、改選及補裝後重產比較，對應拒絕／放行理由可判定。
+
+### 16.4 F4a／E3b／F4b：帳密、鎖與原生副作用
+
+- 新能力需要修改完整狀態消費鏈：OperationRequests 狀態／返回碼、HtmlConsole worker 完成處理及 history recovery、WizardFlow／WizardRuntime／Restore 投影、UI polling／cancel／resume、結果報告。Waiting／Suspended 不填整個父作業 CompletedUtc；子 worker 完成可以有自己的時間。CLI 非互動缺值回傳可辨識等待／非成功結果，不讀隱藏輸入；互動 CLI 用相同 challenge 契約。
+- HtmlConsole 現在使用同程序 PowerShell runspace 執行 worker；先以現有模型設計限作業的記憶體秘密交付，不無理由新增跨程序 broker。若實作必須改程序邊界，再以第 15.7 的不落盤要求驗證，不以規劃假定現有安全 IPC 已存在。
+- 密碼回覆、查詢與取消是已存在父作業的受權控制訊息，不是另一個平行搬移 writer。等待時在安全 checkpoint 釋放執行用 OS／工作鎖，保留耐久資源 reservation／operation ownership；同一父作業可在該鎖內繼續獨立已選項。其他改寫作業不得藉等待搶占相同資源；續作須重新取得鎖、驗 owner／checkpoint／revision。這套接手／排他語意需同時涵蓋 UI 與 CLI。
+- Challenge 的耐久部分僅含需求、綁定與 Pending／Accepted／Consumed／Revoked 等狀態（名稱暫定），秘密置於易失性儲存。若記錄 Accepted 後當機而值已遺失，可核對後發新 challenge；若 native 操作可能已執行，先讀 item journal／實際目標，不能直接再執行。兩者不可只用一個 boolean 表達。
+- 新 session 明確接手等待作業後，舊 challenge／session 失效並重新發一個綁目前 session 的需求；舊頁不得回覆。檢視工作本身不接手，不為 GET 產生新挑戰或變更 owner。角色切換、同 workspace 第二個 console 與程序重啟均驗同一規則。
+- 拒絕憑證和 unknown native outcome 分開：確定未套用才允許使用者更正密碼；可能已套用則使用 readback／對帳，無法證明時轉人工待查，不自動無限重試。不可為驗密碼額外發出無必要的登入探測，避免放大帳號鎖定。
+- 服務／排程／IIS 身分模式的 credential consumer 列出預期權限及已核准身分，錯誤回覆不得包含密碼；應用私鑰、DPAPI 秘密、產品啟用資料等不假裝一個帳密視窗就能恢復。對不支援模式明列外部處理。
+- 本機 secret endpoint 保留 loopback／Host／Origin／session 防護，POST body 限額與欄位白名單；敏感值不進 URL、request hash、error detail、telemetry 或回傳投影。UI 輸入為密碼欄位，成功送出／取消即清除；不要求或承諾全面清除 OS／瀏覽器內存。
+- E3b 的 intent、實際寫入、readback、journal 完成各邊界要能重入判定；檔案、設定及帳號相關 side effect 不能共用「有同名物件就算完成」的捷徑。外部人改寫已完成目標則顯示漂移，不偷偷接管或覆寫。
+
+F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手的對話框。F4b 串上正式 handler／worker 後才開放使用者入口；原型 fixture 的成功不能當整段已交付。
+
+### 16.5 D3／F3：交付、清單與來源停機判準
+
+- 封存內容及靜態清單由同一已完成項目集合產生，兩者封存後不可改。外層交付索引記成員 hash，不能把含自身最終 hash 的報告循環放入自身 hash。獨立副本驗證收據引用已封存集合另存，不修改其 manifest／payload 來補「已驗證」標籤。
+- 靜態 HTML 顯示擷取／封存當時狀態，明示不代表媒體目前仍完整；新機匯入會重驗 bytes。來源離線後的還原結果寫新機報告，不回寫來源備份。使用者不會因打開舊 HTML 就被告知目前還原已完成。
+- 一鍵備份父作業涵蓋封存、交付、驗證；若獨立媒體待接入，顯示「等待交付」及下一步，不將父作業當成功。使用者外部手動複製也須經同一正式驗證入口，不能以「已複製」勾選替代逐材料核驗。
+- 媒體重新定位以備份集身分、卷索引與 hash 綁定，路徑可以改，內容不可以換。首次完整核驗後的 resume 仍要驗必要成員未被替換；不能只信同磁碟代號或上次驗證時間。匯入過程缺媒體安全等待／中止，不能建立空成功結果。
+- 單純顯示「獨立副本已驗證」只表示備份可取用，不授權關閉正在服務的舊機；來源當下運作／freeze／SourceResume、業務停機窗口及退役責任另列。使用者自行關閉舊機後的備份可還原性，是離線驗收要證明的能力，不由工具自動停機。
+- 大量清單的離線查閱須在真 file:// 開啟驗證，不能只在 HTTP fixture 假定 fetch 本地 JSON 都可用；以不依賴該限制的靜態頁／索引策略實作。資料與 script 安全分離，長路徑／特殊文字不造成腳本執行；此為完整閱讀契約，不新增瀏覽器控制權限。
+
+### 16.6 決定性跨段驗收與完成度
+
+以下至少各有一個機器可判定劇本；沿用必要的小檔範圍，不用不可靠的壓力碰撞代替斷點注入。
+
+| 故障／情境 | 必須觀察到的行為 | 責任階段 |
+|---|---|---|
+| 開始備份已被接受但 202 回應遺失 | 同 id 查出父作業；無第二次 freeze／第二 writer。 | D3b/F1 |
+| C 已擷取、NonC 未完就當機且一致性已失效 | 舊 partial 保留；不拼新舊 bytes 作同一 complete generation。 | D3b |
+| 已封存，交付中斷且來源恢復業務 | 從封存 bytes 續交付，零來源業務檔案讀取／零再次停寫。 | D3b |
+| 來源及舊 Manager 不可達、空 Target workspace | 本機合法重建必要 context／比較／子集預覽，沒有旁路核准或舊機依賴。 | E3a |
+| restore 送出後斷線／重開 browser | 活 worker 繼續，重新讀同一父作業；不能重送 restore。 | E3b/F1 |
+| 等密碼時第二頁、查詢／取消及另一寫入者 | 控制操作不死鎖，晚到秘密不能復活取消作業，另 writer 不能搶 reservation。 | F4a/F4b |
+| secret 已 Accepted 後、native 前程序死亡 | 值不落盤；重啟核對後發新 challenge，無原生重複寫入。 | F4a/E3b |
+| native 已套用、journal commit 前程序死亡 | readback／ownership 對帳或明示未知待查；不因重問密碼再次套用。 | E3b |
+| 等待時改選／補裝／更換目標根 | 舊 challenge 撤銷或失效；重新預覽，不寫舊集合／舊目的地。 | E3/F4 |
+| 換 USB 路徑、拔媒體、少卷及換另一包 | 相同完整集可重新定位，錯集／缺卷不假成功，已還原結果保留。 | D3/E3 |
+| 超過 2000 列，在無 HTTP／網路下開報告 | 最後一筆與所有狀態可見；列表不宣稱當前媒體驗證或目標還原結果。 | F3 |
+| 合成秘密／secret 派生摘要洩漏反例 | 所有 durable job/request/log/report／傳輸索引無值或可重算秘密摘要；故意加入落盤路徑時檢查必須失敗。 | F4/G |
+
+主整合旅程必須跑相同受測產品 bytes 下的「一次備份→獨立交付→來源／舊 Manager 不可達→新機勾選→帳密等待→程序中斷→明確續作→原位置 readback」，不能把各 helper 的 PASS 拼成此旅程通過。Runspace／狀態測試使用正式 handler；原生帳號 fixture 邊界、雙引擎及原生瀏覽器證據仍按原規則分列。
+
+第四次複查結論：前版已定義功能方向，但離線比較起步、狀態傳播、鎖與秘密控制、重啟接手、native 不確定結果及交付 publication 尚缺完整契約；本節已補入相應階段並調整實作順序。沒有新增需改變使用者已定產品目標的待決項。此結論只表示規劃鏈已補強，不宣稱程式已完整串接或測試通過；所有新增階段及 E0 均未實作。
