@@ -83,7 +83,7 @@ try {
 
     $checkpointPath=Join-Path (Join-Path (Join-Path (Join-Path (Join-Path $scanWorkspace 'hosts') $scanProfile.Fingerprint) 'source-candidate-scans') $first.ScanId) 'checkpoint.json'
     $checkpointBytes=[IO.File]::ReadAllBytes($checkpointPath)
-    $tampered=Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
+    $tampered=& $module { param($path) Read-WsmJson $path } $checkpointPath
     $tampered.Queue=@('C:\outside-volume')
     & $module { param($path,$data) Write-WsmJson $path $data } $checkpointPath $tampered
     ExpectFailure { & $module { param($workspace,$profile,$inventory,$hash,$root,$scanId) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root $scanId $null 3 10 } $scanWorkspace $scanProfile $scanInventory $scanHash $fixtureRoot $first.ScanId } 'malformed checkpoint cannot redirect the resumed scan outside its enrolled volume'
@@ -188,7 +188,7 @@ try {
     $resumeParent=Join-Path $fixtureRoot 'resume-parent';$resumeChild=Join-Path $resumeParent 'child';$outside=Join-Path $tempRoot 'outside';[void][IO.Directory]::CreateDirectory($resumeChild);[void][IO.Directory]::CreateDirectory($outside)
     $outsideMarker=Join-Path $outside 'must-not-be-seen.txt';[IO.File]::WriteAllText($outsideMarker,'outside')
     $junctionStart=& $module { param($workspace,$profile,$inventory,$hash,$root) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root '' $null 1 10 } $scanWorkspace $scanProfile $scanInventory $scanHash $fixtureRoot
-    $junctionCheckpointPath=Join-Path (Split-Path $junctionStart.CandidatePath -Parent) 'checkpoint.json';$junctionCheckpoint=Get-Content -LiteralPath $junctionCheckpointPath -Raw | ConvertFrom-Json
+    $junctionCheckpointPath=Join-Path (Split-Path $junctionStart.CandidatePath -Parent) 'checkpoint.json';$junctionCheckpoint=& $module { param($path) Read-WsmJson $path } $junctionCheckpointPath
     $junctionCheckpoint.Status='Partial';$junctionCheckpoint.Queue=@($resumeChild);$junctionCheckpoint.CurrentDirectory='';$junctionCheckpoint.CurrentDirectoryWriteUtc='';$junctionCheckpoint.CurrentDirectorySeen=@()
     & $module { param($path,$data) Write-WsmJson $path $data } $junctionCheckpointPath $junctionCheckpoint
     Remove-Item -LiteralPath $resumeParent -Recurse -Force
@@ -199,7 +199,7 @@ try {
 
     $missingParent=Join-Path $fixtureRoot 'resume-missing';$missingChild=Join-Path $missingParent 'child';[void][IO.Directory]::CreateDirectory($missingChild)
     $missingStart=& $module { param($workspace,$profile,$inventory,$hash,$root) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root '' $null 1 10 } $scanWorkspace $scanProfile $scanInventory $scanHash $fixtureRoot
-    $missingCheckpointPath=Join-Path (Split-Path $missingStart.CandidatePath -Parent) 'checkpoint.json';$missingCheckpoint=Get-Content -LiteralPath $missingCheckpointPath -Raw | ConvertFrom-Json
+    $missingCheckpointPath=Join-Path (Split-Path $missingStart.CandidatePath -Parent) 'checkpoint.json';$missingCheckpoint=& $module { param($path) Read-WsmJson $path } $missingCheckpointPath
     $missingCheckpoint.Status='Partial';$missingCheckpoint.Queue=@($missingChild);$missingCheckpoint.CurrentDirectory='';$missingCheckpoint.CurrentDirectoryWriteUtc='';$missingCheckpoint.CurrentDirectorySeen=@()
     & $module { param($path,$data) Write-WsmJson $path $data } $missingCheckpointPath $missingCheckpoint
     Remove-Item -LiteralPath $missingParent -Recurse -Force
@@ -239,8 +239,12 @@ try {
 
     $orphanRoot=Join-Path $tempRoot 'orphan-segment-root';[void][IO.Directory]::CreateDirectory($orphanRoot);foreach($name in @('one.dat','two.dat','three.dat')){[IO.File]::WriteAllText((Join-Path $orphanRoot $name),$name)}
     $orphanOne=& $module { param($workspace,$profile,$inventory,$hash,$root) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root '' $null 4000 10 2 } $scanWorkspace $scanProfile $segmentInventory $segmentHash $orphanRoot
-    $orphanScanDirectory=Split-Path $orphanOne.CandidatePath -Parent;$orphanCheckpointPath=Join-Path $orphanScanDirectory 'checkpoint.json';$orphanCheckpoint=Get-Content -LiteralPath $orphanCheckpointPath -Raw|ConvertFrom-Json;$orphanSegmentPath=Join-Path $orphanScanDirectory 'segments\segment-001.json';$orphanSegmentHash=(Get-FileHash -LiteralPath $orphanSegmentPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $orphanScanDirectory=Split-Path $orphanOne.CandidatePath -Parent;$orphanCheckpointPath=Join-Path $orphanScanDirectory 'checkpoint.json';$orphanSegmentPath=Join-Path $orphanScanDirectory 'segments\segment-001.json';$orphanSegmentHash=(Get-FileHash -LiteralPath $orphanSegmentPath -Algorithm SHA256).Hash.ToLowerInvariant();$orphanCheckpoint=& $module { param($path) Read-WsmJson $path } $orphanCheckpointPath
+    $orphanFrontierTimestamp=[string]$orphanCheckpoint.CurrentDirectoryWriteUtc
+    Check ($orphanCheckpoint.CurrentDirectoryWriteUtc -is [string]) 'production checkpoint reader preserves the directory timestamp as an exact string before test mutation'
     $orphanCheckpoint.Segments=@();& $module { param($path,$data) Write-WsmJson $path $data } $orphanCheckpointPath $orphanCheckpoint
+    $orphanRoundTrip=& $module { param($path) Read-WsmJson $path } $orphanCheckpointPath
+    Check ([string]$orphanRoundTrip.CurrentDirectoryWriteUtc -ceq $orphanFrontierTimestamp) 'orphan test mutation preserves exact checkpoint frontier timestamp text'
     $orphanResumed=& $module { param($workspace,$profile,$inventory,$hash,$root,$scanId) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root $scanId $null 4000 10 2 $null -ContinueAfterBudgetExhausted } $scanWorkspace $scanProfile $segmentInventory $segmentHash $orphanRoot $orphanOne.ScanId
     $orphanArtifact=Get-Content -LiteralPath $orphanResumed.CandidatePath -Raw|ConvertFrom-Json
     Check ($orphanResumed.ScanStatus -ceq 'Succeeded' -and $orphanArtifact.Segments.Count -eq 2 -and $orphanArtifact.Segments[0].SHA256 -ceq $orphanSegmentHash -and (Get-FileHash -LiteralPath $orphanSegmentPath -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $orphanSegmentHash -and $orphanResumed.CandidateCount -eq 3) 'resume adopts a deterministic immutable segment left before its checkpoint descriptor was persisted, then continues without rewriting it'
@@ -251,7 +255,7 @@ try {
     $legacyInventoryFileHash=(Get-FileHash -LiteralPath $legacyInventoryPath -Algorithm SHA256).Hash.ToLowerInvariant();$legacyJobId=[Guid]::NewGuid().ToString('D')
     $legacyJob=[pscustomobject]@{jobId=$legacyJobId;action='SourceInventory';role='Source';workspace=$scanWorkspace;status='Succeeded';outputs=@([pscustomobject]@{Path=$legacyInventoryPath;SHA256=$legacyInventoryFileHash})}
     $legacyStart=& $module { param($workspace,$profile,$inventory,$hash,$root) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root '' $null 1 10 50000 } $scanWorkspace $scanProfile $segmentInventory $legacyInventoryFileHash $legacyRoot
-    $legacyCheckpointPath=Join-Path (Split-Path $legacyStart.CandidatePath -Parent) 'checkpoint.json';$legacyCheckpoint=Get-Content -LiteralPath $legacyCheckpointPath -Raw|ConvertFrom-Json
+    $legacyCheckpointPath=Join-Path (Split-Path $legacyStart.CandidatePath -Parent) 'checkpoint.json';$legacyCheckpoint=& $module { param($path) Read-WsmJson $path } $legacyCheckpointPath
     foreach($property in @('SegmentNumber','SegmentEntryCount','Segments','SegmentStartCandidateCount','SegmentStartGapCount','SegmentStartExcludedCount','SegmentStartVisitedCount','LegacyBaselineEntryCount')){[void]$legacyCheckpoint.PSObject.Properties.Remove($property)}
     $legacyPolicyHash=& $module { param($root,$inventory,$workspace) $policy=Get-WsmSourceCandidatePolicy $root $inventory $workspace;$policy.PolicyVersion=1;$policy|Add-Member NoteProperty MaxTotalEntries 50000;$value=$policy|Select-Object * -ExcludeProperty PolicyHash,MaxSegments,MaxAggregateEntries,MaxAggregatePathBytes,MaxWorkloadReferenceCount,MaxWorkloadReferenceBytes;Get-WsmHashText ($value|ConvertTo-Json -Depth 8 -Compress) } $legacyRoot $segmentInventory $scanWorkspace
     $legacyCheckpoint.PolicyVersion=1;$legacyCheckpoint.PolicyHash=$legacyPolicyHash
@@ -274,7 +278,7 @@ try {
 
     $frontierRoot=Join-Path $tempRoot 'frontier-tamper-root';[void][IO.Directory]::CreateDirectory($frontierRoot);foreach($name in @('a.dat','b.dat','c.dat')){[IO.File]::WriteAllText((Join-Path $frontierRoot $name),$name)}
     $frontierStart=& $module { param($workspace,$profile,$inventory,$hash,$root) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root '' $null 4000 10 2 } $scanWorkspace $scanProfile $segmentInventory $segmentHash $frontierRoot
-    $frontierCheckpointPath=Join-Path (Split-Path $frontierStart.CandidatePath -Parent) 'checkpoint.json';$frontierCheckpoint=Get-Content -LiteralPath $frontierCheckpointPath -Raw|ConvertFrom-Json;$frontierCheckpoint.CurrentDirectorySeen=@($frontierCheckpoint.CurrentDirectorySeen|Select-Object -First 1);& $module { param($path,$data) Write-WsmJson $path $data } $frontierCheckpointPath $frontierCheckpoint
+    $frontierCheckpointPath=Join-Path (Split-Path $frontierStart.CandidatePath -Parent) 'checkpoint.json';$frontierCheckpoint=& $module { param($path) Read-WsmJson $path } $frontierCheckpointPath;$frontierCheckpoint.CurrentDirectorySeen=@($frontierCheckpoint.CurrentDirectorySeen|Select-Object -First 1);& $module { param($path,$data) Write-WsmJson $path $data } $frontierCheckpointPath $frontierCheckpoint
     ExpectFailure { & $module { param($workspace,$profile,$inventory,$hash,$root,$scanId) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root $scanId $null 4000 10 2 $null -ContinueAfterBudgetExhausted } $scanWorkspace $scanProfile $segmentInventory $segmentHash $frontierRoot $frontierStart.ScanId } 'continuation rejects a checkpoint whose seen cursor differs from the immutable segment frontier'
 
     $tamperRoot=Join-Path $tempRoot 'tamper-root';[void][IO.Directory]::CreateDirectory($tamperRoot);foreach($name in @('a.dat','b.dat','c.dat','d.dat','e.dat')){[IO.File]::WriteAllText((Join-Path $tamperRoot $name),$name)}

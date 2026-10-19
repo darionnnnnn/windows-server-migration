@@ -312,6 +312,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-B2-native-d085097.json",
           "sha256": "2792FA27032D510CD3F4A4663C47C03ABA46E891772BFB838FEF4B492412928D"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D1-native-4fc162d.json",
+          "sha256": "2C732D9E0D445FBC80C9C50F20E857CF68C4472A7C75115672E473A1A8278440"
         }
       ],
       "evidenceLog": {
@@ -515,7 +519,7 @@
         },
         {
           "path": "tests/Test-SourceCandidateDiscovery.ps1",
-          "sha256": "3FD069FC929EED93E24050BE1B6921648E03E9C5464BF9E048614E0F67728C45"
+          "sha256": "EAE66CEF758D32B6F01FF6687043D95437A2E331130FEF1D1955A01F11E3CC2E"
         },
         {
           "path": "src/OperationRequests.ps1",
@@ -554,14 +558,22 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-D1-continuation.json",
           "sha256": "33F39E6B576B8AC547B0F09049AFF57D9CE0638E426D851B2BD728CFAF3EDB49"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D1-native-4fc162d.json",
+          "sha256": "2C732D9E0D445FBC80C9C50F20E857CF68C4472A7C75115672E473A1A8278440"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D1-orphan-fixture.json",
+          "sha256": "54FE3A88B3AF86DE98E4AE603859A105193CFEB3A976AA7B2BE8C4F62BB72642"
         }
       ],
       "evidenceLog": {
         "path": "docs/plans/evidence/MIGRATION-7-D1.json",
         "sha256": "2A3E900BE6B243C0EE165CE690FEDCD00B40AA3BC8F16BC48FF04A858472F693"
       },
-      "casesExecuted": 96,
-      "result": "PASS: 66 per engine plus 92 HTML parser/writer/typed-action checks; JS syntax and scoped diff checks passed. D1 remains incomplete.",
+      "casesExecuted": 136,
+      "result": "PASS: 68 per engine; test checkpoint roundtrips preserve exact timestamp strings and immutable segment hashes. Production code unchanged.",
       "limitations": [
         "Fixture root resolver; not live entire C drive or native browser acceptance.",
         "50k cumulative cap is terminal; controlled segmented continuation remains unfinished.",
