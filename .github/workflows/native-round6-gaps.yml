@@ -1,13 +1,9 @@
 name: Native round-six acceptance gaps
 on:
   push:
-    branches: [codex/migration-6]
-    paths:
-      - '.github/workflows/native-round6-gaps.yml'
-      - 'tests/Test-NativeWizardManagerJourney.js'
-      - 'tests/Start-WizardManagerJourneyTestServer.ps1'
-      - 'tests/Test-NativeProbeRoles.js'
-      - 'tests/Start-NativeProbeRoleTestServer.ps1'
+    branches: ['codex/migration-*', dev, main]
+  pull_request:
+    branches: ['codex/migration-*', dev, main]
   workflow_dispatch:
     inputs:
       suite:
@@ -25,38 +21,55 @@ jobs:
     runs-on: windows-latest
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
+      reason: ${{ steps.select.outputs.reason }}
+      count: ${{ steps.select.outputs.count }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - id: select
         shell: pwsh
         env:
           PREVIOUS_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           REQUESTED_SUITE: ${{ inputs.suite }}
           REQUESTED_ENGINE: ${{ inputs.engine }}
         run: |
-          $suites = @()
-          $engine = 'both'
-          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
-            $suites = if ($env:REQUESTED_SUITE -eq 'both') { @('manager','probe') } else { @($env:REQUESTED_SUITE) }
-            $engine = $env:REQUESTED_ENGINE
-          } else {
-            $files = @(git diff --name-only $env:PREVIOUS_SHA $env:GITHUB_SHA)
-            if ($LASTEXITCODE -ne 0) { throw 'Cannot establish changed acceptance scope.' }
-            $workflow = ($files -contains '.github/workflows/native-round6-gaps.yml') -and @($files | Where-Object { $_ -match '^tests/(Test-NativeWizardManagerJourney.js|Start-WizardManagerJourneyTestServer.ps1|Test-NativeProbeRoles.js|Start-NativeProbeRoleTestServer.ps1)$' }).Count -eq 0
-            if ($workflow -or @($files | Where-Object { $_ -match '^tests/(Test-NativeWizardManagerJourney.js|Start-WizardManagerJourneyTestServer.ps1)$' }).Count) { $suites += 'manager' }
-            if ($workflow -or @($files | Where-Object { $_ -match '^tests/(Test-NativeProbeRoles.js|Start-NativeProbeRoleTestServer.ps1)$' }).Count) { $suites += 'probe' }
-            $message = git log -1 --format=%B
-            if (($message -join "`n") -match '(?m)^Native-Engines: (powershell|pwsh|both)\s*$') { $engine = $Matches[1] }
+          $changed = @()
+          $diffFailed = $false
+          if ($env:EVENT_NAME -ne 'workflow_dispatch') {
+            if ($env:EVENT_NAME -eq 'pull_request') { $base = $env:BASE_SHA; $head = $env:HEAD_SHA }
+            else { $base = $env:PREVIOUS_SHA; $head = $env:GITHUB_SHA }
+            if (-not $base -or $base -match '^0+$' -or -not $head) { $diffFailed = $true }
+            else {
+              $changed = @(& git diff --no-renames --name-only $base $head 2>$null)
+              if ($LASTEXITCODE -ne 0) { $diffFailed = $true; $changed = @() }
+            }
           }
-          if ($engine -notin @('both','powershell','pwsh')) { throw 'Invalid requested native engine scope.' }
-          $engines = if ($engine -eq 'both') { @('powershell','pwsh') } else { @($engine) }
-          $matrix = @{include=@(foreach ($suite in $suites) { foreach ($selectedEngine in $engines) { @{suite=$suite;engine=$selectedEngine} } })} | ConvertTo-Json -Compress -Depth 4
+          $selectorArgs = @('-NoProfile','-File','tools/Get-NativeAcceptanceScope.ps1','-EventName',$(if ($env:EVENT_NAME -eq 'workflow_dispatch') {'workflow_dispatch'} elseif ($env:EVENT_NAME -eq 'pull_request') {'pull_request'} else {'push'}),'-GapSuite',$(if ($env:REQUESTED_SUITE) {$env:REQUESTED_SUITE} else {'both'}),'-Engine',$(if ($env:REQUESTED_ENGINE) {$env:REQUESTED_ENGINE} else {'both'}))
+          if ($diffFailed) { $selectorArgs += '-DiffFailed' } elseif ($changed.Count) {
+            $changedJson = ConvertTo-Json -InputObject $changed -Compress
+            $changedBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($changedJson))
+            $selectorArgs += @('-ChangedPathBase64',$changedBase64)
+          }
+          $json = & pwsh @selectorArgs
+          if ($LASTEXITCODE -ne 0 -or -not $json) { throw 'Native acceptance scope selector failed.' }
+          $scope = $json | ConvertFrom-Json
+          $suites = @()
+          if ($scope.manager) { $suites += 'manager' }
+          if ($scope.probe) { $suites += 'probe' }
+          $matrix = @{include=@(foreach ($suite in $suites) { foreach ($selectedEngine in $scope.engines) { @{suite=$suite;engine=$selectedEngine} } })} | ConvertTo-Json -Compress -Depth 4
           "matrix=$matrix" >> $env:GITHUB_OUTPUT
-          Write-Output "Selected only missing acceptance: $matrix"
+          "reason=$($scope.reason)" >> $env:GITHUB_OUTPUT
+          "count=$($suites.Count * $scope.engines.Count)" >> $env:GITHUB_OUTPUT
+          if ($suites.Count -eq 0) { "Scope check completed: $($scope.reason); no Manager or Probe acceptance cases were selected." >> $env:GITHUB_STEP_SUMMARY }
+          else { "Selected Manager/Probe cases: $($suites -join ', '); engines: $($scope.engines -join ', '); matrix entries: $($suites.Count * $scope.engines.Count)." >> $env:GITHUB_STEP_SUMMARY }
+          Write-Output "Selected native acceptance: $matrix ($($scope.reason))"
   native:
     needs: scope
+    if: needs.scope.outputs.count != '0'
     runs-on: windows-latest
     timeout-minutes: 15
     strategy:
@@ -76,6 +89,7 @@ jobs:
           "WSM_NODE_MODULES=$driver/node_modules" >> $env:GITHUB_ENV
           "WSM_PS_EXE=$((Get-Command '${{ matrix.engine }}').Source)" >> $env:GITHUB_ENV
       - name: Exercise the missing native journey
+        id: journey
         shell: pwsh
         env:
           WSM_RUNTIME_NATIVE_TRANSPORT: '1'
@@ -87,6 +101,15 @@ jobs:
           $result = $LASTEXITCODE
           Get-Content -LiteralPath $log
           if ($result -ne 0) { throw "Native ${{ matrix.suite }} acceptance failed (exit $result)." }
+      - name: Report selected journey invocation outcome
+        if: always()
+        shell: pwsh
+        run: |
+          $outcome = '${{ steps.journey.outcome }}'
+          if ($outcome -eq 'success') { "Native ${{ matrix.suite }} invocation on ${{ matrix.engine }}: completed=1, failed=0, cancelled=0, skipped=0." >> $env:GITHUB_STEP_SUMMARY }
+          elseif ($outcome -eq 'failure') { "Native ${{ matrix.suite }} invocation on ${{ matrix.engine }}: completed=0, failed=1, cancelled=0, skipped=0." >> $env:GITHUB_STEP_SUMMARY }
+          elseif ($outcome -eq 'cancelled') { "Native ${{ matrix.suite }} invocation on ${{ matrix.engine }}: completed=0, failed=0, cancelled=1, skipped=0." >> $env:GITHUB_STEP_SUMMARY }
+          else { "Native ${{ matrix.suite }} invocation on ${{ matrix.engine }}: completed=0, failed=0, cancelled=0, skipped=1." >> $env:GITHUB_STEP_SUMMARY }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

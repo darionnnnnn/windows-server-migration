@@ -1,17 +1,9 @@
 name: Native released console
 on:
   push:
-    branches: [codex/migration-6]
-    paths:
-      - '.github/workflows/native-release.yml'
-      - 'src/**'
-      - 'tests/Test-NativeHtmlBridge.js'
-      - 'tests/Start-HtmlTestServer.ps1'
-      - 'tests/Test-ReleaseWizardSmoke.ps1'
-      - 'tests/Test-ReleaseNativeLauncher.js'
-      - 'tests/Test-NativeWizardRuntimeHandler.js'
-      - 'tests/Start-WizardRuntimeTestServer.ps1'
-      - 'Start-ServerMigration.*'
+    branches: ['codex/migration-*', dev, main]
+  pull_request:
+    branches: ['codex/migration-*', dev, main]
   workflow_dispatch:
     inputs:
       suite:
@@ -31,37 +23,47 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - name: Select only affected acceptance scope
         id: scope
         shell: pwsh
         env:
+          EVENT_NAME: ${{ github.event_name }}
           PREVIOUS_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           REQUESTED_SUITE: ${{ inputs.suite }}
         run: |
-          $files = @()
-          $manual = $env:GITHUB_EVENT_NAME -eq 'workflow_dispatch'
-          if (-not $manual) {
-            $files = @(git diff --name-only $env:PREVIOUS_SHA $env:GITHUB_SHA)
-            if ($LASTEXITCODE -ne 0) { throw 'Cannot establish changed files; select an explicit acceptance suite.' }
+          $changed = @()
+          $diffFailed = $false
+          if ($env:EVENT_NAME -ne 'workflow_dispatch') {
+            if ($env:EVENT_NAME -eq 'pull_request') { $base = $env:BASE_SHA; $head = $env:HEAD_SHA }
+            else { $base = $env:PREVIOUS_SHA; $head = $env:GITHUB_SHA }
+            if (-not $base -or $base -match '^0+$' -or -not $head) { $diffFailed = $true }
+            else {
+              $changed = @(& git diff --no-renames --name-only $base $head 2>$null)
+              if ($LASTEXITCODE -ne 0) { $diffFailed = $true; $changed = @() }
+            }
           }
-          $backend = @($files | Where-Object { $_ -match '^src/(?!ui/)' }).Count -gt 0
-          $entry = @($files | Where-Object { $_ -match '^Start-ServerMigration\.' }).Count -gt 0
-          $console = $files -contains 'src/ui/console.js'
-          $basic = $backend -or $entry -or $console -or @($files | Where-Object { $_ -match '^tests/(Test-NativeHtmlBridge.js|Start-HtmlTestServer.ps1)$' }).Count -gt 0
-          $launcher = $entry -or ($files -contains 'tests/Test-ReleaseNativeLauncher.js')
-          $release = $backend -or $entry -or $launcher -or ($files -contains 'tests/Test-ReleaseWizardSmoke.ps1')
-          $runtime = $backend -or $console -or @($files | Where-Object { $_ -match '^tests/(Test-NativeWizardRuntimeHandler.js|Start-WizardRuntimeTestServer.ps1)$' }).Count -gt 0
-          $case = if ($backend -or ($files -contains 'tests/Start-WizardRuntimeTestServer.ps1')) { 'all' } elseif ($console) { 'target' } else { 'source-cancel' }
-          if ($manual) {
-            $suite = $env:REQUESTED_SUITE
-            $basic = $suite -in @('all','basic'); $launcher = $suite -in @('all','launcher')
-            $release = $suite -in @('all','release','launcher'); $runtime = $suite -in @('all','target','source-cancel'); $case = $suite
+          $args = @('-NoProfile','-File','tools/Get-NativeAcceptanceScope.ps1','-EventName',$(if ($env:EVENT_NAME -eq 'workflow_dispatch') {'workflow_dispatch'} elseif ($env:EVENT_NAME -eq 'pull_request') {'pull_request'} else {'push'}),'-ReleaseSuite',$(if ($env:REQUESTED_SUITE) {$env:REQUESTED_SUITE} else {'all'}))
+          if ($diffFailed) { $args += '-DiffFailed' } elseif ($changed.Count) {
+            $changedJson = ConvertTo-Json -InputObject $changed -Compress
+            $changedBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($changedJson))
+            $args += @('-ChangedPathBase64',$changedBase64)
           }
-          foreach ($row in @{basic=$basic;launcher=$launcher;release=$release;runtime=$runtime;driver=($basic -or $launcher -or $runtime)}.GetEnumerator()) { "$($row.Key)=$($row.Value.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT }
-          "case=$case" >> $env:GITHUB_OUTPUT
+          $json = & pwsh @args
+          if ($LASTEXITCODE -ne 0 -or -not $json) { throw 'Native acceptance scope selector failed.' }
+          $scope = $json | ConvertFrom-Json
+          foreach ($name in @('basic','launcher','release','runtime')) { "$name=$(([bool]$scope.$name).ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT }
+          "driver=$(([bool]($scope.basic -or $scope.launcher -or $scope.runtime)).ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "case=$($scope.runtimeCase)" >> $env:GITHUB_OUTPUT
+          "selected=$($scope.reason)" >> $env:GITHUB_OUTPUT
           "WSM_HTML_TEST_MODULE=$(Join-Path $env:GITHUB_WORKSPACE 'src/WindowsServerMigration.psd1')" >> $env:GITHUB_ENV
-          Write-Output "Selected basic=$basic launcher=$launcher release=$release runtime=$runtime case=$case"
+          $selected = @()
+          foreach ($suiteName in @('basic','launcher','release','runtime')) { if ([bool]$scope.$suiteName) { $selected += $suiteName } }
+          if ($selected.Count -eq 0) { 'Scope check completed: documentation-only change; no product acceptance cases were selected.' >> $env:GITHUB_STEP_SUMMARY }
+          else { "Selected acceptance suites: $($selected -join ', '); runtime case: $($scope.runtimeCase); engines: powershell, pwsh." >> $env:GITHUB_STEP_SUMMARY }
+          Write-Output "Selected scope=$($scope | ConvertTo-Json -Compress)"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -78,6 +80,7 @@ jobs:
           "WSM_EDGE=$edge" >> $env:GITHUB_ENV
           "WSM_PS_EXE=$((Get-Command '${{ matrix.engine }}').Source)" >> $env:GITHUB_ENV
       - name: Verify exact release and extracted launcher
+        id: release
         if: matrix.engine == 'powershell' && steps.scope.outputs.release == 'true'
         shell: powershell
         run: |
@@ -86,18 +89,21 @@ jobs:
           $evidence = Get-Content -LiteralPath (Join-Path $release 'release-evidence.json') -Raw -Encoding UTF8 | ConvertFrom-Json
           "WSM_HTML_TEST_MODULE=$(Join-Path $evidence.Result.Root 'src/WindowsServerMigration.psd1')" >> $env:GITHUB_ENV
       - name: Actual Edge to native PowerShell handler
+        id: bridge
         if: steps.scope.outputs.basic == 'true'
         shell: pwsh
         run: |
           node ./tests/Test-NativeHtmlBridge.js 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wsm-native.log')
           if ($LASTEXITCODE -ne 0) { throw 'Native browser acceptance failed; fixture captures do not substitute for this gate.' }
       - name: Actual released CMD launch and native purpose save
+        id: launcher
         if: matrix.engine == 'powershell' && steps.scope.outputs.launcher == 'true'
         shell: pwsh
         run: |
           node ./tests/Test-ReleaseNativeLauncher.js 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wsm-launcher.log')
           if ($LASTEXITCODE -ne 0) { throw 'Actual released CMD browser acceptance failed.' }
       - name: Source and Target native runtime journeys with small controlled fixtures
+        id: runtime
         if: ${{ !cancelled() && steps.scope.outputs.runtime == 'true' }}
         shell: pwsh
         env:
@@ -115,6 +121,32 @@ jobs:
           $runtimeExit = $LASTEXITCODE
           Get-Content -LiteralPath $runtimeLog
           if ($runtimeExit -ne 0) { throw "Native Source/Target runtime acceptance failed (exit $runtimeExit)." }
+      - name: Report native journey invocation outcomes
+        if: always()
+        shell: pwsh
+        run: |
+          $completed = 0; $failed = 0; $cancelled = 0; $unexpectedlySkipped = 0
+          $applicable = 0
+          $rows = @(
+            @{ name='bridge'; selected='${{ steps.scope.outputs.basic }}'; step='bridge'; engine='both' },
+            @{ name='launcher'; selected='${{ steps.scope.outputs.launcher }}'; step='launcher'; engine='powershell' },
+            @{ name='release-package'; selected='${{ steps.scope.outputs.release }}'; step='release'; engine='powershell' },
+            @{ name='runtime'; selected='${{ steps.scope.outputs.runtime }}'; step='runtime'; engine='both' }
+          )
+          foreach ($row in $rows) {
+            if ($row.selected -ne 'true' -or ($row.engine -ne 'both' -and $row.engine -ne '${{ matrix.engine }}')) { continue }
+            $applicable++
+            $outcome = '${{ steps.bridge.outcome }}'
+            if ($row.step -eq 'launcher') { $outcome = '${{ steps.launcher.outcome }}' }
+            elseif ($row.step -eq 'release') { $outcome = '${{ steps.release.outcome }}' }
+            elseif ($row.step -eq 'runtime') { $outcome = '${{ steps.runtime.outcome }}' }
+            if ($outcome -eq 'success') { $completed++ }
+            elseif ($outcome -eq 'failure') { $failed++ }
+            elseif ($outcome -eq 'cancelled') { $cancelled++ }
+            else { $unexpectedlySkipped++ }
+          }
+          if ($applicable -eq 0) { 'No applicable native journey invocation ran for this engine; see the selected suite scope above.' >> $env:GITHUB_STEP_SUMMARY }
+          else { "Native journey invocations for ${{ matrix.engine }}: completed=$completed, failed=$failed, cancelled=$cancelled, selected-but-skipped=$unexpectedlySkipped." >> $env:GITHUB_STEP_SUMMARY }
       - name: Retain sanitized fixture diagnostics
         if: ${{ always() && (steps.scope.outputs.driver == 'true' || steps.scope.outputs.release == 'true') }}
         uses: actions/upload-artifact@v4

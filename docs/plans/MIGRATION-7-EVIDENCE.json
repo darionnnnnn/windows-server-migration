@@ -101,19 +101,67 @@
           "B1：變更到旅程的選擇契約"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "implemented",
+      "evidenceStatus": "isolated-pass",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
+      "consumers": [
+        {
+          "name": ".github/workflows/native-release.yml",
+          "path": ".github/workflows/native-release.yml"
+        },
+        {
+          "name": ".github/workflows/native-round6-gaps.yml",
+          "path": ".github/workflows/native-round6-gaps.yml"
+        },
+        {
+          "name": "tools/Get-NativeAcceptanceScope.ps1",
+          "path": "tools/Get-NativeAcceptanceScope.ps1"
+        },
+        {
+          "name": "tests/Test-NativeAcceptanceScope.ps1",
+          "path": "tests/Test-NativeAcceptanceScope.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+        "runtime": "Windows isolated immutable snapshot",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/native-release.yml",
+          "sha256": "7BB4228D2B3D32BA110C6C94AE9C59EE39669C300D0E2947D2418DA561903FFD"
+        },
+        {
+          "path": ".github/workflows/native-round6-gaps.yml",
+          "sha256": "A993634D85D66399DCA13748709F47EB037082EB09E4FBCE2B4BD0180D125D4F"
+        },
+        {
+          "path": "tools/Get-NativeAcceptanceScope.ps1",
+          "sha256": "794BB82842C27DDC4A3677F12C8E5F74B7838A7D2F16FCCBB53B7065F5CD0136"
+        },
+        {
+          "path": "tests/Test-NativeAcceptanceScope.ps1",
+          "sha256": "A4BEF06B50175C38B2BD28A3D86AA2EEF35E8BC1F1CDB2A7A0A294BE6ED25C2D"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B1.json",
+          "sha256": "4C1D593E89D0C96AD0D349E66F1941DD3629E5012DAED037DEBEF9BBC1CA4B4E"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-B1.json",
+        "sha256": "4C1D593E89D0C96AD0D349E66F1941DD3629E5012DAED037DEBEF9BBC1CA4B4E"
+      },
+      "casesExecuted": 248,
+      "result": "124 selector assertions passed independently per engine; workflow YAML parsed; zero-scope matrix guarded. Count represents selector checks, not executed native journeys.",
+      "limitations": [
+        "GitHub native journey execution and measured driver evidence belong to B2 and remain pending."
+      ],
       "openIssues": [],
       "historicalEvidence": []
     },

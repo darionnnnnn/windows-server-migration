@@ -466,7 +466,8 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 |---|---|---|---|---|
 | 分支銜接 | 主代理 | 完成核對 | 第六輪 runtime 未漂移；第七輪從完整 HEAD 接續 | 本輪基準 6a2329c |
 | A1 | gpt-6-luna medium＋主代理獨立驗收 | 隔離驗收通過 | 20 階段索引、真實規劃引用、使用端與雜湊／環境／未結事項；雙引擎各 19 案例，移除必要證據會失敗；不改產品、不代外部簽核 | 本段提交見 Git history |
-| B1/B2 | gpt-6-luna high | 實作中 | 跨 workflow 的選擇、版本／空跑相依；待獨立驗收 | 待驗 |
+| B1 | gpt-6-luna high＋主代理獨立驗收 | 隔離驗收通過 | 共用 selector／兩 workflow；雙引擎各 124 檢查含突變；空矩陣防護，YAML 可解析 | 本段提交見 Git history |
+| B2 | gpt-6-luna high | 未完成 | 原生 driver 實際旅程計數／持久證據及 GitHub 執行待驗；B1 不代替 B2 | 待驗 |
 | C–G／E0 | 待分段 | 未完成 | 不以規劃或既有 helper PASS 代替實作 | 未提交 |
 
 ### 17.2 A1 驗收與使用方式
@@ -474,3 +475,9 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - `docs/plans/MIGRATION-7-EVIDENCE.json` 是本輪完成度索引；`tools/Test-PlanEvidence.ps1 -Stage A1` 檢查單段，`-WholeRound` 要求所有規劃階段具備證據。未實作／未驗／外部未驗／待簽核分列，不改搬移授權。
 - 主代理於固定快照獨立執行 `tests/Test-PlanEvidence.ps1`，WinPS 5.1 與 PS 7 各通過 19 案例；原始測試輸出與受測輸入雜湊保存在 `docs/plans/evidence/MIGRATION-7-A1.json`。正式檢查器已確認 A1 索引通過；整輪尚未完成，不可用單段 PASS 宣稱整輪完成。
 - 索引檢查重複／缺少階段、真實規劃標題、引用檔、輸入與證據雜湊、零案例、使用端與環境缺漏，拒絕 archive／私人檔／reparse 引用及以第六輪簽核取代本輪。後續更動已驗輸入須更新證據；不沿用失效 PASS。
+
+### 17.3 B1 範圍選擇驗收
+
+- 兩個 native workflow 支援 `codex/migration-*`、dev／main 與 PR／手動入口；使用共用 selector。產品與未知路徑保守選適用全套，diff 失敗／初次 push／空 diff 不會零測試綠燈；文件-only 明列不需產品旅程，Manager／Probe 空矩陣先由 job 條件排除。
+- 主代理在固定快照分別執行兩引擎 selector 測試，各 124 檢查通過，包含 nonc.js／HTML／CSS、刪除／更名兩端、手動 suite、未知路徑及故意刪除 UI 映射的突變。兩份 YAML 可解析；輸出與雜湊見 `docs/plans/evidence/MIGRATION-7-B1.json`。
+- 124 是 selector 檢查數，不是原生搬移旅程數。B2 仍須取得 driver 實際完成資料及受影響原生旅程；workflow invocation 摘要不能代替測試內部完成證據。本段不改產品 runtime／資格 gate。

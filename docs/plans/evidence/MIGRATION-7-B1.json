@@ -1,0 +1,43 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "B1",
+  "verifiedUtc": "2026-10-19T02:22:49.2732769Z",
+  "verifier": "Primary agent independent isolated execution",
+  "snapshotDirectory": "a1-b1-40080825d17e49dda10d89dcb11b65ff",
+  "inputs": [
+    {
+      "path": ".github/workflows/native-release.yml",
+      "sha256": "7BB4228D2B3D32BA110C6C94AE9C59EE39669C300D0E2947D2418DA561903FFD"
+    },
+    {
+      "path": ".github/workflows/native-round6-gaps.yml",
+      "sha256": "A993634D85D66399DCA13748709F47EB037082EB09E4FBCE2B4BD0180D125D4F"
+    },
+    {
+      "path": "tools/Get-NativeAcceptanceScope.ps1",
+      "sha256": "794BB82842C27DDC4A3677F12C8E5F74B7838A7D2F16FCCBB53B7065F5CD0136"
+    },
+    {
+      "path": "tests/Test-NativeAcceptanceScope.ps1",
+      "sha256": "A4BEF06B50175C38B2BD28A3D86AA2EEF35E8BC1F1CDB2A7A0A294BE6ED25C2D"
+    }
+  ],
+  "environment": "Windows; Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+  "casesExecuted": 248,
+  "result": "124 selector assertions passed independently per engine; workflow YAML parsed; zero-scope matrix guarded. Count represents selector checks, not executed native journeys.",
+  "limitations": [
+    "GitHub native journey execution and measured driver evidence belong to B2 and remain pending."
+  ],
+  "logs": [
+    {
+      "name": "b1-ps51.log",
+      "sha256": "CAA226F44A7F416688EB8623F448B6A6E7D4637ED2A9555CE0B74FEC12D930E8",
+      "text": "PASS Test-NativeAcceptanceScope: 124 checks on Desktop 5.1.26100.9711; changed/deleted/renamed paths, mappings, manual scope, fail-closed diff, docs-only and mutation detection.\r\n"
+    },
+    {
+      "name": "b1-ps7.log",
+      "sha256": "8292230F26DB3238130EF7DAE27A72BE7563E35D8457585939A64BF5B960DC6C",
+      "text": "PASS Test-NativeAcceptanceScope: 124 checks on Core 7.6.5; changed/deleted/renamed paths, mappings, manual scope, fail-closed diff, docs-only and mutation detection.\r\n"
+    }
+  ]
+}
