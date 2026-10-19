@@ -1,6 +1,19 @@
 ﻿function Test-WsmJournal {
     param([string]$StateDirectory,[string]$PairId)
-    $paths=Get-WsmOperationPaths $StateDirectory $PairId;$state=Read-WsmJson $paths.State;$hash='0'*64;$sequence=0
+    $paths=Get-WsmOperationPaths $StateDirectory $PairId;$state=Read-WsmJson $paths.State;$hash='0'*64;$sequence=[long]0
+    if(-not $state -or -not $state.PSObject.Properties['JournalSegment']){throw 'Operation state has no valid journal segment checkpoint; retain evidence.'}
+    $segmentValue=$state.PSObject.Properties['JournalSegment'].Value
+    if(($segmentValue -isnot [int] -and $segmentValue -isnot [long]) -or [long]$segmentValue -lt 0){throw 'Operation state has no valid journal segment checkpoint; retain evidence.'}
+    $archiveFiles=@(Get-ChildItem -LiteralPath $paths.Root -Filter 'journal-*.jsonl' -Force -ErrorAction SilentlyContinue)
+    $archiveNumbers=New-Object 'System.Collections.Generic.List[long]'
+    foreach($archive in $archiveFiles){
+        $archiveMatch=[regex]::Match($archive.Name,'^journal-(0|[1-9][0-9]*)\.jsonl$')
+        if($archive.PSIsContainer -or ($archive.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or -not $archiveMatch.Success){throw 'Journal archive topology is invalid; retain evidence.'}
+        $archiveNumbers.Add([long]$archiveMatch.Groups[1].Value)
+    }
+    $orderedNumbers=@($archiveNumbers | Sort-Object)
+    for($index=0;$index -lt $orderedNumbers.Count;$index++){if($orderedNumbers[$index] -ne $index){throw 'Journal archive topology is not contiguous; retain evidence.'}}
+    $archiveCount=[long]$orderedNumbers.Count
     $matched=($state.Sequence -eq 0 -and $state.JournalHash -ceq $hash)
     Read-WsmJournalEvents $paths | ForEach-Object {
         $row=$_.Row;$expectedSequence=[long]($sequence+1);$observedSequence=[long]0
@@ -25,7 +38,9 @@
         if($sequence -eq $state.Sequence){if($hash -cne $state.JournalHash){throw 'Checkpoint does not match its durable journal prefix.'};$matched=$true}
     }
     if(-not $matched){throw 'Checkpoint is absent from durable journal.'}
-    [pscustomobject]@{JournalSequence=$sequence;JournalHash=$hash;StateSequence=$state.Sequence;StateHash=$state.JournalHash;Consistent=($sequence -eq $state.Sequence -and $hash -ceq $state.JournalHash);RecoveryRequired=($sequence -gt $state.Sequence);TamperResistance='Local administrator can rewrite journal and state; chain detects accidental corruption only'}
+    $segmentMismatch=([long]$state.JournalSegment -ne $archiveCount)
+    $sameCheckpoint=($sequence -eq $state.Sequence -and $hash -ceq $state.JournalHash)
+    [pscustomobject]@{JournalSequence=$sequence;JournalHash=$hash;StateSequence=$state.Sequence;StateHash=$state.JournalHash;ArchiveCount=$archiveCount;ArchiveTopologyValid=$true;SegmentMismatch=$segmentMismatch;RecoverableSegmentMismatch=($segmentMismatch -and $sameCheckpoint);Consistent=($sameCheckpoint -and -not $segmentMismatch);RecoveryRequired=($sequence -gt $state.Sequence);TamperResistance='Local administrator can rewrite journal and state; chain detects accidental corruption only'}
 }
 function Repair-WsmOperation {
     [CmdletBinding(SupportsShouldProcess)]param([string]$ManifestPath,[string]$ExpectedHash,[string]$StateDirectory,[hashtable]$SidMap=@{})

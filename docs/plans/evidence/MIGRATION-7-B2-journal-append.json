@@ -1,0 +1,93 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "B2",
+  "runtimeBase": "5664727ea6ec15f2083d9dd4f5b388663c32f5e0",
+  "snapshot": "b2-r10-complete-c43f44e1facf4386ba5e09cde4873d92",
+  "snapshotIndexHash": "D240D41BBBC49378DACD6AB94062BE5AFCD09F25A48FF4D11F477C396E6F16B1",
+  "priorSnapshot": "b2-journal-revised-10",
+  "priorSnapshotIndexHash": "9666A1CE9200A7CB87FBF64C31094FDC91A4A928733EF7D13EEF0859CDFA62F1",
+  "verifiedUtc": "2026-10-19T07:25:04.995904+00:00",
+  "inputs": [
+    {
+      "path": "src/Restore.ps1",
+      "sha256": "75E03219B8E044015216F418B325A2C439597E9A213D75FD19D7455E5EF87E37"
+    },
+    {
+      "path": "src/Recovery.ps1",
+      "sha256": "CF763AEDD3B22D8DB18A2F10584953973DAE5E952170A59947589495598F49F3"
+    },
+    {
+      "path": "src/JournalRecovery.ps1",
+      "sha256": "CED9761698C99C9C3CEDDB12FF535098D47C19804FCEE840400A2AC4989BCD59"
+    },
+    {
+      "path": "tests/Test-JournalAppendFailure.ps1",
+      "sha256": "D93D037B47FCDF5CF64D7F9720C1C12399570DC0336ABAA75C4DDBDA64A6F76D"
+    },
+    {
+      "path": "tests/Test-JournalDiagnostics.ps1",
+      "sha256": "308222140DA3355145DCA5017F9385F9F6EC7A4A2A287A737FFD9B9B5E48A9FE"
+    }
+  ],
+  "result": "Append serialization and size checks precede sequence mutation; genuine append-open failure preserves the previous sequence. Uncertain write/checkpoint/rotation blocks the exact in-memory state object. Recovery reloads durable state, validates full chain and contiguous segment topology, repairs the checkpoint, then synchronizes the caller before further append.",
+  "verification": "Primary independently ran 22 append failure/recovery checks and 6 diagnostic checks per engine on revised10; PS5.1 recovery contracts, actual task-folder journal replay and 6 file recovery boundaries also passed. Final complete runtime has identical product and append test bytes; only diagnostic test cleanup guard differs. Final snapshot-specific logs are preserved separately.",
+  "logs": [
+    {
+      "name": "b2-r10-primary-ps51.log",
+      "sha256": "C21F904E521579161F422DF6F64D47AA35A336942B300D63FC80F634F5679BA3",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: 22 journal append failures, poison boundary, checkpoint recovery, segment reconciliation and real rotations; original CI I/O exception remains unavailable.\n"
+    },
+    {
+      "name": "b2-r10-primary-ps7.log",
+      "sha256": "BFE0827BE04CA6730973DEE082F12E7C5B18A4B1154DBA81435052B9CAAFB0CE",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: 22 journal append failures, poison boundary, checkpoint recovery, segment reconciliation and real rotations; original CI I/O exception remains unavailable.\n"
+    },
+    {
+      "name": "b2-r10-diag-verified-ps51.log",
+      "sha256": "37C06414C2C992BCB07F75F86C20FBD0D54ED17AFA4E41D5FED76C7869849E43",
+      "text": "PASS: 6 journal diagnostic checks; four refusal predicates, consistent chain, and checkpoint-ahead recovery behavior.\n"
+    },
+    {
+      "name": "b2-r10-diag-verified-ps7.log",
+      "sha256": "37C06414C2C992BCB07F75F86C20FBD0D54ED17AFA4E41D5FED76C7869849E43",
+      "text": "PASS: 6 journal diagnostic checks; four refusal predicates, consistent chain, and checkpoint-ahead recovery behavior.\n"
+    },
+    {
+      "name": "b2-r10-recovery-primary-ps51.log",
+      "sha256": "65709E1DD4DBCE7F6D1F31AA1D0EFEA716DB1E705252BBE733DA078F00A01BE5",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: interrupted workspace and adapter intent recovery; scope/workspace boundaries, drift guard, SID mapping, provider evidence and bounded index reader. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-recovery-e3bbdc6230ca4c8c8437c3857d370f47\n"
+    },
+    {
+      "name": "b2-r10-primary-Test-TaskFolderJournal.ps1.log",
+      "sha256": "F485478607AE9DCE8770959663DA8C0749DC455E1CE8BCF55A42CB0A684FB1E5",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: genuine stale-checkpoint task-folder create/delete replay; exact operation/path/security/kind/item/manifest binding; mismatches retain original checkpoint.\n"
+    },
+    {
+      "name": "b2-r10-primary-Test-AssistiveRecoveryBoundaries.ps1.log",
+      "sha256": "A77FF257B0FB36742273504CD2FCFEE12F2623EE3EE57BDF355565F83B399204",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: 6 actual local file/directory/metadata recovery boundaries and durable journal/checkpoint checks.\n"
+    },
+    {
+      "name": "b2-complete-backup-primary-ps51.log",
+      "sha256": "13C3E5AF97680137F90F9C9FE3BF28EE829502F8CCAA03CCF1367E7BC0DA2437",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\n1. Source\n2. Target\n3. Manager\n可用配對：\n1. 448a37ba-3bb1-4b28-8140-4360af20b3a4 — recovery-fixture-source\nCore context：Workspace=C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-recovery-a728d3f339\\source；操作情境角色=Source；PairId=448a37ba-3bb1-4b28-8140-4360af20b3a4\n[來源端]\n  SourceCandidateScan — 探索來源 C 槽候選與覆蓋缺口\n  NonCSourceProofExport — 具名操作：NonCSourceProofExport\n  BackupImpactPreview — 具名操作：BackupImpactPreview\n  ImportNonCTransferPlan — 具名操作：ImportNonCTransferPlan\n  StartBackup — 具名操作：StartBackup\n  StartNonCTransfer — 具名操作：StartNonCTransfer\n  OsProvidedCapture — 擷取 OS 提供排程工作證據（來源／目標）\n  NonCPeerProof — 具名操作：NonCPeerProof\n  EnrolledInventory — 具名操作：EnrolledInventory\n  SourceTaskTemplate — 具名操作：SourceTaskTemplate\n  SourceResume — 具名操作：SourceResume\n  SourceResult — 具名操作：SourceResult\n  FreezeSource — 具名操作：FreezeSource\n  ImportApprovedPlan — 具名操作：ImportApprovedPlan\n  InspectWizardFiles — 查看已核准範圍的檔案清單\n  ExportSourceReviewHandoff — 匯出來源盤點與已確認選擇\n  Inventory — 具名操作：Inventory\n[管理端]\n  NonCTargetHandoffExport — 具名操作：NonCTargetHandoffExport\n  NonCProofPreview — 具名操作：NonCProofPreview\n  NonCProofImport — 具名操作：NonCProofImport\n  ComparisonExport — 具名操作：ComparisonExport\n  CreateNonCTransferPlan — 具名操作：CreateNonCTransferPlan\n  ImportNonCResult — 具名操作：ImportNonCResult\n  NonCAccountObservation — 具名操作：NonCAccountObservation\n  NonCPreparation — 具名操作：NonCPreparation\n  WizardRuntimeProjection — 具名操作：WizardRuntimeProjection\n  BulkPreparationPreview — 具名操作：BulkPreparationPreview\n  BulkPreparationSave — 具名操作：BulkPreparationSave\n  GetTargetHandoffPreview — 檢視或檢查：GetTargetHandoffPreview\n  CommitTargetHandoff — 具名操作：CommitTargetHandoff\n  GetPreparationReview — 檢視或檢查：GetPreparationReview\n  SavePreparationReview — 具名操作：SavePreparationReview\n  OsProvidedBaseline — 建立 OS 提供排程工作可信基準\n  OsProvidedReview — 比對 OS 提供排程工作證據\n  OsProvidedSubmit — 提交 OS 提供排程工作審閱\n  RequirementReview — 預覽主機需求審閱\n  RequirementDecisionSubmit — 提交主機需求決策\n  WindowsSettingsPreviewExport — 匯出 Windows 設定審閱預覽\n  WindowsSettingsSubmit — 提交 Windows 設定審閱\n  DispositionSubmit — 具名操作：DispositionSubmit\n  RequirementSubmit — 具名操作：RequirementSubmit\n  HttpIntegrityProbe — 檢查本機頁面傳輸完整性\n  SpecReview — 查看規格審閱\n  SaveSpecReview — 保存規格審閱\n  AssistiveReport — 匯出管理報告\n  AssistiveReportCheck — 檢查管理報告\n  AssistiveComparison — 具名操作：AssistiveComparison\n  PublishComparison — 具名操作：PublishComparison\n  TargetSnapshot — 擷取目標主機快照\n  SetSoftwareVersion — 具名操作：SetSoftwareVersion\n  FilePlacementPreview — 具名操作：FilePlacementPreview\n  NonCPlan — 具名操作：NonCPlan\n  NonCImport — 具名操作：NonCImport\n  RegisterMaterial — 具名操作：RegisterMaterial\n  CloseMaterial — 具名操作：CloseMaterial\n  JobLock — 具名操作：JobLock\n  EnvironmentProbe — 具名操作：EnvironmentProbe\n  ProbeImport — 具名操作：ProbeImport\n  AssistiveEnable — 具名操作：AssistiveEnable\n  AssistiveSelections — 具名操作：AssistiveSelections\n  WorkspaceTransferPreview — 具名操作：WorkspaceTransferPreview\n  WorkspaceTransfer — 具名操作：WorkspaceTransfer\n  DeliveryDocument — 具名操作：DeliveryDocument\n  ImportedDeliveryReceipt — 具名操作：ImportedDeliveryReceipt\n  DeliveryReceiptImport — 具名操作：DeliveryReceiptImport\n  WindowsSettingsPreview — 具名操作：WindowsSettingsPreview\n  WindowsSettingsApply — 具名操作：WindowsSettingsApply\n  QualificationSigningRequest — 具名操作：QualificationSigningRequest\n  QualificationSigningComplete — 具名操作：QualificationSigningComplete\n  DeltaDirectory — 具名操作：DeltaDirectory\n  DeltaDirectoryImport — 具名操作：DeltaDirectoryImport\n  GeneralHostMode — 具名操作：GeneralHostMode\n  SoftwareAttach — 具名操作：SoftwareAttach\n  DispositionPreview — 具名操作：DispositionPreview\n  DispositionApply — 具名操作：DispositionApply\n  RequirementPreview — 具名操作：RequirementPreview\n  RequirementApply — 具名操作：RequirementApply\n  GeneralHostEvidence — 具名操作：GeneralHostEvidence\n  SoftwareEvidence — 具名操作：SoftwareEvidence\n  OutputInitialize — 具名操作：OutputInitialize\n  OutputResolve — 具名操作：OutputResolve\n  OutputRegisterPair — 具名操作：OutputRegisterPair\n  OutputConfirmState — 具名操作：OutputConfirmState\n  OutputPreferences — 具名操作：OutputPreferences\n  EnrolledDelivery — 具名操作：EnrolledDelivery\n  DirectoryDelivery — 具名操作：DirectoryDelivery\n  DirectoryImport — 具名操作：DirectoryImport\n  OracleBindingTemplate — 具名操作：OracleBindingTemplate\n  OracleConfigDraft — 具名操作：OracleConfigDraft\n  EnvironmentConfirmation — 具名操作：EnvironmentConfirmation\n  DeltaVolumes — 具名操作：DeltaVolumes\n  DeltaVolumeImport — 具名操作：DeltaVolumeImport\n  LabReport — 具名操作：LabReport\n  ConfigReview — 具名操作：ConfigReview\n  ConfigScopeDraft — 具名操作：ConfigScopeDraft\n  DeltaManifest — 具名操作：DeltaManifest\n  DeltaCheck — 具名操作：DeltaCheck\n  DeltaZip — 具名操作：DeltaZip\n  DeltaImport — 具名操作：DeltaImport\n  DeltaRepair — 具名操作：DeltaRepair\n  CancellationToken — 具名操作：CancellationToken\n  RequestCancellation — 具名操作：RequestCancellation\n  GroupPlan — 具名操作：GroupPlan\n  GroupReceipt — 具名操作：GroupReceipt\n  GroupBarrier — 具名操作：GroupBarrier\n  QualificationKey — 具名操作：QualificationKey\n  QualificationRecord — 具名操作：QualificationRecord\n  QualificationAdd — 具名操作：QualificationAdd\n  QualificationRevoke — 具名操作：QualificationRevoke\n  QualificationLookup — 具名操作：QualificationLookup\n  QualificationMatrix — 具名操作：QualificationMatrix\n  SpecBundleExport — 具名操作：SpecBundleExport\n  SpecBundlePreview — 具名操作：SpecBundlePreview\n  SpecBundleImport — 具名操作：SpecBundleImport\n  RepairWorkspace — 具名操作：RepairWorkspace\n  RawEvidence — 具名操作：RawEvidence\n  IdentityMap — 具名操作：IdentityMap\n  ConfigureMigration — 具名操作：ConfigureMigration\n  ApproveMigration — 具名操作：ApproveMigration\n  EstimatePackage — 具名操作：EstimatePackage\n  ExportPackage — 具名操作：ExportPackage\n  CheckPackage — 具名操作：CheckPackage\n  Validate — 執行驗證\n  Acceptance — 檢視驗收條件\n  ExportResult — 具名操作：ExportResult\n  Repair — 具名操作：Repair\n  CheckJournal — 具名操作：CheckJournal\n  PackageZip — 具名操作：PackageZip\n  ImportPackageZip — 具名操作：ImportPackageZip\n  MigrationReport — 具名操作：MigrationReport\n  ImportSourceReviewHandoff — 匯入來源盤點與選擇\n  Initialize — 具名操作：Initialize\n  ImportInventory — 具名操作：ImportInventory\n  Items — 具名操作：Items\n  ReviewIssues — 具名操作：ReviewIssues\n  Decision — 具名操作：Decision\n  Mapping — 具名操作：Mapping\n  Evidence — 具名操作：Evidence\n  Dependencies — 具名操作：Dependencies\n  ManualItem — 具名操作：ManualItem\n  ReviewMetadata — 具名操作：ReviewMetadata\n  ReviewTemplate — 具名操作：ReviewTemplate\n  TemplatePreview — 具名操作：TemplatePreview\n  ApplyTemplate — 具名操作：ApplyTemplate\n  Fleet — 具名操作：Fleet\n  PairPlan — 具名操作：PairPlan\n  CrossHostDependency — 具名操作：CrossHostDependency\n  Report — 具名操作：Report\n  FleetReport — 具名操作：FleetReport\n  SaveSelection — 具名操作：SaveSelection\n  DeveloperProbe — 具名操作：DeveloperProbe\n[目標端]\n  NonCTargetHandoffPreview — 具名操作：NonCTargetHandoffPreview\n  NonCTargetHandoffImport — 具名操作：NonCTargetHandoffImport\n  NonCTargetProofExport — 具名操作：NonCTargetProofExport\n  TargetZipImport — 具名操作：TargetZipImport\n  TargetDirectoryImport — 具名操作：TargetDirectoryImport\n  ComparisonImport — 具名操作：ComparisonImport\n  CreateTargetDecisionReceipt — 具名操作：CreateTargetDecisionReceipt\n  TargetAcceptance — 具名操作：TargetAcceptance\n  TargetActivation — 具名操作：TargetActivation\n  TargetRestore — 具名操作：TargetRestore\n  TargetRestorePreview — 具名操作：TargetRestorePreview\n  TargetValidation — 具名操作：TargetValidation\n  ExportTargetHandoff — 具名操作：ExportTargetHandoff\n  PreparationPreview — 預覽目標準備需求\n  PreparationEvidence — 匯出準備佐證\n  TargetReceipt — 具名操作：TargetReceipt\n  NonCPhysicalProof — 具名操作：NonCPhysicalProof\n  NonCTransfer — 具名操作：NonCTransfer\n  ReservationPreview — 具名操作：ReservationPreview\n  ReserveResource — 具名操作：ReserveResource\n  ResourceEvidence — 具名操作：ResourceEvidence\n  ReleaseResource — 具名操作：ReleaseResource\n  MaterialJobStatus — 具名操作：MaterialJobStatus\n  CleanupPreview — 具名操作：CleanupPreview\n  Cleanup — 具名操作：Cleanup\n  AssistiveTargetDecisionReceipt — 具名操作：AssistiveTargetDecisionReceipt\n  WorkspaceTransferRestorePreview — 具名操作：WorkspaceTransferRestorePreview\n  WorkspaceTransferRestore — 具名操作：WorkspaceTransferRestore\n  CheckToolRelease — 具名操作：CheckToolRelease\n  DeltaRestore — 具名操作：DeltaRestore\n  RollbackResult — 具名操作：RollbackResult\n  RegisterTarget — 具名操作：RegisterTarget\n  ToolRelease — 具名操作：ToolRelease\n  RestorePreview — 預覽還原\n  Restore — 執行還原\n  ValidationEvidence — 具名操作：ValidationEvidence\n  CutoverPlan — 預覽切換計畫\n  Cutover — 執行切換\n  RollbackPreview — 預覽回復\n  Rollback — 執行回復\n  SetRestoreChoice — 具名操作：SetRestoreChoice\n\n操作指引：目的：執行明確的核心操作。依型別提示提供參數；先檢視安全輸出與下一步，系統不會執行任意 shell 命令。\nWhat if: Performing the operation \"Restore original source startup/runtime only after sole-writer ownership review\" on target \"recovery-fixture-source\".\n\n預覽：Native preview completed. Execution will revalidate evidence and target state.\n核心命令已回傳；以下僅顯示安全欄位。\n\n\nPairId : 448a37ba-3bb1-4b28-8140-4360af20b3a4\nStatus : SourceResumed\nPath   : C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-recovery-a728d3f339\\source\\pairs\\freeze-448a37ba-3bb1-4b28-8140-4360af20\n         b3a4-36d4ad22d982401e87f6f56371bd1276\\attempt.json\nSHA256 : A19DC5B643C2997B54B50341DBFB459465A944A46780DB7579E28B90AD6B5B95\n\n\n\nPASS: narrow SourceResume recovery contract (21 assertions).\n"
+    },
+    {
+      "name": "b2-complete-pipeline-primary-ps51.log",
+      "sha256": "6640348B08ADEE32E90ED6C33F45B78F4F071F820B49A3FA797B47D87BE4608F",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: real file/ACL package and staged restore, exclusion, chunks, retry, drift, final generation/deletion/backup, evidence invalidation, old generation and tampering. SmallFiles=16 / 144.63s. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-pipeline-a9cb68a7d311462bae3d3e7008da54cc\n"
+    },
+    {
+      "name": "b2-complete-diag-primary-ps51.log",
+      "sha256": "37C06414C2C992BCB07F75F86C20FBD0D54ED17AFA4E41D5FED76C7869849E43",
+      "text": "PASS: 6 journal diagnostic checks; four refusal predicates, consistent chain, and checkpoint-ahead recovery behavior.\n"
+    }
+  ],
+  "limitations": [
+    "CI original I/O exception is unavailable; the reproduced sequence-gap mechanism matches retained CI facts but its particular triggering I/O operation is not proven.",
+    "Partial Write was fault-injected; Flush was not independently fault-injected.",
+    "Runtime read/write contention remains separately tracked; this commit prevents journal corruption but does not claim every concurrent reader is fixed.",
+    "Prior 6eac and 354 native failures remain unresolved.",
+    "No whole-round, production or external Server acceptance."
+  ]
+}

@@ -600,3 +600,10 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - package schema 2 保存自足 full 控制材料及索引：來源盤點／軟體、核准材料、每檔 hash／大小／種類與核准及擷取時的根目錄覆蓋。新 reader 驗完整集合，Directory／ZIP 及報告用途收據沿用同一身分；控制材料缺失、竄改、多出檔案及版本不符均拒絕。
 - 主代理核對不可變快照 358 檔與 18 檔改動，雙引擎各 39 項實際核准→擷取→reader→Directory／ZIP→receipt 檢查通過；另保留前一固定快照的 29 項 ExactMembers、120 項 AssistiveRestore、transport／WizardBackup／DeliveryReceipts 回歸。後續產品差異僅來源通道 guard，已補負例；證據保存不同受測快照，不混稱同次測試。
 - 額外磁碟只驗模擬 binding，未宣稱 D／E 原生擷取。CV2 NonC ExactMembers、完整報告、耐久一鍵備份、獨立副本就緒及離線新機還原仍未完成；尚未接線的 WizardBackup／restore、delta／Fleet／Lab 入口明確拒絕新格式，避免部分成功。
+
+### 17.20 B2 日誌寫入失敗與 checkpoint 恢復修正
+
+- 保留 5a92d45 原始 CI artifact 與摘要：序號預期 2、實際 3，前一 hash／Pair／Run 均一致。主代理以真實讀取 sharing lock 在未改 writer 重現同樣跳號；原 CI 最初 I/O 例外未保留，不將特定觸發原因宣稱已證明。另核驗 b87eae7 雙引擎 native probe 原始 artifact 與七條旅程，證明 terminalJobs 診斷已有真 consumer，未以後續綠燈關閉舊失敗。
+- append 在序列化／大小檢查後才準備下一序號，開檔失敗不推進；寫入／checkpoint／輪替不確定時阻止原狀態物件再寫。恢復重新讀取磁碟 checkpoint、驗完整 hash chain 及連續 archive topology，再同步呼叫者；不信任失敗後記憶體內容，不截斷或跳過碰撞材料。
+- 主代理雙引擎各 22 項 append 失敗／恢復及 6 項診斷檢查通過，另驗既有 recovery、task-folder journal 與六項實際檔案恢復邊界；正式完整快照回歸另存同份證據，產品 bytes 與上述快照一致。未單獨注入 Flush 失敗，不將部分 Write 案例冒稱 Flush 驗證。
+- 並行投影讀取與 writer 的鎖競爭另列待修；較早 6eac／354 原生失敗仍未關閉。B2 與第七輪維持未完成，Production 閘門不變。

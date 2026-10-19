@@ -1,0 +1,2659 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "B2",
+  "failedCommit": "5a92d45456e39c077997f9bf3a0b9156fe9c8132",
+  "failedRun": 39208122930,
+  "failedJob": 117915305867,
+  "result": "PS5.1 TargetRestore journal sequence gap: expected 2, observed 3; previous hash, pair and run match. Reproduced the same shape using a real read-sharing lock against the unchanged writer. The CI original append exception was not retained, so the specific I/O trigger is not established.",
+  "probeConsumerCommit": "b87eae7f0d9bd5a519c0015aaa0fad40029c110d",
+  "probeConsumerRun": 39210423393,
+  "probeVerification": "Primary verified both original artifact digests, exact suite/engine/transport/commit/run identity and 3 PS5.1 / 4 PS7 completed journeys. terminalJobs contains actual Source Cancelled and Manager/Target ReviewRequired projections in both engines.",
+  "limitations": [
+    "Later green runs do not close prior failures.",
+    "Original 6eac native failures and 354 Manager probe failure remain unresolved.",
+    "No whole-round or production acceptance claim."
+  ],
+  "artifacts": [
+    {
+      "artifactId": 12166945517,
+      "sha256": "3AF5E0628B78C02B52F301ADE585AB9F37A63667F8315C3C5EAAFBA96ECA583E",
+      "rawRecords": {
+        "native-evidence/native-html-bridge.json": {
+          "schemaVersion": 1,
+          "status": "Passed",
+          "suite": "native-html-bridge",
+          "engine": "powershell",
+          "engineVersion": "5.1.26100.33438",
+          "transport": "native-http-edge",
+          "mode": "full",
+          "sourceCommit": "5a92d45456e39c077997f9bf3a0b9156fe9c8132",
+          "runId": "39208122930-1",
+          "measure": "completed-journeys",
+          "expectedJourneyCount": 1,
+          "completedJourneyCount": 1,
+          "completedJourneys": [
+            {
+              "name": "edge-loopback-handler-success-and-injected-faults",
+              "successfulFaultDisplays": 4
+            }
+          ],
+          "fixtureLimits": {
+            "productionQualification": false,
+            "liveWorkloads": false,
+            "realEdge": true,
+            "loopbackHandler": true,
+            "injectedFaultResponses": true
+          },
+          "startedUtc": "2026-10-19T06:08:11.187Z",
+          "toolFingerprint": "e1db54815b36ab8a851e30723dddc202d9eb14d16c80a6b59ceb54d4067368ae",
+          "finishedUtc": "2026-10-19T06:08:41.789Z"
+        },
+        "native-evidence/native-release-launcher.json": {
+          "schemaVersion": 1,
+          "status": "Passed",
+          "suite": "native-release-launcher",
+          "engine": "powershell",
+          "engineVersion": "5.1.26100.33438",
+          "transport": "cmd-native-http-edge",
+          "mode": "released-cmd",
+          "sourceCommit": "5a92d45456e39c077997f9bf3a0b9156fe9c8132",
+          "runId": "39208122930-1",
+          "measure": "completed-journeys",
+          "expectedJourneyCount": 1,
+          "completedJourneyCount": 1,
+          "completedJourneys": [
+            {
+              "name": "extracted-cmd-manager-purpose-and-offline-guides"
+            }
+          ],
+          "fixtureLimits": {
+            "productionQualification": false,
+            "liveWorkloads": false,
+            "exactExtractedRelease": true,
+            "realCmd": true,
+            "realEdge": true
+          },
+          "startedUtc": "2026-10-19T06:08:45.080Z",
+          "toolFingerprint": "e1db54815b36ab8a851e30723dddc202d9eb14d16c80a6b59ceb54d4067368ae",
+          "finishedUtc": "2026-10-19T06:08:52.903Z"
+        },
+        "native-evidence/native-release-package.json": {
+          "schemaVersion": 1,
+          "status": "Passed",
+          "suite": "native-release-package",
+          "engine": "powershell",
+          "engineVersion": "5.1.26100.33438",
+          "runtime": "5.1.26100.33438",
+          "edition": "Desktop",
+          "processArchitecture": "x64",
+          "transport": "release-module-smoke",
+          "mode": "release-smoke",
+          "sourceCommit": "5a92d45456e39c077997f9bf3a0b9156fe9c8132",
+          "runId": "39208122930-1",
+          "measure": "completed-journeys",
+          "expectedJourneyCount": 1,
+          "completedJourneyCount": 1,
+          "completedJourneys": [
+            {
+              "fileCount": 132,
+              "name": "exact-release-archive-extraction-module-import-save-readback",
+              "toolFingerprint": "e1db54815b36ab8a851e30723dddc202d9eb14d16c80a6b59ceb54d4067368ae",
+              "archiveSHA256": "12366F47E18F599727D5C7A87BDBA1DEF77BDCAF7706D296BCDA91E5B703E908"
+            }
+          ],
+          "fixtureLimits": {
+            "productionQualification": false,
+            "liveWorkloads": false,
+            "extractedReleaseModule": true,
+            "testOnlyWorkspace": true
+          },
+          "startedUtc": "2026-10-19T06:08:00.2144858Z",
+          "toolFingerprint": "e1db54815b36ab8a851e30723dddc202d9eb14d16c80a6b59ceb54d4067368ae",
+          "finishedUtc": "2026-10-19T06:08:10.5430555Z"
+        },
+        "native-evidence/native-runtime-diagnostics.json": {
+          "schemaVersion": 1,
+          "suite": "native-runtime",
+          "mode": "all",
+          "engine": "powershell",
+          "transport": "native-http-edge",
+          "sourceCommit": "5a92d45456e39c077997f9bf3a0b9156fe9c8132",
+          "runId": "39208122930-1",
+          "fixtureScope": "ControlledWizardRuntime",
+          "records": [
+            {
+              "SchemaVersion": 1,
+              "DiagnosticId": "bac33743-fc0d-4dba-a9a9-49da4b6892fa",
+              "Role": "Target",
+              "FixtureScope": "ControlledWizardRuntime",
+              "EngineVersion": "5.1.26100.33438",
+              "Transport": "native-http-edge",
+              "ObservedUtc": "2026-10-19T06:09:58.5364786Z",
+              "ExceptionType": "System.Management.Automation.RuntimeException",
+              "Message": "RejectedToken",
+              "FullyQualifiedErrorId": "RejectedToken",
+              "Category": "OperationStopped",
+              "InnerExceptions": [
+                {
+                  "Type": "System.Management.Automation.RuntimeException",
+                  "Message": "RejectedToken"
+                }
+              ],
+              "ScriptStackTrace": "at Start-WsmHtmlConsole, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-yFj5Ay\\runtime\\src\\HtmlConsole.ps1: line 827\r\nat <ScriptBlock>, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-yFj5Ay\\runtime\\tests\\Start-WizardRuntimeTestServer.ps1: line 209\r\nat <ScriptBlock>, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-yFj5Ay\\runtime\\tests\\Start-WizardRuntimeTestServer.ps1: line 13",
+              "PositionMessage": "At C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-yFj5Ay\\runtime\\src\\HtmlConsole.ps1:827 char:122\r\n+ ... r $request.Headers['x-wsm-token'] -cne $token){throw 'RejectedToken'}\r\n+                                                    ~~~~~~~~~~~~~~~~~~~~~",
+              "CallStack": [
+                "script:Get-WsmHtmlSafeError",
+                "Start-WsmHtmlConsole",
+                "<ScriptBlock>",
+                "<ScriptBlock>"
+              ]
+            },
+            {
+              "SchemaVersion": 1,
+              "DiagnosticId": "35f0bfab-267c-460f-b3d0-2947abf64efe",
+              "Role": "Target",
+              "FixtureScope": "ControlledWizardRuntime",
+              "EngineVersion": "5.1.26100.33438",
+              "Transport": "native-http-edge",
+              "ObservedUtc": "2026-10-19T06:09:59.9738662Z",
+              "ExceptionType": "System.InvalidOperationException",
+              "Message": "WorkspaceWorkerBusy: another console worker or recovery currently owns this workspace. Wait for it to finish, then retry.",
+              "FullyQualifiedErrorId": "WorkspaceWorkerBusy: another console worker or recovery currently owns this workspace. Wait for it to finish, then retry.",
+              "Category": "OperationStopped",
+              "InnerExceptions": [
+                {
+                  "Type": "System.InvalidOperationException",
+                  "Message": "WorkspaceWorkerBusy: another console worker or recovery currently owns this workspace. Wait for it to finish, then retry."
+                },
+                {
+                  "Type": "System.IO.IOException",
+                  "Message": "The process cannot access the file 'R:\\target-4\\workspace\\target\\console-worker.lock' because it is being used by another process."
+                }
+              ],
+              "ScriptStackTrace": "at Enter-WsmWorkspaceWorkerGuard, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-yFj5Ay\\runtime\\src\\OperationRequests.ps1: line 200\r\nat Start-WsmHtmlConsole, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-yFj5Ay\\runtime\\src\\HtmlConsole.ps1: line 857\r\nat <ScriptBlock>, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-yFj5Ay\\runtime\\tests\\Start-WizardRuntimeTestServer.ps1: line 209\r\nat <ScriptBlock>, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-yFj5Ay\\runtime\\tests\\Start-WizardRuntimeTestServer.ps1: line 13",
+              "PositionMessage": "At C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-yFj5Ay\\runtime\\src\\OperationRequests.ps1:200 char:363\r\n+ ... $_.Exception);$busy.Data['WsmWorkspaceWorkerBusy']=$true;throw $busy}\r\n+                                                              ~~~~~~~~~~~",
+              "CallStack": [
+                "script:Get-WsmHtmlSafeError",
+                "Start-WsmHtmlConsole",
+                "<ScriptBlock>",
+                "<ScriptBlock>"
+              ]
+            },
+            {
+              "SchemaVersion": 1,
+              "DiagnosticId": "29cb2e4f-56b8-48bc-835a-7405d32d0a31",
+              "Role": "Target",
+              "FixtureScope": "ControlledWizardRuntime",
+              "EngineVersion": "5.1.26100.33438",
+              "Transport": "native-http-edge",
+              "ObservedUtc": "2026-10-19T06:10:45.0182406Z",
+              "ExceptionType": "System.Management.Automation.MethodInvocationException",
+              "Message": "Exception calling \"EndInvoke\" with \"1\" argument(s): \"Journal chain/sequence/identity mismatch; retain evidence.\"",
+              "FullyQualifiedErrorId": "RuntimeException",
+              "Category": "NotSpecified",
+              "InnerExceptions": [
+                {
+                  "Type": "System.Management.Automation.MethodInvocationException",
+                  "Message": "Exception calling \"EndInvoke\" with \"1\" argument(s): \"Journal chain/sequence/identity mismatch; retain evidence.\""
+                },
+                {
+                  "Type": "System.Management.Automation.RuntimeException",
+                  "Message": "Journal chain/sequence/identity mismatch; retain evidence."
+                },
+                {
+                  "Type": "System.IO.InvalidDataException",
+                  "Message": "Journal chain/sequence/identity mismatch; retain evidence."
+                }
+              ],
+              "ScriptStackTrace": "at Start-WsmHtmlConsole, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-yFj5Ay\\runtime\\src\\HtmlConsole.ps1: line 790\r\nat <ScriptBlock>, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-yFj5Ay\\runtime\\tests\\Start-WizardRuntimeTestServer.ps1: line 209\r\nat <ScriptBlock>, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-yFj5Ay\\runtime\\tests\\Start-WizardRuntimeTestServer.ps1: line 13",
+              "PositionMessage": "At C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-yFj5Ay\\runtime\\src\\HtmlConsole.ps1:790 char:37\r\n+ ... put=@();try{$output=@($job.PowerShell.EndInvoke($job.Handle));$code=G ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+              "CallStack": [
+                "script:Get-WsmHtmlSafeError",
+                "Start-WsmHtmlConsole",
+                "<ScriptBlock>",
+                "<ScriptBlock>"
+              ],
+              "JournalMismatch": {
+                "Predicate": "Sequence",
+                "ExpectedSequence": 2,
+                "ObservedSequence": 3,
+                "SamePair": true,
+                "SameRun": true,
+                "PreviousHashMatches": true
+              }
+            }
+          ]
+        },
+        "native-evidence/native-runtime.json": {
+          "schemaVersion": 1,
+          "status": "Failed",
+          "suite": "native-runtime",
+          "engine": "powershell",
+          "engineVersion": "5.1.26100.33438",
+          "transport": "native-http-edge",
+          "mode": "all",
+          "sourceCommit": "5a92d45456e39c077997f9bf3a0b9156fe9c8132",
+          "runId": "39208122930-1",
+          "measure": "completed-journeys",
+          "expectedJourneyCount": 4,
+          "completedJourneyCount": 3,
+          "completedJourneys": [
+            {
+              "name": "Source-cancel-with-concurrent-Probe",
+              "role": "Source",
+              "expectedTerminal": "Cancelled"
+            },
+            {
+              "name": "Source-Directory-backup",
+              "role": "Source",
+              "deliveryMode": "Directory"
+            },
+            {
+              "name": "Source-ZIP-backup",
+              "role": "Source",
+              "deliveryMode": "Zip"
+            }
+          ],
+          "fixtureLimits": {
+            "productionQualification": false,
+            "liveWorkloads": false,
+            "controlledWindowsHost": true,
+            "externalSmbQualification": false,
+            "actualServices": false
+          },
+          "startedUtc": "2026-10-19T06:08:53.703Z",
+          "toolFingerprint": "e1db54815b36ab8a851e30723dddc202d9eb14d16c80a6b59ceb54d4067368ae",
+          "failure": "AssertionError [ERR_ASSERTION]: {\"message\":\"The local operation could not be completed.\",\"code\":\"operation_failed\",\"correlationId\":\"63cf9923-0cd8-49e7-9002-cef8e756789d\",\"nextStep\":\"Check operation history and the protected local logs before deciding whether to retry.\"}\n    at runRole (D:\\a\\windows-server-migration\\windows-server-migration\\tests\\Test-NativeWizardRuntimeHandler.js:139:534)\n    at async D:\\a\\windows-server-migration\\windows-server-migration\\tests\\Test-NativeWizardRuntimeHandler.js:162:17",
+          "finishedUtc": "2026-10-19T06:10:46.290Z"
+        },
+        "wsm-native-release/release-evidence.json": {
+          "Signed": false,
+          "Archive": "D:\\a\\_temp\\wsm-native-release\\migration-tool.zip",
+          "SHA256": "12366F47E18F599727D5C7A87BDBA1DEF77BDCAF7706D296BCDA91E5B703E908",
+          "Result": {
+            "WorkRoot": "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-release-work-0df2c09009bc",
+            "Step": "prepare",
+            "OverlongWorkRootRejectedBeforeWrite": true,
+            "Root": "D:\\a\\_temp\\wsm-native-release\\離線工具 Chinese spaces",
+            "ProductionVerified": false,
+            "PowerShell": "5.1.26100.33438",
+            "NativeHttp": "NotProvenByThisSmoke",
+            "Revision": 1,
+            "ToolFingerprint": "e1db54815b36ab8a851e30723dddc202d9eb14d16c80a6b59ceb54d4067368ae",
+            "Status": "Passed",
+            "Is64Bit": true
+          },
+          "FileCount": 132,
+          "ToolFingerprint": "e1db54815b36ab8a851e30723dddc202d9eb14d16c80a6b59ceb54d4067368ae"
+        }
+      }
+    },
+    {
+      "artifactId": 12167595983,
+      "sha256": "30610322E4E1E0696F60CD6C77B97F82DC30A570327238D6130B220D5DB3CF76",
+      "rawRecords": {
+        "native-evidence/native-probe-diagnostics.json": {
+          "schemaVersion": 1,
+          "suite": "native-probe",
+          "engine": "powershell",
+          "sourceCommit": "b87eae7f0d9bd5a519c0015aaa0fad40029c110d",
+          "runId": "39210423393-1",
+          "capturedUtc": "2026-10-19T06:33:04.768Z",
+          "lifecycle": [
+            {
+              "atUtc": "2026-10-19T06:32:14.970Z",
+              "type": "server-started",
+              "role": "Source",
+              "pid": 1592
+            },
+            {
+              "atUtc": "2026-10-19T06:32:14.983Z",
+              "type": "server-started",
+              "role": "Target",
+              "pid": 1352
+            },
+            {
+              "atUtc": "2026-10-19T06:32:15.015Z",
+              "type": "server-started",
+              "role": "Manager",
+              "pid": 7636
+            },
+            {
+              "atUtc": "2026-10-19T06:32:23.935Z",
+              "type": "server-ready",
+              "role": "Source",
+              "pid": 1592,
+              "origin": "http://127.0.0.1:49192"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:23.936Z",
+              "type": "server-ready",
+              "role": "Target",
+              "pid": 1352,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:23.937Z",
+              "type": "server-ready",
+              "role": "Manager",
+              "pid": 7636,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:04.762Z",
+              "type": "server-exit",
+              "role": "Manager",
+              "pid": 7636,
+              "exitCode": 0
+            },
+            {
+              "atUtc": "2026-10-19T06:33:04.763Z",
+              "type": "server-closed",
+              "role": "Manager",
+              "pid": 7636,
+              "exitCode": 0
+            },
+            {
+              "atUtc": "2026-10-19T06:33:04.765Z",
+              "type": "server-exit",
+              "role": "Target",
+              "pid": 1352,
+              "exitCode": 0
+            },
+            {
+              "atUtc": "2026-10-19T06:33:04.766Z",
+              "type": "server-closed",
+              "role": "Target",
+              "pid": 1352,
+              "exitCode": 0
+            },
+            {
+              "atUtc": "2026-10-19T06:33:04.767Z",
+              "type": "server-exit",
+              "role": "Source",
+              "pid": 1592,
+              "exitCode": 0
+            },
+            {
+              "atUtc": "2026-10-19T06:33:04.768Z",
+              "type": "server-closed",
+              "role": "Source",
+              "pid": 1592,
+              "exitCode": 0
+            }
+          ],
+          "requests": [
+            {
+              "atUtc": "2026-10-19T06:32:49.291Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:49.419Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:49.632Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:49.768Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:49.959Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:50.038Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:50.275Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:50.339Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:50.545Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:50.656Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:50.847Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.006Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.117Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.323Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.385Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.609Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.720Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.871Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.985Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:52.260Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:52.197Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:52.530Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:52.530Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:52.816Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:52.847Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.133Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.160Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.403Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.499Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.673Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.769Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.943Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:54.086Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:54.253Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:54.404Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:54.578Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:54.674Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:54.848Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:54.943Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:55.165Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:55.213Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:55.434Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:55.482Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:55.704Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:55.752Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.024Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.023Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.291Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.370Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.577Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.640Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.862Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.916Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:57.173Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:57.242Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:57.447Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:57.549Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:57.755Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:57.812Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.051Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.108Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.367Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.431Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.653Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.714Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.971Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.981Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:59.234Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:59.295Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:59.556Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:59.620Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:59.818Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:59.890Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:00.159Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:00.150Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:00.423Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:00.477Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:00.699Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:00.794Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:00.970Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:01.112Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:01.266Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:01.429Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:01.575Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:01.717Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:01.874Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:02.000Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:02.158Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:02.317Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:02.476Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:02.603Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:02.808Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:02.875Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:03.143Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:03.222Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:03.423Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:03.524Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:03.715Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:03.794Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 1352,
+              "status": 200,
+              "origin": "http://127.0.0.1:49193"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:04.031Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 7636,
+              "status": 200,
+              "origin": "http://127.0.0.1:49191"
+            }
+          ],
+          "servers": [
+            {
+              "role": "Source",
+              "pid": 1592,
+              "exitCode": 0,
+              "killed": false,
+              "startedUtc": "2026-10-19T06:32:14.969Z",
+              "closedUtc": "2026-10-19T06:33:04.768Z",
+              "origin": "http://127.0.0.1:49192",
+              "output": {
+                "lineCount": 1,
+                "loopbackAnnouncements": 1,
+                "otherLineCount": 0
+              }
+            },
+            {
+              "role": "Target",
+              "pid": 1352,
+              "exitCode": 0,
+              "killed": false,
+              "startedUtc": "2026-10-19T06:32:14.983Z",
+              "closedUtc": "2026-10-19T06:33:04.766Z",
+              "origin": "http://127.0.0.1:49193",
+              "output": {
+                "lineCount": 1,
+                "loopbackAnnouncements": 1,
+                "otherLineCount": 0
+              }
+            },
+            {
+              "role": "Manager",
+              "pid": 7636,
+              "exitCode": 0,
+              "killed": false,
+              "startedUtc": "2026-10-19T06:32:15.015Z",
+              "closedUtc": "2026-10-19T06:33:04.763Z",
+              "origin": "http://127.0.0.1:49191",
+              "output": {
+                "lineCount": 1,
+                "loopbackAnnouncements": 1,
+                "otherLineCount": 0
+              }
+            }
+          ],
+          "terminalJobs": [
+            {
+              "role": "Source",
+              "status": "Cancelled",
+              "outputs": [
+                {
+                  "status": "Cancelled",
+                  "collectors": [
+                    {
+                      "id": "PlatformIdentity",
+                      "status": "Cancelled"
+                    },
+                    {
+                      "id": "CommandsModules",
+                      "status": "Cancelled"
+                    },
+                    {
+                      "id": "LocalVolumes",
+                      "status": "Cancelled"
+                    },
+                    {
+                      "id": "NativeInventory",
+                      "status": "Cancelled"
+                    },
+                    {
+                      "id": "HttpProbe",
+                      "status": "Cancelled"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "Target",
+              "status": "ReviewRequired",
+              "outputs": [
+                {
+                  "status": "Partial",
+                  "collectors": [
+                    {
+                      "id": "PlatformIdentity",
+                      "status": "Completed"
+                    },
+                    {
+                      "id": "CommandsModules",
+                      "status": "Completed"
+                    },
+                    {
+                      "id": "LocalVolumes",
+                      "status": "Completed"
+                    },
+                    {
+                      "id": "NativeInventory"
+                    },
+                    {
+                      "id": "HttpProbe",
+                      "status": "Completed"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "Manager",
+              "status": "ReviewRequired",
+              "outputs": [
+                {
+                  "status": "Partial",
+                  "collectors": [
+                    {
+                      "id": "PlatformIdentity",
+                      "status": "Completed"
+                    },
+                    {
+                      "id": "CommandsModules",
+                      "status": "Completed"
+                    },
+                    {
+                      "id": "LocalVolumes",
+                      "status": "Completed"
+                    },
+                    {
+                      "id": "NativeInventory"
+                    },
+                    {
+                      "id": "HttpProbe",
+                      "status": "Completed"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "native-evidence/native-probe.json": {
+          "schemaVersion": 1,
+          "status": "Passed",
+          "suite": "native-probe",
+          "engine": "powershell",
+          "engineVersion": "5.1.26100.33438",
+          "transport": "native-http-edge",
+          "mode": "full",
+          "sourceCommit": "b87eae7f0d9bd5a519c0015aaa0fad40029c110d",
+          "runId": "39210423393-1",
+          "measure": "completed-journeys",
+          "expectedJourneyCount": 3,
+          "completedJourneyCount": 3,
+          "completedJourneys": [
+            {
+              "name": "Source-DeveloperProbe-artifact-readback",
+              "role": "Source",
+              "terminal": "Cancelled"
+            },
+            {
+              "name": "Target-DeveloperProbe-artifact-readback",
+              "role": "Target",
+              "terminal": "ReviewRequired"
+            },
+            {
+              "name": "Manager-DeveloperProbe-artifact-readback",
+              "role": "Manager",
+              "terminal": "ReviewRequired"
+            }
+          ],
+          "fixtureLimits": {
+            "productionQualification": false,
+            "liveWorkloads": false,
+            "controlledHostFixtures": true,
+            "realEdge": true,
+            "loopbackHandler": true
+          },
+          "startedUtc": "2026-10-19T06:32:11.171Z",
+          "finishedUtc": "2026-10-19T06:33:04.098Z"
+        }
+      }
+    },
+    {
+      "artifactId": 12167810365,
+      "sha256": "3E57D2CCD52F4F45F81769F8871383823CD9DC2E0D622827CC8077F8E2500A2F",
+      "rawRecords": {
+        "native-evidence/native-probe-diagnostics.json": {
+          "schemaVersion": 1,
+          "suite": "native-probe",
+          "engine": "pwsh",
+          "sourceCommit": "b87eae7f0d9bd5a519c0015aaa0fad40029c110d",
+          "runId": "39210423393-1",
+          "capturedUtc": "2026-10-19T06:33:36.509Z",
+          "lifecycle": [
+            {
+              "atUtc": "2026-10-19T06:32:13.609Z",
+              "type": "server-started",
+              "role": "Source",
+              "pid": 7160
+            },
+            {
+              "atUtc": "2026-10-19T06:32:13.633Z",
+              "type": "server-started",
+              "role": "Target",
+              "pid": 8508
+            },
+            {
+              "atUtc": "2026-10-19T06:32:13.702Z",
+              "type": "server-started",
+              "role": "Manager",
+              "pid": 9192
+            },
+            {
+              "atUtc": "2026-10-19T06:32:21.087Z",
+              "type": "server-ready",
+              "role": "Target",
+              "pid": 8508,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:21.190Z",
+              "type": "server-ready",
+              "role": "Source",
+              "pid": 7160,
+              "origin": "http://127.0.0.1:50640"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:21.191Z",
+              "type": "server-ready",
+              "role": "Manager",
+              "pid": 9192,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:36.463Z",
+              "type": "server-exit",
+              "role": "Source",
+              "pid": 7160,
+              "exitCode": 0
+            },
+            {
+              "atUtc": "2026-10-19T06:33:36.465Z",
+              "type": "server-closed",
+              "role": "Source",
+              "pid": 7160,
+              "exitCode": 0
+            },
+            {
+              "atUtc": "2026-10-19T06:33:36.488Z",
+              "type": "server-exit",
+              "role": "Manager",
+              "pid": 9192,
+              "exitCode": 0
+            },
+            {
+              "atUtc": "2026-10-19T06:33:36.490Z",
+              "type": "server-closed",
+              "role": "Manager",
+              "pid": 9192,
+              "exitCode": 0
+            },
+            {
+              "atUtc": "2026-10-19T06:33:36.507Z",
+              "type": "server-exit",
+              "role": "Target",
+              "pid": 8508,
+              "exitCode": 0
+            },
+            {
+              "atUtc": "2026-10-19T06:33:36.509Z",
+              "type": "server-closed",
+              "role": "Target",
+              "pid": 8508,
+              "exitCode": 0
+            }
+          ],
+          "requests": [
+            {
+              "atUtc": "2026-10-19T06:32:45.240Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:45.398Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:45.557Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:45.668Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:45.875Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:46.001Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:46.206Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:46.333Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:46.507Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:46.666Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:46.777Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:47.000Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:47.079Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:47.262Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:47.397Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:47.589Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:47.731Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:47.922Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:48.042Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:48.240Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:48.351Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:48.510Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:48.669Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:48.820Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:48.986Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:49.130Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:49.304Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:49.391Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:49.574Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:49.669Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:49.890Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:49.985Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:50.208Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:50.304Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:50.527Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:50.620Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:50.843Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:50.938Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.155Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.248Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.436Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.572Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.715Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:51.889Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:52.032Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:52.207Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:52.334Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:52.524Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:52.651Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:52.794Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:52.969Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.099Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.319Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.398Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.588Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.716Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.875Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:53.995Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:54.206Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:54.365Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:54.475Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:54.665Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:54.776Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:54.982Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:55.092Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:55.299Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:55.410Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:55.617Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:55.744Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:55.950Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.061Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.267Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.369Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.553Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.648Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.822Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:56.965Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:57.140Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:57.283Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:57.458Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:57.601Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:57.743Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:57.917Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.060Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.234Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.393Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.573Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.669Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.851Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:58.996Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:59.158Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:59.312Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:59.495Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:59.633Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:59.810Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:32:59.894Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:00.076Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:00.210Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:00.333Z",
+              "role": "Manager",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 9192,
+              "status": 200,
+              "origin": "http://127.0.0.1:50641"
+            },
+            {
+              "atUtc": "2026-10-19T06:33:00.525Z",
+              "role": "Target",
+              "method": "GET",
+              "route": "/api/jobs/<id>",
+              "pid": 8508,
+              "status": 200,
+              "origin": "http://127.0.0.1:50639"
+            }
+          ],
+          "servers": [
+            {
+              "role": "Source",
+              "pid": 7160,
+              "exitCode": 0,
+              "killed": false,
+              "startedUtc": "2026-10-19T06:32:13.608Z",
+              "closedUtc": "2026-10-19T06:33:36.465Z",
+              "origin": "http://127.0.0.1:50640",
+              "output": {
+                "lineCount": 1,
+                "loopbackAnnouncements": 1,
+                "otherLineCount": 0
+              }
+            },
+            {
+              "role": "Target",
+              "pid": 8508,
+              "exitCode": 0,
+              "killed": false,
+              "startedUtc": "2026-10-19T06:32:13.633Z",
+              "closedUtc": "2026-10-19T06:33:36.509Z",
+              "origin": "http://127.0.0.1:50639",
+              "output": {
+                "lineCount": 1,
+                "loopbackAnnouncements": 1,
+                "otherLineCount": 0
+              }
+            },
+            {
+              "role": "Manager",
+              "pid": 9192,
+              "exitCode": 0,
+              "killed": false,
+              "startedUtc": "2026-10-19T06:32:13.702Z",
+              "closedUtc": "2026-10-19T06:33:36.490Z",
+              "origin": "http://127.0.0.1:50641",
+              "output": {
+                "lineCount": 1,
+                "loopbackAnnouncements": 1,
+                "otherLineCount": 0
+              }
+            },
+            {
+              "role": "unknown",
+              "pid": 5184,
+              "exitCode": 2,
+              "killed": false,
+              "output": {
+                "lineCount": 9,
+                "loopbackAnnouncements": 0,
+                "otherLineCount": 9
+              }
+            }
+          ],
+          "terminalJobs": [
+            {
+              "role": "Source",
+              "status": "Cancelled",
+              "outputs": [
+                {
+                  "status": "Cancelled",
+                  "collectors": [
+                    {
+                      "id": "PlatformIdentity",
+                      "status": "Cancelled"
+                    },
+                    {
+                      "id": "CommandsModules",
+                      "status": "Cancelled"
+                    },
+                    {
+                      "id": "LocalVolumes",
+                      "status": "Cancelled"
+                    },
+                    {
+                      "id": "NativeInventory",
+                      "status": "Cancelled"
+                    },
+                    {
+                      "id": "HttpProbe",
+                      "status": "Cancelled"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "Target",
+              "status": "ReviewRequired",
+              "outputs": [
+                {
+                  "status": "Partial",
+                  "collectors": [
+                    {
+                      "id": "PlatformIdentity",
+                      "status": "Completed"
+                    },
+                    {
+                      "id": "CommandsModules",
+                      "status": "Completed"
+                    },
+                    {
+                      "id": "LocalVolumes",
+                      "status": "Completed"
+                    },
+                    {
+                      "id": "NativeInventory"
+                    },
+                    {
+                      "id": "HttpProbe",
+                      "status": "Completed"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "Manager",
+              "status": "ReviewRequired",
+              "outputs": [
+                {
+                  "status": "Partial",
+                  "collectors": [
+                    {
+                      "id": "PlatformIdentity",
+                      "status": "Completed"
+                    },
+                    {
+                      "id": "CommandsModules",
+                      "status": "Completed"
+                    },
+                    {
+                      "id": "LocalVolumes",
+                      "status": "Completed"
+                    },
+                    {
+                      "id": "NativeInventory"
+                    },
+                    {
+                      "id": "HttpProbe",
+                      "status": "Completed"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "native-evidence/native-probe.json": {
+          "schemaVersion": 1,
+          "status": "Passed",
+          "suite": "native-probe",
+          "engine": "pwsh",
+          "engineVersion": "7.6.6",
+          "transport": "native-http-edge",
+          "mode": "full",
+          "sourceCommit": "b87eae7f0d9bd5a519c0015aaa0fad40029c110d",
+          "runId": "39210423393-1",
+          "measure": "completed-journeys",
+          "expectedJourneyCount": 4,
+          "completedJourneyCount": 4,
+          "completedJourneys": [
+            {
+              "name": "Source-DeveloperProbe-artifact-readback",
+              "role": "Source",
+              "terminal": "Cancelled"
+            },
+            {
+              "name": "Target-DeveloperProbe-artifact-readback",
+              "role": "Target",
+              "terminal": "ReviewRequired"
+            },
+            {
+              "name": "Manager-DeveloperProbe-artifact-readback",
+              "role": "Manager",
+              "terminal": "ReviewRequired"
+            },
+            {
+              "name": "Manager-real-DeveloperProbe-CLI",
+              "role": "Manager"
+            }
+          ],
+          "fixtureLimits": {
+            "productionQualification": false,
+            "liveWorkloads": false,
+            "controlledHostFixtures": true,
+            "realEdge": true,
+            "loopbackHandler": true
+          },
+          "startedUtc": "2026-10-19T06:32:12.030Z",
+          "finishedUtc": "2026-10-19T06:33:35.768Z"
+        }
+      }
+    }
+  ]
+}

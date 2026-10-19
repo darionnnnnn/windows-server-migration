@@ -8,11 +8,26 @@ function Get-WsmOperationState($Paths,$Package,[switch]$AllowRecovery) {
     else{[pscustomobject]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='OperationState';BatchId=$Package.Manifest.BatchId;PairId=$Package.Manifest.PairId;TargetFingerprint=$Package.Manifest.Target.Fingerprint;PlanHash=$Package.Manifest.PlanHash;RunId=[Guid]::NewGuid().ToString();ManifestHash='';Generation=0;Stage='NotStarted';Sequence=0;ResultSequence=0;JournalHash=('0'*64);JournalSegment=0;Items=@();Evidence=@();Cutover=$null;PendingOperations=@()}}
 }
 function Add-WsmJournal($Paths,$State,[string]$Action,[string]$ItemId,$Detail) {
-    $State.Sequence++;$row=[pscustomobject][ordered]@{Sequence=$State.Sequence;PreviousHash=$State.JournalHash;RunId=$State.RunId;PairId=$State.PairId;Utc=(Get-WsmUtc);Action=$Action;ItemId=$ItemId;Detail=$Detail}
-    $text=$row | ConvertTo-Json -Depth 15 -Compress;if([Text.Encoding]::UTF8.GetByteCount($text) -gt 1MB){throw 'Journal event too large.'}
-    $path=$Paths.Journal;if([IO.File]::Exists($path) -and (New-Object IO.FileInfo($path)).Length -gt 8MB){$archive=Join-Path $Paths.Root ('journal-'+$State.JournalSegment+'.jsonl');if([IO.File]::Exists($archive)){throw 'Journal archive collision.'};[IO.File]::Move($path,$archive);$State.JournalSegment++}
-    $stream=[IO.File]::Open($path,'Append','Write','Read');try{$bytes=[Text.Encoding]::UTF8.GetBytes($text+[Environment]::NewLine);$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
-    $State.JournalHash=Get-WsmHashText $text;Write-WsmJson $Paths.State $State
+    if(-not (Get-Variable -Name WsmJournalBlockedStates -Scope Script -ErrorAction SilentlyContinue)){$script:WsmJournalBlockedStates=[System.Runtime.CompilerServices.ConditionalWeakTable[object,object]]::new()}
+    $blocked=$null;if($script:WsmJournalBlockedStates.TryGetValue($State,[ref]$blocked)){throw 'Journal append is blocked after an uncertain write; reload and repair the verified journal before retrying.'}
+    $nextSequence=[long]$State.Sequence+1
+    $row=[pscustomobject][ordered]@{Sequence=$nextSequence;PreviousHash=$State.JournalHash;RunId=$State.RunId;PairId=$State.PairId;Utc=(Get-WsmUtc);Action=$Action;ItemId=$ItemId;Detail=$Detail}
+    $text=$row | ConvertTo-Json -Depth 15 -Compress
+    if([Text.Encoding]::UTF8.GetByteCount($text) -gt 1MB){throw 'Journal event too large.'}
+    $bytes=[Text.Encoding]::UTF8.GetBytes($text+[Environment]::NewLine)
+    $path=$Paths.Journal;$rotated=$false
+    if([IO.File]::Exists($path) -and (New-Object IO.FileInfo($path)).Length -gt 8MB){
+        $archive=Join-Path $Paths.Root ('journal-'+$State.JournalSegment+'.jsonl')
+        if([IO.File]::Exists($archive)){throw 'Journal archive collision.'}
+        try{[IO.File]::Move($path,$archive);$State.JournalSegment++;$rotated=$true}catch{[void]$script:WsmJournalBlockedStates.Add($State,[object]::new());throw}
+    }
+    try{$stream=[IO.File]::Open($path,'Append','Write','Read')}catch{if($rotated){[void]$script:WsmJournalBlockedStates.Add($State,[object]::new())};throw}
+    [void]$script:WsmJournalBlockedStates.Add($State,[object]::new())
+    try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+    $State.Sequence=$nextSequence
+    $State.JournalHash=Get-WsmHashText $text
+    Write-WsmJson $Paths.State $State
+    [void]$script:WsmJournalBlockedStates.Remove($State)
 }
 function Get-WsmFileScopeDigest([string]$Root,[string]$MetadataMode,$CancellationToken=$null) {
     Get-WsmStreamingScopeDigest $Root $MetadataMode $CancellationToken

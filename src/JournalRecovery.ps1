@@ -22,10 +22,26 @@ function Assert-WsmTaskFolderReplayReceipt($Receipt,$Intent) {
     if($Receipt.OperationId -cne $Intent.OperationId -or $Receipt.Path -cne $Intent.Path -or $Receipt.SecurityHash -ine $Intent.SecurityHash){throw 'Task folder journal receipt does not bind the exact creation/deletion intent.'}
 }
 function Restore-WsmJournalCheckpoint($Paths,$State) {
-    # Validate the full chain and the exact old checkpoint before replaying any event.
-    $check=Test-WsmJournal ([IO.Path]::GetDirectoryName($Paths.Root)) $State.PairId
-    if($check.Consistent){return};if(-not $check.RecoveryRequired){throw 'Checkpoint is ahead of or differs from durable journal; retain evidence.'}
-    $copy=ConvertFrom-WsmJson ($State | ConvertTo-Json -Depth 40)
+    # Always replay from disk's durable checkpoint. The caller may hold a faulted
+    # in-memory object containing changes that never reached state.json.
+    $diskState=Read-WsmJson $Paths.State
+    if($diskState.PairId -cne $State.PairId -or $diskState.RunId -cne $State.RunId){throw 'Journal recovery state identity differs from the durable checkpoint; retain evidence.'}
+    $check=Test-WsmJournal ([IO.Path]::GetDirectoryName($Paths.Root)) $diskState.PairId
+    if($check.Consistent){
+        foreach($property in $diskState.PSObject.Properties){$State | Add-Member NoteProperty $property.Name $property.Value -Force}
+        return
+    }
+    if($check.RecoverableSegmentMismatch){
+        $copy=ConvertFrom-WsmJson ($diskState | ConvertTo-Json -Depth 40)
+        $copy.JournalSegment=[long]$check.ArchiveCount
+        Write-WsmJson $Paths.State $copy
+        $verified=Test-WsmJournal ([IO.Path]::GetDirectoryName($Paths.Root)) $copy.PairId
+        if(-not $verified.Consistent){throw 'Journal segment repair did not produce a verified durable checkpoint; retain evidence.'}
+        foreach($property in $copy.PSObject.Properties){$State | Add-Member NoteProperty $property.Name $property.Value -Force}
+        return
+    }
+    if(-not $check.RecoveryRequired){throw 'Checkpoint is ahead of or differs from durable journal; retain evidence.'}
+    $copy=ConvertFrom-WsmJson ($diskState | ConvertTo-Json -Depth 40)
     Read-WsmJournalEvents $Paths | ForEach-Object {$event=$_.Row;$eventHash=$_.Hash;if($event.Sequence -gt $copy.Sequence){$d=$event.Detail;$id=$event.ItemId
         switch -Exact ($event.Action){
             'AssistiveRestoreStarted' {$copy.Stage='Running';$copy | Add-Member NoteProperty RestoreAttempt $d -Force}
@@ -110,7 +126,9 @@ function Restore-WsmJournalCheckpoint($Paths,$State) {
         }
         $copy.Sequence=$event.Sequence;$copy.JournalHash=$eventHash
     }}
-    $copy.JournalSegment=@(Get-ChildItem -LiteralPath $Paths.Root -Filter 'journal-*.jsonl').Count
+    $copy.JournalSegment=[long]$check.ArchiveCount
     Write-WsmJson $Paths.State $copy
+    $verified=Test-WsmJournal ([IO.Path]::GetDirectoryName($Paths.Root)) $copy.PairId
+    if(-not $verified.Consistent){throw 'Journal replay did not produce a verified durable checkpoint; retain evidence.'}
     foreach($property in $copy.PSObject.Properties){$State | Add-Member NoteProperty $property.Name $property.Value -Force}
 }

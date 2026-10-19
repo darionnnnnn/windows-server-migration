@@ -174,7 +174,7 @@
           "B2：真實執行及證據保存"
         ]
       },
-      "implementationStatus": "implemented",
+      "implementationStatus": "in-progress",
       "evidenceStatus": "implemented-unverified",
       "externalRequired": false,
       "externalStatus": "not-tested",
@@ -328,6 +328,14 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-B2-probe-terminal.json",
           "sha256": "F31919431914BF21147EA40B71625F755A370D6654C3B8B00827520800FB6C1A"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B2-native-5a92-sequence.json",
+          "sha256": "E06141A7114B4EF28194523EE21BAD6EA577AE2FA4BC2D0D8EDCC6BC8B39ADDC"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B2-journal-append.json",
+          "sha256": "8162C448860A7E01C116985AAC46A6D7331D4CA038E190D501087B7CB617E6E3"
         }
       ],
       "evidenceLog": {
@@ -343,7 +351,12 @@
       "openIssues": [
         "Prior 6eac316 WinPS51 TargetRestore and Probe fetch causes remain unresolved; later green runs do not prove repair.",
         "f510 native PS5.1 TargetRestore run39205239611 failed journal chain/sequence/identity validation; exact predicate/root cause unresolved. Original two 6eac failures remain separately unresolved.",
-        "354ca5c native PS5.1 Manager DeveloperProbe terminal Failed in run39207067746; 2/3 journeys completed. Root cause and new diagnostic capture native integration await CI."
+        "354ca5c native PS5.1 Manager DeveloperProbe terminal Failed in run39207067746; 2/3 journeys completed. Root cause and new diagnostic capture native integration await CI.",
+        "CI original I/O exception is unavailable; the reproduced sequence-gap mechanism matches retained CI facts but its particular triggering I/O operation is not proven.",
+        "Partial Write was fault-injected; Flush was not independently fault-injected.",
+        "Runtime read/write contention remains separately tracked; this commit prevents journal corruption but does not claim every concurrent reader is fixed.",
+        "Prior 6eac and 354 native failures remain unresolved.",
+        "No whole-round, production or external Server acceptance."
       ],
       "historicalEvidence": []
     },
