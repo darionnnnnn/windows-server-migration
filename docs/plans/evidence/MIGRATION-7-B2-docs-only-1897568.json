@@ -1,0 +1,321 @@
+﻿{
+  "commit": "1897568db338000f44d9f4e24fa443749d87fe56",
+  "parent": "9c9bdfafcf4ae7b1ac65c2387d374315d13013f3",
+  "changedPaths": [
+    "M\tdocs/plans/MIGRATION-7-EVIDENCE.json",
+    "M\tdocs/plans/MIGRATION-7-PLAN.md",
+    "A\tdocs/plans/evidence/MIGRATION-7-B2-native-9c9bdfa.json"
+  ],
+  "source": "GitHub Actions REST API and decoded job logs",
+  "scopeJobLogUrl": "https://github.com/darionnnnnn/windows-server-migration/actions/runs/39195883221/job/117878448387",
+  "scopeRunApiUrl": "https://api.github.com/repos/darionnnnnn/windows-server-migration/actions/runs/39195883221",
+  "scopeJobsApiUrl": "https://api.github.com/repos/darionnnnnn/windows-server-migration/actions/runs/39195883221/jobs",
+  "scopeLogExcerpt": "scope-39195883221.log-excerpt.txt",
+  "scopeLogExcerptSha256": "97FD79541F0B674292091F2E14D39C2A3FF4FD82890B8EAE7CDED7C4528A9E46",
+  "runs": [
+    {
+      "runId": 39195883221,
+      "workflow": "Native round-six acceptance gaps",
+      "event": "push",
+      "headBranch": "codex/migration-7",
+      "headSha": "1897568db338000f44d9f4e24fa443749d87fe56",
+      "status": "completed",
+      "conclusion": "success",
+      "htmlUrl": "https://github.com/darionnnnnn/windows-server-migration/actions/runs/39195883221",
+      "createdAt": "2026-10-19T03:41:29Z",
+      "updatedAt": "2026-10-19T03:41:46Z",
+      "jobs": [
+        {
+          "jobId": 117878448387,
+          "name": "scope",
+          "status": "completed",
+          "conclusion": "success",
+          "startedAt": "2026-10-19T03:41:32Z",
+          "completedAt": "2026-10-19T03:41:45Z",
+          "steps": [
+            {
+              "number": 1,
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "number": 2,
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "number": 3,
+              "name": "Run $changed = @()",
+              "conclusion": "success"
+            },
+            {
+              "number": 6,
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "number": 7,
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "jobId": 117878509952,
+          "name": "native",
+          "status": "completed",
+          "conclusion": "skipped",
+          "startedAt": "2026-10-19T03:41:45Z",
+          "completedAt": "2026-10-19T03:41:45Z",
+          "steps": []
+        }
+      ]
+    },
+    {
+      "runId": 39195883220,
+      "workflow": "Native released console",
+      "event": "push",
+      "headBranch": "codex/migration-7",
+      "headSha": "1897568db338000f44d9f4e24fa443749d87fe56",
+      "status": "completed",
+      "conclusion": "success",
+      "htmlUrl": "https://github.com/darionnnnnn/windows-server-migration/actions/runs/39195883220",
+      "createdAt": "2026-10-19T03:41:29Z",
+      "updatedAt": "2026-10-19T03:41:52Z",
+      "jobs": [
+        {
+          "jobId": 117878448277,
+          "name": "native (pwsh)",
+          "status": "completed",
+          "conclusion": "success",
+          "startedAt": "2026-10-19T03:41:31Z",
+          "completedAt": "2026-10-19T03:41:51Z",
+          "steps": [
+            {
+              "number": 1,
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "number": 2,
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "number": 3,
+              "name": "Select only affected acceptance scope",
+              "conclusion": "success"
+            },
+            {
+              "number": 4,
+              "name": "Run actions/setup-node@v4",
+              "conclusion": "success"
+            },
+            {
+              "number": 5,
+              "name": "Install pinned browser driver",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 6,
+              "name": "Verify exact release and extracted launcher",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 7,
+              "name": "Validate exact release package evidence",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 8,
+              "name": "Actual Edge to native PowerShell handler",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 9,
+              "name": "Validate native HTML bridge evidence",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 10,
+              "name": "Actual released CMD launch and native purpose save",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 11,
+              "name": "Validate extracted launcher evidence",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 12,
+              "name": "Source and Target native runtime journeys with small controlled fixtures",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 13,
+              "name": "Validate Source and Target runtime evidence",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 14,
+              "name": "Report native journey invocation outcomes",
+              "conclusion": "success"
+            },
+            {
+              "number": 15,
+              "name": "Retain sanitized fixture diagnostics",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 29,
+              "name": "Post Run actions/setup-node@v4",
+              "conclusion": "success"
+            },
+            {
+              "number": 30,
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "number": 31,
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "jobId": 117878448623,
+          "name": "native (powershell)",
+          "status": "completed",
+          "conclusion": "success",
+          "startedAt": "2026-10-19T03:41:32Z",
+          "completedAt": "2026-10-19T03:41:51Z",
+          "steps": [
+            {
+              "number": 1,
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "number": 2,
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "number": 3,
+              "name": "Select only affected acceptance scope",
+              "conclusion": "success"
+            },
+            {
+              "number": 4,
+              "name": "Run actions/setup-node@v4",
+              "conclusion": "success"
+            },
+            {
+              "number": 5,
+              "name": "Install pinned browser driver",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 6,
+              "name": "Verify exact release and extracted launcher",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 7,
+              "name": "Validate exact release package evidence",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 8,
+              "name": "Actual Edge to native PowerShell handler",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 9,
+              "name": "Validate native HTML bridge evidence",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 10,
+              "name": "Actual released CMD launch and native purpose save",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 11,
+              "name": "Validate extracted launcher evidence",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 12,
+              "name": "Source and Target native runtime journeys with small controlled fixtures",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 13,
+              "name": "Validate Source and Target runtime evidence",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 14,
+              "name": "Report native journey invocation outcomes",
+              "conclusion": "success"
+            },
+            {
+              "number": 15,
+              "name": "Retain sanitized fixture diagnostics",
+              "conclusion": "skipped"
+            },
+            {
+              "number": 29,
+              "name": "Post Run actions/setup-node@v4",
+              "conclusion": "success"
+            },
+            {
+              "number": 30,
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "number": 31,
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "interpretation": "The gaps scope run logged matrix={include:[]} and reason=documentation-only; its separate native job was skipped. Both release jobs logged basic/launcher/release/runtime/manager/probe=false with reason=documentation-only; the product acceptance steps were skipped. Workflow summaries may say the scope completed or the wrapper step succeeded, but no product journey ran in this docs-only push. This proves exclusion behavior, not product acceptance PASS.",
+  "releaseScopeExcerpts": [
+    {
+      "file": "native-release-pwsh-scope-excerpt.txt",
+      "jobId": 117878448277,
+      "sha256": "6066C17125712BF0ACE0B2CCDCFA2A530F4E0921F7A6B80397C63190402EB6DA"
+    },
+    {
+      "file": "native-release-powershell-scope-excerpt.txt",
+      "jobId": 117878448623,
+      "sha256": "C37D98F0346151642445B0349415B91CCDD9D7D7D3CAADAA844AD1B9C7C6F088"
+    }
+  ],
+  "primaryVerification": "Git parent docs-only paths, native acceptance skipped statuses independently checked against public jobs API; gaps original scope log independently fetched.",
+  "rawLogExcerpts": [
+    {
+      "name": "native-release-powershell-scope-excerpt.txt",
+      "sha256": "c37d98f0346151642445b0349415b91ccdd9d7d7d3caadaa844ad1b9c7c6f088",
+      "text": "2026-10-19T03:41:41.4878084Z \u001b[36;1mif ($selected.Count -eq 0) { 'Scope check completed: documentation-only change; no product acceptance cases were selected.' >> $env:GITHUB_STEP_SUMMARY }\u001b[0m\n2026-10-19T03:41:42.7119813Z Selected scope={\"basic\":false,\"launcher\":false,\"release\":false,\"runtime\":false,\"runtimeCase\":\"source-cancel\",\"manager\":false,\"probe\":false,\"engines\":[\"powershell\",\"pwsh\"],\"reason\":\"documentation-only\"}\n"
+    },
+    {
+      "name": "native-release-pwsh-scope-excerpt.txt",
+      "sha256": "6066c17125712bf0ace0b2ccdcfa2a530f4e0921f7a6b80397c63190402eb6da",
+      "text": "2026-10-19T03:41:38.9524681Z \u001b[36;1mif ($selected.Count -eq 0) { 'Scope check completed: documentation-only change; no product acceptance cases were selected.' >> $env:GITHUB_STEP_SUMMARY }\u001b[0m\n2026-10-19T03:41:40.2095843Z Selected scope={\"basic\":false,\"launcher\":false,\"release\":false,\"runtime\":false,\"runtimeCase\":\"source-cancel\",\"manager\":false,\"probe\":false,\"engines\":[\"powershell\",\"pwsh\"],\"reason\":\"documentation-only\"}\n"
+    },
+    {
+      "name": "scope-39195883221.log-excerpt.txt",
+      "sha256": "97fd79541f0b674292091f2e14d39c2a3ff4fd82890b8eae7cded7c4528a9e46",
+      "text": "2026-10-19T03:41:33.2721299Z Current runner version: '2.337.0'\n2026-10-19T03:41:33.8989664Z Complete job name: scope\n2026-10-19T03:41:39.6430601Z ##[group]Run $changed = @()\n2026-10-19T03:41:39.6451889Z \u001b[36;1mWrite-Output \"Selected native acceptance: $matrix ($($scope.reason))\"\u001b[0m\n2026-10-19T03:41:39.7110870Z   PREVIOUS_SHA: 9c9bdfafcf4ae7b1ac65c2387d374315d13013f3\n2026-10-19T03:41:39.7111301Z   EVENT_NAME: push\n2026-10-19T03:41:39.7111537Z   BASE_SHA: \n2026-10-19T03:41:39.7111753Z   HEAD_SHA: \n2026-10-19T03:41:39.7111976Z   REQUESTED_SUITE: \n2026-10-19T03:41:39.7112222Z   REQUESTED_ENGINE: \n2026-10-19T03:41:40.8930155Z Selected native acceptance: {\"include\":[]} (documentation-only)\n2026-10-19T03:41:43.3221957Z Evaluate and set job outputs\n2026-10-19T03:41:43.3230512Z Set output 'matrix'\n2026-10-19T03:41:43.3232136Z Set output 'reason'\n2026-10-19T03:41:43.3232507Z Set output 'count'\n"
+    }
+  ],
+  "limitation": "No native product journeys selected or passed by this docs-only run; this is scope exclusion evidence only."
+}

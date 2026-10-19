@@ -292,6 +292,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-B2-native-9c9bdfa.json",
           "sha256": "654C7783B9F9C2DCB6757C19CEE8D25C38140918C86DD02BE3EF300A2DC9FD7D"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B2-docs-only-1897568.json",
+          "sha256": "02E552B38A4C6974188CCA914755F4847BEB3B5B8288646ECC8F2BB2CFE88DC4"
         }
       ],
       "evidenceLog": {
@@ -440,20 +444,105 @@
           "D1：範圍候選與覆蓋缺口"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "in-progress",
+      "evidenceStatus": "implemented-unverified",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
-      "openIssues": [],
+      "consumers": [
+        {
+          "name": "src/SourceCandidateDiscovery.ps1",
+          "path": "src/SourceCandidateDiscovery.ps1"
+        },
+        {
+          "name": "tests/Test-SourceCandidateDiscovery.ps1",
+          "path": "tests/Test-SourceCandidateDiscovery.ps1"
+        },
+        {
+          "name": "src/OperationRequests.ps1",
+          "path": "src/OperationRequests.ps1"
+        },
+        {
+          "name": "src/HtmlConsole.ps1",
+          "path": "src/HtmlConsole.ps1"
+        },
+        {
+          "name": "src/WizardFlow.ps1",
+          "path": "src/WizardFlow.ps1"
+        },
+        {
+          "name": "src/WindowsServerMigration.psm1",
+          "path": "src/WindowsServerMigration.psm1"
+        },
+        {
+          "name": "src/WindowsServerMigration.psd1",
+          "path": "src/WindowsServerMigration.psd1"
+        },
+        {
+          "name": "src/ui/console.js",
+          "path": "src/ui/console.js"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+        "runtime": "Windows isolated immutable snapshot",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/SourceCandidateDiscovery.ps1",
+          "sha256": "86E4069D9A3B4FF142D5EFDEC5BCE18BDE322CE19C8E42173EB69B7E303316A5"
+        },
+        {
+          "path": "tests/Test-SourceCandidateDiscovery.ps1",
+          "sha256": "39065C09472312385F190C95940C9CE82ADA4103BCC34A1B128CE5F8E0AB687D"
+        },
+        {
+          "path": "src/OperationRequests.ps1",
+          "sha256": "EE9CE2A5C71075995A308EF9E42B31D53EEBD0E83944481F845833FCB49015D8"
+        },
+        {
+          "path": "src/HtmlConsole.ps1",
+          "sha256": "A8275868C625295587968BA5E51188B85A105DC9F04B10500C5BDD2234A42352"
+        },
+        {
+          "path": "src/WizardFlow.ps1",
+          "sha256": "FFF31C8B3DB1F87B1E954B21ED1CCE28D21FF60675E5B391F95C265B28CBCF5F"
+        },
+        {
+          "path": "src/WindowsServerMigration.psm1",
+          "sha256": "AD932D8C5EFEAEA3F166A376ACBBB3B45267429B5E4F36D9AC69231EF4E9086C"
+        },
+        {
+          "path": "src/WindowsServerMigration.psd1",
+          "sha256": "2927085984519F4533FE1B0C2E102FF730A4AE1017414DC21D6BE762E0C2D710"
+        },
+        {
+          "path": "src/ui/console.js",
+          "sha256": "4911F804C1EE775741B5DD355E6D9C7D2EB4418D61689D92C08B67522228708C"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D1.json",
+          "sha256": "2A3E900BE6B243C0EE165CE690FEDCD00B40AA3BC8F16BC48FF04A858472F693"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-D1.json",
+        "sha256": "2A3E900BE6B243C0EE165CE690FEDCD00B40AA3BC8F16BC48FF04A858472F693"
+      },
+      "casesExecuted": 96,
+      "result": "Bounded metadata discovery substage: 48 checks per engine; registered CLI, durable cancellation/job and HTML projection verified. Additional regression logs retained separately.",
+      "limitations": [
+        "Fixture root resolver; not live entire C drive or native browser acceptance.",
+        "50k cumulative cap is terminal; controlled segmented continuation remains unfinished.",
+        "Full D1 workload reference matrix and D2 candidate confirmation/sealing remain pending."
+      ],
+      "openIssues": [
+        "Complete controlled continuation beyond cumulative cap with bounded replay and forward progress.",
+        "Finish full planned dependency coverage matrix and integrated candidate review consumer."
+      ],
       "historicalEvidence": []
     },
     {
