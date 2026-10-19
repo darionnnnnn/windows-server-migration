@@ -308,6 +308,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-B2-diagnostics.json",
           "sha256": "31F34BD0E37B1FFB5E073BA38C09451159B353328EC398936101DD6417CD6AFE"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B2-native-d085097.json",
+          "sha256": "2792FA27032D510CD3F4A4663C47C03ABA46E891772BFB838FEF4B492412928D"
         }
       ],
       "evidenceLog": {
@@ -507,11 +511,11 @@
       "inputs": [
         {
           "path": "src/SourceCandidateDiscovery.ps1",
-          "sha256": "86E4069D9A3B4FF142D5EFDEC5BCE18BDE322CE19C8E42173EB69B7E303316A5"
+          "sha256": "9BC572097552C3174031D38C5804DA23D6D23AE5111D69B89E5F18212A357D64"
         },
         {
           "path": "tests/Test-SourceCandidateDiscovery.ps1",
-          "sha256": "39065C09472312385F190C95940C9CE82ADA4103BCC34A1B128CE5F8E0AB687D"
+          "sha256": "3FD069FC929EED93E24050BE1B6921648E03E9C5464BF9E048614E0F67728C45"
         },
         {
           "path": "src/OperationRequests.ps1",
@@ -519,7 +523,7 @@
         },
         {
           "path": "src/HtmlConsole.ps1",
-          "sha256": "A8275868C625295587968BA5E51188B85A105DC9F04B10500C5BDD2234A42352"
+          "sha256": "7D676E74F66683AF6E3360C2C63DA2B893A1D4081D52013214FB485995641219"
         },
         {
           "path": "src/WizardFlow.ps1",
@@ -535,7 +539,7 @@
         },
         {
           "path": "src/ui/console.js",
-          "sha256": "4911F804C1EE775741B5DD355E6D9C7D2EB4418D61689D92C08B67522228708C"
+          "sha256": "B5B0C6AD9FA94922B736DBC23308B6086996063BBEF7FF189C393E607395C8A0"
         }
       ],
       "evidence": [
@@ -546,6 +550,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-D1-native-2770450.json",
           "sha256": "731207C92BA35F5F4D389C2EC71530FF15FD77695D1C523EBAB19E1523B20D7F"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D1-continuation.json",
+          "sha256": "33F39E6B576B8AC547B0F09049AFF57D9CE0638E426D851B2BD728CFAF3EDB49"
         }
       ],
       "evidenceLog": {
@@ -553,15 +561,21 @@
         "sha256": "2A3E900BE6B243C0EE165CE690FEDCD00B40AA3BC8F16BC48FF04A858472F693"
       },
       "casesExecuted": 96,
-      "result": "Bounded metadata discovery substage: 48 checks per engine; registered CLI, durable cancellation/job and HTML projection verified. Additional regression logs retained separately.",
+      "result": "PASS: 66 per engine plus 92 HTML parser/writer/typed-action checks; JS syntax and scoped diff checks passed. D1 remains incomplete.",
       "limitations": [
         "Fixture root resolver; not live entire C drive or native browser acceptance.",
         "50k cumulative cap is terminal; controlled segmented continuation remains unfinished.",
-        "Full D1 workload reference matrix and D2 candidate confirmation/sealing remain pending."
+        "Full D1 workload reference matrix and D2 candidate confirmation/sealing remain pending.",
+        "Partial D1 only: candidate confirmation into approval and full dependency matrix remain incomplete.",
+        "Metadata-only bounded C discovery, not full-volume coverage or content approval.",
+        "Cooperative time checks cannot bound a single blocked filesystem call; replay exhaustion is a visible terminal gap.",
+        "Public CLI and HTML projection tests use controlled inventory/host fixtures; no new live browser end-to-end claim.",
+        "Production policy: 5000 entries per segment, eight segments, 40000 aggregate, 4 MiB path metadata; workload detail 10000 links/2 MiB. Remaining paths require explicit review.",
+        "HTML regression used the prior immutable snapshot with identical HtmlConsole/console.js bytes; final source continuation suite re-ran after the aggregate boundary correction.",
+        "External Server/IIS/SMB/PKI/business qualification remains NotTested; production gates remain false."
       ],
       "openIssues": [
-        "Complete controlled continuation beyond cumulative cap with bounded replay and forward progress.",
-        "Finish full planned dependency coverage matrix and integrated candidate review consumer."
+        "Full dependency/opaque-path matrix and candidate confirmation to fresh-hash sealed plan remain incomplete; bounded continuation does not prove full C coverage."
       ],
       "historicalEvidence": []
     },
@@ -688,6 +702,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-D2.json",
           "sha256": "DA6B33BF32909F8EA8749A69993546EC84B1CEAF159953C212BEB4B1C223EDB6"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B2-native-d085097.json",
+          "sha256": "2792FA27032D510CD3F4A4663C47C03ABA46E891772BFB838FEF4B492412928D"
         }
       ],
       "evidenceLog": {

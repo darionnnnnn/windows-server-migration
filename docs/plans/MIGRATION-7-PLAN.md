@@ -532,3 +532,19 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 測試過程重現另一個間歇性 ECONNRESET：測試 listener 的 accepted socket 未處理探測客戶端主動斷線。已加測試專屬錯誤收集與 deterministic resetAndDestroy 案例，只允許此預期 reset；其他 socket 錯誤及仍存活 listener 繼續失敗，不放寬 launcher 停止判準。
 - 主代理另發現 Test-NativeEvidence 固定宣稱 pwsh，使指定 WinPS5.1 時實際版本與期望不符；改為跟隨選定引擎，保留 wrong-engine 反例。固定快照雙引擎各通過 23 evidence、9 cleanup 與 15 diagnostics，共 94 項；JS syntax 與 diff 檢查通過。證據見 MIGRATION-7-B2-diagnostics.json。
 - 本段僅測試基礎設施；未變更產品秘密處理或一般錯誤紀錄，不能代替 F4 秘密零落盤驗收，也未聲稱已重現最初兩個 CI 失敗。B2 原因未結狀態保留。
+
+### 17.10 後續切片的實作契約與邊界（進行中）
+
+- D3a 採既有 producer／reader 升級：plan 外層 schema 3、Assistive ContractVersion 2、SourcePolicy=ApprovedLocalVolumes；package schema 2 必帶 OfflineFullSet 契約及完整控制材料索引。CV1 不自動升級。批准的來源根／項目綁可信來源盤點的 volume DeviceID，來源擷取再驗實際 volume；新機 volume 身分可不同，CV2 SourcePath／TargetPath 必須為相同原邏輯位置。交付內必帶可驗來源盤點／軟體與必要控制 bytes，不依賴來源絕對工作路徑。
+- D3a 第一切片以完整 writer→transport→reader 與不支援入口拒絕為範圍；CV2 restore 在 E3 接線前明確拒絕，不用舊直傳結果充當離線證據。Delta／外部 base 及尚未支援的新格式 consumer 拒絕部分成功。來源套裝根排除及覆蓋狀態須隨可信材料保存，Partial／Unavailable 不宣稱排除完整。
+- F4a 第一切片先驗 Service/UserPassword：相同耐久 TargetRestore 父作業、共享 HTML／CLI challenge 契約、獨立驗證的秘密控制入口與易失記憶體交付。WaitingForInput 不填父作業 CompletedUtc；GET 不接手，取消撤銷、重啟明確接手並重問，native 不明結果先對帳。內建／gMSA 不問密碼，帳號身分仍由已核准 spec 決定。
+- 等待時釋放執行 guard，但保留綁 target service／parent operation 的資源 reservation；共用 adapter、legacy restore／recovery、cutover 與安裝副作用的 Service 寫入者都須尊重，不能只在 HTML 阻擋。此切片不代表排程／IIS 的帳密旅程已完成；後續仍逐一接線及以完整離線旅程驗收。
+- 以上是實作契約，不是完成證據。d085097 的 release 39200401497／Manager-Probe 39200401459 原始 artifacts 已由主代理核對六個 digest、十份 suite record（20 原生旅程＋1 smoke），保存於 MIGRATION-7-B2-native-d085097.json；只能證明截至該提交的既有旅程，不能代替上述未完成能力。
+
+### 17.11 D1 分段續查與中斷保存補強（仍為部分完成）
+
+- 同一 ScanId 可明確接續已用盡預算的分段；每段產生不可覆寫的雜湊鏈材料，綁定來源、盤點、實體根、政策及待掃描位置。分段檔已寫入但 checkpoint 尚未保存時，重啟核對原始內容後採用該檔，不覆寫或重設既有結果。
+- 正式政策改為每段 5,000 筆、最多八段／累計 40,000 筆，累計路徑中繼資料 4 MiB；工作負載關聯明細最多 10,000 筆／2 MiB，超限保留缺口及截斷計數。JSON／HTML 另檢查 96 MiB 輸出預算。這些都是有限探索邊界，剩餘路徑仍須另行補查，不宣稱全 C 槽覆蓋。
+- 續作重播已看過的目錄前綴也計入合作式時間預算；無法取得新進度時保存明確的終止缺口，避免反覆續作。單次作業系統 I/O 仍可能超過合作式檢查時間。舊 v1 checkpoint 僅在原始 50,000 筆政策雜湊與來源綁定皆吻合時遷移，保留既有計數；已超過新上限者明確拒絕，不靜默清除。
+- 主代理獨立固定快照雙引擎各 66 項通過，涵蓋正式公開命令遷移舊 checkpoint、分段集合／缺口保存、孤立分段恢復、累計上限不能假續作、取消、重播及竄改拒絕。相同 HTML／JS bytes 的 92 項 parser／writer／typed action 回歸與 JS syntax 通過，共保存 224 項檢查及輸入雜湊於 MIGRATION-7-D1-continuation.json；未將投影測試當成新瀏覽器旅程。
+- D1／D2 仍未完成：完整未解析相依矩陣、候選確認、新鮮內容 hash、Manager 意圖與核准集合仍待串接。F4 共用 HTML 檔只加入三個安全續作投影欄位；未完成的離線備份／帳密修改不納入本段提交。
