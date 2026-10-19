@@ -567,3 +567,9 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - HTTP probe 以有限的例外深度／節點預算區分拒絕、重置、中止、逾時、session HTTP 與完整性失敗；未知保持未知。JSON／HTML／正式 job 安全投影共用 FailureCode、Stage、NextAction；不保存原始 URL、例外訊息、回應 body 或非預期標頭值。
 - 主代理確認不可變快照 357 份檔案及雙引擎各 44 項檢查，含真實關閉 loopback 連接埠、其餘受控反例與秘密哨兵。F2 瀏覽器操作體驗及七項外部材料仍未完成，不代表原生傳輸合格。
 - 原始 CI ZIP digest 與診斷 bytes 已由主代理核驗；MIGRATION-7-B2-native-f510-failure.json 保留 3/4 completed journeys 與缺失 TargetRestore，沒有把上次綠燈當本次修復。尚缺原始 journal/state 的具體失敗 predicate，持續追查。
+
+### 17.15 B2 journal 失敗定位補強（非根因修復）
+
+- 保留原本 Sequence、PreviousHash、PairId、RunId 四項拒絕條件，只在例外附帶失敗條件、序號與一致性布林值。CI 測試收集器及清理器只接受固定欄位，不輸出原始 hash、識別值或 state／journal。
+- 主代理核驗 362 份快照檔案及五檔改動範圍；兩個 PowerShell 引擎各執行 6 項 journal 檢查及 18 項原生診斷測試，共 48 項通過。包含實際 runspace 例外傳遞及秘密哨兵。
+- 這段只補上追查證據；f510 的 journal 失敗及原先兩項 CI 問題仍未結案，不能以此視為原生還原或整輪通過。

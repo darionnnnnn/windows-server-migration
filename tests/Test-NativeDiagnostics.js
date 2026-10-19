@@ -75,7 +75,10 @@ async function runTests() {
     const rawRecords = fs.readFileSync(result.CapturedPath, 'utf8').trim().split(/\r?\n/).map(line => JSON.parse(line));
     check(rawRecords.length === 1 && rawRecords[0].FixtureScope === 'ControlledWizardRuntime', 'worker diagnostic must remain fixture scoped');
     check(rawRecords[0].ExceptionType && rawRecords[0].FullyQualifiedErrorId, 'worker exception type and PowerShell failure identity must survive safe mapping');
-    check(!hasCanary(cleanRuntimeDiagnostic(rawRecords[0])), 'sanitized diagnostic must redact token and body values');
+    const cleaned = cleanRuntimeDiagnostic(rawRecords[0]);
+    check(cleaned.JournalMismatch?.Predicate === 'PreviousHash' && cleaned.JournalMismatch.ExpectedSequence === 7 && cleaned.JournalMismatch.ObservedSequence === 8 && cleaned.JournalMismatch.SamePair === true && cleaned.JournalMismatch.SameRun === false && cleaned.JournalMismatch.PreviousHashMatches === false,
+      'bounded journal verifier scalars must survive the fixture collector and sanitizer');
+    check(!hasCanary(cleaned), 'sanitized diagnostic must redact token, body and raw hash canaries');
     const evidenceFile = path.join(temp, 'native-evidence', 'native-runtime-diagnostics.json');
     writeRuntimeDiagnostics(evidenceFile, { mode: 'target', engine: selectedEngine, transport: 'native-http-edge', sourceCommit: 'b'.repeat(40), runId: '456-1' }, rawRecords);
     fs.rmSync(roleRoot, { recursive: true, force: true });
@@ -83,6 +86,10 @@ async function runTests() {
     const saved = JSON.parse(fs.readFileSync(evidenceFile, 'utf8'));
     check(saved.records.length === 1 && saved.records[0].DiagnosticId === rawRecords[0].DiagnosticId && !hasCanary(saved),
       'uploaded runtime diagnostic must retain the captured failure identity without fixture secrets');
+    check(saved.records[0].JournalMismatch?.Predicate === 'PreviousHash' && !('WsmJournalRawHash' in saved.records[0].JournalMismatch),
+      'uploaded diagnostics retain only the allowlisted mismatch scalars and omit raw hashes');
+    const rejectedMismatch = cleanRuntimeDiagnostic({ ...rawRecords[0], JournalMismatch: { Predicate: 'Unknown', ExpectedSequence: 1, ObservedSequence: 1, SamePair: true, SameRun: true, PreviousHashMatches: true } });
+    check(!('JournalMismatch' in rejectedMismatch), 'unknown journal predicates are omitted from sanitized diagnostics');
     let unsafeRejected = false;
     try { writeRuntimeDiagnostics(path.join(temp, 'unsafe.json'), {}, [{ SchemaVersion: 1, Role: 'Source', FixtureScope: 'Host' }]); }
     catch { unsafeRejected = true; }

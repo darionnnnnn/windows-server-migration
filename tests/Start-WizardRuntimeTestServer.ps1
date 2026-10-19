@@ -68,8 +68,19 @@ finally{
         # never record request bodies, workspace files, or arbitrary host logs.
         if($script:FixtureRole -ceq 'Target' -and $script:FixtureCaptureRoot){
             $errorRecord=if($_ -is [Management.Automation.ErrorRecord]){$_}else{$null}
-            $innerDetails=@();$inner=if($errorRecord){$errorRecord.Exception}else{$null}
-            for($depth=0;$inner -and $depth -lt 8;$depth++){$innerDetails+=,[pscustomobject]@{Type=$inner.GetType().FullName;Message=([string]$inner.Message).Substring(0,[Math]::Min(2000,([string]$inner.Message).Length))};$inner=$inner.InnerException}
+            $innerDetails=@();$journalMismatch=$null;$inner=if($errorRecord){$errorRecord.Exception}else{$null}
+            for($depth=0;$inner -and $depth -lt 8;$depth++){
+                $innerDetails+=,[pscustomobject]@{Type=$inner.GetType().FullName;Message=([string]$inner.Message).Substring(0,[Math]::Min(2000,([string]$inner.Message).Length))}
+                if(-not $journalMismatch -and $inner.Data -and $inner.Data.Contains('WsmJournalMismatchPredicate')){
+                    $predicate=[string]$inner.Data['WsmJournalMismatchPredicate']
+                    $expected=$inner.Data['WsmJournalExpectedSequence'];$observed=$inner.Data['WsmJournalObservedSequence']
+                    $samePair=$inner.Data['WsmJournalSamePair'];$sameRun=$inner.Data['WsmJournalSameRun'];$previousHashMatches=$inner.Data['WsmJournalPreviousHashMatches']
+                    if($predicate -in @('Sequence','PreviousHash','PairId','RunId') -and $expected -is [ValueType] -and $observed -is [ValueType] -and $samePair -is [bool] -and $sameRun -is [bool] -and $previousHashMatches -is [bool]){
+                        $journalMismatch=[pscustomobject]@{Predicate=$predicate;ExpectedSequence=[long]$expected;ObservedSequence=[long]$observed;SamePair=$samePair;SameRun=$sameRun;PreviousHashMatches=$previousHashMatches}
+                    }
+                }
+                $inner=$inner.InnerException
+            }
             $entry=[ordered]@{
                 SchemaVersion=1;DiagnosticId=[Guid]::NewGuid().ToString('D');Role='Target';FixtureScope='ControlledWizardRuntime'
                 EngineVersion=$PSVersionTable.PSVersion.ToString();Transport=if($env:WSM_RUNTIME_NATIVE_TRANSPORT -eq '1'){'native-http-edge'}else{'formal-capture-bridge'}
@@ -83,6 +94,7 @@ finally{
                 PositionMessage=if($errorRecord){([string]$errorRecord.InvocationInfo.PositionMessage).Substring(0,[Math]::Min(2000,([string]$errorRecord.InvocationInfo.PositionMessage).Length))}else{''}
                 CallStack=@(Get-PSCallStack|Select-Object -First 12|ForEach-Object {[string]$_.FunctionName})
             }
+            if($journalMismatch){$entry.JournalMismatch=$journalMismatch}
             $diagnosticPath=Join-Path ([IO.Path]::GetDirectoryName($script:FixtureCaptureRoot)) 'safe-error-diagnostics.jsonl'
             [IO.File]::AppendAllText($diagnosticPath,(($entry|ConvertTo-Json -Compress -Depth 5)+[Environment]::NewLine),(New-Object Text.UTF8Encoding($false)))
         }
@@ -97,7 +109,7 @@ finally{
         $worker=[Management.Automation.PowerShell]::Create()
         try{
             $runspace=[Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace();$runspace.Open();$worker.Runspace=$runspace
-            [void]$worker.AddScript("throw [InvalidOperationException]::new('controlled diagnostic failure token=TOKENCANARY body=BODYCANARY')")
+            [void]$worker.AddScript("`$journal=[IO.InvalidDataException]::new('journal detail');`$journal.Data['WsmJournalMismatchPredicate']='PreviousHash';`$journal.Data['WsmJournalExpectedSequence']=[long]7;`$journal.Data['WsmJournalObservedSequence']=[long]8;`$journal.Data['WsmJournalSamePair']=`$true;`$journal.Data['WsmJournalSameRun']=`$false;`$journal.Data['WsmJournalPreviousHashMatches']=`$false;`$e=[InvalidOperationException]::new('controlled diagnostic failure token=TOKENCANARY body=BODYCANARY',`$journal);`$e.Data['WsmJournalRawHash']='HASHCANARY';throw `$e")
             $async=$worker.BeginInvoke()
             try{$null=$worker.EndInvoke($async);throw 'Diagnostic worker unexpectedly returned successfully.'}
             catch{

@@ -2,7 +2,28 @@
     param([string]$StateDirectory,[string]$PairId)
     $paths=Get-WsmOperationPaths $StateDirectory $PairId;$state=Read-WsmJson $paths.State;$hash='0'*64;$sequence=0
     $matched=($state.Sequence -eq 0 -and $state.JournalHash -ceq $hash)
-    Read-WsmJournalEvents $paths | ForEach-Object {$row=$_.Row;if($row.Sequence -ne $sequence+1 -or $row.PreviousHash -cne $hash -or $row.PairId -cne $PairId -or $row.RunId -cne $state.RunId){throw 'Journal chain/sequence/identity mismatch; retain evidence.'};$sequence=$row.Sequence;$hash=$_.Hash;if($sequence -eq $state.Sequence){if($hash -cne $state.JournalHash){throw 'Checkpoint does not match its durable journal prefix.'};$matched=$true}}
+    Read-WsmJournalEvents $paths | ForEach-Object {
+        $row=$_.Row;$expectedSequence=[long]($sequence+1);$observedSequence=[long]0
+        try{$observedSequence=[long]$row.Sequence}catch{}
+        $samePair=($row.PairId -ceq $PairId);$sameRun=($row.RunId -ceq $state.RunId);$previousHashMatches=($row.PreviousHash -ceq $hash)
+        $predicate=''
+        if($row.Sequence -ne $expectedSequence){$predicate='Sequence'}
+        elseif(-not $previousHashMatches){$predicate='PreviousHash'}
+        elseif(-not $samePair){$predicate='PairId'}
+        elseif(-not $sameRun){$predicate='RunId'}
+        if($predicate){
+            $mismatch=[System.IO.InvalidDataException]::new('Journal chain/sequence/identity mismatch; retain evidence.')
+            $mismatch.Data['WsmJournalMismatchPredicate']=$predicate
+            $mismatch.Data['WsmJournalExpectedSequence']=$expectedSequence
+            $mismatch.Data['WsmJournalObservedSequence']=$observedSequence
+            $mismatch.Data['WsmJournalSamePair']=[bool]$samePair
+            $mismatch.Data['WsmJournalSameRun']=[bool]$sameRun
+            $mismatch.Data['WsmJournalPreviousHashMatches']=[bool]$previousHashMatches
+            throw $mismatch
+        }
+        $sequence=$row.Sequence;$hash=$_.Hash
+        if($sequence -eq $state.Sequence){if($hash -cne $state.JournalHash){throw 'Checkpoint does not match its durable journal prefix.'};$matched=$true}
+    }
     if(-not $matched){throw 'Checkpoint is absent from durable journal.'}
     [pscustomobject]@{JournalSequence=$sequence;JournalHash=$hash;StateSequence=$state.Sequence;StateHash=$state.JournalHash;Consistent=($sequence -eq $state.Sequence -and $hash -ceq $state.JournalHash);RecoveryRequired=($sequence -gt $state.Sequence);TamperResistance='Local administrator can rewrite journal and state; chain detects accidental corruption only'}
 }

@@ -106,7 +106,7 @@ function cleanRuntimeDiagnostic(row) {
   const inner = Array.isArray(row.InnerExceptions) ? row.InnerExceptions.slice(0, 8).map(item => ({
     Type: short(item?.Type, 256), Message: redact(item?.Message)
   })) : [];
-  return {
+  const result = {
     SchemaVersion: 1,
     DiagnosticId: /^[a-f0-9-]{36}$/i.test(row.DiagnosticId || '') ? row.DiagnosticId : '',
     Role: 'Target', FixtureScope: 'ControlledWizardRuntime',
@@ -119,6 +119,23 @@ function cleanRuntimeDiagnostic(row) {
     ScriptStackTrace: redact(row.ScriptStackTrace), PositionMessage: redact(row.PositionMessage),
     CallStack: (Array.isArray(row.CallStack) ? row.CallStack : []).slice(0, 12).map(name => short(name, 128))
   };
+  const mismatch = row.JournalMismatch;
+  if (mismatch && typeof mismatch === 'object' &&
+      ['Sequence', 'PreviousHash', 'PairId', 'RunId'].includes(mismatch.Predicate) &&
+      Number.isSafeInteger(mismatch.ExpectedSequence) && mismatch.ExpectedSequence >= 0 &&
+      Number.isSafeInteger(mismatch.ObservedSequence) && mismatch.ObservedSequence >= 0 &&
+      typeof mismatch.SamePair === 'boolean' && typeof mismatch.SameRun === 'boolean' &&
+      typeof mismatch.PreviousHashMatches === 'boolean') {
+    result.JournalMismatch = {
+      Predicate: mismatch.Predicate,
+      ExpectedSequence: mismatch.ExpectedSequence,
+      ObservedSequence: mismatch.ObservedSequence,
+      SamePair: mismatch.SamePair,
+      SameRun: mismatch.SameRun,
+      PreviousHashMatches: mismatch.PreviousHashMatches
+    };
+  }
+  return result;
 }
 
 function atomicWrite(file, value) {

@@ -320,6 +320,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-B2-native-f510-failure.json",
           "sha256": "511446703DD9B8DED7EF9D92E871CA14CBF12342D6B52BC6D6FFA3F401B3DDB4"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B2-journal-diagnostics.json",
+          "sha256": "B9C996EE43A5C2B0EED9657418C3A271A281CA0BCD80B9DAB79A2D65F892CF2A"
         }
       ],
       "evidenceLog": {

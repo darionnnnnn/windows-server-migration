@@ -1,0 +1,37 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "B2",
+  "runtimeBase": "354ca5cd2a4c74ee7606f743271607e1a2c59bdb",
+  "snapshot": "journal-diagnostic-15805ff2d4d44e69830419e1ab1319e7",
+  "verifiedUtc": "2026-10-19T06:07:01.223562+00:00",
+  "inputs": [
+    {
+      "path": "src/Recovery.ps1",
+      "sha256": "7D04A50C09C074FBF39B31B15B4EDD3C55F5EBFAF2302612D290602F474152F0"
+    },
+    {
+      "path": "tests/Start-WizardRuntimeTestServer.ps1",
+      "sha256": "351B0E798B0186329E0D026B3FA9ACC4EFAF9954D4915DFB496148B00F8837E7"
+    },
+    {
+      "path": "tests/native-diagnostics.js",
+      "sha256": "3A70AEAD13BB8198B5E52767B699E833D39D0E48B5675F10BFDA0AC0E3FA3A69"
+    },
+    {
+      "path": "tests/Test-NativeDiagnostics.js",
+      "sha256": "0FD870C0608254FE3B69DC741F13E8D2668FB05229D789096C209FBD3CDC875D"
+    },
+    {
+      "path": "tests/Test-JournalDiagnostics.ps1",
+      "sha256": "C4BAAF28032A09FEF2084E78CAE2ABF1BD7172B07B364D1904F6E2640C99D656"
+    }
+  ],
+  "verification": "Primary verified all 362 snapshot hashes and reviewed exact five-file scope. Independently executed 6 journal assertions on each PS5.1.26100.9711 and PS7.6.5; 18 native diagnostic assertions with each engine (48 total).",
+  "casesExecuted": 48,
+  "result": "All passed: four original refusal predicates, consistent and checkpoint-ahead behavior, actual runspace exception capture, bounded scalar sanitizer, raw-hash/token/body canaries.",
+  "limitations": [
+    "Diagnostic-only change: original journal consistency gate unchanged.",
+    "f510 CI failure predicate/root cause remains unresolved until a retained failure supplies new evidence.",
+    "Controlled fixture is not native restore acceptance or whole-round completion."
+  ]
+}
