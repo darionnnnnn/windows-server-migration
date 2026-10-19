@@ -7,7 +7,7 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { cleanProbeDiagnostic, cleanRuntimeDiagnostic, writeProbeDiagnostics, writeRuntimeDiagnostics } = require('./native-diagnostics');
+const { cleanProbeDiagnostic, cleanProbeTerminalJob, cleanRuntimeDiagnostic, writeProbeDiagnostics, writeRuntimeDiagnostics } = require('./native-diagnostics');
 
 let checks = 0;
 function check(condition, message) { assert.ok(condition, message); checks++; }
@@ -55,6 +55,36 @@ async function runTests() {
     check(!hasCanary(probeSaved), 'Probe diagnostic sidecar must not retain token/body canaries');
     check(probeSaved.lifecycle.length === 2 && probeSaved.servers[0].pid === process.pid, 'Probe diagnostics must retain bounded route and lifecycle context');
     check(cleanProbeDiagnostic({ requests: [{ route: `https://outside.invalid/api/jobs/12345678-1234-1234-1234-123456789012?token=TOKENCANARY` }] }).requests[0].route === '/api/jobs/<id>', 'diagnostics must discard origins and query values');
+    const failedTerminal = cleanProbeTerminalJob({
+      status: 'Failed', stage: 'Failed', message: 'TOKENCANARY BODYCANARY C:\\private\\inventory.json',
+      error: { code: 'operation_failed', correlationId: '89abcdef-0123-4567-89ab-cdef01234567', message: 'TOKENCANARY BODYCANARY', nextStep: 'C:\\private\\inventory.json' },
+      outputs: [{ Status: 'Failed', Path: 'C:\\private\\inventory.json', CollectorResults: [
+        { Id: 'HttpProbe', Status: 'Failed', ReasonCode: 'CollectorFailed', Error: 'TOKENCANARY' },
+        { Id: 'NativeInventory', Status: 'PermissionDenied', ReasonCode: 'TOKENCANARY', Inventory: 'BODYCANARY' },
+        { Id: 'UnsafeCANARY', Status: 'Failed', ReasonCode: 'TOKENCANARY' }
+      ] }]
+    }, 'Manager');
+    check(failedTerminal.role === 'Manager' && failedTerminal.status === 'Failed' && failedTerminal.outputs[0].status === 'Failed' && failedTerminal.failureCode === 'operation_failed' && failedTerminal.correlationId === '89abcdef-0123-4567-89ab-cdef01234567',
+      'terminal job projection must retain role, fixed failure category, correlation id and output state');
+    check(failedTerminal.outputs[0].collectors.length === 2 && failedTerminal.outputs[0].collectors[0].reasonCode === 'CollectorFailed',
+      'terminal job projection must retain only known collector identities, statuses and reason codes');
+    check(!('reasonCode' in failedTerminal.outputs[0].collectors[1]), 'unknown collector reason codes must be discarded');
+    check(!hasCanary(failedTerminal) && !('message' in failedTerminal) && !('path' in failedTerminal.outputs[0]),
+      'terminal job projection must omit exception text, paths, inventory and unknown fields');
+    const failedWithoutOutput = cleanProbeTerminalJob({ status: 'Failed', error: { code: 'permission_denied', correlationId: 'fedcba98-7654-3210-fedc-ba9876543210', message: 'TOKENCANARY' }, outputs: [] }, 'Manager');
+    check(failedWithoutOutput.status === 'Failed' && failedWithoutOutput.failureCode === 'permission_denied' && failedWithoutOutput.outputs.length === 0,
+      'a failed job with no outputs must retain only its known safe error category and correlation id');
+    const invalidFailure = cleanProbeTerminalJob({ status: 'Failed', error: { code: 'TOKENCANARY', correlationId: 'not-a-guid', message: 'BODYCANARY' } }, 'Manager');
+    check(!('failureCode' in invalidFailure) && !('correlationId' in invalidFailure) && !hasCanary(invalidFailure),
+      'unrecognized failure codes and malformed correlation ids must be dropped');
+    check(!('failureCode' in cleanProbeDiagnostic({ terminalJobs: [{ role: 'Manager', status: 'Failed', failureCode: 'TOKENCANARY', correlationId: 'BODYCANARY' }] }).terminalJobs[0]),
+      'diagnostic file sanitizer must independently reject untrusted failure codes and correlation ids');
+    const terminalFile = path.join(temp, 'terminal-jobs.json');
+    writeProbeDiagnostics(terminalFile, { engine: 'powershell', terminalJobs: [failedTerminal] });
+    const terminalSaved = JSON.parse(fs.readFileSync(terminalFile, 'utf8'));
+    check(terminalSaved.terminalJobs.length === 1 && terminalSaved.terminalJobs[0].status === 'Failed' && terminalSaved.terminalJobs[0].role === 'Manager' && terminalSaved.terminalJobs[0].failureCode === 'operation_failed' && terminalSaved.terminalJobs[0].correlationId === '89abcdef-0123-4567-89ab-cdef01234567',
+      'actual sanitized terminal projection must retain the safe error class through the native job diagnostic writer');
+    check(!hasCanary(terminalSaved), 'saved terminal diagnostics must remove exception, path and body canaries');
 
     const roleRoot = path.join(temp, 'target-role'); fs.mkdirSync(roleRoot);
     const responseCapture = path.join(roleRoot, 'captures'); fs.mkdirSync(responseCapture);

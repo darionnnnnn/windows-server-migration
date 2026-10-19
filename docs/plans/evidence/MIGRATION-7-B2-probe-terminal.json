@@ -1,0 +1,72 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "B2",
+  "verifiedUtc": "2026-10-19T06:30:52.854578+00:00",
+  "runtimeBase": "8bc373e21af326dd086f08ce4ef5fa80549d3625",
+  "snapshot": "probe-terminal-diagnostics-final-21a6f915f8e547a6b7e8cccc7332f1bc",
+  "inputs": [
+    {
+      "path": "tests/native-diagnostics.js",
+      "sha256": "C9F19CD7227AC4FCDE00FA859D7C6626B6DB17C1EED7392EDFE7E8A427631750"
+    },
+    {
+      "path": "tests/Test-NativeDiagnostics.js",
+      "sha256": "14496C8E9593B10E515BDEF44C79CABB569F158A89F6A27D3939FBA286DA1618"
+    },
+    {
+      "path": "tests/Test-NativeProbeRoles.js",
+      "sha256": "53AE9C890910CE43D7960B01C37CEC0046CBFD551E19D819F17903C8DBE4D46A"
+    }
+  ],
+  "verification": "Primary checked all 363 frozen snapshot hashes, reviewed actual poll-result capture consumer and allowlisted sanitizer, executed NativeDiagnostics 27 checks with each of PS5.1 and PS7.",
+  "casesExecuted": 54,
+  "observedFailure": {
+    "commit": "354ca5cd2a4c74ee7606f743271607e1a2c59bdb",
+    "runId": 39207067746,
+    "jobId": 117912179237,
+    "artifactId": 12165679566,
+    "artifactSHA256": "823010A6FA8CB5DB62094C41F1DDEA9905B94572C536D3344F5EEDB1C529EF20",
+    "actualNativeEvidence": {
+      "schemaVersion": 1,
+      "status": "Failed",
+      "suite": "native-probe",
+      "engine": "powershell",
+      "engineVersion": "5.1.26100.33438",
+      "transport": "native-http-edge",
+      "mode": "full",
+      "sourceCommit": "354ca5cd2a4c74ee7606f743271607e1a2c59bdb",
+      "runId": "39207067746-1",
+      "measure": "completed-journeys",
+      "expectedJourneyCount": 3,
+      "completedJourneyCount": 2,
+      "completedJourneys": [
+        {
+          "name": "Source-DeveloperProbe-artifact-readback",
+          "role": "Source",
+          "terminal": "Cancelled"
+        },
+        {
+          "name": "Target-DeveloperProbe-artifact-readback",
+          "role": "Target",
+          "terminal": "ReviewRequired"
+        }
+      ],
+      "fixtureLimits": {
+        "productionQualification": false,
+        "liveWorkloads": false,
+        "controlledHostFixtures": true,
+        "realEdge": true,
+        "loopbackHandler": true
+      },
+      "startedUtc": "2026-10-19T05:56:23.985Z",
+      "failure": "AssertionError [ERR_ASSERTION]: Probe job did not finish truthfully: Failed\n    at assertProbeArtifacts (D:\\a\\windows-server-migration\\windows-server-migration\\tests\\Test-NativeProbeRoles.js:348:10)\n    at D:\\a\\windows-server-migration\\windows-server-migration\\tests\\Test-NativeProbeRoles.js:475:7",
+      "finishedUtc": "2026-10-19T05:57:19.614Z"
+    }
+  },
+  "result": "Capture each role terminal result before journey assertions, retaining fixed code/UUID and bounded collector states while removing message/body/path/secrets; failed journey remains failed.",
+  "limitations": [
+    "Actual local browser navigation timed out before poll capture; no local native integration acceptance.",
+    "New capture consumer integration awaits CI. Diagnostic-only instrumentation is not a root cause fix.",
+    "354ca5c Manager probe failure and earlier 6eac/f510 failures remain unresolved."
+  ]
+}

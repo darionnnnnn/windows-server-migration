@@ -324,6 +324,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-B2-journal-diagnostics.json",
           "sha256": "B9C996EE43A5C2B0EED9657418C3A271A281CA0BCD80B9DAB79A2D65F892CF2A"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B2-probe-terminal.json",
+          "sha256": "F31919431914BF21147EA40B71625F755A370D6654C3B8B00827520800FB6C1A"
         }
       ],
       "evidenceLog": {
@@ -338,7 +342,8 @@
       ],
       "openIssues": [
         "Prior 6eac316 WinPS51 TargetRestore and Probe fetch causes remain unresolved; later green runs do not prove repair.",
-        "f510 native PS5.1 TargetRestore run39205239611 failed journal chain/sequence/identity validation; exact predicate/root cause unresolved. Original two 6eac failures remain separately unresolved."
+        "f510 native PS5.1 TargetRestore run39205239611 failed journal chain/sequence/identity validation; exact predicate/root cause unresolved. Original two 6eac failures remain separately unresolved.",
+        "354ca5c native PS5.1 Manager DeveloperProbe terminal Failed in run39207067746; 2/3 journeys completed. Root cause and new diagnostic capture native integration await CI."
       ],
       "historicalEvidence": []
     },

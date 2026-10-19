@@ -580,3 +580,9 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 修正合法 FileScope 未提供選填 DesiredFinalState 時，審閱畫面讀取不存在欄位的錯誤。沒有替檔案規格捏造啟用狀態。
 - 主代理在固定 364 檔快照於雙引擎各驗 13 項，實際保存／重開 2,001 個成員，核對最後成員及整個集合 hash；涵蓋偽造摘要、擴大範圍、舊表單與 LocalGroup 編輯隔離。這不是完整候選確認／來源新鮮 hash／Manager 意圖鏈，也不宣稱瀏覽器或整輪驗收。
 - 同一快照另於 PS5.1 通過既有精靈表單 29 項、Assistive 審閱 44 項，共 99 個已計數檢查；既有群組、設定與審閱契約保持有效。
+
+### 17.17 B2 Manager 探測失敗證據與測試診斷
+
+- 主代理核對 354ca5c／run39207067746 的原始 artifact SHA256 及 ZIP 內原始證據：PS5.1 探測只完成 Source／Target 兩個流程，Manager terminal Failed；原紀錄未保留 underlying job error，不能從同提交 release 綠燈宣稱修復。
+- 真正 polling 回應在 journey assertion 前保存角色／狀態、固定安全錯誤碼及 correlation UUID、有限 collector 狀態。沒有保存 error message、輸入、路徑、原始 inventory 或秘密；Failed 仍是 Failed。
+- 主代理核驗固定 363 檔快照及雙引擎各 27 項診斷檢查。完整本機 Edge 流程在進入 polling 前 navigation timeout，保留 NotPassed 限制；新 consumer 需 CI 實際驗收，既有各失敗根因尚未結案。

@@ -14,7 +14,7 @@ const probeMode = cliOnly ? 'cli-only' : 'full';
 const probeTransport = cliOnly ? 'powershell-cli' : 'native-http-edge';
 const probeExpectedCount = cliOnly ? 1 : 3 + (process.env.WSM_PROBE_SKIP_CLI === '1' ? 0 : 1);
 const { startEvidence } = require('./native-evidence');
-const { writeProbeDiagnostics } = require('./native-diagnostics');
+const { cleanProbeTerminalJob, writeProbeDiagnostics } = require('./native-diagnostics');
 const evidence = startEvidence({
   suite: 'native-probe', transport: probeTransport, mode: probeMode, expectedJourneyCount: probeExpectedCount,
   fixtureLimits: { productionQualification: false, liveWorkloads: false, controlledHostFixtures: true, realEdge: !cliOnly, loopbackHandler: !cliOnly }
@@ -40,6 +40,7 @@ const contexts = [];
 const pageOwners = new WeakMap();
 const probeHttpRequests = [];
 const probeLifecycleEvents = [];
+const probeTerminalJobs = [];
 let browser;
 
 function probeDiagnosticsPath() {
@@ -64,6 +65,7 @@ function persistProbeDiagnostics() {
     capturedUtc: new Date().toISOString(),
     lifecycle: probeLifecycleEvents.slice(-100),
     requests: probeHttpRequests.slice(-100),
+    terminalJobs: probeTerminalJobs.slice(-12),
     servers: processes.map(record => ({
       role: record.role,
       pid: record.child.pid || null,
@@ -470,6 +472,14 @@ async function runCliProbe() {
     const ownCancel = await api(sourceHandle.page, sourceHandle.session, `/api/jobs/${encodeURIComponent(sourceRun.operationId)}/cancel`, {});
     assert.ok(ownCancel.status === 200 || ownCancel.status >= 400, 'Same-workspace cancellation returned an unexpected response.');
     const terminals = await Promise.all(handles.map(handle => waitTerminal(handle, ({ Source: sourceRun, Target: targetRun, Manager: managerRun })[handle.role].operationId)));
+    for (let i = 0; i < handles.length; i++) {
+      probeTerminalJobs.push(cleanProbeTerminalJob(terminals[i], handles[i].role));
+    }
+    persistProbeDiagnostics();
+    assert.deepEqual(probeTerminalJobs.slice(-3).map(row => row.role), roles,
+      'Actual native job polling must capture one sanitized terminal record per Source, Target and Manager role.');
+    assert.deepEqual(probeTerminalJobs.slice(-3).map(row => row.status), terminals.map(job => cleanProbeTerminalJob(job, job.role).status),
+      'Captured terminal statuses must come from the actual /api/jobs polling responses without changing Failed into success.');
     for (let i = 0; i < handles.length; i++) {
       const handle = handles[i], terminal = terminals[i];
       assertProbeArtifacts(handle.workspace, terminal, handle.role);

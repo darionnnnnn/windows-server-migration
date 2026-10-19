@@ -4,6 +4,23 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+const PROBE_ROLES = new Set(['Source', 'Target', 'Manager']);
+const PROBE_JOB_STATUSES = new Set(['Queued', 'Running', 'CancelRequested', 'Succeeded', 'ReviewRequired', 'Cancelled', 'Failed', 'Interrupted', 'WaitingForInput']);
+const PROBE_STAGES = new Set(['Queued', 'Running', 'Collecting', 'Packaging', 'Completed', 'ReviewRequired', 'Cancelled', 'Failed']);
+const PROBE_ERROR_CODES = new Set(['field_validation', 'workroot_path_too_long', 'stale_context', 'workspace_recovery_required', 'invalid_token', 'rejected_origin', 'rejected_host', 'permission_denied', 'active_operation', 'report_unavailable', 'operation_unavailable', 'invalid_request', 'operation_not_cancellable', 'operation_failed']);
+const PROBE_OUTPUT_STATUSES = new Set(['Completed', 'Partial', 'Cancelled', 'Failed']);
+const PROBE_COLLECTOR_IDS = new Set(['PlatformIdentity', 'CommandsModules', 'LocalVolumes', 'NativeInventory', 'HttpProbe']);
+const PROBE_COLLECTOR_STATUSES = new Set(['Completed', 'Partial', 'Failed', 'PermissionDenied', 'NotApplicable', 'NotScheduled', 'Cancelled']);
+const PROBE_REASON_CODES = new Set([
+  '64BitPowerShellRequired', 'AdministratorRequired', 'ArchiveOutputLimit', 'CimManifestUnavailableOrTooLarge',
+  'CimModuleOutsideInboxRoot', 'CollectorFailed', 'DriveRelativePathBlocked', 'DriveTypeUnavailable',
+  'EntryBudgetExceeded', 'FullLanguageRequired', 'InsufficientLocalSpace', 'InvalidLocalPath',
+  'InvalidOrUnsupportedPath', 'InventoryIncompleteCount', 'LocalModuleEnumerationFailed', 'ManifestReadFailed',
+  'MappedRemoteDriveBlocked', 'ModuleRootExcludedByIsolation', 'NoOriginSupplied', 'PathAttributesDenied',
+  'PathDoesNotExist', 'PathInspectionFailed', 'RawEvidenceBudgetExceeded', 'RemoteOrDevicePathBlocked',
+  'ReparseAncestorBlocked', 'TrustedCimModuleImportFailed', 'UnsupportedLocalPathNamespace', 'WindowsServerRequired'
+]);
+
 function short(value, limit = 512) {
   return typeof value === 'string' ? value.slice(0, limit) : '';
 }
@@ -79,14 +96,63 @@ function cleanProbeDiagnostic(input) {
     if (row?.spawnError) server.spawnError = safeError(row.spawnError);
     return server;
   });
+  const terminalJobs = (Array.isArray(input?.terminalJobs) ? input.terminalJobs : []).slice(-12).map(row => {
+    const terminal = {
+      role: PROBE_ROLES.has(row?.role) ? row.role : 'unknown',
+      status: PROBE_JOB_STATUSES.has(row?.status) ? row.status : 'Unknown'
+    };
+    if (PROBE_STAGES.has(row?.stage)) terminal.stage = row.stage;
+    if (PROBE_ERROR_CODES.has(row?.failureCode)) terminal.failureCode = row.failureCode;
+    if (/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(row?.correlationId || '')) terminal.correlationId = row.correlationId.toLowerCase();
+    if (Array.isArray(row?.outputs)) terminal.outputs = row.outputs.slice(0, 2).map(output => {
+      const safeOutput = {};
+      if (PROBE_OUTPUT_STATUSES.has(output?.status)) safeOutput.status = output.status;
+      if (Array.isArray(output?.collectors)) safeOutput.collectors = output.collectors.slice(0, 16).flatMap(collector => {
+        if (!PROBE_COLLECTOR_IDS.has(collector?.id)) return [];
+        const item = { id: collector.id };
+        if (PROBE_COLLECTOR_STATUSES.has(collector?.status)) item.status = collector.status;
+        if (PROBE_REASON_CODES.has(collector?.reasonCode)) item.reasonCode = collector.reasonCode;
+        return [item];
+      });
+      return safeOutput;
+    });
+    return terminal;
+  });
   return {
     schemaVersion: 1,
     suite: 'native-probe',
     engine: ['pwsh', 'powershell'].includes(input?.engine) ? input.engine : 'unknown',
     sourceCommit: /^[a-f0-9]{40}$/i.test(input?.sourceCommit || '') ? input.sourceCommit : null,
     runId: /^[0-9]+-[0-9]+$/.test(input?.runId || '') ? input.runId : null,
-    capturedUtc: short(input?.capturedUtc, 40), lifecycle, requests, servers
+    capturedUtc: short(input?.capturedUtc, 40), lifecycle, requests, servers, terminalJobs
   };
+}
+
+function cleanProbeTerminalJob(job, role) {
+  const outputs = Array.isArray(job?.outputs) ? job.outputs : Array.isArray(job?.Outputs) ? job.Outputs : [];
+  const terminal = {
+    role: PROBE_ROLES.has(role) ? role : 'unknown',
+    status: PROBE_JOB_STATUSES.has(job?.status || job?.Status) ? (job.status || job.Status) : 'Unknown',
+    stage: PROBE_STAGES.has(job?.stage || job?.Stage) ? (job.stage || job.Stage) : undefined,
+    outputs: outputs.slice(0, 2).map(output => ({
+      status: PROBE_OUTPUT_STATUSES.has(output?.Status || output?.status) ? (output.Status || output.status) : undefined,
+      collectors: (Array.isArray(output?.CollectorResults) ? output.CollectorResults : Array.isArray(output?.collectorResults) ? output.collectorResults : []).slice(0, 16).flatMap(collector => {
+        const id = collector?.Id || collector?.id;
+        if (!PROBE_COLLECTOR_IDS.has(id)) return [];
+        const item = { id };
+        const status = collector?.Status || collector?.status;
+        const reasonCode = collector?.ReasonCode || collector?.reasonCode;
+        if (PROBE_COLLECTOR_STATUSES.has(status)) item.status = status;
+        if (PROBE_REASON_CODES.has(reasonCode)) item.reasonCode = reasonCode;
+        return [item];
+      })
+    }))
+  };
+  const error = job?.error || job?.Error;
+  if (PROBE_ERROR_CODES.has(error?.code || error?.Code)) terminal.failureCode = error.code || error.Code;
+  const correlationId = error?.correlationId || error?.CorrelationId;
+  if (/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(correlationId || '')) terminal.correlationId = correlationId.toLowerCase();
+  return terminal;
 }
 
 function safeLoopbackOrigin(value) {
@@ -160,4 +226,4 @@ function writeRuntimeDiagnostics(file, metadata, rows) {
   });
 }
 
-module.exports = { cleanProbeDiagnostic, cleanRuntimeDiagnostic, safeRoute, writeProbeDiagnostics, writeRuntimeDiagnostics };
+module.exports = { cleanProbeDiagnostic, cleanProbeTerminalJob, cleanRuntimeDiagnostic, safeRoute, writeProbeDiagnostics, writeRuntimeDiagnostics };
