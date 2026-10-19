@@ -96,6 +96,24 @@ function Get-WsmEnvironmentConfirmationProjection {
     $softwareCatalog=$softwareBinding.Catalog
     $general=Get-WsmConfirmationValue $Catalog 'GeneralHost' $null
     $software=@();$coverage=@();$preparation=@();$requirements=@();$receipts=@();$issues=@();$handoff=@()
+    # Reuse only a comparison whose immutable source/target snapshots and selection
+    # revision are still current. The separate TargetObservation contract contains
+    # readiness metadata, not software rows, so it cannot substantiate a software match.
+    $currentSoftwareComparison=$null
+    $assistive=Get-WsmConfirmationValue $Catalog 'Assistive' $null
+    $comparison=Get-WsmConfirmationValue $assistive 'Comparison' $null
+    $sourceSnapshot=Get-WsmConfirmationValue $assistive 'SourceSnapshot' $null
+    $targetCurrent=Get-WsmConfirmationValue $assistive 'TargetCurrent' $null
+    $selections=Get-WsmConfirmationValue $assistive 'Selections' $null
+    if($comparison -and $sourceSnapshot -and $targetCurrent -and $selections -and
+       (Get-WsmConfirmationValue $comparison 'SourceSnapshotHash' '') -ieq (Get-WsmConfirmationValue $sourceSnapshot 'SHA256' '') -and
+       (Get-WsmConfirmationValue $comparison 'TargetSnapshotHash' '') -ieq (Get-WsmConfirmationValue $targetCurrent 'SHA256' '') -and
+       [long](Get-WsmConfirmationValue $comparison 'SelectionRevision' -1) -eq [long](Get-WsmConfirmationValue $selections 'Revision' -2) -and
+       [long](Get-WsmConfirmationValue $sourceSnapshot 'InventoryRevision' -1) -eq [long](Get-WsmConfirmationValue $Catalog 'InventoryRevision' -2)) {
+        $currentSoftwareComparison=$comparison
+    }
+    $comparisonBySoftwareId=@{}
+    if($currentSoftwareComparison){foreach($comparisonRow in @($currentSoftwareComparison.Rows)){$softwareId=[string](Get-WsmConfirmationValue $comparisonRow 'SoftwareId' '');if($softwareId -and -not $comparisonBySoftwareId.ContainsKey($softwareId)){$comparisonBySoftwareId[$softwareId]=$comparisonRow}}}
     $runtime=New-Object 'System.Collections.Generic.List[object]';$oracle=New-Object 'System.Collections.Generic.List[object]';$windows=New-Object 'System.Collections.Generic.List[object]';$special=New-Object 'System.Collections.Generic.List[object]';$unknown=New-Object 'System.Collections.Generic.List[object]'
     $sourceCount=[int]$softwareBinding.SourceCount
     $catalogCount=0
@@ -111,6 +129,26 @@ function Get-WsmEnvironmentConfirmationProjection {
             $disposition='Unknown';$owner='';$reason='';$evidencePointer=''
             if($matches.Count -eq 1){$disposition=[string](Get-WsmConfirmationValue $matches[0] 'Disposition' 'Unknown');$owner=ConvertTo-WsmConfirmationSafeText (Get-WsmConfirmationValue $matches[0] 'Owner' '');$reason=ConvertTo-WsmConfirmationSafeText (Get-WsmConfirmationValue $matches[0] 'Reason' '');$evidencePointer=ConvertTo-WsmConfirmationSafeText (Get-WsmConfirmationValue $matches[0] 'Evidence' '')}
             elseif($matches.Count -gt 1){$disposition='Unknown';$reason='Duplicate software decision records require owner review.'}
+            $classification='Unknown'
+            if([string](Get-WsmConfirmationValue $entry 'SourceKind' '') -ceq 'InstalledRole'){$classification='WindowsRole'}
+            $targetStatus='NotTested';$targetVersion='';$targetSid='';$targetArchitecture='';$targetScope='';$targetLocation='';$targetCaptureStatus='';$targetComparisonReason='No current source/target software comparison is bound to this catalog.'
+            if($comparisonBySoftwareId.ContainsKey([string](Get-WsmConfirmationValue $entry 'SoftwareId' ''))){
+                $comparisonRow=$comparisonBySoftwareId[[string]$entry.SoftwareId]
+                $sameSourceRow=$true
+                foreach($pair in @(@('Name','Name'),@('Publisher','Publisher'),@('Scope','Scope'),@('SID','SID'),@('Architecture','Architecture'),@('Version','SourceVersion'),@('CaptureStatus','SourceCaptureStatus'),@('SourceKind','SourceKind'),@('Location','SourceLocation'))){
+                    if([string](Get-WsmConfirmationValue $entry $pair[0] '') -cne [string](Get-WsmConfirmationValue $comparisonRow $pair[1] '')){$sameSourceRow=$false;break}
+                }
+                if($sameSourceRow){
+                    $targetStatus=[string](Get-WsmConfirmationValue $comparisonRow 'Status' 'NotTested')
+                    $targetVersion=ConvertTo-WsmConfirmationSafeText (Get-WsmConfirmationValue $comparisonRow 'ObservedTargetVersion' '')
+                    $targetSid=[string](Get-WsmConfirmationValue $comparisonRow 'TargetSID' '')
+                    $targetArchitecture=[string](Get-WsmConfirmationValue $comparisonRow 'TargetArchitecture' '')
+                    $targetScope=[string](Get-WsmConfirmationValue $comparisonRow 'TargetScope' '')
+                    $targetLocation=ConvertTo-WsmConfirmationSafeText (Get-WsmConfirmationValue $comparisonRow 'TargetLocation' '')
+                    $targetCaptureStatus=[string](Get-WsmConfirmationValue $comparisonRow 'TargetCaptureStatus' '')
+                    $targetComparisonReason=ConvertTo-WsmConfirmationSafeText (Get-WsmConfirmationValue $comparisonRow 'Reason' '')
+                }else{$targetComparisonReason='Current comparison source facts differ from this catalog row; refresh the comparison before using its target observation.'}
+            }
             $row=[ordered]@{
                 SoftwareId=[string](Get-WsmConfirmationValue $entry 'SoftwareId' '')
                 Name=ConvertTo-WsmConfirmationSafeText (Get-WsmConfirmationValue $entry 'Name' '')
@@ -122,6 +160,7 @@ function Get-WsmEnvironmentConfirmationProjection {
                 RegistryView=[string](Get-WsmConfirmationValue $entry 'RegistryView' (Get-WsmConfirmationValue $entry 'View' ''))
                 Location=ConvertTo-WsmConfirmationSafeText (Get-WsmConfirmationValue $entry 'Location' '')
                 SourceKind=[string](Get-WsmConfirmationValue $entry 'SourceKind' 'Unknown')
+                Classification=$classification
                 CaptureStatus=[string](Get-WsmConfirmationValue $entry 'CaptureStatus' (Get-WsmConfirmationValue $entry 'Status' 'Unknown'))
                 ObservedUtc=[string](Get-WsmConfirmationValue $entry 'ObservedUtc' '')
                 CaptureAccountContext=[string](Get-WsmConfirmationValue $entry 'AccountContext' 'Unknown')
@@ -133,13 +172,21 @@ function Get-WsmEnvironmentConfirmationProjection {
                 EvidenceSummary=ConvertTo-WsmConfirmationSafeValue (Get-WsmConfirmationValue $entry 'Evidence' $null)
                 Handling=$disposition;Owner=$owner;OwnerReason=$reason;EvidencePointer=$evidencePointer
                 SourceEvidencePointer=('SoftwareCatalog#/Entries/'+$n)
-                TargetStatus='NotTested'
+                TargetStatus=$targetStatus
+                ObservedTargetVersion=$targetVersion
+                TargetScope=$targetScope
+                TargetSID=$targetSid
+                TargetArchitecture=$targetArchitecture
+                TargetLocation=$targetLocation
+                TargetCaptureStatus=$targetCaptureStatus
+                TargetComparisonReason=$targetComparisonReason
             }
             $n++
             [pscustomobject]$row
         })
         $coverageInput=@(Get-WsmConfirmationValue $softwareCatalog 'Coverage' @())
         $coverage=@(foreach($probe in $coverageInput){
+            $budget=Get-WsmConfirmationValue $probe 'Budget' $null
             [pscustomobject][ordered]@{
                 Probe=[string](Get-WsmConfirmationValue $probe 'Probe' 'Unknown')
                 Scope=[string](Get-WsmConfirmationValue $probe 'Scope' 'Unknown')
@@ -147,8 +194,11 @@ function Get-WsmEnvironmentConfirmationProjection {
                 View=[string](Get-WsmConfirmationValue $probe 'View' '')
                 Status=[string](Get-WsmConfirmationValue $probe 'Status' 'NotTested')
                 Count=[long](Get-WsmConfirmationValue $probe 'Count' 0)
-                MaxEntries=(Get-WsmConfirmationValue $probe 'MaxEntries' '')
-                MetadataBytes=(Get-WsmConfirmationValue $probe 'MetadataBytes' '')
+                MaxEntries=(Get-WsmConfirmationValue $probe 'MaxEntries' (Get-WsmConfirmationValue $budget 'MaxEntries' ''))
+                MaxDepth=(Get-WsmConfirmationValue $probe 'MaxDepth' (Get-WsmConfirmationValue $budget 'MaxDepth' ''))
+                MaxMetadataBytes=(Get-WsmConfirmationValue $probe 'MaxMetadataBytes' (Get-WsmConfirmationValue $budget 'MaxMetadataBytes' ''))
+                VisitedEntries=(Get-WsmConfirmationValue $probe 'VisitedEntries' (Get-WsmConfirmationValue $budget 'VisitedEntries' ''))
+                MetadataBytes=(Get-WsmConfirmationValue $probe 'MetadataBytes' (Get-WsmConfirmationValue $budget 'MetadataBytes' ''))
                 Budget=ConvertTo-WsmConfirmationSafeValue (Get-WsmConfirmationValue $probe 'Budget' $null)
                 ErrorKind=[string](Get-WsmConfirmationValue $probe 'ErrorKind' '')
                 ObservedUtc=[string](Get-WsmConfirmationValue $probe 'ObservedUtc' '')

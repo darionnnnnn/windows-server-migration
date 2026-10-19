@@ -1,0 +1,70 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "C1",
+  "verifiedUtc": "2026-10-19T02:50:08.8946924Z",
+  "verifier": "Primary agent independent isolated execution",
+  "snapshotDirectory": "c1-380858eb29354dfba04553d86978806d",
+  "inputs": [
+    {
+      "path": "src/SoftwareInventory.ps1",
+      "sha256": "BD80FD70BD814F60B14AA7E58355E068FC0EE78528F7387BA4264B601102EC1C"
+    },
+    {
+      "path": "src/AssistiveComparison.ps1",
+      "sha256": "E1C8879005A05683494132986AF8D7AC9524A25BF3BD5BBDE9A8EE4726689131"
+    },
+    {
+      "path": "src/AssistiveReports.ps1",
+      "sha256": "F815B1533491CC995415996402E82B315AA176C66E7AC7070696E816E2A69888"
+    },
+    {
+      "path": "src/EnvironmentConfirmation.ps1",
+      "sha256": "AF6EC3B685475F5F39FE23B28D6EC3D37C510130EF83BF8F336770EB4775C87D"
+    },
+    {
+      "path": "tests/Test-R7SoftwareAssessment.ps1",
+      "sha256": "E760B4E6EAFCC8E25C83C742636A7C17BADF5B9B10E1530C342701FA3C0930E1"
+    },
+    {
+      "path": "tests/Test-AssistiveComparison.ps1",
+      "sha256": "F53AC2375BA291EEBEA57C6216B794BA7BE98F8A2EE4DCCFB48E86AB20205DD7"
+    },
+    {
+      "path": "tests/Test-EnvironmentConfirmation.ps1",
+      "sha256": "140902B0CAA1465DF2DCF26A79BC305690A2150D9807E497735655C47B07FE28"
+    }
+  ],
+  "environment": "Windows; Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+  "casesExecuted": 68,
+  "result": "13 cross-consumer assertions per engine plus 42 existing comparison checks; environment confirmation export regression passed with 6 rows; script encoding/parser passed. Preserves all discovered source rows and bound target evidence with explicit unknown/coverage gaps.",
+  "limitations": [
+    "Registry snapshots are controlled fixtures, not a live full-server software inventory. 68 counts assertions, not native migrations. Full 2501-row baseline passed before this change; not represented as post-change acceptance."
+  ],
+  "logs": [
+    {
+      "name": "c1-ps51.log",
+      "sha256": "FD599BA506F8C2A51025BFDC18BEFDEA4242DAD98FCCCCF702ADE4066E399794",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: R7 software assessment preserved 5 collected rows through comparison and report projection; 13 assertions.\r\n"
+    },
+    {
+      "name": "c1-ps7.log",
+      "sha256": "F7CF7758651DBB56B6A3976A9E0B8F05BDD43E981E48A7CBE3FACF2AFF8A41F6",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: R7 software assessment preserved 5 collected rows through comparison and report projection; 13 assertions.\r\n"
+    },
+    {
+      "name": "c1-environment-ps7.log",
+      "sha256": "8E028057ADB5E5E9C5773DF69970790B400C590CC3B5F10E1F897FD7746E17C6",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: Environment confirmation is complete, immutable, safely rendered and count-consistent for 6 software rows.\r\n"
+    },
+    {
+      "name": "c1-comparison-ps7.log",
+      "sha256": "C1AC17824472DB3EC5D2957CAB82C407CD38E801734DC0D89BAA9D01756BD8FA",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: 42 Assistive S/E1 contract checks.\r\n"
+    },
+    {
+      "name": "c1-encoding.log",
+      "sha256": "92552FDE3B2D7260D57AC9C2C7F3B78ACFA32791F221F5D6050A24B76C8DBEB4",
+      "text": "PASS: strict UTF-8, BOM for every non-ASCII script, and parsing across 260 runtime/test/entry files.\r\n"
+    }
+  ]
+}

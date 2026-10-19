@@ -201,19 +201,91 @@
           "C1：全機已發現軟體評估表"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "implemented",
+      "evidenceStatus": "isolated-pass",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
+      "consumers": [
+        {
+          "name": "src/SoftwareInventory.ps1",
+          "path": "src/SoftwareInventory.ps1"
+        },
+        {
+          "name": "src/AssistiveComparison.ps1",
+          "path": "src/AssistiveComparison.ps1"
+        },
+        {
+          "name": "src/AssistiveReports.ps1",
+          "path": "src/AssistiveReports.ps1"
+        },
+        {
+          "name": "src/EnvironmentConfirmation.ps1",
+          "path": "src/EnvironmentConfirmation.ps1"
+        },
+        {
+          "name": "tests/Test-R7SoftwareAssessment.ps1",
+          "path": "tests/Test-R7SoftwareAssessment.ps1"
+        },
+        {
+          "name": "tests/Test-AssistiveComparison.ps1",
+          "path": "tests/Test-AssistiveComparison.ps1"
+        },
+        {
+          "name": "tests/Test-EnvironmentConfirmation.ps1",
+          "path": "tests/Test-EnvironmentConfirmation.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+        "runtime": "Windows isolated immutable snapshot",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/SoftwareInventory.ps1",
+          "sha256": "BD80FD70BD814F60B14AA7E58355E068FC0EE78528F7387BA4264B601102EC1C"
+        },
+        {
+          "path": "src/AssistiveComparison.ps1",
+          "sha256": "E1C8879005A05683494132986AF8D7AC9524A25BF3BD5BBDE9A8EE4726689131"
+        },
+        {
+          "path": "src/AssistiveReports.ps1",
+          "sha256": "F815B1533491CC995415996402E82B315AA176C66E7AC7070696E816E2A69888"
+        },
+        {
+          "path": "src/EnvironmentConfirmation.ps1",
+          "sha256": "AF6EC3B685475F5F39FE23B28D6EC3D37C510130EF83BF8F336770EB4775C87D"
+        },
+        {
+          "path": "tests/Test-R7SoftwareAssessment.ps1",
+          "sha256": "E760B4E6EAFCC8E25C83C742636A7C17BADF5B9B10E1530C342701FA3C0930E1"
+        },
+        {
+          "path": "tests/Test-AssistiveComparison.ps1",
+          "sha256": "F53AC2375BA291EEBEA57C6216B794BA7BE98F8A2EE4DCCFB48E86AB20205DD7"
+        },
+        {
+          "path": "tests/Test-EnvironmentConfirmation.ps1",
+          "sha256": "140902B0CAA1465DF2DCF26A79BC305690A2150D9807E497735655C47B07FE28"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-C1.json",
+          "sha256": "5DF40BE84334D57CB0E68E2ABC3323D6278736A51A3BE6FCACEC50A69D308ED9"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-C1.json",
+        "sha256": "5DF40BE84334D57CB0E68E2ABC3323D6278736A51A3BE6FCACEC50A69D308ED9"
+      },
+      "casesExecuted": 68,
+      "result": "13 cross-consumer assertions per engine plus 42 existing comparison checks; environment confirmation export regression passed with 6 rows; script encoding/parser passed. Preserves all discovered source rows and bound target evidence with explicit unknown/coverage gaps.",
+      "limitations": [
+        "Registry snapshots are controlled fixtures, not a live full-server software inventory. 68 counts assertions, not native migrations. Full 2501-row baseline passed before this change; not represented as post-change acceptance."
+      ],
       "openIssues": [],
       "historicalEvidence": []
     },

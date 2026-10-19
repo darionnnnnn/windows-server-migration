@@ -101,10 +101,18 @@ function Get-WsmAssistiveReportInventorySoftware($Inventory,[string]$Label) {
     $catalog=$Inventory.SoftwareCatalog
     $rows=New-Object 'System.Collections.Generic.List[object]'
     foreach($entry in @($catalog.Entries)){
-        $rows.Add([object[]]@($Label,[string]$entry.Name,[string]$entry.Publisher,[string]$entry.Version,[string]$entry.Architecture,[string]$entry.Scope,[string]$entry.AccountContext,[string]$entry.Location,[string]$entry.CaptureStatus,[string]$entry.SourceKind,(Get-WsmAssistiveVersionEvidenceKind $entry)))
+        $classification='Unknown'
+        if([string]$entry.SourceKind -ceq 'InstalledRole'){$classification='WindowsRole'}
+        $rows.Add([object[]]@($Label,[string]$entry.Name,[string]$entry.Publisher,[string]$entry.Version,[string]$entry.Architecture,[string]$entry.Scope,[string]$entry.SID,[string]$entry.RegistryView,[string]$entry.AccountContext,[string]$entry.Location,[string]$entry.CaptureStatus,[string]$entry.SourceKind,(Get-WsmAssistiveVersionEvidenceKind $entry),[string]$entry.SoftwareId,(@($entry.ItemIds) -join ', '),$classification))
     }
     foreach($coverage in @($catalog.Coverage)){
-        if([string]$coverage.Status -notin @('Success','NotInstalled')){$rows.Add([object[]]@($Label,('Coverage: '+[string]$coverage.Probe),'','','','','','',[string]$coverage.Status,'',''))}
+        if([string]$coverage.Status -notin @('Success','NotInstalled')){
+            $budget=$coverage.Budget;$detail='Count='+[string]$coverage.Count
+            if($budget){foreach($field in @('MaxEntries','VisitedEntries','MaxDepth','MaxMetadataBytes','MetadataBytes')){if($budget.PSObject.Properties[$field]){$detail+='; '+$field+'='+[string]$budget.$field}}}
+            if($coverage.ErrorKind){$detail+='; ErrorKind='+[string]$coverage.ErrorKind}
+            $detail+='; Next step: resolve this probe gap before concluding absence.'
+            $rows.Add([object[]]@($Label,('Coverage: '+[string]$coverage.Probe),'','','',[string]$coverage.Scope,[string]$coverage.SID,[string]$coverage.View,'','',[string]$coverage.Status,[string]$coverage.EvidenceKind,'','','',$detail))
+        }
     }
     ,$rows.ToArray()
 }
@@ -289,7 +297,7 @@ function Export-WsmAssistiveReport {
         foreach($row in @(Get-WsmAssistiveReportInventorySoftware $sourceInventory 'Source')){$softwareRows.Add($row)}
         if($baselineInventory){foreach($row in @(Get-WsmAssistiveReportInventorySoftware $baselineInventory 'Target baseline')){$softwareRows.Add($row)}}
         if($currentInventory){foreach($row in @(Get-WsmAssistiveReportInventorySoftware $currentInventory 'Target current')){$softwareRows.Add($row)}}
-        Add-WsmAssistiveReportTable $lines 'Observed software evidence' @('Snapshot','Product','Publisher','Observed version','Architecture','Scope','Account context','Observed location','Capture status','Evidence source','Version evidence provenance') $softwareRows.ToArray() 'No software catalogs were captured in the linked inventory snapshots.'
+        Add-WsmAssistiveReportTable $lines 'Observed software evidence' @('Snapshot','Product','Publisher','Observed version','Architecture','Scope','SID','Registry view','Account context','Observed location','Capture status','Evidence source','Version evidence provenance','SoftwareId','Dependent workload ItemIds','Classification / coverage detail') $softwareRows.ToArray() 'No software catalogs were captured in the linked inventory snapshots.'
         if(Get-WsmAssistiveReportComparisonIsCurrent $catalog){
             $comparisonRows=New-Object 'System.Collections.Generic.List[object]';foreach($row in @($catalog.Assistive.Comparison.Rows)){$comparisonRows.Add([object[]]@([string]$row.Name,[string]$row.Publisher,[string]$row.Status,[string]$row.SourceVersion,[string]$row.ChosenVersion,[string]$row.ObservedTargetVersion,[string]$row.BaselineObservedVersion,$(if($row.SoftwareId){[string]$row.SID}else{''}),[string](Get-WsmConfirmationValue $row 'TargetSID' ''),[string](Get-WsmConfirmationValue $row 'SourceAccountContext' ''),[string](Get-WsmConfirmationValue $row 'TargetAccountContext' ''),[string](Get-WsmConfirmationValue $row 'AccountScopeStatus' 'NotCompared'),[string]$row.Reason,[string](Get-WsmConfirmationValue $row 'SourceCaptureStatus' ''),[string](Get-WsmConfirmationValue $row 'TargetCaptureStatus' ''),[string](Get-WsmConfirmationValue $row 'SourceVersionEvidenceKind' ''),[string](Get-WsmConfirmationValue $row 'TargetVersionEvidenceKind' ''),[string](Get-WsmConfirmationValue $row 'SourceLocation' ''),[string](Get-WsmConfirmationValue $row 'TargetLocation' '')))}
             Add-WsmAssistiveReportTable $lines 'Current source / chosen / target comparison' @('Product','Publisher','Status','Source version','Chosen version','Observed current version','First observed baseline','Source SID','Target SID','Source account','Target account','Account mapping review','Comparison note','Source capture status','Target capture status','Source version provenance','Target version provenance','Source location','Target location') $comparisonRows.ToArray() 'The current comparison has no rows. The report does not infer a comparison from version strings.'
