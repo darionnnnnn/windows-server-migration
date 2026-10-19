@@ -1,0 +1,35 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "A1",
+  "verifiedUtc": "2026-10-19T02:20:26.3772556Z",
+  "verifier": "Primary agent independent isolated execution",
+  "snapshotDirectory": "a1-b1-40080825d17e49dda10d89dcb11b65ff",
+  "inputs": [
+    {
+      "path": "tools/Test-PlanEvidence.ps1",
+      "sha256": "B719B5C2A32E8CAB39E2D1BC2BB61B63A9CC13C56AD36469FB706985607B1C89"
+    },
+    {
+      "path": "tests/Test-PlanEvidence.ps1",
+      "sha256": "768DDB77E3CF435A688246D302990FFEAC5F6F4470244592F60B21AC33EB66B7"
+    }
+  ],
+  "environment": "Windows; Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+  "casesExecuted": 38,
+  "result": "19 fixture cases passed independently on each engine, including missing-evidence mutation, duplicate IDs, stale hashes, zero cases and historical-signature rejection.",
+  "limitations": [
+    "Evidence validator only; no migration product or external environment acceptance."
+  ],
+  "logs": [
+    {
+      "name": "a1-ps51.log",
+      "sha256": "D367FC3E71359B304A891038A599CBC79AC168932FFC33779670169DDC4A6FD5",
+      "text": "PASS: 19 evidence-validator fixture cases.\r\n"
+    },
+    {
+      "name": "a1-ps7.log",
+      "sha256": "D367FC3E71359B304A891038A599CBC79AC168932FFC33779670169DDC4A6FD5",
+      "text": "PASS: 19 evidence-validator fixture cases.\r\n"
+    }
+  ]
+}

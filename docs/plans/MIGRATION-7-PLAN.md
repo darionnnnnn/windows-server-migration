@@ -465,6 +465,12 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 | 階段 | 執行者／effort | 狀態 | 主代理驗收與整體影響 | 提交／遠端 |
 |---|---|---|---|---|
 | 分支銜接 | 主代理 | 完成核對 | 第六輪 runtime 未漂移；第七輪從完整 HEAD 接續 | 本輪基準 6a2329c |
-| A1 | gpt-6-luna medium | 實作中 | 證據索引／檢查器，不改產品 | 待驗 |
+| A1 | gpt-6-luna medium＋主代理獨立驗收 | 隔離驗收通過 | 20 階段索引、真實規劃引用、使用端與雜湊／環境／未結事項；雙引擎各 19 案例，移除必要證據會失敗；不改產品、不代外部簽核 | 本段提交見 Git history |
 | B1/B2 | gpt-6-luna high | 實作中 | 跨 workflow 的選擇、版本／空跑相依；待獨立驗收 | 待驗 |
 | C–G／E0 | 待分段 | 未完成 | 不以規劃或既有 helper PASS 代替實作 | 未提交 |
+
+### 17.2 A1 驗收與使用方式
+
+- `docs/plans/MIGRATION-7-EVIDENCE.json` 是本輪完成度索引；`tools/Test-PlanEvidence.ps1 -Stage A1` 檢查單段，`-WholeRound` 要求所有規劃階段具備證據。未實作／未驗／外部未驗／待簽核分列，不改搬移授權。
+- 主代理於固定快照獨立執行 `tests/Test-PlanEvidence.ps1`，WinPS 5.1 與 PS 7 各通過 19 案例；原始測試輸出與受測輸入雜湊保存在 `docs/plans/evidence/MIGRATION-7-A1.json`。正式檢查器已確認 A1 索引通過；整輪尚未完成，不可用單段 PASS 宣稱整輪完成。
+- 索引檢查重複／缺少階段、真實規劃標題、引用檔、輸入與證據雜湊、零案例、使用端與環境缺漏，拒絕 archive／私人檔／reparse 引用及以第六輪簽核取代本輪。後續更動已驗輸入須更新證據；不沿用失效 PASS。

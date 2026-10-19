@@ -1,0 +1,572 @@
+﻿{
+  "schemaVersion": 1,
+  "round": "MIGRATION-7",
+  "purpose": "Evidence index only; it does not grant migration authorization or production qualification.",
+  "statusDefinitions": {
+    "implementationStatus": [
+      "not-started",
+      "in-progress",
+      "implemented"
+    ],
+    "evidenceStatus": [
+      "not-collected",
+      "implemented-unverified",
+      "isolated-pass",
+      "external-unverified",
+      "accepted",
+      "historical-only"
+    ],
+    "externalStatus": [
+      "not-assessed",
+      "not-tested",
+      "pending",
+      "passed",
+      "failed"
+    ],
+    "signatureStatus": [
+      "not-required",
+      "pending",
+      "signed"
+    ]
+  },
+  "signatureLimits": {
+    "external": "Local evidence cannot sign or replace external server, business, Oracle, enterprise PKI, scale, or production acceptance.",
+    "r6": "Any R6 signature or approval is historical and does not sign, approve, or qualify R7 evidence.",
+    "workflow": "A stage requiring workflow sign-off remains pending until its authorized signer and evidence are recorded."
+  },
+  "stages": [
+    {
+      "id": "A1",
+      "name": "Evidence index and completion validation",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "A1：沿用現有資料建立精簡索引"
+        ]
+      },
+      "implementationStatus": "implemented",
+      "evidenceStatus": "isolated-pass",
+      "externalRequired": false,
+      "externalStatus": "not-tested",
+      "signatureStatus": "not-required",
+      "consumers": [
+        {
+          "name": "tools/Test-PlanEvidence.ps1",
+          "path": "tools/Test-PlanEvidence.ps1"
+        },
+        {
+          "name": "tests/Test-PlanEvidence.ps1",
+          "path": "tests/Test-PlanEvidence.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+        "runtime": "Windows isolated immutable snapshot",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "tools/Test-PlanEvidence.ps1",
+          "sha256": "B719B5C2A32E8CAB39E2D1BC2BB61B63A9CC13C56AD36469FB706985607B1C89"
+        },
+        {
+          "path": "tests/Test-PlanEvidence.ps1",
+          "sha256": "768DDB77E3CF435A688246D302990FFEAC5F6F4470244592F60B21AC33EB66B7"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-A1.json",
+          "sha256": "4EB13B575E1BACFC21E1286F447E822FE544D073818C451568571F1BFA680D67"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-A1.json",
+        "sha256": "4EB13B575E1BACFC21E1286F447E822FE544D073818C451568571F1BFA680D67"
+      },
+      "casesExecuted": 38,
+      "result": "19 fixture cases passed independently on each engine, including missing-evidence mutation, duplicate IDs, stale hashes, zero cases and historical-signature rejection.",
+      "limitations": [
+        "Evidence validator only; no migration product or external environment acceptance."
+      ],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "B1",
+      "name": "Stage B1",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "B1：變更到旅程的選擇契約"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "B2",
+      "name": "Stage B2",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "B2：真實執行及證據保存"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "C1",
+      "name": "Stage C1",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "C1：全機已發現軟體評估表"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "C2",
+      "name": "Stage C2",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "C2：排除與使用者決策接到正式使用端"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "D1",
+      "name": "Stage D1",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "D1：範圍候選與覆蓋缺口"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "D2",
+      "name": "Stage D2",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "D2：候選到核准範圍的閉合"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "D3a",
+      "name": "Stage D3a",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "15.3 D3a：離線備份集材料與相容契約"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "D3b",
+      "name": "Stage D3b",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "15.4 D3b：實際封存與獨立可恢復判準"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "E0",
+      "name": "Stage E0",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "14.2 程式面事實與確認的缺陷"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "E1",
+      "name": "Stage E1",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "E1：原位置契約貫穿全鏈"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "E2",
+      "name": "Stage E2",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "E2：目標缺口、衝突與續作"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "E3a",
+      "name": "Stage E3a",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "16.3 E3a：離線新機起步與比較材料閉合"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "E3b",
+      "name": "Stage E3b",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "16.4 F4a／E3b／F4b：帳密、鎖與原生副作用"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "F1",
+      "name": "Stage F1",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "F1：一份清單帶到可恢復的下一步"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "F2",
+      "name": "Stage F2",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "F2：連線故障與外部材料"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "F3",
+      "name": "Stage F3",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "15.6 F3：備份後完整 HTML 清單與新機操作頁"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "F4a",
+      "name": "Stage F4a",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "16.4 F4a／E3b／F4b：帳密、鎖與原生副作用"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "F4b",
+      "name": "Stage F4b",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "16.4 F4a／E3b／F4b：帳密、鎖與原生副作用"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    },
+    {
+      "id": "G",
+      "name": "Stage G",
+      "requirement": {
+        "path": "docs/plans/MIGRATION-7-PLAN.md",
+        "headings": [
+          "10. 作業 G：整合、文件與交付",
+          "16.6 決定性跨段驗收與完成度"
+        ]
+      },
+      "implementationStatus": "not-started",
+      "evidenceStatus": "not-collected",
+      "externalRequired": false,
+      "externalStatus": "not-assessed",
+      "signatureStatus": "not-required",
+      "consumers": [],
+      "environment": null,
+      "inputs": [],
+      "evidence": [],
+      "evidenceLog": null,
+      "casesExecuted": 0,
+      "result": null,
+      "limitations": [],
+      "openIssues": [],
+      "historicalEvidence": []
+    }
+  ]
+}
