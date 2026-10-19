@@ -1,0 +1,48 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "E0",
+  "verifiedUtc": "2026-10-19T02:42:09.2924184Z",
+  "verifier": "Primary agent independent isolated execution",
+  "snapshotDirectory": "e0-ae13d4d8ce6140378f816d49c023649c",
+  "inputs": [
+    {
+      "path": "src/WorkloadDiscovery.ps1",
+      "sha256": "318296FCF3D52DDD97AB4573E1EBF47C93D02D955E96DCE8CCD0321E46A23584"
+    },
+    {
+      "path": "src/MigrationWizard.ps1",
+      "sha256": "C1E5EA75120686CAC151F98DD353EB4377F94614B5261382CC29D4CA6F636E1B"
+    },
+    {
+      "path": "tests/Test-WorkloadActionIndex.ps1",
+      "sha256": "AA067BE93FCF869CCCFBAC3845777D559BE2F5FC602F28262BD65C424A0E427E"
+    },
+    {
+      "path": "tests/Test-WorkloadDiscovery.ps1",
+      "sha256": "BB7F1D453396AA0BF7A7A54B9E147E1BDA7B20E9F7DB64930976DDC65E18655C"
+    }
+  ],
+  "environment": "Windows; Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+  "casesExecuted": 38,
+  "result": "19 focused assertions passed independently per engine; existing public workload discovery regression also passed on WinPS5.1. Mixed unsupported actions remain manual, exact Exec indices and same-location mapping preserved.",
+  "limitations": [
+    "Fixture XML/draft tests; no live task registration or execution. Existing regression additional to 38 counted assertions."
+  ],
+  "logs": [
+    {
+      "name": "e0-ps51.log",
+      "sha256": "ABEE973AC52096F36C46D47198BF484CB93CFB3A1E8138ABBA8D0D9DB2E13302",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: E0 original action indices, typed draft consumer, opaque argument redaction, Exec-only and same-location regression, and ambiguous/unsupported action handling. Assertions: 19\r\n"
+    },
+    {
+      "name": "e0-ps7.log",
+      "sha256": "5186952056D61D59D514256682D25E844C8BED88AE658C5A3BEF5B404E63A0CF",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: E0 original action indices, typed draft consumer, opaque argument redaction, Exec-only and same-location regression, and ambiguous/unsupported action handling. Assertions: 19\r\n"
+    },
+    {
+      "name": "e0-existing-ps51.log",
+      "sha256": "A4D60496244AED6F499C06A7F5EB4F2A7D2C979D3AF5C651A68D295A008A75ED",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: R3-B workload graph and schema3 public draft consumer. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-workload-32d8d80a71694863a38e619249088cfb\r\n"
+    }
+  ]
+}

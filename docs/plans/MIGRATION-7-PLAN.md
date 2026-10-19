@@ -468,7 +468,8 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 | A1 | gpt-6-luna medium＋主代理獨立驗收 | 隔離驗收通過 | 20 階段索引、真實規劃引用、使用端與雜湊／環境／未結事項；雙引擎各 19 案例，移除必要證據會失敗；不改產品、不代外部簽核 | 本段提交見 Git history |
 | B1 | gpt-6-luna high＋主代理獨立驗收 | 隔離驗收通過 | 共用 selector／兩 workflow；雙引擎各 124 檢查含突變；空矩陣防護，YAML 可解析 | 本段提交見 Git history |
 | B2 | gpt-6-luna high | 未完成 | 原生 driver 實際旅程計數／持久證據及 GitHub 執行待驗；B1 不代替 B2 | 待驗 |
-| C–G／E0 | 待分段 | 未完成 | 不以規劃或既有 helper PASS 代替實作 | 未提交 |
+| E0 | gpt-6-luna high＋主代理獨立驗收 | 隔離驗收通過 | 原 Actions child 索引保持一致；雙引擎各 19 斷言，既有公開草稿流程回歸通過 | 本段提交見 Git history |
+| C–G（上述除外） | 分段進行 | 未完成 | 不以規劃或既有 helper PASS 代替實作 | 待驗 |
 
 ### 17.2 A1 驗收與使用方式
 
@@ -481,3 +482,10 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 兩個 native workflow 支援 `codex/migration-*`、dev／main 與 PR／手動入口；使用共用 selector。產品與未知路徑保守選適用全套，diff 失敗／初次 push／空 diff 不會零測試綠燈；文件-only 明列不需產品旅程，Manager／Probe 空矩陣先由 job 條件排除。
 - 主代理在固定快照分別執行兩引擎 selector 測試，各 124 檢查通過，包含 nonc.js／HTML／CSS、刪除／更名兩端、手動 suite、未知路徑及故意刪除 UI 映射的突變。兩份 YAML 可解析；輸出與雜湊見 `docs/plans/evidence/MIGRATION-7-B1.json`。
 - 124 是 selector 檢查數，不是原生搬移旅程數。B2 仍須取得 driver 實際完成資料及受影響原生旅程；workflow invocation 摘要不能代替測試內部完成證據。本段不改產品 runtime／資格 gate。
+
+### 17.4 E0 索引修正與目前 CI 未結
+
+- `Get-WsmWorkloadXmlDraft` 與 discovery 統一使用原 Actions 全部 child 索引，且只修改該位置確實為 Exec 的 Command／WorkingDirectory／Arguments。修正不擴充支援的 task action；混合不支援 action 仍經正式草稿流程轉人工處置。
+- 主代理固定快照雙引擎各 19 斷言通過，包含多 Exec、穿插非 Exec、原位置、歧義不改寫、秘密遮蔽；既有 `Test-WorkloadDiscovery.ps1` 公開草稿回歸也通過。實作者使用隔離原始實作跑同測試，確實因第一 Exec 目標誤套到第二 Exec 而失敗。證據見 `docs/plans/evidence/MIGRATION-7-E0.json`；未宣稱真實排程器註冊驗收。
+- B1 push 6eac316 實際觸發 CI：Manager 雙引擎與 Probe PS7 通過；Probe WinPS5.1 的 fetch 失敗及 runtime WinPS5.1 Target 操作失敗仍待診斷／修正。PS7 native release job 通過。這些失敗納入本輪，不以其他通過結果抵銷。
+- B2 正修改 workflow 接上實際 driver 計數；因此 B1 索引暫列已實作待重驗，保存原快照證據，B2 整合後再以新 bytes 核對。

@@ -102,7 +102,7 @@
         ]
       },
       "implementationStatus": "implemented",
-      "evidenceStatus": "isolated-pass",
+      "evidenceStatus": "implemented-unverified",
       "externalRequired": false,
       "externalStatus": "not-tested",
       "signatureStatus": "not-required",
@@ -162,7 +162,9 @@
       "limitations": [
         "GitHub native journey execution and measured driver evidence belong to B2 and remain pending."
       ],
-      "openIssues": [],
+      "openIssues": [
+        "B2 workflow integration is changing B1 input bytes; revalidate selector and workflow bindings before restoring current acceptance. Original B1 isolated evidence retained."
+      ],
       "historicalEvidence": []
     },
     {
@@ -349,19 +351,67 @@
           "14.2 程式面事實與確認的缺陷"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "implemented",
+      "evidenceStatus": "isolated-pass",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
+      "consumers": [
+        {
+          "name": "src/WorkloadDiscovery.ps1",
+          "path": "src/WorkloadDiscovery.ps1"
+        },
+        {
+          "name": "src/MigrationWizard.ps1",
+          "path": "src/MigrationWizard.ps1"
+        },
+        {
+          "name": "tests/Test-WorkloadActionIndex.ps1",
+          "path": "tests/Test-WorkloadActionIndex.ps1"
+        },
+        {
+          "name": "tests/Test-WorkloadDiscovery.ps1",
+          "path": "tests/Test-WorkloadDiscovery.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+        "runtime": "Windows isolated immutable snapshot",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/WorkloadDiscovery.ps1",
+          "sha256": "318296FCF3D52DDD97AB4573E1EBF47C93D02D955E96DCE8CCD0321E46A23584"
+        },
+        {
+          "path": "src/MigrationWizard.ps1",
+          "sha256": "C1E5EA75120686CAC151F98DD353EB4377F94614B5261382CC29D4CA6F636E1B"
+        },
+        {
+          "path": "tests/Test-WorkloadActionIndex.ps1",
+          "sha256": "AA067BE93FCF869CCCFBAC3845777D559BE2F5FC602F28262BD65C424A0E427E"
+        },
+        {
+          "path": "tests/Test-WorkloadDiscovery.ps1",
+          "sha256": "BB7F1D453396AA0BF7A7A54B9E147E1BDA7B20E9F7DB64930976DDC65E18655C"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-E0.json",
+          "sha256": "CA17DC58988E8CBA6F55C422758DBCEB127F9E630DF631EF9CAA70C7091D69F8"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-E0.json",
+        "sha256": "CA17DC58988E8CBA6F55C422758DBCEB127F9E630DF631EF9CAA70C7091D69F8"
+      },
+      "casesExecuted": 38,
+      "result": "19 focused assertions passed independently per engine; existing public workload discovery regression also passed on WinPS5.1. Mixed unsupported actions remain manual, exact Exec indices and same-location mapping preserved.",
+      "limitations": [
+        "Fixture XML/draft tests; no live task registration or execution. Existing regression additional to 38 counted assertions."
+      ],
       "openIssues": [],
       "historicalEvidence": []
     },

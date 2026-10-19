@@ -364,7 +364,7 @@ function Get-WsmWorkloadSharedConsumerImpact($Catalog,[string]$ConsumerItemId) {
 }
 
 function Get-WsmWorkloadXmlDraft($Item,$Catalog) {
-    $xmlText=[string]$Item.Settings.Xml;$doc=Read-WsmXml $xmlText;$rows=New-Object 'System.Collections.Generic.List[object]'
+    $xmlText=[string]$Item.Settings.Xml;$doc=Read-WsmXml $xmlText;$rows=New-Object 'System.Collections.Generic.List[object]';$actions=@($doc.SelectNodes("//*[local-name()='Actions']/*"))
     foreach($reference in @(Get-WsmWorkloadPathReferences $Item)){
         $map=Resolve-WsmWorkloadReferenceMapping $Catalog $reference;$target=$map.TargetValue;$applied=$false
         if($map.Status -eq 'Mapped'){
@@ -372,10 +372,10 @@ function Get-WsmWorkloadXmlDraft($Item,$Catalog) {
                 $pointer=[string]$reference.FieldPointer;$node=$null;if($pointer -match '/application\[(\d+)\]/virtualDirectory\[(\d+)\]/@physicalPath$'){$appIndex=[int]$matches[1];$vdirIndex=[int]$matches[2];$applications=@($doc.SelectNodes("//*[local-name()='application']"));if($appIndex -lt $applications.Count){$vdirs=@($applications[$appIndex].SelectNodes("./*[local-name()='virtualDirectory'][@physicalPath]"));if($vdirIndex -lt $vdirs.Count){$node=$vdirs[$vdirIndex]}}}
                 if($node){$node.SetAttribute('physicalPath',$target);$applied=$true}
             } elseif($reference.ReferenceKind -in @('TaskCommand','TaskWorkingDirectory')){
-                if($reference.FieldPointer -match 'Action\[(\d+)\]/(Command|WorkingDirectory)'){$idx=[int]$matches[1];$field=$matches[2];$actions=@($doc.SelectNodes("//*[local-name()='Actions']/*[local-name()='Exec']"));if($idx -lt $actions.Count){$node=$actions[$idx].SelectSingleNode("./*[local-name()='$field']");if($node){$node.InnerText=$target;$applied=$true}}}
+                if($reference.FieldPointer -match 'Action\[(\d+)\]/(Command|WorkingDirectory)'){$idx=[int]$matches[1];$field=$matches[2];if($idx -lt $actions.Count -and $actions[$idx].LocalName -ceq 'Exec'){$node=$actions[$idx].SelectSingleNode("./*[local-name()='$field']");if($node){$node.InnerText=$target;$applied=$true}}}
             }
         }
-        if($reference.ReferenceKind -eq 'TaskArguments' -and $reference.Opaque -and [string]$reference.FieldPointer -match 'Action\[(\d+)\]/Arguments'){$idx=[int]$matches[1];$actions=@($doc.SelectNodes("//*[local-name()='Actions']/*[local-name()='Exec']"));if($idx -lt $actions.Count){$argsNode=$actions[$idx].SelectSingleNode("./*[local-name()='Arguments']");if($argsNode){$argsNode.InnerText='[OPAQUE_ARGUMENTS_REDACTED_REVIEW_PROTECTED_SOURCE]'}};$target='[opaque arguments withheld; use protected source evidence after owner review]'}
+        if($reference.ReferenceKind -eq 'TaskArguments' -and $reference.Opaque -and [string]$reference.FieldPointer -match 'Action\[(\d+)\]/Arguments'){$idx=[int]$matches[1];if($idx -lt $actions.Count -and $actions[$idx].LocalName -ceq 'Exec'){$argsNode=$actions[$idx].SelectSingleNode("./*[local-name()='Arguments']");if($argsNode){$argsNode.InnerText='[OPAQUE_ARGUMENTS_REDACTED_REVIEW_PROTECTED_SOURCE]'}};$target='[opaque arguments withheld; use protected source evidence after owner review]'}
         $rows.Add([pscustomobject][ordered]@{FieldPointer=[string]$reference.FieldPointer;ReferenceKind=[string]$reference.ReferenceKind;OldRawValue=[string]$map.OldRawValue;TargetValue=[string]$target;Applied=$applied;Status=$(if($applied){'MappedForReview'}else{$map.Status});ReviewRequired=([bool]$reference.ReviewRequired -or -not $applied);Reason=$(if($applied){'Typed draft XML path changed using exact approved FileScope mapping; review and normal approval still required.'}elseif($reference.ReferenceKind -eq 'TaskArguments' -and $reference.Opaque){'Opaque arguments are redacted from target draft; owner must restore reviewed values from protected source XML.'}else{$map.Reason})})
     }
     $sourceAutoStart='Unknown';$activationPointer=''
