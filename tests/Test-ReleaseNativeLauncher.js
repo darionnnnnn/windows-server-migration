@@ -1,8 +1,9 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn, execFileSync } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const { startEvidence } = require('./native-evidence');
+const { stopOwnedLauncher } = require('./Test-NativeLauncherCleanup');
 const evidence = startEvidence({
   suite: 'native-release-launcher', transport: 'cmd-native-http-edge', mode: 'released-cmd', expectedJourneyCount: 1,
   fixtureLimits: { productionQualification: false, liveWorkloads: false, exactExtractedRelease: true, realCmd: true, realEdge: true }
@@ -15,7 +16,7 @@ const installRoot = path.resolve(path.dirname(modulePath), '..');
 assert.match(path.basename(installRoot), /Chinese spaces/);
 const workspace = path.join(installRoot, 'migration-workspace');
 assert.ok(!fs.existsSync(workspace), 'The actual default launcher must start with a fresh owned workspace.');
-let child, browser, logs = '';
+let child, browser, logs = '', origin;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 (async () => {
   try {
@@ -31,7 +32,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
       if (child.exitCode !== null || Date.now() > deadline) throw new Error('Actual CMD did not start the console: ' + logs);
       await sleep(100);
     }
-    const origin = logs.match(/Local migration console: (http:\/\/127\.0\.0\.1:\d+)/)[1];
+    origin = logs.match(/Local migration console: (http:\/\/127\.0\.0\.1:\d+)/)[1];
     browser = await chromium.launch({ executablePath: process.env.WSM_EDGE, headless: true });
     const page = await browser.newPage();
     await page.goto(origin + '/ui/index.html', { waitUntil: 'domcontentloaded' });
@@ -58,11 +59,41 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(manualResponse.status(), 200);
     assert.ok((await guide.locator('body').innerText()).trim().length > 100);
     evidence.completeJourney('extracted-cmd-manager-purpose-and-offline-guides');
-    evidence.finish();
-    console.log('PASS: actual extracted CMD -> x64 Windows PowerShell -> native Edge page, real purpose save/reload and offline guide/manual from a Chinese/space installation path; no launcher or product stubs.');
   } finally {
-    if (browser) await browser.close();
-    // Only terminate this test's exact CMD process tree, never unrelated shells.
-    if (child && child.exitCode === null) execFileSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'pipe' });
+    const cleanupErrors = [];
+    if (browser) {
+      try { await browser.close(); }
+      catch (error) { cleanupErrors.push(`Edge close failed: ${error.message}`); }
+    }
+    if (child) {
+      try {
+        if (origin) {
+          // A nonzero taskkill result is acceptable only after the exact spawned
+          // CMD exits and its unique loopback listener is confirmed stopped.
+          const cleanup = await stopOwnedLauncher(child, origin);
+          if (cleanup.status !== 0) {
+            const details = `${cleanup.stdout || ''}${cleanup.stderr || ''}`.trim().slice(0, 1200);
+            console.warn(`WARN: taskkill reported status ${cleanup.status}; owned launcher exited and its console listener is confirmed stopped.${details ? ` ${details}` : ''}`);
+          }
+        } else if (child.exitCode === null && child.signalCode === null) {
+          // Startup failed before the server announced its URL. Still terminate
+          // only this test's own CMD process tree and require the direct child to exit.
+          const cleanup = spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, encoding: 'utf8', timeout: 15000 });
+          if (cleanup.error) throw cleanup.error;
+          if (child.exitCode === null && child.signalCode === null) {
+            try { child.kill(); }
+            catch (error) { if (error.code !== 'ESRCH') throw error; }
+            const deadline = Date.now() + 5000;
+            while (child.exitCode === null && child.signalCode === null && Date.now() < deadline) await sleep(100);
+            if (child.exitCode === null && child.signalCode === null) throw new Error(`The owned launcher process ${child.pid} remained alive after cleanup.`);
+          }
+        }
+      } catch (error) { cleanupErrors.push(`Launcher cleanup failed: ${error.message}`); }
+    }
+    if (cleanupErrors.length) {
+      throw new Error(cleanupErrors.join('; '));
+    }
   }
+  evidence.finish();
+  console.log('PASS: actual extracted CMD -> x64 Windows PowerShell -> native Edge page, real purpose save/reload and offline guide/manual from a Chinese/space installation path; no launcher or product stubs.');
 })().catch(error => { evidence.fail(error); console.error(error); process.exitCode = 1; });

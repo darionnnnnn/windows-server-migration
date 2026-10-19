@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { startEvidence, validateRecord, validateFile } = require('./native-evidence');
+const { runTests: runLauncherCleanupTests } = require('./Test-NativeLauncherCleanup');
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'wsm-native-evidence-test-'));
 const sourceCommit = '6eac316162cbcb19b5b0343e0d4cf12bb87bbf01';
@@ -103,3 +104,4 @@ try {
 }
 
 process.stdout.write(`PASS Test-NativeEvidence: ${checks} positive, negative, provisional, count, scope and reuse checks.\n`);
+runLauncherCleanupTests().catch(error => { console.error(error); process.exitCode = 1; });

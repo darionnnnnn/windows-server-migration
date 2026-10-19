@@ -223,6 +223,10 @@
         {
           "name": "tests/Start-WizardRuntimeTestServer.ps1",
           "path": "tests/Start-WizardRuntimeTestServer.ps1"
+        },
+        {
+          "name": "tests/Test-NativeLauncherCleanup.js",
+          "path": "tests/Test-NativeLauncherCleanup.js"
         }
       ],
       "environment": {
@@ -245,7 +249,7 @@
         },
         {
           "path": "tests/Test-NativeEvidence.js",
-          "sha256": "1E138DD4B79EC44DD9C4CF568F329E30DEE0DA660E810F1EFCEF70E6F2F53B13"
+          "sha256": "AE11D592279F5E36C0F9AC0EA130EE3AE4C5024BF104CE71849CC43626AFBE8C"
         },
         {
           "path": "tests/Test-NativeHtmlBridge.js",
@@ -253,7 +257,7 @@
         },
         {
           "path": "tests/Test-ReleaseNativeLauncher.js",
-          "sha256": "85C7FC4F2542CF492AAF3ACAF3CA6ED55F9C2187B8C2B9420565A7DE4FB4F379"
+          "sha256": "0CF5C7AE29A015A97AE2421B299EDAFDCB6AE3F1B0546EBECE16661B4081A2C0"
         },
         {
           "path": "tests/Test-NativeWizardRuntimeHandler.js",
@@ -274,27 +278,31 @@
         {
           "path": "tests/Start-WizardRuntimeTestServer.ps1",
           "sha256": "185678D257FEF5F0010E6E52A79184E3B8E4CAD55ACA81D49C3C2FE41D4376B6"
+        },
+        {
+          "path": "tests/Test-NativeLauncherCleanup.js",
+          "sha256": "C55732A9F0F2224C697107E1585CC9A4F24545B576C9DD10BC1D55E491696C01"
         }
       ],
       "evidence": [
         {
           "path": "docs/plans/evidence/MIGRATION-7-B2.json",
-          "sha256": "03BE48ACBD8C67347472953B94AA37C78B4FCF8B2721F695CB637C4E0362BAD2"
+          "sha256": "724A0E8854FA4525EB770D034B683D8A0FAC73E6DF1B38F75244E69894083508"
         }
       ],
       "evidenceLog": {
         "path": "docs/plans/evidence/MIGRATION-7-B2.json",
-        "sha256": "03BE48ACBD8C67347472953B94AA37C78B4FCF8B2721F695CB637C4E0362BAD2"
+        "sha256": "724A0E8854FA4525EB770D034B683D8A0FAC73E6DF1B38F75244E69894083508"
       },
-      "casesExecuted": 24,
-      "result": "23 evidence-validator fixtures and 1 exact release smoke journey passed; native CI validation pending.",
+      "casesExecuted": 30,
+      "result": "23 evidence fixtures and 7 actual loopback cleanup checks passed independently. Hosted native validation of cleanup fix pending.",
       "limitations": [
-        "Local module smoke is not native HTTP/browser acceptance.",
-        "Earlier WinPS51 TargetRestore and Probe fetch intermittent failures remain unresolved."
+        "Actual loopback helper checks do not replace native Edge release journey.",
+        "Earlier 6eac316 WinPS51 runtime and Probe failures remain unresolved."
       ],
       "openIssues": [
-        "Native CI on B2 bytes pending.",
-        "Prior WinPS51 TargetRestore and Probe fetch failures require diagnosis."
+        "Hosted validation of launcher cleanup fix pending.",
+        "Earlier 6eac316 WinPS51 TargetRestore and Probe fetch failure causes unresolved."
       ],
       "historicalEvidence": []
     },

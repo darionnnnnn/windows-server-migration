@@ -503,3 +503,5 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - Driver 明確於實際斷言完成後登記旅程，輸出引擎版本、commit、run/attempt、transport、mode、實際完成數與 fixture 限制。驗證器拒絕缺檔、零案例、未完成、錯誤模式／引擎／版本、舊 run 或 SHA；發布旅程附實際工具指紋。Workflow 即使失敗仍保留證據，摘要只統計 driver 與驗證器皆成功者。
 - 主代理固定快照 23 個證據驗證正反案例通過，實際 WinPS5.1 ZIP／解壓模組／啟動器 smoke 的 1 個旅程及結構化證據驗證通過；兩份 workflow YAML、JS syntax 及 B1 雙引擎各 124 selector 檢查通過。產品 runtime 固定在 6497d80，未混入開發中的 D1。
 - 新增受控 fixture 的 runtime 錯誤紀錄與 Probe 請求／程序診斷，不改產品錯誤遮蔽、不加重試或替代傳輸。先前 WinPS5.1 TargetRestore 與 Probe fetch 失敗仍未找到根因；後續 E0、C1 的 CI 綠燈不算修復證據。B2 先列已實作待原生 CI 驗證，整輪未完成。
+- 63cf57f 的原生 release CI（39193503443）另發現 launcher 清理失敗：UI 斷言完成後 taskkill 對部分子程序回傳非零，測試 finally 拋錯。修正以測試自行啟動的 CMD 確實退出、獨有 loopback listener 連續拒絕連線為必要條件；未知 socket 錯誤不算停止，仍存活即失敗，瀏覽器清理失敗也必須繼續嘗試程序清理。證據完成標記移到清理成功後。
+- 主代理固定快照獨立通過 23 個證據案例與 7 個真 TCP listener／負例檢查。這只驗清理 helper 與實際 driver 接線，修正後 hosted Edge 旅程仍待 CI；原 6eac316 的 runtime／Probe 問題不因本項修正關閉。
