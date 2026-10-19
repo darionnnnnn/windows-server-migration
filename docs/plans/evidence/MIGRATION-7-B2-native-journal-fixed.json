@@ -1,0 +1,114 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "B2",
+  "commit": "990650f2c7e926dfd5d4de1ba94f98648335c03f",
+  "runId": 39215923984,
+  "primaryVerification": "Both downloaded original artifact digests matched GitHub metadata. Formal native-evidence validator accepted exact native-runtime suite, engine, native-http-edge transport, all scope, four completed journeys each, source commit and run 39215923984-1.",
+  "records": [
+    {
+      "artifactId": 12169766321,
+      "artifactSHA256": "9AB5F309EDE5C4B8B3E2FA34980073AD908F9B3D129C4DC5C61CCFCFD8FFAC55",
+      "record": {
+        "schemaVersion": 1,
+        "status": "Passed",
+        "suite": "native-runtime",
+        "engine": "powershell",
+        "engineVersion": "5.1.26100.33438",
+        "transport": "native-http-edge",
+        "mode": "all",
+        "sourceCommit": "990650f2c7e926dfd5d4de1ba94f98648335c03f",
+        "runId": "39215923984-1",
+        "measure": "completed-journeys",
+        "expectedJourneyCount": 4,
+        "completedJourneyCount": 4,
+        "completedJourneys": [
+          {
+            "name": "Source-cancel-with-concurrent-Probe",
+            "role": "Source",
+            "expectedTerminal": "Cancelled"
+          },
+          {
+            "name": "Source-Directory-backup",
+            "role": "Source",
+            "deliveryMode": "Directory"
+          },
+          {
+            "name": "Source-ZIP-backup",
+            "role": "Source",
+            "deliveryMode": "Zip"
+          },
+          {
+            "name": "Target-package-import-comparison-decision-restore",
+            "role": "Target",
+            "terminal": "Succeeded"
+          }
+        ],
+        "fixtureLimits": {
+          "productionQualification": false,
+          "liveWorkloads": false,
+          "controlledWindowsHost": true,
+          "externalSmbQualification": false,
+          "actualServices": false
+        },
+        "startedUtc": "2026-10-19T07:27:27.541Z",
+        "toolFingerprint": "12c33993d2fbbba0482cca72fc9c6b6e39db417ae479e1bd55a1b1abaa607a9e",
+        "finishedUtc": "2026-10-19T07:29:45.216Z"
+      }
+    },
+    {
+      "artifactId": 12168759455,
+      "artifactSHA256": "4C400DE415636C1C70FE8DDF80E62778DEAA00AA6C05F75F6FB7DACE6BA9A8FE",
+      "record": {
+        "schemaVersion": 1,
+        "status": "Passed",
+        "suite": "native-runtime",
+        "engine": "pwsh",
+        "engineVersion": "7.6.6",
+        "transport": "native-http-edge",
+        "mode": "all",
+        "sourceCommit": "990650f2c7e926dfd5d4de1ba94f98648335c03f",
+        "runId": "39215923984-1",
+        "measure": "completed-journeys",
+        "expectedJourneyCount": 4,
+        "completedJourneyCount": 4,
+        "completedJourneys": [
+          {
+            "name": "Source-cancel-with-concurrent-Probe",
+            "role": "Source",
+            "expectedTerminal": "Cancelled"
+          },
+          {
+            "name": "Source-Directory-backup",
+            "role": "Source",
+            "deliveryMode": "Directory"
+          },
+          {
+            "name": "Source-ZIP-backup",
+            "role": "Source",
+            "deliveryMode": "Zip"
+          },
+          {
+            "name": "Target-package-import-comparison-decision-restore",
+            "role": "Target",
+            "terminal": "Succeeded"
+          }
+        ],
+        "fixtureLimits": {
+          "productionQualification": false,
+          "liveWorkloads": false,
+          "controlledWindowsHost": true,
+          "externalSmbQualification": false,
+          "actualServices": false
+        },
+        "startedUtc": "2026-10-19T07:26:42.571Z",
+        "finishedUtc": "2026-10-19T07:27:58.603Z"
+      }
+    }
+  ],
+  "limitations": [
+    "These eight native journeys validate current committed runtime, not the uncommitted F4 or offline CV2 restore capability.",
+    "No claim that unavailable historical original I/O exceptions have been recovered.",
+    "Concurrent projection reader and earlier unresolved native probe failures remain tracked.",
+    "B2 and whole-round acceptance remain incomplete."
+  ]
+}

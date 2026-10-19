@@ -336,6 +336,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-B2-journal-append.json",
           "sha256": "8162C448860A7E01C116985AAC46A6D7331D4CA038E190D501087B7CB617E6E3"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B2-native-journal-fixed.json",
+          "sha256": "AD91965E1FB6CB98D5F1CE659FC19981C8FB0B2B5B739F8D9301FB4CC5705B9C"
         }
       ],
       "evidenceLog": {

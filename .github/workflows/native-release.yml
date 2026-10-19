@@ -154,6 +154,16 @@ jobs:
           $runtimeExit = $LASTEXITCODE
           Get-Content -LiteralPath $runtimeLog
           if ($runtimeExit -ne 0) { throw "Native Source/Target runtime acceptance failed (exit $runtimeExit)." }
+      - name: Journal append failure and recovery diagnostics regressions
+        if: ${{ always() && !cancelled() && steps.scope.outputs.runtime == 'true' }}
+        shell: pwsh
+        run: |
+          $engine = $env:WSM_PS_EXE
+          if (-not $engine -or -not (Test-Path -LiteralPath $engine)) { throw 'Selected PowerShell engine path is unavailable.' }
+          & $engine -NoProfile -File ./tests/Test-JournalAppendFailure.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Journal append failure regression failed under ${{ matrix.engine }} (exit $LASTEXITCODE)." }
+          & $engine -NoProfile -File ./tests/Test-JournalDiagnostics.ps1 -RecoveryPath ./src/Recovery.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Journal recovery diagnostics regression failed under ${{ matrix.engine }} (exit $LASTEXITCODE)." }
       - name: Validate Source and Target runtime evidence
         id: validate_runtime
         if: ${{ always() && steps.scope.outputs.runtime == 'true' }}
