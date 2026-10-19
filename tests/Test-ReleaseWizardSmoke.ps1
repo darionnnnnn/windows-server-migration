@@ -2,6 +2,25 @@
 [CmdletBinding()]param([string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+$nativeEvidencePath=$env:WSM_NATIVE_EVIDENCE_PATH
+$nativeEvidence=$null
+function Save-NativeEvidence {
+    param($Record)
+    if(-not $nativeEvidencePath){return}
+    $parent=[IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($nativeEvidencePath))
+    [void][IO.Directory]::CreateDirectory($parent)
+    $temp=$nativeEvidencePath+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
+    [IO.File]::WriteAllText($temp,($Record|ConvertTo-Json -Depth 12),(New-Object Text.UTF8Encoding($false)))
+    Move-Item -LiteralPath $temp -Destination $nativeEvidencePath -Force
+}
+if($nativeEvidencePath){
+    $sourceCommit=$env:GITHUB_SHA
+    if($sourceCommit -notmatch '^[a-fA-F0-9]{40}$'){throw 'Release smoke CI evidence requires the full source commit SHA.'}
+    if($env:WSM_NATIVE_EVIDENCE_ENGINE -ne 'powershell'){throw 'Release package smoke evidence requires Windows PowerShell 5.1.'}
+    $runId=$env:GITHUB_RUN_ID+'-'+$env:GITHUB_RUN_ATTEMPT
+    $nativeEvidence=[ordered]@{schemaVersion=1;status='Running';suite='native-release-package';engine='powershell';engineVersion=$PSVersionTable.PSVersion.ToString();runtime=$PSVersionTable.PSVersion.ToString();edition=$PSVersionTable.PSEdition;processArchitecture=$(if([Environment]::Is64BitProcess){'x64'}else{'x86'});transport='release-module-smoke';mode='release-smoke';sourceCommit=$sourceCommit;runId=$runId;measure='completed-journeys';expectedJourneyCount=1;completedJourneyCount=0;completedJourneys=@();fixtureLimits=[ordered]@{productionQualification=$false;liveWorkloads=$false;extractedReleaseModule=$true;testOnlyWorkspace=$true};startedUtc=[DateTime]::UtcNow.ToString('o')}
+    Save-NativeEvidence $nativeEvidence
+}
 $repository=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $module=Import-Module (Join-Path $repository 'src\WindowsServerMigration.psd1') -Force -PassThru -DisableNameChecking
 $ownedRoot=Join-Path ([IO.Path]::GetTempPath()) ('wsm-release-smoke-'+[guid]::NewGuid().ToString('N'))
@@ -48,4 +67,11 @@ $result=Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8|ConvertFrom-Jso
 if([string]$result.Root -cne $extracted){throw 'Extracted Chinese/space path did not round-trip exactly through the real launcher result.'}
 if(-not $result.Is64Bit -or $result.ToolFingerprint -cne $release.ToolFingerprint){throw 'Extracted runtime architecture or fingerprint differs.'}
 [IO.File]::WriteAllText((Join-Path $ownedRoot 'release-evidence.json'),(@{Archive=$archivePath;SHA256=$release.SHA256;ToolFingerprint=$release.ToolFingerprint;FileCount=$projection.FileCount;Signed=$false;Result=$result}|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)))
+if($nativeEvidencePath){
+    $nativeEvidence.status='Passed';$nativeEvidence.completedJourneyCount=1
+    $nativeEvidence.toolFingerprint=$release.ToolFingerprint
+    $nativeEvidence.completedJourneys=@(@{name='exact-release-archive-extraction-module-import-save-readback';toolFingerprint=$release.ToolFingerprint;archiveSHA256=$release.SHA256;fileCount=$projection.FileCount})
+    $nativeEvidence.finishedUtc=[DateTime]::UtcNow.ToString('o')
+    Save-NativeEvidence $nativeEvidence
+}
 Write-Output ('PASS exact ZIP/extracted module/state/PowerShell launcher smoke: '+$ownedRoot+'; native HTTP/browser and CMD full-page journey remain separate acceptance.')

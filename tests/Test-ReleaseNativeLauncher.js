@@ -2,6 +2,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, execFileSync } = require('node:child_process');
+const { startEvidence } = require('./native-evidence');
+const evidence = startEvidence({
+  suite: 'native-release-launcher', transport: 'cmd-native-http-edge', mode: 'released-cmd', expectedJourneyCount: 1,
+  fixtureLimits: { productionQualification: false, liveWorkloads: false, exactExtractedRelease: true, realCmd: true, realEdge: true }
+});
 const runtime = process.env.WSM_NODE_MODULES;
 const { chromium } = require(path.join(runtime, 'playwright'));
 const modulePath = process.env.WSM_HTML_TEST_MODULE;
@@ -52,10 +57,12 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const manualResponse = await guide.goto(origin + '/operations-guide.html', { waitUntil: 'domcontentloaded' });
     assert.equal(manualResponse.status(), 200);
     assert.ok((await guide.locator('body').innerText()).trim().length > 100);
+    evidence.completeJourney('extracted-cmd-manager-purpose-and-offline-guides');
+    evidence.finish();
     console.log('PASS: actual extracted CMD -> x64 Windows PowerShell -> native Edge page, real purpose save/reload and offline guide/manual from a Chinese/space installation path; no launcher or product stubs.');
   } finally {
     if (browser) await browser.close();
     // Only terminate this test's exact CMD process tree, never unrelated shells.
     if (child && child.exitCode === null) execFileSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'pipe' });
   }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+})().catch(error => { evidence.fail(error); console.error(error); process.exitCode = 1; });

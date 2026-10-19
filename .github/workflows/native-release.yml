@@ -45,16 +45,18 @@ jobs:
               if ($LASTEXITCODE -ne 0) { $diffFailed = $true; $changed = @() }
             }
           }
-          $args = @('-NoProfile','-File','tools/Get-NativeAcceptanceScope.ps1','-EventName',$(if ($env:EVENT_NAME -eq 'workflow_dispatch') {'workflow_dispatch'} elseif ($env:EVENT_NAME -eq 'pull_request') {'pull_request'} else {'push'}),'-ReleaseSuite',$(if ($env:REQUESTED_SUITE) {$env:REQUESTED_SUITE} else {'all'}))
-          if ($diffFailed) { $args += '-DiffFailed' } elseif ($changed.Count) {
+          $selectorArgs = @('-NoProfile','-File','tools/Get-NativeAcceptanceScope.ps1','-EventName',$(if ($env:EVENT_NAME -eq 'workflow_dispatch') {'workflow_dispatch'} elseif ($env:EVENT_NAME -eq 'pull_request') {'pull_request'} else {'push'}),'-ReleaseSuite',$(if ($env:REQUESTED_SUITE) {$env:REQUESTED_SUITE} else {'all'}))
+          if ($diffFailed) { $selectorArgs += '-DiffFailed' } elseif ($changed.Count) {
             $changedJson = ConvertTo-Json -InputObject $changed -Compress
             $changedBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($changedJson))
-            $args += @('-ChangedPathBase64',$changedBase64)
+            $selectorArgs += @('-ChangedPathBase64',$changedBase64)
           }
-          $json = & pwsh @args
+          $json = & pwsh @selectorArgs
           if ($LASTEXITCODE -ne 0 -or -not $json) { throw 'Native acceptance scope selector failed.' }
           $scope = $json | ConvertFrom-Json
           foreach ($name in @('basic','launcher','release','runtime')) { "$name=$(([bool]$scope.$name).ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT }
+          "WSM_NATIVE_EVIDENCE_ENGINE=${{ matrix.engine }}" >> $env:GITHUB_ENV
+          "WSM_NATIVE_EVIDENCE_SOURCE_SHA=$env:GITHUB_SHA" >> $env:GITHUB_ENV
           "driver=$(([bool]($scope.basic -or $scope.launcher -or $scope.runtime)).ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "case=$($scope.runtimeCase)" >> $env:GITHUB_OUTPUT
           "selected=$($scope.reason)" >> $env:GITHUB_OUTPUT
@@ -75,6 +77,8 @@ jobs:
           npm install --prefix $driver --no-audit --no-fund playwright@1.62.1
           if ($LASTEXITCODE -ne 0) { throw 'Browser driver installation failed.' }
           "WSM_NODE_MODULES=$driver/node_modules" >> $env:GITHUB_ENV
+          $evidence = Join-Path $env:RUNNER_TEMP 'native-evidence'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
           $edge = @("${env:ProgramFiles(x86)}/Microsoft/Edge/Application/msedge.exe", "$env:ProgramFiles/Microsoft/Edge/Application/msedge.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
           if (-not $edge) { throw 'Actual installed Microsoft Edge is required.' }
           "WSM_EDGE=$edge" >> $env:GITHUB_ENV
@@ -85,23 +89,51 @@ jobs:
         shell: powershell
         run: |
           $release = Join-Path $env:RUNNER_TEMP 'wsm-native-release'
+          $env:WSM_NATIVE_EVIDENCE_PATH = Join-Path $env:RUNNER_TEMP 'native-evidence/native-release-package.json'
           ./tests/Test-ReleaseWizardSmoke.ps1 -OutputDirectory $release
           $evidence = Get-Content -LiteralPath (Join-Path $release 'release-evidence.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          "WSM_RELEASE_TOOL_FINGERPRINT=$($evidence.ToolFingerprint)" >> $env:GITHUB_ENV
           "WSM_HTML_TEST_MODULE=$(Join-Path $evidence.Result.Root 'src/WindowsServerMigration.psd1')" >> $env:GITHUB_ENV
+      - name: Validate exact release package evidence
+        id: validate_release
+        if: ${{ always() && matrix.engine == 'powershell' && steps.scope.outputs.release == 'true' }}
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP 'native-evidence/native-release-package.json'
+          node tests/native-evidence.js validate --path $path --suite native-release-package --engine powershell --transport release-module-smoke --mode release-smoke --count 1 --commit $env:GITHUB_SHA --run-id "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          if ($LASTEXITCODE -ne 0) { throw 'Exact release package evidence is missing, incomplete or mismatched.' }
       - name: Actual Edge to native PowerShell handler
         id: bridge
         if: steps.scope.outputs.basic == 'true'
         shell: pwsh
         run: |
+          $env:WSM_NATIVE_EVIDENCE_PATH = Join-Path $env:RUNNER_TEMP 'native-evidence/native-html-bridge.json'
           node ./tests/Test-NativeHtmlBridge.js 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wsm-native.log')
           if ($LASTEXITCODE -ne 0) { throw 'Native browser acceptance failed; fixture captures do not substitute for this gate.' }
+      - name: Validate native HTML bridge evidence
+        id: validate_bridge
+        if: ${{ always() && steps.scope.outputs.basic == 'true' }}
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP 'native-evidence/native-html-bridge.json'
+          node tests/native-evidence.js validate --path $path --suite native-html-bridge --engine '${{ matrix.engine }}' --transport native-http-edge --mode full --count 1 --commit $env:GITHUB_SHA --run-id "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          if ($LASTEXITCODE -ne 0) { throw 'Native HTML bridge evidence is missing, incomplete or mismatched.' }
       - name: Actual released CMD launch and native purpose save
         id: launcher
         if: matrix.engine == 'powershell' && steps.scope.outputs.launcher == 'true'
         shell: pwsh
         run: |
+          $env:WSM_NATIVE_EVIDENCE_PATH = Join-Path $env:RUNNER_TEMP 'native-evidence/native-release-launcher.json'
           node ./tests/Test-ReleaseNativeLauncher.js 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wsm-launcher.log')
           if ($LASTEXITCODE -ne 0) { throw 'Actual released CMD browser acceptance failed.' }
+      - name: Validate extracted launcher evidence
+        id: validate_launcher
+        if: ${{ always() && matrix.engine == 'powershell' && steps.scope.outputs.launcher == 'true' }}
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP 'native-evidence/native-release-launcher.json'
+          node tests/native-evidence.js validate --path $path --suite native-release-launcher --engine powershell --transport cmd-native-http-edge --mode released-cmd --count 1 --commit $env:GITHUB_SHA --run-id "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          if ($LASTEXITCODE -ne 0) { throw 'Extracted launcher evidence is missing, incomplete or mismatched.' }
       - name: Source and Target native runtime journeys with small controlled fixtures
         id: runtime
         if: ${{ !cancelled() && steps.scope.outputs.runtime == 'true' }}
@@ -111,6 +143,7 @@ jobs:
           WSM_RUNTIME_FORMAL_TARGET_ONLY: ${{ steps.scope.outputs.case == 'target' && '1' || '0' }}
           WSM_RUNTIME_FORMAL_SOURCE_CANCEL_ONLY: ${{ steps.scope.outputs.case == 'source-cancel' && '1' || '0' }}
         run: |
+          $env:WSM_NATIVE_EVIDENCE_PATH = Join-Path $env:RUNNER_TEMP 'native-evidence/native-runtime.json'
           $env:WSM_RUNTIME_FORMAL_SOURCE_ROOT = Split-Path (Split-Path $env:WSM_HTML_TEST_MODULE)
           Write-Output "Native runtime source: $env:WSM_RUNTIME_FORMAL_SOURCE_ROOT"
           node --version
@@ -121,17 +154,27 @@ jobs:
           $runtimeExit = $LASTEXITCODE
           Get-Content -LiteralPath $runtimeLog
           if ($runtimeExit -ne 0) { throw "Native Source/Target runtime acceptance failed (exit $runtimeExit)." }
+      - name: Validate Source and Target runtime evidence
+        id: validate_runtime
+        if: ${{ always() && steps.scope.outputs.runtime == 'true' }}
+        shell: pwsh
+        run: |
+          $mode = '${{ steps.scope.outputs.case }}'
+          $count = if ($mode -eq 'all') { 4 } else { 1 }
+          $path = Join-Path $env:RUNNER_TEMP 'native-evidence/native-runtime.json'
+          node tests/native-evidence.js validate --path $path --suite native-runtime --engine '${{ matrix.engine }}' --transport native-http-edge --mode $mode --count $count --commit $env:GITHUB_SHA --run-id "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          if ($LASTEXITCODE -ne 0) { throw 'Source and Target runtime evidence is missing, incomplete or mismatched.' }
       - name: Report native journey invocation outcomes
         if: always()
         shell: pwsh
         run: |
-          $completed = 0; $failed = 0; $cancelled = 0; $unexpectedlySkipped = 0
+          $completed = 0; $measuredJourneys = 0; $failed = 0; $cancelled = 0; $unexpectedlySkipped = 0
           $applicable = 0
           $rows = @(
-            @{ name='bridge'; selected='${{ steps.scope.outputs.basic }}'; step='bridge'; engine='both' },
-            @{ name='launcher'; selected='${{ steps.scope.outputs.launcher }}'; step='launcher'; engine='powershell' },
-            @{ name='release-package'; selected='${{ steps.scope.outputs.release }}'; step='release'; engine='powershell' },
-            @{ name='runtime'; selected='${{ steps.scope.outputs.runtime }}'; step='runtime'; engine='both' }
+            @{ name='bridge'; selected='${{ steps.scope.outputs.basic }}'; step='bridge'; validation='validate_bridge'; engine='both' },
+            @{ name='launcher'; selected='${{ steps.scope.outputs.launcher }}'; step='launcher'; validation='validate_launcher'; engine='powershell' },
+            @{ name='release-package'; selected='${{ steps.scope.outputs.release }}'; step='release'; validation='validate_release'; engine='powershell' },
+            @{ name='runtime'; selected='${{ steps.scope.outputs.runtime }}'; step='runtime'; validation='validate_runtime'; engine='both' }
           )
           foreach ($row in $rows) {
             if ($row.selected -ne 'true' -or ($row.engine -ne 'both' -and $row.engine -ne '${{ matrix.engine }}')) { continue }
@@ -140,19 +183,35 @@ jobs:
             if ($row.step -eq 'launcher') { $outcome = '${{ steps.launcher.outcome }}' }
             elseif ($row.step -eq 'release') { $outcome = '${{ steps.release.outcome }}' }
             elseif ($row.step -eq 'runtime') { $outcome = '${{ steps.runtime.outcome }}' }
-            if ($outcome -eq 'success') { $completed++ }
-            elseif ($outcome -eq 'failure') { $failed++ }
+            $validation = '${{ steps.validate_bridge.outcome }}'
+            if ($row.validation -eq 'validate_launcher') { $validation = '${{ steps.validate_launcher.outcome }}' }
+            elseif ($row.validation -eq 'validate_release') { $validation = '${{ steps.validate_release.outcome }}' }
+            elseif ($row.validation -eq 'validate_runtime') { $validation = '${{ steps.validate_runtime.outcome }}' }
+            if ($outcome -eq 'success' -and $validation -eq 'success') {
+              $completed++
+              $evidenceFile = switch ($row.name) {
+                'bridge' { 'native-html-bridge.json' }
+                'launcher' { 'native-release-launcher.json' }
+                'release-package' { 'native-release-package.json' }
+                'runtime' { 'native-runtime.json' }
+              }
+              $evidencePath = Join-Path $env:RUNNER_TEMP "native-evidence/$evidenceFile"
+              $measuredJourneys += (Get-Content -LiteralPath $evidencePath -Raw -Encoding UTF8 | ConvertFrom-Json).completedJourneyCount
+            }
             elseif ($outcome -eq 'cancelled') { $cancelled++ }
+            elseif ($outcome -eq 'failure' -or $validation -eq 'failure') { $failed++ }
+            elseif ($outcome -eq 'success') { $failed++ }
             else { $unexpectedlySkipped++ }
           }
           if ($applicable -eq 0) { 'No applicable native journey invocation ran for this engine; see the selected suite scope above.' >> $env:GITHUB_STEP_SUMMARY }
-          else { "Native journey invocations for ${{ matrix.engine }}: completed=$completed, failed=$failed, cancelled=$cancelled, selected-but-skipped=$unexpectedlySkipped." >> $env:GITHUB_STEP_SUMMARY }
+          else { "Native suite invocations for ${{ matrix.engine }}: validated=$completed; measured completed journeys=$measuredJourneys; failed=$failed; cancelled=$cancelled; selected-but-skipped=$unexpectedlySkipped." >> $env:GITHUB_STEP_SUMMARY }
       - name: Retain sanitized fixture diagnostics
         if: ${{ always() && (steps.scope.outputs.driver == 'true' || steps.scope.outputs.release == 'true') }}
         uses: actions/upload-artifact@v4
         with:
           name: native-release-${{ matrix.engine }}
           path: |
+            ${{ runner.temp }}/native-evidence/*.json
             ${{ runner.temp }}/wsm-native.log
             ${{ runner.temp }}/wsm-launcher.log
             ${{ runner.temp }}/wsm-runtime.log

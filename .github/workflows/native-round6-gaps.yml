@@ -87,6 +87,8 @@ jobs:
           npm install --prefix $driver --no-audit --no-fund playwright@1.62.1
           if ($LASTEXITCODE -ne 0) { throw 'Browser driver installation failed.' }
           "WSM_NODE_MODULES=$driver/node_modules" >> $env:GITHUB_ENV
+          "WSM_NATIVE_EVIDENCE_ENGINE=${{ matrix.engine }}" >> $env:GITHUB_ENV
+          "WSM_NATIVE_EVIDENCE_SOURCE_SHA=$env:GITHUB_SHA" >> $env:GITHUB_ENV
           "WSM_PS_EXE=$((Get-Command '${{ matrix.engine }}').Source)" >> $env:GITHUB_ENV
       - name: Exercise the missing native journey
         id: journey
@@ -96,23 +98,45 @@ jobs:
           WSM_PROBE_SKIP_CLI: ${{ matrix.engine == 'powershell' && '1' || '0' }}
         run: |
           $test = if ('${{ matrix.suite }}' -eq 'manager') { 'Test-NativeWizardManagerJourney.js' } else { 'Test-NativeProbeRoles.js' }
+          $evidenceName = if ('${{ matrix.suite }}' -eq 'manager') { 'native-manager' } else { 'native-probe' }
+          $env:WSM_NATIVE_EVIDENCE_PATH = Join-Path $env:RUNNER_TEMP "native-evidence/$evidenceName.json"
           $log = Join-Path $env:RUNNER_TEMP 'wsm-acceptance-gap.log'
           node "tests/$test" *> $log
           $result = $LASTEXITCODE
           Get-Content -LiteralPath $log
           if ($result -ne 0) { throw "Native ${{ matrix.suite }} acceptance failed (exit $result)." }
+      - name: Validate native journey evidence
+        id: validate_evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $suite = if ('${{ matrix.suite }}' -eq 'manager') { 'native-manager' } else { 'native-probe' }
+          $transport = 'native-http-edge'
+          $count = if ($suite -eq 'native-manager') { 1 } elseif ('${{ matrix.engine }}' -eq 'powershell') { 3 } else { 4 }
+          $path = Join-Path $env:RUNNER_TEMP "native-evidence/$suite.json"
+          node tests/native-evidence.js validate --path $path --suite $suite --engine '${{ matrix.engine }}' --transport $transport --mode full --count $count --commit $env:GITHUB_SHA --run-id "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          if ($LASTEXITCODE -ne 0) { throw "Native $suite evidence is missing, incomplete or mismatched." }
       - name: Report selected journey invocation outcome
         if: always()
         shell: pwsh
         run: |
           $outcome = '${{ steps.journey.outcome }}'
-          if ($outcome -eq 'success') { "Native ${{ matrix.suite }} invocation on ${{ matrix.engine }}: completed=1, failed=0, cancelled=0, skipped=0." >> $env:GITHUB_STEP_SUMMARY }
+          $evidenceOutcome = '${{ steps.validate_evidence.outcome }}'
+          if ($outcome -eq 'success' -and $evidenceOutcome -eq 'success') {
+            $suite = if ('${{ matrix.suite }}' -eq 'manager') { 'native-manager' } else { 'native-probe' }
+            $path = Join-Path $env:RUNNER_TEMP "native-evidence/$suite.json"
+            $record = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+            "Native ${{ matrix.suite }} invocation on ${{ matrix.engine }}: validated=1; measured completed journeys=$($record.completedJourneyCount); failed=0; cancelled=0; skipped=0; evidence validated." >> $env:GITHUB_STEP_SUMMARY
+          }
           elseif ($outcome -eq 'failure') { "Native ${{ matrix.suite }} invocation on ${{ matrix.engine }}: completed=0, failed=1, cancelled=0, skipped=0." >> $env:GITHUB_STEP_SUMMARY }
           elseif ($outcome -eq 'cancelled') { "Native ${{ matrix.suite }} invocation on ${{ matrix.engine }}: completed=0, failed=0, cancelled=1, skipped=0." >> $env:GITHUB_STEP_SUMMARY }
+          elseif ($outcome -eq 'success') { "Native ${{ matrix.suite }} invocation on ${{ matrix.engine }}: completed=0, failed=1, cancelled=0, skipped=0; evidence validation failed." >> $env:GITHUB_STEP_SUMMARY }
           else { "Native ${{ matrix.suite }} invocation on ${{ matrix.engine }}: completed=0, failed=0, cancelled=0, skipped=1." >> $env:GITHUB_STEP_SUMMARY }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: round6-${{ matrix.suite }}-${{ matrix.engine }}
-          path: ${{ runner.temp }}/wsm-acceptance-gap.log
+          path: |
+            ${{ runner.temp }}/native-evidence/*.json
+            ${{ runner.temp }}/wsm-acceptance-gap.log
           retention-days: 7

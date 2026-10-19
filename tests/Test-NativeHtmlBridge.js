@@ -4,6 +4,11 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const assert = require('node:assert/strict');
+const { startEvidence } = require('./native-evidence');
+const evidence = startEvidence({
+  suite: 'native-html-bridge', transport: 'native-http-edge', mode: 'full', expectedJourneyCount: 1,
+  fixtureLimits: { productionQualification: false, liveWorkloads: false, realEdge: true, loopbackHandler: true, injectedFaultResponses: true }
+});
 
 const runtime = process.env.WSM_NODE_MODULES || 'C:/Users/eldar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules';
 const { chromium } = require(path.join(runtime, 'playwright'));
@@ -132,10 +137,12 @@ async function verifyInjectedViewFailure(browser, origin, fault, expectedText, t
     await expiredPage.waitForFunction(() => window.WsmConsole && window.WsmConsole.state.token === null && !document.getElementById('error-summary').hidden, null, { timeout: 10000 });
     assert.match(await expiredPage.locator('#error-summary').textContent(), /工作階段(?: token )?已失效/);
     await expiredPage.close();
+    evidence.completeJourney('edge-loopback-handler-success-and-injected-faults', { successfulFaultDisplays: 4 });
+    evidence.finish();
     process.stdout.write('PASS: Edge loaded the real PowerShell loopback handler, verified native asset hashes and 125-item inventory/session context, saved a reversible selection once, and displayed identified errors for injected non-JSON, connection reset, timeout, and expired-session responses. Fault cases use explicit Playwright response injection.\n');
   } finally {
     if (browser) await browser.close();
     await stopServer();
     fs.rmSync(root, { recursive: true, force: true });
   }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+})().catch(error => { evidence.fail(error); console.error(error); process.exitCode = 1; });

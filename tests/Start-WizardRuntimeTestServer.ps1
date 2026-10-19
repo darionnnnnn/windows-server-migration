@@ -11,7 +11,7 @@ $ErrorActionPreference='Stop'
 $module=Import-Module (Join-Path $PSScriptRoot '../src/WindowsServerMigration.psd1') -Force -PassThru -DisableNameChecking
 & $module {
     param($Role,$Workspace,$ReadyPath,$StopFile,$ResponseCapturePath,$PayloadRoot,$WizardMode)
-    $script:FixtureCaptureRoot=$ResponseCapturePath;$script:FixtureCaptureSequence=0
+    $script:FixtureCaptureRoot=$ResponseCapturePath;$script:FixtureCaptureSequence=0;$script:FixtureRole=$Role
     $script:FixtureCorrelationId=''
     $script:FixtureTimingRoot=Join-Path ([IO.Path]::GetDirectoryName($ResponseCapturePath)) 'callee-timings'
     [IO.Directory]::CreateDirectory($script:FixtureTimingRoot)|Out-Null
@@ -62,8 +62,29 @@ finally{
         return $parsed
     }
     function script:Get-WsmHtmlSafeError([string]$ExceptionMessage,[string]$ExceptionType=''){
-        $diagnosticPath=Join-Path ([IO.Path]::GetDirectoryName($script:FixtureCaptureRoot)) 'safe-error-diagnostics.log'
-        [IO.File]::AppendAllText($diagnosticPath,($ExceptionType+'|'+$ExceptionMessage+[Environment]::NewLine),(New-Object Text.UTF8Encoding($false)))
+        # This listener only serves a controlled formal fixture. Capture bounded
+        # exception metadata before the product converts it to its safe response;
+        # never record request bodies, workspace files, or arbitrary host logs.
+        if($script:FixtureRole -ceq 'Target' -and $script:FixtureCaptureRoot){
+            $errorRecord=if($_ -is [Management.Automation.ErrorRecord]){$_}else{$null}
+            $innerDetails=@();$inner=if($errorRecord){$errorRecord.Exception}else{$null}
+            for($depth=0;$inner -and $depth -lt 8;$depth++){$innerDetails+=,[pscustomobject]@{Type=$inner.GetType().FullName;Message=([string]$inner.Message).Substring(0,[Math]::Min(2000,([string]$inner.Message).Length))};$inner=$inner.InnerException}
+            $entry=[ordered]@{
+                SchemaVersion=1;DiagnosticId=[Guid]::NewGuid().ToString('D');Role='Target';FixtureScope='ControlledWizardRuntime'
+                EngineVersion=$PSVersionTable.PSVersion.ToString();Transport=if($env:WSM_RUNTIME_NATIVE_TRANSPORT -eq '1'){'native-http-edge'}else{'formal-capture-bridge'}
+                SourceCommit=$env:WSM_NATIVE_EVIDENCE_SOURCE_SHA;RunId=if($env:GITHUB_RUN_ID){$env:GITHUB_RUN_ID+'-'+$env:GITHUB_RUN_ATTEMPT}else{''}
+                ObservedUtc=[DateTime]::UtcNow.ToString('o');ExceptionType=$ExceptionType
+                Message=([string]$ExceptionMessage).Substring(0,[Math]::Min(4000,([string]$ExceptionMessage).Length))
+                FullyQualifiedErrorId=if($errorRecord){$errorRecord.FullyQualifiedErrorId}else{''}
+                Category=if($errorRecord){$errorRecord.CategoryInfo.Category.ToString()}else{''}
+                InnerExceptions=$innerDetails
+                ScriptStackTrace=if($errorRecord){([string]$errorRecord.ScriptStackTrace).Substring(0,[Math]::Min(8000,([string]$errorRecord.ScriptStackTrace).Length))}else{''}
+                PositionMessage=if($errorRecord){([string]$errorRecord.InvocationInfo.PositionMessage).Substring(0,[Math]::Min(2000,([string]$errorRecord.InvocationInfo.PositionMessage).Length))}else{''}
+                CallStack=@(Get-PSCallStack|Select-Object -First 12|ForEach-Object {[string]$_.FunctionName})
+            }
+            $diagnosticPath=Join-Path ([IO.Path]::GetDirectoryName($script:FixtureCaptureRoot)) 'safe-error-diagnostics.jsonl'
+            [IO.File]::AppendAllText($diagnosticPath,(($entry|ConvertTo-Json -Compress -Depth 5)+[Environment]::NewLine),(New-Object Text.UTF8Encoding($false)))
+        }
         & $script:TestOriginalSafeError $ExceptionMessage $ExceptionType
     }
     function Write-WsmLocalHttpResponse($Client,[int]$Status,[string]$ContentType,[byte[]]$Bytes){

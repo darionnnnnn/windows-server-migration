@@ -10,6 +10,14 @@ const { spawn, execFileSync } = require('node:child_process');
 
 if (process.platform !== 'win32') throw new Error('This acceptance requires native Windows PowerShell and Edge.');
 const cliOnly = process.env.WSM_PROBE_CLI_ONLY === '1';
+const probeMode = cliOnly ? 'cli-only' : 'full';
+const probeTransport = cliOnly ? 'powershell-cli' : 'native-http-edge';
+const probeExpectedCount = cliOnly ? 1 : 3 + (process.env.WSM_PROBE_SKIP_CLI === '1' ? 0 : 1);
+const { startEvidence } = require('./native-evidence');
+const evidence = startEvidence({
+  suite: 'native-probe', transport: probeTransport, mode: probeMode, expectedJourneyCount: probeExpectedCount,
+  fixtureLimits: { productionQualification: false, liveWorkloads: false, controlledHostFixtures: true, realEdge: !cliOnly, loopbackHandler: !cliOnly }
+});
 let chromium = null;
 if (!cliOnly) {
   const runtime = process.env.WSM_NODE_MODULES || 'C:/Users/eldar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules';
@@ -28,7 +36,58 @@ const roles = ['Source', 'Target', 'Manager'];
 const expectedCollectorIds = ['PlatformIdentity', 'CommandsModules', 'LocalVolumes', 'NativeInventory', 'HttpProbe'];
 const processes = [];
 const contexts = [];
+const pageOwners = new WeakMap();
+const probeHttpRequests = [];
+const probeLifecycleEvents = [];
 let browser;
+
+function probeDiagnosticsPath() {
+  const evidencePath = process.env.WSM_NATIVE_EVIDENCE_PATH;
+  return evidencePath ? path.join(path.dirname(evidencePath), 'native-probe-diagnostics.json') : null;
+}
+function outputSummary(record) {
+  const lines = record.logs.join('').split(/\r?\n/).filter(Boolean);
+  const announcements = lines.filter(line => /^Local migration console: http:\/\/127\.0\.0\.1:\d+\/?$/.test(line)).length;
+  return { lineCount: lines.length, loopbackAnnouncements: announcements, otherLineCount: lines.length - announcements };
+}
+function persistProbeDiagnostics() {
+  const file = probeDiagnosticsPath();
+  if (!file) return;
+  const snapshot = {
+    schemaVersion: 1,
+    suite: 'native-probe',
+    engine: process.env.WSM_NATIVE_EVIDENCE_ENGINE || 'unknown',
+    engineExecutable: psExe,
+    sourceCommit: process.env.WSM_NATIVE_EVIDENCE_SOURCE_SHA || process.env.GITHUB_SHA || null,
+    runId: process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT || '1'}` : null,
+    capturedUtc: new Date().toISOString(),
+    lifecycle: probeLifecycleEvents.slice(-100),
+    requests: probeHttpRequests.slice(-100),
+    servers: processes.map(record => ({
+      role: record.role,
+      pid: record.child.pid || null,
+      exitCode: record.exitCode ?? record.child.exitCode ?? null,
+      signal: record.signal ?? null,
+      killed: record.child.killed,
+      startedUtc: record.startedUtc || null,
+      closedUtc: record.closedUtc || null,
+      origin: record.origin || null,
+      output: outputSummary(record),
+      spawnError: record.spawnError || null
+    }))
+  };
+  const temporary = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
+  try { fs.renameSync(temporary, file); }
+  catch (error) {
+    try { fs.rmSync(file, { force: true }); } catch {}
+    fs.renameSync(temporary, file);
+  }
+}
+function recordProbeEvent(event) {
+  probeLifecycleEvents.push({ atUtc: new Date().toISOString(), ...event });
+  persistProbeDiagnostics();
+}
 
 function digestTree(root, rel = '') {
   const rows = [];
@@ -123,18 +182,37 @@ async function startServer(role) {
     windowsHide: true,
     env: { ...process.env, PSModulePath: path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'Modules') }
   });
-  processes.push({ child, stopFile, role, workspace, logs: [] });
+  processes.push({ child, stopFile, role, workspace, logs: [], startedUtc: new Date().toISOString(), exitCode: null, signal: null });
   const record = processes[processes.length - 1];
-  child.stdout.on('data', data => record.logs.push(data.toString()));
-  child.stderr.on('data', data => record.logs.push(data.toString()));
+  recordProbeEvent({ type: 'server-started', role, pid: child.pid || null, executable: path.basename(psExe) });
+  child.stdout.on('data', data => { record.logs.push(data.toString()); persistProbeDiagnostics(); });
+  child.stderr.on('data', data => { record.logs.push(data.toString()); persistProbeDiagnostics(); });
+  child.once('error', error => {
+    record.spawnError = { name: error.name, message: error.message, code: error.code };
+    recordProbeEvent({ type: 'server-spawn-error', role, pid: child.pid || null, error: record.spawnError });
+  });
+  child.once('exit', (code, signal) => {
+    record.exitCode = code;
+    record.signal = signal;
+    recordProbeEvent({ type: 'server-exit', role, pid: child.pid || null, exitCode: code, signal });
+  });
+  child.once('close', (code, signal) => {
+    record.closedUtc = new Date().toISOString();
+    recordProbeEvent({ type: 'server-closed', role, pid: child.pid || null, exitCode: code, signal, output: outputSummary(record) });
+  });
   const deadline = Date.now() + 90000;
   while (!fs.existsSync(readyPath)) {
-    if (child.exitCode !== null || Date.now() > deadline) throw new Error(`${role} listener failed to start.\n${record.logs.join('')}`);
+    if (child.exitCode !== null || Date.now() > deadline) {
+      persistProbeDiagnostics();
+      throw new Error(`${role} listener failed to start; pid=${child.pid || 'unknown'}, exit=${record.exitCode ?? child.exitCode ?? 'running'}, signal=${record.signal || 'none'}, output=${JSON.stringify(outputSummary(record))}.`);
+    }
     await pause(100);
   }
   const ready = JSON.parse(fs.readFileSync(readyPath, 'utf8'));
   assert.ok(ready.Url && ready.Url.startsWith('http://127.0.0.1:'), `${role} listener must bind only to loopback.`);
-  return { role, workspace, origin: ready.Url.replace(/\/$/, ''), child, record };
+  record.origin = ready.Url.replace(/\/$/, '');
+  recordProbeEvent({ type: 'server-ready', role, pid: child.pid || null, origin: record.origin, readyUtc: ready.ReadyUtc || null });
+  return { role, workspace, origin: record.origin, child, record };
 }
 async function stopServers() {
   for (const record of processes) {
@@ -149,23 +227,68 @@ async function stopServers() {
   })));
 }
 async function api(page, session, route, body, method = body ? 'POST' : 'GET') {
-  return page.evaluate(async request => {
-    const response = await fetch(request.route, {
-      method: request.method,
-      cache: 'no-store',
-      headers: { 'X-Wsm-Token': request.token, ...(request.body ? { 'Content-Type': 'application/json' } : {}) },
-      ...(request.body ? { body: JSON.stringify(request.body) } : {})
-    });
-    const text = await response.text();
-    let data;
-    try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text.slice(0, 500) }; }
-    return { status: response.status, data };
-  }, { route, method, token: session.token, body: body || null });
+  const handle = pageOwners.get(page);
+  const requestRecord = { atUtc: new Date().toISOString(), role: handle?.role || 'unknown', pid: handle?.child?.pid || null, method, route };
+  try {
+    const result = await page.evaluate(async request => {
+      try {
+        const response = await fetch(request.route, {
+          method: request.method,
+          cache: 'no-store',
+          headers: { 'X-Wsm-Token': request.token, ...(request.body ? { 'Content-Type': 'application/json' } : {}) },
+          ...(request.body ? { body: JSON.stringify(request.body) } : {})
+        });
+        const text = await response.text();
+        let data;
+        try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text.slice(0, 500) }; }
+        return { status: response.status, data };
+      } catch (error) {
+        return { fetchError: { name: error?.name || 'Error', message: error?.message || String(error), stack: error?.stack || null } };
+      }
+    }, { route, method, token: session.token, body: body || null });
+    requestRecord.origin = handle?.origin || null;
+    if (result.fetchError) {
+      requestRecord.fetchError = result.fetchError;
+      requestRecord.server = handle ? {
+        pid: handle.child.pid || null,
+        exitCode: handle.record.exitCode ?? handle.child.exitCode ?? null,
+        signal: handle.record.signal ?? null,
+        killed: handle.child.killed,
+        output: outputSummary(handle.record),
+        spawnError: handle.record.spawnError || null
+      } : null;
+      probeHttpRequests.push(requestRecord);
+      recordProbeEvent({ type: 'http-fetch-failed', ...requestRecord });
+      throw new Error(`Probe HTTP fetch failed for ${requestRecord.role} ${method} ${route}; server=${JSON.stringify(requestRecord.server)}; browser=${JSON.stringify(result.fetchError)}`);
+    }
+    requestRecord.status = result.status;
+    probeHttpRequests.push(requestRecord);
+    if (probeHttpRequests.length > 100) probeHttpRequests.shift();
+    return result;
+  } catch (error) {
+    if (!requestRecord.fetchError) {
+      requestRecord.nodeError = { name: error.name, message: error.message, stack: error.stack };
+      requestRecord.server = handle ? {
+        pid: handle.child.pid || null,
+        exitCode: handle.record.exitCode ?? handle.child.exitCode ?? null,
+        signal: handle.record.signal ?? null,
+        killed: handle.child.killed,
+        output: outputSummary(handle.record),
+        spawnError: handle.record.spawnError || null
+      } : null;
+      probeHttpRequests.push(requestRecord);
+      if (probeHttpRequests.length > 100) probeHttpRequests.shift();
+      recordProbeEvent({ type: 'http-request-error', ...requestRecord });
+    }
+    persistProbeDiagnostics();
+    throw error;
+  }
 }
 async function getSession(server) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   contexts.push(context);
   const page = await context.newPage();
+  pageOwners.set(page, server);
   await page.goto(server.origin + '/#wizard', { waitUntil: 'domcontentloaded' });
   const initial = await page.evaluate(async () => {
     const response = await fetch('/api/session', { cache: 'no-store' });
@@ -324,6 +447,8 @@ async function runCliProbe() {
       const cliProbe = await runCliProbe();
       assert.deepEqual(cliProbe.Manifest.map(row => row.Id), expectedCollectorIds);
       verifySnapshot();
+      evidence.completeJourney('Manager-real-DeveloperProbe-CLI',{role:'Manager'});
+      evidence.finish();
       console.log('PASS Test-NativeProbeRoles CLI-only: real Start-ServerMigration DeveloperProbe entry, verified JSON/HTML/ZIP/file-index hashes and collector manifest semantics.');
       return;
     }
@@ -354,13 +479,16 @@ async function runCliProbe() {
       const handle = handles[i], terminal = terminals[i];
       assertProbeArtifacts(handle.workspace, terminal, handle.role);
       assert.deepEqual(authorityBefore.get(handle.role), authorityDigest(handle.workspace), `${handle.role} Probe changed migration authority outside its dedicated output/job directories.`);
+      evidence.completeJourney(`${handle.role}-DeveloperProbe-artifact-readback`, { role: handle.role, terminal: terminal.status });
     }
 
     if (process.env.WSM_PROBE_SKIP_CLI !== '1') {
       const cliProbe = await runCliProbe();
       assert.deepEqual(cliProbe.Manifest.map(row => row.Id), expectedCollectorIds, 'CLI and listener Probe entry points do not expose the same collector manifest.');
+      evidence.completeJourney('Manager-real-DeveloperProbe-CLI',{role:'Manager'});
     }
     verifySnapshot();
+    evidence.finish();
     console.log('PASS Test-NativeProbeRoles: Source/Manager/Target UI Probe, same-workspace query/cancel, cross-workspace job denial, isolated real Edge contexts, ZIP/HTML/JSON/file-index hashes, collector manifest semantics, and unchanged migration authority. CLI=' + (process.env.WSM_PROBE_SKIP_CLI === '1' ? 'prior evidence reused' : 'passed'));
   } finally {
     for (const context of contexts) await context.close().catch(() => {});
@@ -376,7 +504,9 @@ async function runCliProbe() {
     fs.rmSync(safeRoot, { recursive: true, force: true });
   }
 })().catch(error => {
+  evidence.fail(error);
   console.error(error.stack || String(error));
-  for (const record of processes) if (record.logs.length) console.error(`${record.role} log:\n${record.logs.join('')}`);
+  for (const record of processes) console.error(`${record.role} server lifecycle: pid=${record.child.pid || 'unknown'}, exit=${record.exitCode ?? record.child.exitCode ?? 'running'}, signal=${record.signal || 'none'}, output=${JSON.stringify(outputSummary(record))}.`);
+  if (probeDiagnosticsPath()) console.error(`Durable sanitized Probe diagnostics: ${probeDiagnosticsPath()}`);
   process.exitCode = 1;
 });

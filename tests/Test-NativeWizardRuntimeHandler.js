@@ -1,5 +1,11 @@
 console.log('Starting immutable native/formal runtime acceptance on '+process.version);
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),http=require('node:http'),{spawn,execFileSync}=require('node:child_process');
+const {startEvidence}=require('./native-evidence');
+const runtimeMode=process.env.WSM_RUNTIME_FORMAL_SOURCE_CANCEL_ONLY==='1'?'source-cancel':process.env.WSM_RUNTIME_FORMAL_TARGET_ONLY==='1'?'target':'all';
+const runtimeTransport=process.env.WSM_RUNTIME_NATIVE_TRANSPORT==='1'?'native-http-edge':'formal-capture-bridge';
+const runtimeExpectedCount=runtimeMode==='all'?4:1;
+const evidence=startEvidence({suite:'native-runtime',transport:runtimeTransport,mode:runtimeMode,expectedJourneyCount:runtimeExpectedCount,
+ fixtureLimits:{productionQualification:false,liveWorkloads:false,controlledWindowsHost:true,externalSmbQualification:false,actualServices:false}});
 const sourceRoot=path.resolve(process.env.WSM_RUNTIME_FORMAL_SOURCE_ROOT||path.resolve(__dirname,'..')),tempRoot=fs.mkdtempSync(path.join(os.tmpdir(),'wsm-runtime-formal-')),snapshot=path.join(tempRoot,'runtime'),ownTemp=path.resolve(os.tmpdir())+path.sep;
 console.log('Runtime fixture paths allocated.');
 assert.ok(path.resolve(tempRoot).startsWith(ownTemp),'Runtime test files must remain beneath the OS temp directory.');
@@ -51,6 +57,21 @@ if ($env:WSM_RUNTIME_TEST_IDENTITY -eq '1') {
 const snapshotFingerprint=makeSnapshot(),runtime=process.env.WSM_NODE_MODULES||'C:/Users/eldar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules',{chromium}=require(path.join(runtime,'playwright'));
 console.log('Immutable fixture and browser driver ready.');
 const trace=[],tracePath=path.join(tempRoot,'formal-trace.jsonl');function log(text){const entry={utc:new Date().toISOString(),message:String(text)};trace.push(`${entry.utc} ${entry.message}`);fs.appendFileSync(tracePath,JSON.stringify(entry)+'\n','utf8');}function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+function retainFixtureFailureDiagnostics(roleRoot,role){
+ if(role!=='Target')return;
+ const source=path.join(roleRoot,'safe-error-diagnostics.jsonl');if(!fs.existsSync(source))return;
+ const records=fs.readFileSync(source,'utf8').split(/\r?\n/).filter(Boolean).map(line=>JSON.parse(line));
+ for(const record of records){
+  if(record.SchemaVersion!==1||record.Role!=='Target'||record.FixtureScope!=='ControlledWizardRuntime')throw new Error('Refusing to retain an unscoped runtime diagnostic.');
+  for(const key of ['ExceptionType','Message','FullyQualifiedErrorId','Category','ScriptStackTrace','PositionMessage'])if(typeof record[key]!=='string')throw new Error(`Malformed runtime diagnostic field ${key}.`);
+  record.ExceptionType=record.ExceptionType.slice(0,512);record.Message=record.Message.slice(0,4000);record.FullyQualifiedErrorId=record.FullyQualifiedErrorId.slice(0,512);record.ScriptStackTrace=record.ScriptStackTrace.slice(0,8000);record.PositionMessage=record.PositionMessage.slice(0,2000);
+ }
+ const evidencePath=process.env.WSM_NATIVE_EVIDENCE_PATH;if(!evidencePath)return;
+ const destination=path.join(path.dirname(evidencePath),'native-runtime-diagnostics.json');
+ const evidenceRecord={schemaVersion:1,suite:'native-runtime',mode:runtimeMode,engine:process.env.WSM_NATIVE_EVIDENCE_ENGINE||'unknown',transport:runtimeTransport,sourceCommit:process.env.WSM_NATIVE_EVIDENCE_SOURCE_SHA||process.env.GITHUB_SHA||null,runId:process.env.GITHUB_RUN_ID?`${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT||'1'}`:null,fixtureScope:'ControlledWizardRuntime',records};
+ const temporary=`${destination}.${process.pid}.tmp`;fs.writeFileSync(temporary,JSON.stringify(evidenceRecord,null,2)+'\n','utf8');try{fs.renameSync(temporary,destination);}catch(error){try{fs.rmSync(destination,{force:true});}catch{}fs.renameSync(temporary,destination);}
+ log(`Retained ${records.length} sanitized Target fixture exception record(s) as ${destination}.`);
+}
 async function reservePort(){return new Promise((resolve,reject)=>{const server=http.createServer();server.once('error',reject);server.listen(0,'127.0.0.1',()=>{const port=server.address()?.port;server.close(error=>error?reject(error):resolve(port));});});}
 let roleRunSequence=0;
 async function runRole(role,options={}){
@@ -121,7 +142,7 @@ assert.equal(crypto.createHash('sha256').update(fs.readFileSync(fixture.ProfileP
   await page.waitForFunction(()=>[...document.querySelectorAll('.wizard-runtime-form')].some(f=>f.innerText.includes('建立明確的新主機決策收據')),null,{timeout:60000});await saveScreenshot('target-decision-form-390');await fillForm('建立明確的新主機決策收據',{Owner:'Formal target operator',Reason:'Reviewed trusted comparison and exact immutable payload',SelectedItemIds:fixture.ItemId},'建立決策收據');await waitAction('CreateTargetDecisionReceipt');job=await page.evaluate(()=>window.WsmConsole.state.jobs.get(window.WsmConsole.state.wizardRuntimeJobId));assert.equal(job.status,'Succeeded',JSON.stringify(job.error||job));
   await page.waitForFunction(()=>[...document.querySelectorAll('.wizard-runtime-form')].some(f=>f.innerText.includes('重新核對逐項還原預覽')),null,{timeout:60000});await runtime.getByRole('button',{name:'讀取最新還原預覽'}).click();await waitAction('TargetRestorePreview');job=await page.evaluate(()=>window.WsmConsole.state.jobs.get(window.WsmConsole.state.wizardRuntimeJobId));assert.equal(job.status,'Succeeded',JSON.stringify(job.error||job));
   await page.waitForFunction(()=>[...document.querySelectorAll('.wizard-runtime-form')].some(f=>f.innerText.includes('明確執行目前預覽的還原')),null,{timeout:60000});const restoreForm=page.locator('.wizard-runtime-form').filter({hasText:'明確執行目前預覽的還原'});await restoreForm.locator('[data-runtime-field="RestoreConfirmation"]').check();await restoreForm.getByRole('button',{name:'開始此預覽的還原'}).click();await waitAction('TargetRestore');job=await page.evaluate(()=>window.WsmConsole.state.jobs.get(window.WsmConsole.state.wizardRuntimeJobId));assert.ok(['Succeeded','Partial'].includes(job.status),JSON.stringify(job.error||job));const result=(job.outputs||[]).find(row=>row.PairId===fixture.PairId&&row.AttemptOperationId===job.jobId&&/^[a-f0-9]{64}$/i.test(String(row.JournalHash||'')));assert.ok(result,'Actual exact Target restore attempt result is missing from the formal handler output.');assert.equal(result.PlanHash.toLowerCase(),fixture.PlanHash.toLowerCase());assert.match(result.ItemResultsHash,/^[a-f0-9]{64}$/i);assert.deepEqual(result.SelectedItemIds,[fixture.ItemId]);assert.equal(result.Status,job.status);await saveScreenshot('target-restore-result-390');await captureResponsive('target-restore-result');assert.ok(result.JournalPath&&result.JournalHash);assert.equal(crypto.createHash('sha256').update(fs.readFileSync(result.JournalPath)).digest('hex'),result.JournalHash.toLowerCase());const restored=path.join(fixture.RestorePath,fixture.PayloadName);assert.equal(fs.readFileSync(restored,'utf8'),fixture.PayloadText);const repeat=await direct('/api/operations',browserRequests.find(request=>request.action==='TargetRestore'));assert.ok([200,202].includes(repeat.status));assert.equal((repeat.data.job||repeat.data).jobId,job.jobId);assert.equal(fs.readFileSync(restored,'utf8'),fixture.PayloadText);assert.equal(browserErrors.length,0,browserErrors.join('\n'));await page.close();return {role,status:result.Status,journalPath:result.JournalPath,journalHash:result.JournalHash,restorePath:restored};
- }catch(error){if(page&&screenshots){try{await saveScreenshot('error-390');}catch(_){}}throw error;}finally{if(browser)await browser.close();await routeQueue;if(child&&child.exitCode===null){fs.writeFileSync(stop,'stop');await new Promise(resolve=>{const timer=setTimeout(()=>{child.kill();resolve();},8000);child.once('exit',()=>{clearTimeout(timer);resolve();});});}await routeQueue;if(fs.existsSync(roleRoot)&&process.env.WSM_KEEP_RUNTIME_FIXTURE==='1'){log('Kept workspace fixture for '+role+': '+roleRoot);}else if(fs.existsSync(roleRoot)){function unlock(directory){for(const entry of fs.readdirSync(directory,{withFileTypes:true})){const childPath=path.join(directory,entry.name);if(entry.isDirectory())unlock(childPath);else fs.chmodSync(childPath,0o666);}fs.chmodSync(directory,0o777);}unlock(path.resolve(roleRoot));fs.rmSync(path.resolve(roleRoot),{recursive:true,force:true});}}
+ }catch(error){if(page&&screenshots){try{await saveScreenshot('error-390');}catch(_){}}try{retainFixtureFailureDiagnostics(roleRoot,role);}catch(diagnosticError){log(`Could not retain scoped fixture diagnostic: ${diagnosticError.message}`);}throw error;}finally{if(browser)await browser.close();await routeQueue;if(child&&child.exitCode===null){fs.writeFileSync(stop,'stop');await new Promise(resolve=>{const timer=setTimeout(()=>{child.kill();resolve();},8000);child.once('exit',()=>{clearTimeout(timer);resolve();});});}await routeQueue;if(fs.existsSync(roleRoot)&&process.env.WSM_KEEP_RUNTIME_FIXTURE==='1'){log('Kept workspace fixture for '+role+': '+roleRoot);}else if(fs.existsSync(roleRoot)){function unlock(directory){for(const entry of fs.readdirSync(directory,{withFileTypes:true})){const childPath=path.join(directory,entry.name);if(entry.isDirectory())unlock(childPath);else fs.chmodSync(childPath,0o666);}fs.chmodSync(directory,0o777);}unlock(path.resolve(roleRoot));fs.rmSync(path.resolve(roleRoot),{recursive:true,force:true});}}
 }
 (async()=>{
  const targetOnly=process.env.WSM_RUNTIME_FORMAL_TARGET_ONLY==='1';
@@ -129,18 +150,26 @@ assert.equal(crypto.createHash('sha256').update(fs.readFileSync(fixture.ProfileP
   if(process.env.WSM_RUNTIME_FORMAL_SOURCE_CANCEL_ONLY==='1'){
    const source=await runRole('Source',{mode:'ItemByItem',cancel:true,probeDuringRun:true});assert.equal(source.status,'Cancelled');assert.equal(source.canCancel,false);assert.ok(source.probe&&source.probe.collectorCount>0);
    assert.deepEqual(snapshotFingerprint,digestTree(path.join(snapshot,'src')),'Immutable runtime snapshot changed during Source cancel/Probe test.');
+   evidence.completeJourney('Source-cancel-with-concurrent-Probe',{role:'Source',expectedTerminal:'Cancelled'});
+   evidence.finish();
    console.log('PASS: Source backup, separate-browser-page Probe/query/cancel, exact terminal operation and unchanged pair authority. Transport mode: '+(process.env.WSM_RUNTIME_NATIVE_TRANSPORT==='1'?'native HTTP':'formal capture bridge')+'. Controlled observations only.');
   }else if(targetOnly){
    const target=await runRole('Target');assert.equal(target.role,'Target');assert.ok(['Succeeded','Partial'].includes(target.status));
    assert.deepEqual(snapshotFingerprint,digestTree(path.join(snapshot,'src')),'Immutable runtime snapshot changed during formal tests.');
+   evidence.completeJourney('Target-package-import-comparison-decision-restore',{role:'Target',terminal:target.status});
+   evidence.finish();
    console.log('PASS: immutable Source-root snapshot -> real Edge UI -> actual HTML handler -> actual Target Directory receive, comparison import, explicit decision, preview and restore; exact package, payload and journal hashes and operation replay verified. Transport mode: '+(process.env.WSM_RUNTIME_NATIVE_TRANSPORT==='1'?'actual native HTTP and browser origin':'formal writer capture bridge; native transport/origin not asserted')+'. Controlled host/software fixtures are used; live SMB, actual services and production qualification are not asserted.');
   }else{
    const sourceCancel=await runRole('Source',{mode:'ItemByItem',cancel:true,probeDuringRun:true});assert.equal(sourceCancel.status,'Cancelled');assert.equal(sourceCancel.canCancel,false);
-   const sourceZip=await runRole('Source',{mode:'ItemByItem'}),sourceDirectory=await runRole('Source',{mode:'Automatic'});assert.equal(sourceZip.mode,'Directory');assert.equal(sourceDirectory.mode,'Zip');
+   evidence.completeJourney('Source-cancel-with-concurrent-Probe',{role:'Source',expectedTerminal:'Cancelled'});
+   const sourceZip=await runRole('Source',{mode:'ItemByItem'});assert.equal(sourceZip.mode,'Directory');evidence.completeJourney('Source-Directory-backup',{role:'Source',deliveryMode:sourceZip.mode});
+   const sourceDirectory=await runRole('Source',{mode:'Automatic'});assert.equal(sourceDirectory.mode,'Zip');evidence.completeJourney('Source-ZIP-backup',{role:'Source',deliveryMode:sourceDirectory.mode});
    const target=await runRole('Target');assert.equal(target.role,'Target');assert.deepEqual(snapshotFingerprint,digestTree(path.join(snapshot,'src')),'Immutable runtime snapshot changed during formal tests.');
+   evidence.completeJourney('Target-package-import-comparison-decision-restore',{role:'Target',terminal:target.status});
+   evidence.finish();
    console.log('PASS: immutable runtime/UI snapshot -> real Edge UI -> actual HTML handler -> actual Source core backup (default ItemByItem Directory and Automatic ZIP 512 MiB) and actual Target Directory receive/comparison/decision/restore; exact package, payload, journal hashes and operation replay verified. Transport mode: '+(process.env.WSM_RUNTIME_NATIVE_TRANSPORT==='1'?'actual native HTTP and browser origin':'formal writer capture bridge; native transport/origin not asserted')+'. Controlled host/software fixtures are used; live SMB, actual services and production qualification are not asserted.');
   }
- }catch(error){console.error(error);console.error(trace.join('\n'));process.exitCode=1;}
+ }catch(error){evidence.fail(error);console.error(error);console.error(trace.join('\n'));process.exitCode=1;}
  finally{
   try{execFileSync('subst.exe',[`${workDrive}:`,'/D']);}catch{}
   if(fs.existsSync(tempRoot)&&process.env.WSM_KEEP_RUNTIME_FIXTURE==='1'){console.log('Kept runtime fixture at '+tempRoot);}

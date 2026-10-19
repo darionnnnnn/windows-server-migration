@@ -6,6 +6,11 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawn, execFileSync } = require('node:child_process');
+const { startEvidence } = require('./native-evidence');
+const evidence = startEvidence({
+  suite: 'native-manager', transport: 'native-http-edge', mode: 'full', expectedJourneyCount: 1,
+  fixtureLimits: { productionQualification: false, liveWorkloads: false, testOnlyIdentities: true, realEdge: true, loopbackHandler: true }
+});
 
 if (process.platform !== 'win32') throw new Error('This acceptance requires native Windows Edge and Windows PowerShell.');
 const contractOnly = process.env.WSM_MANAGER_JOURNEY_FIXTURE_CONTRACT_ONLY === '1';
@@ -402,10 +407,13 @@ async function main() {
   assert.deepEqual(releaseFingerprint, digestReleaseInputs(sourceRoot), 'Live release launchers changed during the browser journey.');
   assert.deepEqual(releaseFingerprint, digestReleaseInputs(snapshot), 'Immutable copied release launcher bytes changed during the browser journey.');
   assert.equal(sourceUi.errors.length + sourceHandoffUi.errors.length + targetUi.errors.length + managerUi.errors.length, 0, 'Native browser raised page errors.');
+  evidence.completeJourney('manager-comparison-approval-sealed-plan-reopen-readback');
+  evidence.finish();
   log('PASS native Edge/HTTP Manager approval; test-only controlled identities and observations; sealed plan independent SHA-256 readback.');
 }
 
 main().catch(async error => {
+  evidence.fail(error);
   console.error(error);
   if (browser) for (const context of browser.contexts()) for (const page of context.pages()) {
     try {

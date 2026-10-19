@@ -497,3 +497,9 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - HTML 軟體證據表補 SoftwareId、SID、registry view、相依工作負載及覆蓋預算／錯誤／補查提示；巢狀 Budget 的數值不再顯示空白。InstalledRole 只標為 WindowsRole，其餘身分不明保持 Unknown，不將目標基準上的項目推論為使用者另行安裝或 OS 原生。
 - 主代理固定快照新測試雙引擎各 13 斷言通過，實際連接 collector fixture、comparison、environment projection 與 HTML report；既有比較 42 檢查、6 列確認匯出回歸及 260 腳本編碼／解析通過。輸出與輸入雜湊見 `docs/plans/evidence/MIGRATION-7-C1.json`。修改前另驗 2501 列基準通過，不能當本次修改後的規模驗收。
 - 本段沒有改 SoftwareCatalog 格式、安裝／核准 gate 或新增自動軟體安裝。C2 的排除／意圖與 D3/F3 新離線備份清單仍各自待完成；本段 fixture 不能宣稱外部 Server 全機清單已盤全。
+
+### 17.6 B2 真實旅程證據與 CI 診斷
+
+- Driver 明確於實際斷言完成後登記旅程，輸出引擎版本、commit、run/attempt、transport、mode、實際完成數與 fixture 限制。驗證器拒絕缺檔、零案例、未完成、錯誤模式／引擎／版本、舊 run 或 SHA；發布旅程附實際工具指紋。Workflow 即使失敗仍保留證據，摘要只統計 driver 與驗證器皆成功者。
+- 主代理固定快照 23 個證據驗證正反案例通過，實際 WinPS5.1 ZIP／解壓模組／啟動器 smoke 的 1 個旅程及結構化證據驗證通過；兩份 workflow YAML、JS syntax 及 B1 雙引擎各 124 selector 檢查通過。產品 runtime 固定在 6497d80，未混入開發中的 D1。
+- 新增受控 fixture 的 runtime 錯誤紀錄與 Probe 請求／程序診斷，不改產品錯誤遮蔽、不加重試或替代傳輸。先前 WinPS5.1 TargetRestore 與 Probe fetch 失敗仍未找到根因；後續 E0、C1 的 CI 綠燈不算修復證據。B2 先列已實作待原生 CI 驗證，整輪未完成。

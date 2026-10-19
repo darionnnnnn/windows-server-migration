@@ -102,7 +102,7 @@
         ]
       },
       "implementationStatus": "implemented",
-      "evidenceStatus": "implemented-unverified",
+      "evidenceStatus": "isolated-pass",
       "externalRequired": false,
       "externalStatus": "not-tested",
       "signatureStatus": "not-required",
@@ -132,11 +132,11 @@
       "inputs": [
         {
           "path": ".github/workflows/native-release.yml",
-          "sha256": "7BB4228D2B3D32BA110C6C94AE9C59EE39669C300D0E2947D2418DA561903FFD"
+          "sha256": "475D20289408DE67FE1A70006F6CAD0CED994FBBD306C92CB9A7017EA35D3ED2"
         },
         {
           "path": ".github/workflows/native-round6-gaps.yml",
-          "sha256": "A993634D85D66399DCA13748709F47EB037082EB09E4FBCE2B4BD0180D125D4F"
+          "sha256": "6082A15936B835E629A58D80885B04114C3C5B1FA08E68D185361A6AEB86A9C0"
         },
         {
           "path": "tools/Get-NativeAcceptanceScope.ps1",
@@ -150,21 +150,19 @@
       "evidence": [
         {
           "path": "docs/plans/evidence/MIGRATION-7-B1.json",
-          "sha256": "4C1D593E89D0C96AD0D349E66F1941DD3629E5012DAED037DEBEF9BBC1CA4B4E"
+          "sha256": "F49F26AC26DABD2D15F44C7DC7CCE209A907DC7E30FE51BEE81C985CF4B5D860"
         }
       ],
       "evidenceLog": {
         "path": "docs/plans/evidence/MIGRATION-7-B1.json",
-        "sha256": "4C1D593E89D0C96AD0D349E66F1941DD3629E5012DAED037DEBEF9BBC1CA4B4E"
+        "sha256": "F49F26AC26DABD2D15F44C7DC7CCE209A907DC7E30FE51BEE81C985CF4B5D860"
       },
       "casesExecuted": 248,
-      "result": "124 selector assertions passed independently per engine; workflow YAML parsed; zero-scope matrix guarded. Count represents selector checks, not executed native journeys.",
+      "result": "B1 selector revalidated after B2 workflow integration: 124 checks on each engine.",
       "limitations": [
-        "GitHub native journey execution and measured driver evidence belong to B2 and remain pending."
+        "Selector assertions, not native journey counts."
       ],
-      "openIssues": [
-        "B2 workflow integration is changing B1 input bytes; revalidate selector and workflow bindings before restoring current acceptance. Original B1 isolated evidence retained."
-      ],
+      "openIssues": [],
       "historicalEvidence": []
     },
     {
@@ -176,20 +174,128 @@
           "B2：真實執行及證據保存"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "implemented",
+      "evidenceStatus": "implemented-unverified",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
-      "openIssues": [],
+      "consumers": [
+        {
+          "name": ".github/workflows/native-release.yml",
+          "path": ".github/workflows/native-release.yml"
+        },
+        {
+          "name": ".github/workflows/native-round6-gaps.yml",
+          "path": ".github/workflows/native-round6-gaps.yml"
+        },
+        {
+          "name": "tests/native-evidence.js",
+          "path": "tests/native-evidence.js"
+        },
+        {
+          "name": "tests/Test-NativeEvidence.js",
+          "path": "tests/Test-NativeEvidence.js"
+        },
+        {
+          "name": "tests/Test-NativeHtmlBridge.js",
+          "path": "tests/Test-NativeHtmlBridge.js"
+        },
+        {
+          "name": "tests/Test-ReleaseNativeLauncher.js",
+          "path": "tests/Test-ReleaseNativeLauncher.js"
+        },
+        {
+          "name": "tests/Test-NativeWizardRuntimeHandler.js",
+          "path": "tests/Test-NativeWizardRuntimeHandler.js"
+        },
+        {
+          "name": "tests/Test-NativeWizardManagerJourney.js",
+          "path": "tests/Test-NativeWizardManagerJourney.js"
+        },
+        {
+          "name": "tests/Test-NativeProbeRoles.js",
+          "path": "tests/Test-NativeProbeRoles.js"
+        },
+        {
+          "name": "tests/Test-ReleaseWizardSmoke.ps1",
+          "path": "tests/Test-ReleaseWizardSmoke.ps1"
+        },
+        {
+          "name": "tests/Start-WizardRuntimeTestServer.ps1",
+          "path": "tests/Start-WizardRuntimeTestServer.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+        "runtime": "Windows isolated immutable snapshot",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/native-release.yml",
+          "sha256": "475D20289408DE67FE1A70006F6CAD0CED994FBBD306C92CB9A7017EA35D3ED2"
+        },
+        {
+          "path": ".github/workflows/native-round6-gaps.yml",
+          "sha256": "6082A15936B835E629A58D80885B04114C3C5B1FA08E68D185361A6AEB86A9C0"
+        },
+        {
+          "path": "tests/native-evidence.js",
+          "sha256": "F3BA88CC7290BFACD96125AF5DC56C126CFB05F3E9AAF19ADC2388B9763E81B9"
+        },
+        {
+          "path": "tests/Test-NativeEvidence.js",
+          "sha256": "1E138DD4B79EC44DD9C4CF568F329E30DEE0DA660E810F1EFCEF70E6F2F53B13"
+        },
+        {
+          "path": "tests/Test-NativeHtmlBridge.js",
+          "sha256": "9916EC479B92A5E73E695CAC338073BBD0BADAC6531ABA5F1A5B4A0810EC9D70"
+        },
+        {
+          "path": "tests/Test-ReleaseNativeLauncher.js",
+          "sha256": "85C7FC4F2542CF492AAF3ACAF3CA6ED55F9C2187B8C2B9420565A7DE4FB4F379"
+        },
+        {
+          "path": "tests/Test-NativeWizardRuntimeHandler.js",
+          "sha256": "E991AA6A4DBD6BAB760442B07C68A0FB5B6302094D263DB41ED7049DE1CFE71C"
+        },
+        {
+          "path": "tests/Test-NativeWizardManagerJourney.js",
+          "sha256": "12B5FAB1C99C45A85D3625045D527885F5A4B6E8130F690F12BAF7F577441F5F"
+        },
+        {
+          "path": "tests/Test-NativeProbeRoles.js",
+          "sha256": "73791E4611423D6590A0CF73C3C4EF0143DF9A94C3F4F7E5157F7CCB79365ACE"
+        },
+        {
+          "path": "tests/Test-ReleaseWizardSmoke.ps1",
+          "sha256": "94F8A25620FCA7CD54949DD8B2939C54173521B73EE334B634AACC29326CC78B"
+        },
+        {
+          "path": "tests/Start-WizardRuntimeTestServer.ps1",
+          "sha256": "185678D257FEF5F0010E6E52A79184E3B8E4CAD55ACA81D49C3C2FE41D4376B6"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B2.json",
+          "sha256": "03BE48ACBD8C67347472953B94AA37C78B4FCF8B2721F695CB637C4E0362BAD2"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-B2.json",
+        "sha256": "03BE48ACBD8C67347472953B94AA37C78B4FCF8B2721F695CB637C4E0362BAD2"
+      },
+      "casesExecuted": 24,
+      "result": "23 evidence-validator fixtures and 1 exact release smoke journey passed; native CI validation pending.",
+      "limitations": [
+        "Local module smoke is not native HTTP/browser acceptance.",
+        "Earlier WinPS51 TargetRestore and Probe fetch intermittent failures remain unresolved."
+      ],
+      "openIssues": [
+        "Native CI on B2 bytes pending.",
+        "Prior WinPS51 TargetRestore and Probe fetch failures require diagnosis."
+      ],
       "historicalEvidence": []
     },
     {
