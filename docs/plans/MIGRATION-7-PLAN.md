@@ -554,3 +554,10 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 
 - D3 跨段回歸發現孤立分段恢復測試間歇失敗。主代理與實作者確認測試使用預設 ConvertFrom-Json 改寫 checkpoint，PS7 會將 ISO 時間轉為 DateTime，重寫時可把 `.1234500Z` 正規化為 `.12345Z`，改變原本的 frontier bytes；正式 Read-WsmJson 使用字串模式，沒有這個轉換。原本的嚴格分段雜湊檢查正確拒絕被改動的內容，產品防護不放寬。
 - 所有測試中的 checkpoint 讀取／改寫改用正式讀取器，新增時間型別及原文字串保持一致的斷言。主代理固定快照前後核對 355 檔雜湊，雙引擎各 68 項通過，保存原始輸出及受測輸入於 MIGRATION-7-D1-orphan-fixture.json。這是測試修正，不宣稱 D1／D2 或整輪完成。
+
+### 17.13 D1 路徑引用與未知相依補強（仍為部分完成）
+
+- 已確認 Manager/Target 端會執行工作負載投影，因此路徑分類不再展開顯示主機的環境變數。缺來源執行帳號 context 的變數、相對路徑與父目錄段落明列未解析，不當作已解析來源。
+- 排程引數新增一般資料、無副檔名輸出與 UNC 引號路徑候選；保留完整引數語意未知及缺 WorkingDirectory 的待確認項，不因找到部分腳本路徑就隱藏其餘相依。候選不授權寫入、不自動改 Arguments。
+- 主代理不可變快照雙引擎各通過 18 項新案例及 28 項 E0 回歸，正式 discovery→draft 回歸亦通過。證據為 MIGRATION-7-D1-path-coverage.json；D1/D2 與整輪仍未完成。
+- f5109bc release CI 39205239611 的 PowerShell 5.1 TargetRestore 失敗，保留 journal chain/sequence/identity mismatch 原始診斷；PowerShell 7 與 gaps 通過不替代該旅程，根因與修正繼續在本輪處理。

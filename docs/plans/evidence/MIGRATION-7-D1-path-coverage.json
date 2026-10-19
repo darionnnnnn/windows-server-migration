@@ -1,0 +1,72 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "D1",
+  "verifiedUtc": "2026-10-19T05:51:46.820289+00:00",
+  "runtimeBase": "f5109bcc66f22b1cef7a8fbe6744fa60fe0d91bd",
+  "snapshotDirectory": "d1-path-coverage-final-8321304aa3244414ac1bf13bd7fcb43b",
+  "verifier": "Primary independent immutable snapshot, actual typed discovery/draft consumers; file hashes verified before/after",
+  "inputs": [
+    {
+      "path": "src/WorkloadDiscovery.ps1",
+      "sha256": "CEDB4A10B5105BB678A38B990F8214E02B18E5A4282812FFC17C8CEEA6952A57"
+    },
+    {
+      "path": "tests/Test-WorkloadPathCoverage.ps1",
+      "sha256": "3DB27979B2FC7F99963A7E08FD8EFBE2E92D3FD289A92B64E1AC771CDB019455"
+    },
+    {
+      "path": "tests/Test-WorkloadActionIndex.ps1",
+      "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+    },
+    {
+      "path": "tests/Test-WorkloadDiscovery.ps1",
+      "sha256": "BB7F1D453396AA0BF7A7A54B9E147E1BDA7B20E9F7DB64930976DDC65E18655C"
+    },
+    {
+      "path": "src/MigrationWizard.ps1",
+      "sha256": "2DDE19C2CE95521C47F8C47924BC1C5A8A41E4BB92F626BE2BD9167617672CFD"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+  "casesExecuted": 92,
+  "result": "18 path-coverage plus 28 existing action/mapping assertions per engine; public workload-discovery/draft regression also passed on both engines (not added to assertion count).",
+  "logs": [
+    {
+      "name": "d1-path-ps51-Test-WorkloadPathCoverage.ps1.log",
+      "sha256": "DEBB580B853BDB0B6F830B153DDC0F4C635D76834599E11342E26C8434AD240D",
+      "text": "PASS: 18 workload path coverage checks; unresolved Source context remains manual.\r\n"
+    },
+    {
+      "name": "d1-path-ps51-Test-WorkloadActionIndex.ps1.log",
+      "sha256": "9525F4F9E74E929E13BEA778E0DA973CE5CBED7938CBB7751FC9FC0DD247D193",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: E0 original action indices, typed draft consumer, opaque argument redaction, Exec-only and same-location regression, and ambiguous/unsupported action handling. Assertions: 28\r\n"
+    },
+    {
+      "name": "d1-path-ps51-Test-WorkloadDiscovery.ps1.log",
+      "sha256": "285554529D1F6FEA2CF0708F363E0149944E02C7CBFEFA0DBAB9B1180D28B7C3",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \r\nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\r\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: R3-B workload graph and schema3 public draft consumer. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-workload-5a1515991fef46c4ae40464e2cc3c6ba\r\n"
+    },
+    {
+      "name": "d1-path-ps7-Test-WorkloadPathCoverage.ps1.log",
+      "sha256": "DEBB580B853BDB0B6F830B153DDC0F4C635D76834599E11342E26C8434AD240D",
+      "text": "PASS: 18 workload path coverage checks; unresolved Source context remains manual.\r\n"
+    },
+    {
+      "name": "d1-path-ps7-Test-WorkloadActionIndex.ps1.log",
+      "sha256": "2809C663B89F73F6491C937B728DD7FB64CDE3C70242F300AC3FC53CB2E18010",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: E0 original action indices, typed draft consumer, opaque argument redaction, Exec-only and same-location regression, and ambiguous/unsupported action handling. Assertions: 28\r\n"
+    },
+    {
+      "name": "d1-path-ps7-Test-WorkloadDiscovery.ps1.log",
+      "sha256": "DA000D5844E11E702B056C47985C65DDFBB39A9060AD83F8EF95A3375FB5C754",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\r\nPASS: R3-B workload graph and schema3 public draft consumer. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-workload-bf8da4dbd0c14b64adf41ee6a843aecb\r\n"
+    }
+  ],
+  "limitations": [
+    "Unresolved environment, principal context, relative/dynamic/script references remain explicit manual review; no Source runtime inference from Manager environment.",
+    "Quoted data/output paths are candidates only; arguments remain opaque review even when some paths are extracted.",
+    "D1/D2 candidate confirmation, full dependency coverage and whole-round offline restore are not complete.",
+    "Latest f510 native PS5.1 TargetRestore CI failed journal chain validation and remains under investigation; local results do not supersede it.",
+    "E0 MigrationWizard dependency hash refreshed to the actually tested pinned HEAD bytes; live file currently contains separate uncommitted F4 work. No F4 acceptance inferred."
+  ]
+}

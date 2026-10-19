@@ -1,9 +1,10 @@
 ﻿function Get-WsmWorkloadPathChannel([string]$Path) {
     if([string]::IsNullOrWhiteSpace($Path)){return 'Unknown'}
-    $expanded=[Environment]::ExpandEnvironmentVariables($Path)
-    if($expanded -match '%[^%]+%'){return 'Unknown'}
-    if($expanded -match '^(?i:C:\\)'){return 'SuggestedC'}
-    if($expanded -match '^(?i:[D-Z]:\\)'){return 'SuggestedNonC'}
+    # This projection also runs on Manager/Target. Their environment is not
+    # evidence of a Source task principal's or IIS worker's environment.
+    if($Path -match '%[^%]+%'){return 'Unknown'}
+    if($Path -match '^(?i:C:\\)'){return 'SuggestedC'}
+    if($Path -match '^(?i:[ABD-Z]:\\)'){return 'SuggestedNonC'}
     'Unknown'
 }
 
@@ -11,6 +12,12 @@ function Get-WsmSafeWorkloadPathProjection([string]$Path) {
     if([string]::IsNullOrWhiteSpace($Path)){return $false}
     if($Path -match '(?i)(password|passwd|secret|token|credential|api[_-]?key)'){return $false}
     return ($Path -match '^(?:(?i:[a-z]:\\|\\\\|%[A-Za-z_][A-Za-z0-9_]*%\\))')
+}
+
+function Test-WsmWorkloadLiteralAbsolutePath([string]$Path) {
+    # Variables and relative segments require Source-context evidence; do not
+    # resolve them using the machine displaying the inventory.
+    return ((Get-WsmSafeWorkloadPathProjection $Path) -and $Path -notmatch '%[^%]+%' -and $Path -match '^(?:[A-Za-z]:\\|\\\\[^\\]+\\[^\\]+(?:\\|$))' -and $Path -notmatch '(^|[\\/])\.{1,2}([\\/]|$)')
 }
 
 function Get-WsmWorkloadSettingValue($Settings,[string]$Name) {
@@ -33,7 +40,9 @@ function Get-WsmWorkloadPathCandidatesFromText([string]$Text) {
     if([string]::IsNullOrWhiteSpace($Text)){return @()}
     foreach($match in [regex]::Matches($Text,'"(?<path>(?:[A-Za-z]:\\|\\\\)[^"\r\n]+)"')){
         $value=[string]$match.Groups['path'].Value
-        if([IO.Path]::GetExtension($value) -match '^(?i:\.(?:exe|com|bat|cmd|ps1|psm1|vbs|js|wsf|py|dll))$'){$found.Add($value)}
+        # Data/config/output paths matter as much as executable/script paths.
+        # Quotation is only candidate evidence, never proof of argument semantics.
+        $found.Add($value)
     }
     @($found.ToArray() | Select-Object -Unique)
 }
@@ -64,7 +73,7 @@ function Get-WsmWorkloadPathReferences($Item) {
     try{$doc=Read-WsmXml $xmlText}catch{return @([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer='';ReferenceKind='XmlPath';RawValue='';ResolvedPath='';Channel='Unknown';ParseConfidence='Unknown';Opaque=$true;ReviewRequired=$true;Reason='XML parse failed; preserve raw XML and review manually.'})}
     if($Item.Kind -in @('IISSite','IISGlobalConfig','IISSectionConfig','IISLocationConfig','IISWebConfig')){
         $nodes=@($doc.SelectNodes("//*[@configSource]"));$sourceRows=@();if($Item.Settings.PSObject.Properties['ConfigSource'] -and $Item.Settings.ConfigSource){$sourceRows=@($Item.Settings.ConfigSource)}elseif($Item.Settings.PSObject.Properties['ConfigSources']){$sourceRows=@($Item.Settings.ConfigSources)}
-        foreach($node in $nodes){$path=[string]$node.GetAttribute('configSource');$row=@($sourceRows|Where-Object RelativePath -CEQ $path|Select-Object -First 1);$resolved='';$safe=$false;$reason='configSource has no validated resolved-file evidence.';if($row.Count -and $row[0].Status -ceq 'Captured' -and $row[0].ResolvedPath){$resolved=[string]$row[0].ResolvedPath;$safe=Get-WsmSafeWorkloadPathProjection $resolved;$reason=''};$pointer='IIS/'+[string]$Item.NaturalKey+'/'+$node.LocalName+'/@configSource';$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer=$pointer;ReferenceKind='IISConfigSource';RawValue=$(if($safe){$resolved}else{'[configSource withheld for safe projection]'});ResolvedPath=$(if($safe){$resolved}else{''});Channel=$(if($safe){Get-WsmWorkloadPathChannel $resolved}else{'Unknown'});ParseConfidence=$(if($safe){'ValidatedConfigSource'}else{'Unknown'});Opaque=(-not $safe);Required=[bool]$safe;ReviewRequired=(-not $safe);Reason=$(if($safe){''}else{$reason})})}
+        foreach($node in $nodes){$path=[string]$node.GetAttribute('configSource');$row=@($sourceRows|Where-Object RelativePath -CEQ $path|Select-Object -First 1);$resolved='';$safe=$false;$reason='configSource has no validated resolved-file evidence.';if($row.Count -and $row[0].Status -ceq 'Captured' -and $row[0].ResolvedPath){$resolved=[string]$row[0].ResolvedPath;$safe=Test-WsmWorkloadLiteralAbsolutePath $resolved;if($safe){$reason=''}};$pointer='IIS/'+[string]$Item.NaturalKey+'/'+$node.LocalName+'/@configSource';$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer=$pointer;ReferenceKind='IISConfigSource';RawValue=$(if($safe){$resolved}else{'[configSource withheld for safe projection]'});ResolvedPath=$(if($safe){$resolved}else{''});Channel=$(if($safe){Get-WsmWorkloadPathChannel $resolved}else{'Unknown'});ParseConfidence=$(if($safe){'ValidatedConfigSource'}else{'Unknown'});Opaque=(-not $safe);Required=[bool]$safe;ReviewRequired=(-not $safe);Reason=$(if($safe){''}else{$reason})})}
     }
     if($Item.Kind -eq 'IISSite'){
         $siteName=[string]$Item.NaturalKey
@@ -73,7 +82,7 @@ function Get-WsmWorkloadPathReferences($Item) {
             $path=[string]$node.GetAttribute('physicalPath');$app=$node.ParentNode
             $applications=@($doc.SelectNodes("//*[local-name()='application']"));$appIndex=[Array]::IndexOf($applications,$app);$virtualDirectories=@($app.SelectNodes("./*[local-name()='virtualDirectory'][@physicalPath]"));$vdirIndex=[Array]::IndexOf($virtualDirectories,$node)
             $pointer="IIS/site/$siteName/application[$appIndex]/virtualDirectory[$vdirIndex]/@physicalPath"
-            $safe=Get-WsmSafeWorkloadPathProjection $path;$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer=$pointer;ReferenceKind='IISPhysicalPath';RawValue=$(if($safe){$path}else{'[path withheld for safe projection]'});ResolvedPath=$(if($safe){$path}else{''});Channel=$(if($safe){Get-WsmWorkloadPathChannel $path}else{'Unknown'});ParseConfidence=$(if($safe){'Typed'}else{'Unknown'});Opaque=(-not $safe);ReviewRequired=(-not $safe);Reason=$(if($safe){''}else{'Path value failed safe projection; review protected raw source XML manually.'})})
+            $safe=Test-WsmWorkloadLiteralAbsolutePath $path;$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer=$pointer;ReferenceKind='IISPhysicalPath';RawValue=$(if($safe){$path}else{'[path withheld for safe projection]'});ResolvedPath=$(if($safe){$path}else{''});Channel=$(if($safe){Get-WsmWorkloadPathChannel $path}else{'Unknown'});ParseConfidence=$(if($safe){'Typed'}else{'Unknown'});Opaque=(-not $safe);ReviewRequired=(-not $safe);Reason=$(if($safe){''}else{'Path is unresolved or unsafe; Source environment/principal context must be reviewed from protected XML.'})})
         }
     } elseif($Item.Kind -eq 'ScheduledTask') {
         $actions=@($doc.SelectNodes("//*[local-name()='Actions']/*"));$actionIndex=0
@@ -81,14 +90,17 @@ function Get-WsmWorkloadPathReferences($Item) {
             if($action.LocalName -ne 'Exec'){$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer=('Task/Actions/Action['+$actionIndex+']');ReferenceKind='TaskAction';RawValue='';ResolvedPath='';Channel='Unknown';ParseConfidence='Unknown';Opaque=$true;ReviewRequired=$true;Reason=('Unsupported action type '+$action.LocalName+'; preserve XML and review manually.')});$actionIndex++;continue}
             foreach($fieldName in @('Command','WorkingDirectory')){
                 $node=$action.SelectSingleNode("./*[local-name()='$fieldName']");if(-not $node){continue}
-                $value=[string]$node.InnerText;$pointer=('Task/Actions/Action['+$actionIndex+']/'+$fieldName);$safe=Get-WsmSafeWorkloadPathProjection $value
+                $value=[string]$node.InnerText;$pointer=('Task/Actions/Action['+$actionIndex+']/'+$fieldName);$safe=Test-WsmWorkloadLiteralAbsolutePath $value
                 $references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer=$pointer;ReferenceKind=('Task'+$fieldName);RawValue=$(if($safe){$value}else{'[command/path withheld for safe projection]'});ResolvedPath=$(if($safe){$value}else{''});Channel=$(if($safe){Get-WsmWorkloadPathChannel $value}else{'Unknown'});ParseConfidence=$(if($safe){'Typed'}else{'Unknown'});Opaque=(-not $safe);ReviewRequired=(-not $safe);Reason=$(if($safe){''}else{'Command or working directory is not a safely projected absolute path; review protected raw task XML manually.'})})
+            }
+            if(-not $action.SelectSingleNode("./*[local-name()='WorkingDirectory']")){
+                $references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer=('Task/Actions/Action['+$actionIndex+']/WorkingDirectory');ReferenceKind='TaskWorkingDirectory';RawValue='';ResolvedPath='';Channel='Unknown';ParseConfidence='Unknown';Opaque=$true;Required=$false;ReviewRequired=$true;Reason='No explicit working directory was captured; relative command, argument and script dependencies require Source principal-context review.'})
             }
             $argsNode=$action.SelectSingleNode("./*[local-name()='Arguments']")
             if($argsNode){
                 $argText=[string]$argsNode.InnerText;$paths=@(Get-WsmWorkloadPathCandidatesFromText $argText)
-                if($paths.Count){foreach($path in $paths){$safe=Get-WsmSafeWorkloadPathProjection $path;$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer=('Task/Actions/Action['+$actionIndex+']/Arguments/QuotedPath');ReferenceKind='TaskArgumentPath';RawValue=$(if($safe){$path}else{'[argument path withheld for safe projection]'});ResolvedPath=$(if($safe){$path}else{''});Channel=$(if($safe){Get-WsmWorkloadPathChannel $path}else{'Unknown'});ParseConfidence=$(if($safe){'QuotedAbsolutePathCandidate'}else{'Unknown'});Opaque=(-not $safe);Required=$false;ReviewRequired=$true;Reason='Parsed quoted absolute path candidate; argument semantics still require owner review.'})}}
-                else{$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer=('Task/Actions/Action['+$actionIndex+']/Arguments');ReferenceKind='TaskArguments';RawValue='[opaque arguments withheld]';ValueHash=(Get-WsmHashText $argText);ResolvedPath='';Channel='Unknown';ParseConfidence='Opaque';Opaque=$true;ReviewRequired=$true;Reason='Arguments were not confidently parsed; review manually from protected source XML.'})}
+                if($paths.Count){foreach($path in $paths){$safe=Test-WsmWorkloadLiteralAbsolutePath $path;$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer=('Task/Actions/Action['+$actionIndex+']/Arguments/QuotedPath');ReferenceKind='TaskArgumentPath';RawValue=$(if($safe){$path}else{'[argument path withheld for safe projection]'});ResolvedPath=$(if($safe){$path}else{''});Channel=$(if($safe){Get-WsmWorkloadPathChannel $path}else{'Unknown'});ParseConfidence=$(if($safe){'QuotedAbsolutePathCandidate'}else{'Unknown'});Opaque=(-not $safe);Required=$false;ReviewRequired=$true;Reason='Parsed quoted absolute path candidate; argument semantics still require owner review.'})}}
+                if(-not [string]::IsNullOrWhiteSpace($argText)){$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$Item.ItemId;FieldPointer=('Task/Actions/Action['+$actionIndex+']/Arguments');ReferenceKind='TaskArguments';RawValue='[opaque arguments withheld]';ValueHash=(Get-WsmHashText $argText);ResolvedPath='';Channel='Unknown';ParseConfidence='Opaque';Opaque=$true;ReviewRequired=$true;Reason='Argument semantics and any relative, unquoted, environment-dependent or dynamic references remain unproved even when quoted path candidates were found; review protected source XML.'})}
             }
             $actionIndex++
         }

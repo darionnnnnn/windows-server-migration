@@ -544,6 +544,26 @@
         {
           "path": "src/ui/console.js",
           "sha256": "B5B0C6AD9FA94922B736DBC23308B6086996063BBEF7FF189C393E607395C8A0"
+        },
+        {
+          "path": "src/WorkloadDiscovery.ps1",
+          "sha256": "CEDB4A10B5105BB678A38B990F8214E02B18E5A4282812FFC17C8CEEA6952A57"
+        },
+        {
+          "path": "tests/Test-WorkloadPathCoverage.ps1",
+          "sha256": "3DB27979B2FC7F99963A7E08FD8EFBE2E92D3FD289A92B64E1AC771CDB019455"
+        },
+        {
+          "path": "tests/Test-WorkloadActionIndex.ps1",
+          "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+        },
+        {
+          "path": "tests/Test-WorkloadDiscovery.ps1",
+          "sha256": "BB7F1D453396AA0BF7A7A54B9E147E1BDA7B20E9F7DB64930976DDC65E18655C"
+        },
+        {
+          "path": "src/MigrationWizard.ps1",
+          "sha256": "2DDE19C2CE95521C47F8C47924BC1C5A8A41E4BB92F626BE2BD9167617672CFD"
         }
       ],
       "evidence": [
@@ -566,14 +586,18 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-D1-orphan-fixture.json",
           "sha256": "54FE3A88B3AF86DE98E4AE603859A105193CFEB3A976AA7B2BE8C4F62BB72642"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D1-path-coverage.json",
+          "sha256": "CCE01BF1340A92283BA4629D3AF3C0370AF52E78B1FBC994E0416146F6152E2A"
         }
       ],
       "evidenceLog": {
         "path": "docs/plans/evidence/MIGRATION-7-D1.json",
         "sha256": "2A3E900BE6B243C0EE165CE690FEDCD00B40AA3BC8F16BC48FF04A858472F693"
       },
-      "casesExecuted": 136,
-      "result": "PASS: 68 per engine; test checkpoint roundtrips preserve exact timestamp strings and immutable segment hashes. Production code unchanged.",
+      "casesExecuted": 92,
+      "result": "18 path-coverage plus 28 existing action/mapping assertions per engine; public workload-discovery/draft regression also passed on both engines (not added to assertion count).",
       "limitations": [
         "Fixture root resolver; not live entire C drive or native browser acceptance.",
         "50k cumulative cap is terminal; controlled segmented continuation remains unfinished.",
@@ -828,11 +852,7 @@
       "inputs": [
         {
           "path": "src/WorkloadDiscovery.ps1",
-          "sha256": "BD3BD21C205254ACC921E9D1626C72B7349260DBC53CF6D8443B7C8836D02934"
-        },
-        {
-          "path": "src/MigrationWizard.ps1",
-          "sha256": "C1E5EA75120686CAC151F98DD353EB4377F94614B5261382CC29D4CA6F636E1B"
+          "sha256": "CEDB4A10B5105BB678A38B990F8214E02B18E5A4282812FFC17C8CEEA6952A57"
         },
         {
           "path": "tests/Test-WorkloadActionIndex.ps1",
@@ -841,6 +861,14 @@
         {
           "path": "tests/Test-WorkloadDiscovery.ps1",
           "sha256": "BB7F1D453396AA0BF7A7A54B9E147E1BDA7B20E9F7DB64930976DDC65E18655C"
+        },
+        {
+          "path": "tests/Test-WorkloadPathCoverage.ps1",
+          "sha256": "3DB27979B2FC7F99963A7E08FD8EFBE2E92D3FD289A92B64E1AC771CDB019455"
+        },
+        {
+          "path": "src/MigrationWizard.ps1",
+          "sha256": "2DDE19C2CE95521C47F8C47924BC1C5A8A41E4BB92F626BE2BD9167617672CFD"
         }
       ],
       "evidence": [
@@ -851,6 +879,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-D2.json",
           "sha256": "DA6B33BF32909F8EA8749A69993546EC84B1CEAF159953C212BEB4B1C223EDB6"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D1-path-coverage.json",
+          "sha256": "CCE01BF1340A92283BA4629D3AF3C0370AF52E78B1FBC994E0416146F6152E2A"
         }
       ],
       "evidenceLog": {
