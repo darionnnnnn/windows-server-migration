@@ -1,0 +1,129 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "D2",
+  "status": "PartialImplementationVerified",
+  "snapshot": "work/r7/d2-workload-mapping-active-plan-repair-3667b9e496b34489a8e629b6b8baa3c6",
+  "base": "6a6b15b78fb74c72c1d701cd075f670c42864587",
+  "snapshotIndexSHA256": "DDA5D69D6668E5E1B8B241C794E1DEE10F259B9F7FEFA1A2873FD988AF8D9F11",
+  "files": [
+    {
+      "path": "src/SourceCandidateMapping.ps1",
+      "sha256": "FE832AE115BC7326E8DE416C5300C8C4B0B9AD6EE9371352C0147FD9A68FF3B1"
+    },
+    {
+      "path": "tests/Test-SourceCandidateMapping.ps1",
+      "sha256": "20A2F476EBF9EEB8B295C28C6B0C0E0683D4E8B85211A960844A9D0843BCE28C"
+    },
+    {
+      "path": "src/WindowsServerMigration.psm1",
+      "sha256": "CD5E04F4779D0B232BEB93010F24D2729A310598ACBC6FBE86567450A46BCA16"
+    },
+    {
+      "path": "src/WindowsServerMigration.psd1",
+      "sha256": "367339FB43D5B8B45E4FF635700D78995A07C454EAAADD3756E6256F912E4AAE"
+    },
+    {
+      "path": "src/MigrationContracts.ps1",
+      "sha256": "E5A2AD05E4367C2BE725D8A1AAA146CC47A227573BD62C16C3E96CA5FB931897"
+    },
+    {
+      "path": "src/WorkloadDiscovery.ps1",
+      "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
+    }
+  ],
+  "primaryChecks": [
+    {
+      "engine": "ps51",
+      "test": "Test-SourceCandidateMapping",
+      "checks": 19,
+      "path": "work/r7/d2-mapping-fixed-primary-ps51-Test-SourceCandidateMapping.log",
+      "sha256": "D563F3F490F3AFD9C29DD51DF23D4F17497F569FD6240879B5B1A7CADF5DB284",
+      "output": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS candidate confirmation retains typed command, directory and quoted argument references from E0\nPASS typed review uniquely suggests the confirmed ExactMembers command file\nPASS ExactMembers does not claim directory coverage and opaque arguments remain visible for manual handling\nPASS mapping submit rejects a stale independently supplied inventory hash\nPASS mapping submit uses Manager decision revision CAS\nPASS mapping submit rejects incomplete per-reference dispositions\nPASS public submit durably stores explicit path choices and unresolved E0 manual dispositions\nPASS only the explicitly selected Mandatory mapping creates a consumer dependency\nPASS reopened XML draft consumes the durable MappingId and only rewrites the approved typed command\nPASS opaque task arguments remain redacted and are never rewritten by path mapping\nPASS normal approval seals the mapping identity, source hashes and exact FileScope binding into the plan\nPASS sealed validator rejects a FileScope spec changed after mapping was sealed\nPASS real package capture and reader preserve E0 mapping and dependency metadata\nPASS excluding the workload consumer preserves its dormant mapping in the Manager catalog\nPASS scope-only approval excludes dormant workload mappings and seals the independent selected scope\nPASS reselected consumer revalidates and rejects its stale preserved mapping\nPASS restoring current evidence allows the reselected consumer mapping to be sealed again\nPASS seal rejects a workload mapping whose confirmed ExactMembers scope is no longer selected\nPASS seal rejects a FileScope member hash changed after durable workload mapping review\nPASS Test-SourceCandidateMapping: 19 durable E0 mapping, CAS, dependency, draft, seal and package-reader checks.\n"
+    },
+    {
+      "engine": "ps51",
+      "test": "Test-WorkloadActionIndex",
+      "checks": 28,
+      "path": "work/r7/d2-mapping-fixed-primary-ps51-Test-WorkloadActionIndex.log",
+      "sha256": "9525F4F9E74E929E13BEA778E0DA973CE5CBED7938CBB7751FC9FC0DD247D193",
+      "output": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: E0 original action indices, typed draft consumer, opaque argument redaction, Exec-only and same-location regression, and ambiguous/unsupported action handling. Assertions: 28\n"
+    },
+    {
+      "engine": "ps51",
+      "test": "Test-WorkloadDiscovery",
+      "checks": null,
+      "path": "work/r7/d2-mapping-fixed-primary-ps51-Test-WorkloadDiscovery.log",
+      "sha256": "FCCC9AD4A93F0C8FA62FEB07453FF4977244F25D2C2E47A94C66AD0C7B190C1E",
+      "output": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: R3-B workload graph and schema3 public draft consumer. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-workload-fa1d606c7c8c4262be668c2aaee572d3\n"
+    },
+    {
+      "engine": "ps51",
+      "test": "Test-SourceCandidateConfirmation",
+      "checks": 35,
+      "path": "work/r7/d2-mapping-fixed-primary-ps51-Test-SourceCandidateConfirmation.log",
+      "sha256": "47E3E2E1C115309481BEDAAB70385147C6A8E1A68E450B5E3D61228585461D29",
+      "output": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS registered source scan emits a complete fixture artifact with independent hash\nPASS fixture scan discovered separate business, empty-directory, content-drift and C-root loose-file candidates\nPASS source confirmation freshly enumerates and hashes exactly the selected business-directory members\nPASS confirmation binds candidate, exact members and shared workload references without granting approval\nPASS confirmed member paths are stable and relative to the selected directory root\nPASS loose C-root file stays a one-member ExactMembers scope and never becomes WholeScope\nPASS workload FieldPointer length 999 is accepted at or below the numeric boundary\nPASS workload FieldPointer length 2048 is accepted at or below the numeric boundary\nPASS workload FieldPointer length 2049 is rejected above the numeric boundary\nPASS workload FieldPointer length 10000 is rejected above the numeric boundary\nPASS ExactFile candidate and scope outside the confirmed C root are rejected\nPASS ExactFile scope outside the confirmed C root is rejected even when its candidate path remains inside\nPASS stale candidate artifact hash is rejected at the source boundary\nPASS unknown candidate ID cannot be confirmed\nPASS empty directories block a DirectoryRoot confirmation instead of disappearing from ExactMembers\nPASS a new neighbor after discovery is rejected and never added to an old candidate confirmation\nPASS reparse-point substitution after discovery is rejected during fresh directory enumeration\nPASS changed source metadata or bytes are rejected during fresh confirmation\nPASS tampered confirmation body is rejected even when caller supplies the altered file hash\nPASS Manager rejects a confirmation tied to another Source inventory revision\nPASS Manager requires an independently supplied matching confirmation hash\nPASS Manager rejects mapping a confirmed candidate to a different target path\nPASS Manager import creates a pending exact-member scope without accessing source files or approving it\nPASS typed Manager review reopens source, inventory, candidate, exact member and shared-consumer evidence\nPASS imported confirmation is represented by a real Manager catalog item and ordinary ExactMembers MigrationSpec\nPASS typed review rejects material bytes that changed after Manager import\nPASS Source and Manager store the same immutable content-addressed confirmation reference\nPASS typed review rejects a MigrationSpec whose members differ from the immutable confirmation\nPASS approval refuses a candidate item whose MigrationSpec member set was changed outside its confirmation\nPASS reconfirming a stable source candidate updates the same item and returns Include to Pending\nPASS normal Manager review and approval seal the exact confirmed members into the standard schema-3 plan\nPASS CV2 sealed plan binds confirmed member hashes and the content-addressed confirmation material\nPASS stale Manager revision cannot re-import or overwrite a candidate confirmation\nPASS real source freeze-record consumer accepts fixture-only typed writer evidence for the ManualItem plan\nPASS CV2 capture and reader retain the exact source confirmation material reference and hash\nPASS Test-SourceCandidateConfirmation: 35 source confirmation, Manager import, typed review and sealed-plan checks.\n"
+    },
+    {
+      "engine": "ps51",
+      "test": "Test-WorkloadPathCoverage",
+      "checks": 18,
+      "path": "work/r7/d2-mapping-fixed-primary-ps51-Test-WorkloadPathCoverage.log",
+      "sha256": "DEBB580B853BDB0B6F830B153DDC0F4C635D76834599E11342E26C8434AD240D",
+      "output": "PASS: 18 workload path coverage checks; unresolved Source context remains manual.\n"
+    },
+    {
+      "engine": "ps7",
+      "test": "Test-SourceCandidateMapping",
+      "checks": 19,
+      "path": "work/r7/d2-mapping-fixed-primary-ps7-Test-SourceCandidateMapping.log",
+      "sha256": "A8AD0D10151B9D03D30792CE392DDD547BA8C0BA1A1232B5677D21DAA180FE92",
+      "output": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS candidate confirmation retains typed command, directory and quoted argument references from E0\nPASS typed review uniquely suggests the confirmed ExactMembers command file\nPASS ExactMembers does not claim directory coverage and opaque arguments remain visible for manual handling\nPASS mapping submit rejects a stale independently supplied inventory hash\nPASS mapping submit uses Manager decision revision CAS\nPASS mapping submit rejects incomplete per-reference dispositions\nPASS public submit durably stores explicit path choices and unresolved E0 manual dispositions\nPASS only the explicitly selected Mandatory mapping creates a consumer dependency\nPASS reopened XML draft consumes the durable MappingId and only rewrites the approved typed command\nPASS opaque task arguments remain redacted and are never rewritten by path mapping\nPASS normal approval seals the mapping identity, source hashes and exact FileScope binding into the plan\nPASS sealed validator rejects a FileScope spec changed after mapping was sealed\nPASS real package capture and reader preserve E0 mapping and dependency metadata\nPASS excluding the workload consumer preserves its dormant mapping in the Manager catalog\nPASS scope-only approval excludes dormant workload mappings and seals the independent selected scope\nPASS reselected consumer revalidates and rejects its stale preserved mapping\nPASS restoring current evidence allows the reselected consumer mapping to be sealed again\nPASS seal rejects a workload mapping whose confirmed ExactMembers scope is no longer selected\nPASS seal rejects a FileScope member hash changed after durable workload mapping review\nPASS Test-SourceCandidateMapping: 19 durable E0 mapping, CAS, dependency, draft, seal and package-reader checks.\n"
+    },
+    {
+      "engine": "ps7",
+      "test": "Test-WorkloadActionIndex",
+      "checks": 28,
+      "path": "work/r7/d2-mapping-fixed-primary-ps7-Test-WorkloadActionIndex.log",
+      "sha256": "2809C663B89F73F6491C937B728DD7FB64CDE3C70242F300AC3FC53CB2E18010",
+      "output": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: E0 original action indices, typed draft consumer, opaque argument redaction, Exec-only and same-location regression, and ambiguous/unsupported action handling. Assertions: 28\n"
+    },
+    {
+      "engine": "ps7",
+      "test": "Test-WorkloadDiscovery",
+      "checks": null,
+      "path": "work/r7/d2-mapping-fixed-primary-ps7-Test-WorkloadDiscovery.log",
+      "sha256": "9362DBD7D11BFB05D8F9797CF59B6F49B78592BA75B087FC522D78C3BF44B3EB",
+      "output": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: R3-B workload graph and schema3 public draft consumer. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-workload-59b7aa546f6d4757ad698410e42576b4\n"
+    },
+    {
+      "engine": "ps7",
+      "test": "Test-SourceCandidateConfirmation",
+      "checks": 35,
+      "path": "work/r7/d2-mapping-fixed-primary-ps7-Test-SourceCandidateConfirmation.log",
+      "sha256": "5A57CDEE5D6DADD42F38FEB9B4B626D5DB18B619721B3038D7EEF96D147F72DA",
+      "output": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS registered source scan emits a complete fixture artifact with independent hash\nPASS fixture scan discovered separate business, empty-directory, content-drift and C-root loose-file candidates\nPASS source confirmation freshly enumerates and hashes exactly the selected business-directory members\nPASS confirmation binds candidate, exact members and shared workload references without granting approval\nPASS confirmed member paths are stable and relative to the selected directory root\nPASS loose C-root file stays a one-member ExactMembers scope and never becomes WholeScope\nPASS workload FieldPointer length 999 is accepted at or below the numeric boundary\nPASS workload FieldPointer length 2048 is accepted at or below the numeric boundary\nPASS workload FieldPointer length 2049 is rejected above the numeric boundary\nPASS workload FieldPointer length 10000 is rejected above the numeric boundary\nPASS ExactFile candidate and scope outside the confirmed C root are rejected\nPASS ExactFile scope outside the confirmed C root is rejected even when its candidate path remains inside\nPASS stale candidate artifact hash is rejected at the source boundary\nPASS unknown candidate ID cannot be confirmed\nPASS empty directories block a DirectoryRoot confirmation instead of disappearing from ExactMembers\nPASS a new neighbor after discovery is rejected and never added to an old candidate confirmation\nPASS reparse-point substitution after discovery is rejected during fresh directory enumeration\nPASS changed source metadata or bytes are rejected during fresh confirmation\nPASS tampered confirmation body is rejected even when caller supplies the altered file hash\nPASS Manager rejects a confirmation tied to another Source inventory revision\nPASS Manager requires an independently supplied matching confirmation hash\nPASS Manager rejects mapping a confirmed candidate to a different target path\nPASS Manager import creates a pending exact-member scope without accessing source files or approving it\nPASS typed Manager review reopens source, inventory, candidate, exact member and shared-consumer evidence\nPASS imported confirmation is represented by a real Manager catalog item and ordinary ExactMembers MigrationSpec\nPASS typed review rejects material bytes that changed after Manager import\nPASS Source and Manager store the same immutable content-addressed confirmation reference\nPASS typed review rejects a MigrationSpec whose members differ from the immutable confirmation\nPASS approval refuses a candidate item whose MigrationSpec member set was changed outside its confirmation\nPASS reconfirming a stable source candidate updates the same item and returns Include to Pending\nPASS normal Manager review and approval seal the exact confirmed members into the standard schema-3 plan\nPASS CV2 sealed plan binds confirmed member hashes and the content-addressed confirmation material\nPASS stale Manager revision cannot re-import or overwrite a candidate confirmation\nPASS real source freeze-record consumer accepts fixture-only typed writer evidence for the ManualItem plan\nPASS CV2 capture and reader retain the exact source confirmation material reference and hash\nPASS Test-SourceCandidateConfirmation: 35 source confirmation, Manager import, typed review and sealed-plan checks.\n"
+    },
+    {
+      "engine": "ps7",
+      "test": "Test-WorkloadPathCoverage",
+      "checks": 18,
+      "path": "work/r7/d2-mapping-fixed-primary-ps7-Test-WorkloadPathCoverage.log",
+      "sha256": "DEBB580B853BDB0B6F830B153DDC0F4C635D76834599E11342E26C8434AD240D",
+      "output": "PASS: 18 workload path coverage checks; unresolved Source context remains manual.\n"
+    }
+  ],
+  "verified": [
+    "382 indexed files verified before and after independent tests; exactly six owned changes.",
+    "Public per-reference Include/Exclude/Manual decisions bind source confirmation, inventory, CAS revision and exact FileScope coverage; explicit dependencies retain shared consumers.",
+    "Actual XML draft consumes mapping IDs and keeps opaque arguments redacted; normal approval and CV2 capture/reader preserve mapping evidence.",
+    "Public consumer exclusion permits independent selected scope approval; dormant catalog mappings do not enter that plan. Reselection revalidates stale evidence.",
+    "Sealed reader compares actual FileScope specification hashes and immutable candidate confirmation material bindings."
+  ],
+  "limitations": [
+    "This is core API integration, not completed HTML or one-click workflow.",
+    "Empty directories, NonC exact-member context and full offline Target restore remain pending.",
+    "No real IIS/task/Server/SMB or production qualification.",
+    "F4 work in the shared checkout was excluded from the tested and committed snapshot."
+  ]
+}

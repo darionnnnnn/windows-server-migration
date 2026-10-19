@@ -595,7 +595,7 @@
         },
         {
           "path": "src/WorkloadDiscovery.ps1",
-          "sha256": "CEDB4A10B5105BB678A38B990F8214E02B18E5A4282812FFC17C8CEEA6952A57"
+          "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
         },
         {
           "path": "tests/Test-WorkloadPathCoverage.ps1",
@@ -638,6 +638,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-D1-path-coverage.json",
           "sha256": "CCE01BF1340A92283BA4629D3AF3C0370AF52E78B1FBC994E0416146F6152E2A"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2-workload-mapping.json",
+          "sha256": "55DFE1FFA073BCDD8D5C74D035A8945D6CC418BC59F5AC368B66CF91282238CC"
         }
       ],
       "evidenceLog": {
@@ -759,7 +763,7 @@
         },
         {
           "path": "src/WorkloadDiscovery.ps1",
-          "sha256": "BD3BD21C205254ACC921E9D1626C72B7349260DBC53CF6D8443B7C8836D02934"
+          "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
         },
         {
           "path": "src/WizardDetails.ps1",
@@ -798,6 +802,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-D2-candidate-confirmation.json",
           "sha256": "BBF1FD985FAA6A7C2DBEFA83BAB511B93F1462DD5CB714CDD1C89EA12104740A"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2-workload-mapping.json",
+          "sha256": "55DFE1FFA073BCDD8D5C74D035A8945D6CC418BC59F5AC368B66CF91282238CC"
         }
       ],
       "evidenceLog": {
@@ -805,7 +813,7 @@
         "sha256": "DA6B33BF32909F8EA8749A69993546EC84B1CEAF159953C212BEB4B1C223EDB6"
       },
       "casesExecuted": 58,
-      "result": "ExactMembers core slice: 29 checks per engine including real setter, plan reader, package writer/reader, placement and file restore. Regression outputs retained separately.",
+      "result": "Source confirmation and durable E0 mapping core verified through public review, draft, approval and CV2 package reader; 19 mapping, 35 confirmation, 28 action-index and 18 path-coverage checks per engine plus workload discovery regression. HTML, empty-directory and offline restore integration remain incomplete.",
       "limitations": [
         "Candidate-to-human-confirmation-to-hash-bound-spec integration remains pending.",
         "C-only contract; legacy NonC and delta explicitly rejected.",
@@ -813,9 +821,10 @@
         "Fixture machine identity/inventory and restore journal mocks; not full durable restore or production acceptance."
       ],
       "openIssues": [
-        "Connect confirmed candidates to sealed exact member set.",
-        "Complete non-C offline full-set route and integrated D2 acceptance.",
-        "ExactMembers review/save seam verified; source candidate confirmation and immutable Manager intent handoff are still required."
+        "Complete HTML and one-click candidate/mapping review.",
+        "Preserve explicitly selected empty directories with a versioned exact-entry contract.",
+        "Complete context-aware non-C offline full-set capture and Target restore.",
+        "Complete D2 integrated acceptance and original-location end-to-end verification."
       ],
       "historicalEvidence": []
     },
@@ -924,7 +933,7 @@
       "inputs": [
         {
           "path": "src/WorkloadDiscovery.ps1",
-          "sha256": "CEDB4A10B5105BB678A38B990F8214E02B18E5A4282812FFC17C8CEEA6952A57"
+          "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
         },
         {
           "path": "tests/Test-WorkloadActionIndex.ps1",
@@ -955,6 +964,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-D1-path-coverage.json",
           "sha256": "CCE01BF1340A92283BA4629D3AF3C0370AF52E78B1FBC994E0416146F6152E2A"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2-workload-mapping.json",
+          "sha256": "55DFE1FFA073BCDD8D5C74D035A8945D6CC418BC59F5AC368B66CF91282238CC"
         }
       ],
       "evidenceLog": {

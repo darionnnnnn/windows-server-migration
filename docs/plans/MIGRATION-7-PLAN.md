@@ -629,3 +629,10 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 
 - 證據索引檢查發現新增日誌 CI 步驟後，B1 仍引用舊 workflow hash。主代理以目前四份固定輸入重新驗 selector，兩引擎各 124 項通過，另驗 YAML 的 runtime scope／選定引擎／測試命令；更新輸入綁定並保留舊證據，不將過期雜湊直接替換成未測版本。
 - selector 測試的暫存目錄清理補上 canonical 直屬 Temp 路徑、名稱及非 reparse 驗證；不改產品功能。D3b／F4a 索引改為實作中，仍無階段驗收；較早原生失敗持續未結。
+
+### 17.25 D2 工作負載映射與有效選取範圍（部分完成）
+
+- 來源候選確認接到逐引用 Include／Exclude／Manual、CAS、精確 FileScope 與明確相依；正式 XML 草稿、核准及 CV2 reader 消費相同映射，opaque arguments 不自動改寫。
+- 主代理複查補正：取消選取 consumer 後，舊映射保留於 catalog 供重選重驗，不能阻擋仍選取的獨立檔案，也不進本次 plan；封存 reader 以實際 FileScope spec 重算綁定，候選確認以不可變材料引用驗證。
+- 固定 382 檔快照前後核對，六檔變更；雙引擎各 19 項映射、35 項候選確認、28 項動作索引、18 項路徑覆蓋及正式工作負載草稿回歸通過。更新 D1／D2／E0 的已驗 WorkloadDiscovery 輸入綁定，保留舊證據。
+- 本段為核心 API 整合，HTML、一鍵流程、空目錄、非 C 精確集合與離線 Target 還原仍待完成；未納入共用目錄的 F4 未驗改動，不宣稱本輪完成或真實 Server 資格。
