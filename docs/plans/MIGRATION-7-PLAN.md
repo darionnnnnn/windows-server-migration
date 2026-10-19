@@ -505,3 +505,5 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 新增受控 fixture 的 runtime 錯誤紀錄與 Probe 請求／程序診斷，不改產品錯誤遮蔽、不加重試或替代傳輸。先前 WinPS5.1 TargetRestore 與 Probe fetch 失敗仍未找到根因；後續 E0、C1 的 CI 綠燈不算修復證據。B2 先列已實作待原生 CI 驗證，整輪未完成。
 - 63cf57f 的原生 release CI（39193503443）另發現 launcher 清理失敗：UI 斷言完成後 taskkill 對部分子程序回傳非零，測試 finally 拋錯。修正以測試自行啟動的 CMD 確實退出、獨有 loopback listener 連續拒絕連線為必要條件；未知 socket 錯誤不算停止，仍存活即失敗，瀏覽器清理失敗也必須繼續嘗試程序清理。證據完成標記移到清理成功後。
 - 主代理固定快照獨立通過 23 個證據案例與 7 個真 TCP listener／負例檢查。這只驗清理 helper 與實際 driver 接線，修正後 hosted Edge 旅程仍待 CI；原 6eac316 的 runtime／Probe 問題不因本項修正關閉。
+- 9c9bdfa 修正後 CI：release 39195071206、Manager/Probe 39195071133 全數成功。主代理獨立從公開 API 核對六份 artifact ZIP 雜湊及原始 JSON bytes，再以正式驗證器核對十份 suite record：20 個原生 HTTP／Edge 測試旅程及 1 個封裝模組 smoke。WinPS5.1 launcher 實際再次遇到 taskkill 255，確認自行啟動的程序已退出且 listener 已停止後通過，故本次清理錯誤有實際修復證據。
+- 永久原始 suite JSON、artifact 身分／雜湊及主代理驗證輸出保存於 `docs/plans/evidence/MIGRATION-7-B2-native-9c9bdfa.json`，不依賴七日 artifact。Probe PS7 為 4/4（包含真 CLI），WinPS5.1 為 3/3；測試旅程中的預期取消不是成功備份。舊 6eac316 runtime／Probe 失敗原因仍未結，不把本次綠燈當成其修復證明。

@@ -288,6 +288,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-B2.json",
           "sha256": "724A0E8854FA4525EB770D034B683D8A0FAC73E6DF1B38F75244E69894083508"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B2-native-9c9bdfa.json",
+          "sha256": "654C7783B9F9C2DCB6757C19CEE8D25C38140918C86DD02BE3EF300A2DC9FD7D"
         }
       ],
       "evidenceLog": {
@@ -295,14 +299,13 @@
         "sha256": "724A0E8854FA4525EB770D034B683D8A0FAC73E6DF1B38F75244E69894083508"
       },
       "casesExecuted": 30,
-      "result": "23 evidence fixtures and 7 actual loopback cleanup checks passed independently. Hosted native validation of cleanup fix pending.",
+      "result": "Local 30 evidence/cleanup checks passed; 10 original hosted suite records independently validated, covering 20 native HTTP/Edge journeys and 1 release module smoke. Earlier intermittent CI causes remain open.",
       "limitations": [
         "Actual loopback helper checks do not replace native Edge release journey.",
         "Earlier 6eac316 WinPS51 runtime and Probe failures remain unresolved."
       ],
       "openIssues": [
-        "Hosted validation of launcher cleanup fix pending.",
-        "Earlier 6eac316 WinPS51 TargetRestore and Probe fetch failure causes unresolved."
+        "Prior 6eac316 WinPS51 TargetRestore and Probe fetch causes remain unresolved; later green runs do not prove repair."
       ],
       "historicalEvidence": []
     },
