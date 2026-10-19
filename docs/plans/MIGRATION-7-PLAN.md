@@ -561,3 +561,9 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 排程引數新增一般資料、無副檔名輸出與 UNC 引號路徑候選；保留完整引數語意未知及缺 WorkingDirectory 的待確認項，不因找到部分腳本路徑就隱藏其餘相依。候選不授權寫入、不自動改 Arguments。
 - 主代理不可變快照雙引擎各通過 18 項新案例及 28 項 E0 回歸，正式 discovery→draft 回歸亦通過。證據為 MIGRATION-7-D1-path-coverage.json；D1/D2 與整輪仍未完成。
 - f5109bc release CI 39205239611 的 PowerShell 5.1 TargetRestore 失敗，保留 journal chain/sequence/identity mismatch 原始診斷；PowerShell 7 與 gaps 通過不替代該旅程，根因與修正繼續在本輪處理。
+
+### 17.14 F2 安全診斷與 B2 新失敗證據（部分完成）
+
+- HTTP probe 以有限的例外深度／節點預算區分拒絕、重置、中止、逾時、session HTTP 與完整性失敗；未知保持未知。JSON／HTML／正式 job 安全投影共用 FailureCode、Stage、NextAction；不保存原始 URL、例外訊息、回應 body 或非預期標頭值。
+- 主代理確認不可變快照 357 份檔案及雙引擎各 44 項檢查，含真實關閉 loopback 連接埠、其餘受控反例與秘密哨兵。F2 瀏覽器操作體驗及七項外部材料仍未完成，不代表原生傳輸合格。
+- 原始 CI ZIP digest 與診斷 bytes 已由主代理核驗；MIGRATION-7-B2-native-f510-failure.json 保留 3/4 completed journeys 與缺失 TargetRestore，沒有把上次綠燈當本次修復。尚缺原始 journal/state 的具體失敗 predicate，持續追查。

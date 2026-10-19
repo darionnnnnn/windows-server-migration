@@ -316,6 +316,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-D1-native-4fc162d.json",
           "sha256": "2C732D9E0D445FBC80C9C50F20E857CF68C4472A7C75115672E473A1A8278440"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B2-native-f510-failure.json",
+          "sha256": "511446703DD9B8DED7EF9D92E871CA14CBF12342D6B52BC6D6FFA3F401B3DDB4"
         }
       ],
       "evidenceLog": {
@@ -329,7 +333,8 @@
         "Earlier 6eac316 WinPS51 runtime and Probe failures remain unresolved."
       ],
       "openIssues": [
-        "Prior 6eac316 WinPS51 TargetRestore and Probe fetch causes remain unresolved; later green runs do not prove repair."
+        "Prior 6eac316 WinPS51 TargetRestore and Probe fetch causes remain unresolved; later green runs do not prove repair.",
+        "f510 native PS5.1 TargetRestore run39205239611 failed journal chain/sequence/identity validation; exact predicate/root cause unresolved. Original two 6eac failures remain separately unresolved."
       ],
       "historicalEvidence": []
     },
@@ -1031,20 +1036,56 @@
           "F2：連線故障與外部材料"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "in-progress",
+      "evidenceStatus": "implemented-unverified",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
-      "openIssues": [],
+      "consumers": [
+        {
+          "name": "src/AssistiveHttpProbe.ps1",
+          "path": "src/AssistiveHttpProbe.ps1"
+        },
+        {
+          "name": "tests/Test-AssistiveHttpProbe.ps1",
+          "path": "tests/Test-AssistiveHttpProbe.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "PS5.1 and PS7",
+        "runtime": "5.1.26100.9711 / 7.6.5",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/AssistiveHttpProbe.ps1",
+          "sha256": "908CC9AC84007BBF5453BA0B42B7C491C5667D17B83A7BC3E0CEA58E34B083FE"
+        },
+        {
+          "path": "tests/Test-AssistiveHttpProbe.ps1",
+          "sha256": "7647C6262A7721A53B7CF607DAB91ECB37B5D92AFCBEB7B70A9197ECEE24BE15"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-F2-http-probe.json",
+          "sha256": "34DB39E767F928A4489C34466C3D4787D290B384EF7802D11C7A329389360944"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-F2-http-probe.json",
+        "sha256": "34DB39E767F928A4489C34466C3D4787D290B384EF7802D11C7A329389360944"
+      },
+      "casesExecuted": 88,
+      "result": "44 checks each; real closed-loopback refusal plus controlled reset/aborted/timeout/session/integrity failures, bounded nested exceptions, secret canaries and actual HTML job projection.",
+      "limitations": [
+        "Reset, abort, timeout and HTTP failure categories use controlled response/exception fixtures; only listener-refusal is an actual socket failure in this suite.",
+        "No native browser transport claim; local AdGuard policy remains unchanged.",
+        "Browser-side failure UX and seven external materials remain open; F2 and whole round are incomplete."
+      ],
+      "openIssues": [
+        "Browser-side failure UX and seven external materials remain incomplete."
+      ],
       "historicalEvidence": []
     },
     {

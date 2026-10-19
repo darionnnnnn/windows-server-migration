@@ -1,0 +1,64 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "B2",
+  "sourceCommit": "f5109bcc66f22b1cef7a8fbe6744fa60fe0d91bd",
+  "runId": 39205239611,
+  "jobId": 117906537032,
+  "artifactId": 12165960463,
+  "artifactSHA256": "EBEC661BF35A6230009DAC66986452F2ABE816EC8E70A11E303C1D2C19B1E548",
+  "diagnosticSHA256": "12887C29BFBE060BA18D2CE2CEB4DE2AF19DC62684F166B678CB76660A84E454",
+  "verifier": "Primary checked original ZIP SHA and extracted diagnostic byte equality; actual journey record reproduced here.",
+  "nativeRuntime": [
+    {
+      "schemaVersion": 1,
+      "status": "Failed",
+      "suite": "native-runtime",
+      "engine": "powershell",
+      "engineVersion": "5.1.26100.33438",
+      "transport": "native-http-edge",
+      "mode": "all",
+      "sourceCommit": "f5109bcc66f22b1cef7a8fbe6744fa60fe0d91bd",
+      "runId": "39205239611-1",
+      "measure": "completed-journeys",
+      "expectedJourneyCount": 4,
+      "completedJourneyCount": 3,
+      "completedJourneys": [
+        {
+          "name": "Source-cancel-with-concurrent-Probe",
+          "role": "Source",
+          "expectedTerminal": "Cancelled"
+        },
+        {
+          "name": "Source-Directory-backup",
+          "role": "Source",
+          "deliveryMode": "Directory"
+        },
+        {
+          "name": "Source-ZIP-backup",
+          "role": "Source",
+          "deliveryMode": "Zip"
+        }
+      ],
+      "fixtureLimits": {
+        "productionQualification": false,
+        "liveWorkloads": false,
+        "controlledWindowsHost": true,
+        "externalSmbQualification": false,
+        "actualServices": false
+      },
+      "startedUtc": "2026-10-19T05:35:49.454Z",
+      "toolFingerprint": "3af0e957d00d644cf37e4bcc7266291760f71e09421147e7f5e15282bb1a6e52",
+      "failure": "AssertionError [ERR_ASSERTION]: {\"message\":\"The local operation could not be completed.\",\"code\":\"operation_failed\",\"correlationId\":\"188c6676-b3d3-4531-9f59-3effb03b9d06\",\"nextStep\":\"Check operation history and the protected local logs before deciding whether to retry.\"}\n    at runRole (D:\\a\\windows-server-migration\\windows-server-migration\\tests\\Test-NativeWizardRuntimeHandler.js:139:534)\n    at async D:\\a\\windows-server-migration\\windows-server-migration\\tests\\Test-NativeWizardRuntimeHandler.js:162:17",
+      "finishedUtc": "2026-10-19T05:39:07.168Z"
+    }
+  ],
+  "observedFailure": "TargetRestore EndInvoke failed: Journal chain/sequence/identity mismatch; retain evidence.",
+  "diagnosticIds": [
+    "20f3ff46-32e1-459d-8390-baa5954f1d66"
+  ],
+  "cause": "Unresolved: retained diagnostic does not identify Sequence, PreviousHash, PairId or RunId predicate; original journal/state bytes were not retained.",
+  "limitations": [
+    "Earlier same-product native success does not close this failure.",
+    "No retry, acceptance waiver or evidence-only repair is claimed."
+  ]
+}

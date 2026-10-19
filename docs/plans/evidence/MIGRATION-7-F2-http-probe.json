@@ -1,0 +1,38 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "F2",
+  "verifiedUtc": "2026-10-19T05:55:25.618755+00:00",
+  "runtimeBase": "f5109bcc66f22b1cef7a8fbe6744fa60fe0d91bd",
+  "snapshotDirectory": "f2-traversal-619b39f938c742f8bf3598e1fde089ad",
+  "verifier": "Primary independent audit of all 357 snapshot file hashes before/after and actual dual-engine execution",
+  "inputs": [
+    {
+      "path": "src/AssistiveHttpProbe.ps1",
+      "sha256": "908CC9AC84007BBF5453BA0B42B7C491C5667D17B83A7BC3E0CEA58E34B083FE"
+    },
+    {
+      "path": "tests/Test-AssistiveHttpProbe.ps1",
+      "sha256": "7647C6262A7721A53B7CF607DAB91ECB37B5D92AFCBEB7B70A9197ECEE24BE15"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
+  "casesExecuted": 88,
+  "result": "44 checks each; real closed-loopback refusal plus controlled reset/aborted/timeout/session/integrity failures, bounded nested exceptions, secret canaries and actual HTML job projection.",
+  "logs": [
+    {
+      "name": "f2-primary-ps51.log",
+      "sha256": "E586140C96D8CE25FE7E5093353C144B3916D3DA956DAC38F8E7FCCDB4A008BF",
+      "text": "PASS: 44 HTTP probe fixture checks on Desktop 5.1.26100.9711\r\n"
+    },
+    {
+      "name": "f2-primary-ps7.log",
+      "sha256": "C261097C04A0FA7F4A1B46B57E4E09F73BF25A419A0164EE106699B6D069FCDF",
+      "text": "PASS: 44 HTTP probe fixture checks on Core 7.6.5\r\n"
+    }
+  ],
+  "limitations": [
+    "Reset, abort, timeout and HTTP failure categories use controlled response/exception fixtures; only listener-refusal is an actual socket failure in this suite.",
+    "No native browser transport claim; local AdGuard policy remains unchanged.",
+    "Browser-side failure UX and seven external materials remain open; F2 and whole round are incomplete."
+  ]
+}
