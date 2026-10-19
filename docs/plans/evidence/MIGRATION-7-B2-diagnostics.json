@@ -1,0 +1,55 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "B2",
+  "verifier": "Primary independent immutable snapshot",
+  "sourceBase": "cf4da7c272d7de6810fff70ae841e3dcf8bb2442",
+  "inputs": [
+    {
+      "path": "tests/native-diagnostics.js",
+      "sha256": "AAB6628E643086299A3999BBE1FEE3055DFC0CA4255B8F9361306FD0A19AB709"
+    },
+    {
+      "path": "tests/Test-NativeDiagnostics.js",
+      "sha256": "1097469FDEB0AE818659F3974CC0006E9FB4619C1D9886125256F4FA59AD5724"
+    },
+    {
+      "path": "tests/Test-NativeEvidence.js",
+      "sha256": "8B45CAF33ED526990A1BB313F4EA50BC21ACF9813952399F0E2A40F418C4D317"
+    },
+    {
+      "path": "tests/Test-NativeProbeRoles.js",
+      "sha256": "47E719C960BD7D30C08FF64E53869A87E586857B67610DF2C59CE5003247D52C"
+    },
+    {
+      "path": "tests/Test-NativeWizardRuntimeHandler.js",
+      "sha256": "337662CF8AC724E84F68C2B366D35B219446BA28307109DA98A3369DCAB912A4"
+    },
+    {
+      "path": "tests/Start-WizardRuntimeTestServer.ps1",
+      "sha256": "5A4C9BCA9AFF4E65147364AF01343D034B530646CC78E2599D84BCF77EDC9F59"
+    },
+    {
+      "path": "tests/Test-NativeLauncherCleanup.js",
+      "sha256": "0AA3D6E67D6985BFE189763C474407AC2A2D20FC8614EFF0366059D011513DA7"
+    }
+  ],
+  "casesExecuted": 94,
+  "result": "Each real PowerShell engine: 23 evidence, 9 real listener/cleanup and 15 controlled failure diagnostic checks",
+  "limitations": [
+    "Controlled fixture worker and loopback socket tests, not original 6eac failure reproduction.",
+    "Original TargetRestore and Probe fetch root causes remain unknown.",
+    "Sanitizer applies only to controlled diagnostic fixture; not product secret-handling qualification."
+  ],
+  "logs": [
+    {
+      "path": "work/r7/b2-diagnostics-ps51.log",
+      "sha256": "8D7DD523F56C76F1933DBC53369848E046888FB495FEF21EF13BA342B99DBB7B",
+      "text": "PASS Test-NativeEvidence: 23 positive, negative, provisional, count, scope and reuse checks.\r\nPASS Test-NativeLauncherCleanup: 9 listener, error classification, child ownership and teardown checks.\r\nPASS Test-NativeDiagnostics: 15 refusal, lifecycle, redaction, safe-error, cleanup and scope checks.\r\n"
+    },
+    {
+      "path": "work/r7/b2-diagnostics-ps7.log",
+      "sha256": "8D7DD523F56C76F1933DBC53369848E046888FB495FEF21EF13BA342B99DBB7B",
+      "text": "PASS Test-NativeEvidence: 23 positive, negative, provisional, count, scope and reuse checks.\r\nPASS Test-NativeLauncherCleanup: 9 listener, error classification, child ownership and teardown checks.\r\nPASS Test-NativeDiagnostics: 15 refusal, lifecycle, redaction, safe-error, cleanup and scope checks.\r\n"
+    }
+  ]
+}

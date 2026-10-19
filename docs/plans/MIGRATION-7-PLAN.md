@@ -525,3 +525,10 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 修正既有 AssistiveRestore 測試硬編碼不存在 D 槽導致失敗的 fixture，以本次測試建立的真實目錄與 physical identity 核驗原同一契約，未放寬產品驗證。精確集合測試仍使用機器／盤點 fixture 與 journal stub，不能宣稱耐久還原或 Server 實機驗收。
 - D2 保持未完成：候選確認到新鮮成員 hash／sealed plan、非 C 離線全量及跨段旅程仍待接線。ExactMembers 是檔案集合，不涵蓋空目錄。證據保存於 MIGRATION-7-D2.json。
 - D1 提交 2770450 的 release 39197085444 與 Manager/Probe 39197085462 均通過；主代理另核對六個 ZIP digest 及十份原始 suite JSON，共 20 個既有原生旅程與 1 個模組 smoke，保存於 MIGRATION-7-D1-native-2770450.json。沒有把既有旅程當成新的完整離線功能驗收。
+
+### 17.9 B2 診斷保留與測試連線重置修正
+
+- 原 6eac316 的 TargetRestore／Probe artifact 已重新核對：僅保留 generic operation_failed／Failed to fetch，缺原始 worker ErrorRecord 與網路 lifecycle，無法可靠回推根因；不以後續綠燈關閉。新增正式 driver 共用的受控診斷投影與保存 helper，實際拒絕連線及 child runspace 故障測試確認原因識別／診斷 ID 能保留到 fixture 清除之後，token／body 哨兵不進保存投影，公開錯誤仍保持 generic。
+- 測試過程重現另一個間歇性 ECONNRESET：測試 listener 的 accepted socket 未處理探測客戶端主動斷線。已加測試專屬錯誤收集與 deterministic resetAndDestroy 案例，只允許此預期 reset；其他 socket 錯誤及仍存活 listener 繼續失敗，不放寬 launcher 停止判準。
+- 主代理另發現 Test-NativeEvidence 固定宣稱 pwsh，使指定 WinPS5.1 時實際版本與期望不符；改為跟隨選定引擎，保留 wrong-engine 反例。固定快照雙引擎各通過 23 evidence、9 cleanup 與 15 diagnostics，共 94 項；JS syntax 與 diff 檢查通過。證據見 MIGRATION-7-B2-diagnostics.json。
+- 本段僅測試基礎設施；未變更產品秘密處理或一般錯誤紀錄，不能代替 F4 秘密零落盤驗收，也未聲稱已重現最初兩個 CI 失敗。B2 原因未結狀態保留。

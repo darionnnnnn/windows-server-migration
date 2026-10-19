@@ -14,6 +14,7 @@ const probeMode = cliOnly ? 'cli-only' : 'full';
 const probeTransport = cliOnly ? 'powershell-cli' : 'native-http-edge';
 const probeExpectedCount = cliOnly ? 1 : 3 + (process.env.WSM_PROBE_SKIP_CLI === '1' ? 0 : 1);
 const { startEvidence } = require('./native-evidence');
+const { writeProbeDiagnostics } = require('./native-diagnostics');
 const evidence = startEvidence({
   suite: 'native-probe', transport: probeTransport, mode: probeMode, expectedJourneyCount: probeExpectedCount,
   fixtureLimits: { productionQualification: false, liveWorkloads: false, controlledHostFixtures: true, realEdge: !cliOnly, loopbackHandler: !cliOnly }
@@ -76,13 +77,7 @@ function persistProbeDiagnostics() {
       spawnError: record.spawnError || null
     }))
   };
-  const temporary = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(temporary, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
-  try { fs.renameSync(temporary, file); }
-  catch (error) {
-    try { fs.rmSync(file, { force: true }); } catch {}
-    fs.renameSync(temporary, file);
-  }
+  writeProbeDiagnostics(file, snapshot);
 }
 function recordProbeEvent(event) {
   probeLifecycleEvents.push({ atUtc: new Date().toISOString(), ...event });
@@ -243,7 +238,7 @@ async function api(page, session, route, body, method = body ? 'POST' : 'GET') {
         try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text.slice(0, 500) }; }
         return { status: response.status, data };
       } catch (error) {
-        return { fetchError: { name: error?.name || 'Error', message: error?.message || String(error), stack: error?.stack || null } };
+        return { fetchError: { name: error?.name || 'Error' } };
       }
     }, { route, method, token: session.token, body: body || null });
     requestRecord.origin = handle?.origin || null;
@@ -259,7 +254,7 @@ async function api(page, session, route, body, method = body ? 'POST' : 'GET') {
       } : null;
       probeHttpRequests.push(requestRecord);
       recordProbeEvent({ type: 'http-fetch-failed', ...requestRecord });
-      throw new Error(`Probe HTTP fetch failed for ${requestRecord.role} ${method} ${route}; server=${JSON.stringify(requestRecord.server)}; browser=${JSON.stringify(result.fetchError)}`);
+      throw new Error(`Probe HTTP fetch failed for ${requestRecord.role} ${method} ${route}; lifecycle diagnostics were persisted.`);
     }
     requestRecord.status = result.status;
     probeHttpRequests.push(requestRecord);
@@ -267,7 +262,7 @@ async function api(page, session, route, body, method = body ? 'POST' : 'GET') {
     return result;
   } catch (error) {
     if (!requestRecord.fetchError) {
-      requestRecord.nodeError = { name: error.name, message: error.message, stack: error.stack };
+      requestRecord.nodeError = { name: error.name, code: error.code };
       requestRecord.server = handle ? {
         pid: handle.child.pid || null,
         exitCode: handle.record.exitCode ?? handle.child.exitCode ?? null,

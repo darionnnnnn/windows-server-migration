@@ -5,6 +5,7 @@
     [Parameter(Mandatory)][string]$StopFile,
     [Parameter(Mandatory)][string]$ResponseCapturePath,
     [Parameter(Mandatory)][string]$PayloadRoot,
+    [switch]$DiagnosticSelfTest,
     [ValidateSet('ItemByItem','Automatic')][string]$WizardMode='ItemByItem'
 )
 $ErrorActionPreference='Stop'
@@ -91,6 +92,22 @@ finally{
         $sha=[Security.Cryptography.SHA256]::Create();try{$hash=[BitConverter]::ToString($sha.ComputeHash($Bytes)).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
         if($script:FixtureCaptureRoot){$script:FixtureCaptureSequence++;$correlationId=[string]$script:FixtureCorrelationId;$name=if($correlationId -match '^[a-f0-9-]{36}$'){$script:FixtureCaptureSequence.ToString()+'-'+$correlationId+'.json'}else{$script:FixtureCaptureSequence.ToString()+'.json'};$record=[pscustomobject]@{Sequence=$script:FixtureCaptureSequence;CorrelationId=$correlationId;Status=$Status;ContentType=$ContentType;SHA256=$hash;Payload=[Convert]::ToBase64String($Bytes)};Write-WsmJson (Join-Path $script:FixtureCaptureRoot $name) $record}
         & $script:TestOriginalWriter $Client $Status $ContentType $Bytes
+    }
+    if($DiagnosticSelfTest){
+        $worker=[Management.Automation.PowerShell]::Create()
+        try{
+            $runspace=[Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace();$runspace.Open();$worker.Runspace=$runspace
+            [void]$worker.AddScript("throw [InvalidOperationException]::new('controlled diagnostic failure token=TOKENCANARY body=BODYCANARY')")
+            $async=$worker.BeginInvoke()
+            try{$null=$worker.EndInvoke($async);throw 'Diagnostic worker unexpectedly returned successfully.'}
+            catch{
+                $workerRecord=if($worker.Streams.Error.Count){$worker.Streams.Error[0]}else{$_}
+                try{throw $workerRecord}catch{$safe=Get-WsmHtmlSafeError ([string]$workerRecord.Exception.Message) $workerRecord.Exception.GetType().FullName}
+            }
+            $result=[ordered]@{SafeResponse=$safe;WorkerErrorCount=$worker.Streams.Error.Count;CapturedPath=(Join-Path ([IO.Path]::GetDirectoryName($ResponseCapturePath)) 'safe-error-diagnostics.jsonl')}
+            [IO.File]::WriteAllText($ReadyPath,($result|ConvertTo-Json -Depth 6),(New-Object Text.UTF8Encoding($false)))
+        }finally{if($worker){$worker.Dispose()};if($runspace){$runspace.Close();$runspace.Dispose()}}
+        return
     }
     $sourceRoot=Join-Path $Workspace 'source';$managerRoot=Join-Path $Workspace 'manager';$targetRoot=Join-Path $Workspace 'target'
     $env:WSM_RUNTIME_TEST_FINGERPRINT='a'*64;$sourceProfile=Initialize-WsmOutputWorkspace $sourceRoot Source

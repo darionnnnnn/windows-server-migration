@@ -1,6 +1,7 @@
 console.log('Starting immutable native/formal runtime acceptance on '+process.version);
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),http=require('node:http'),{spawn,execFileSync}=require('node:child_process');
 const {startEvidence}=require('./native-evidence');
+const {writeRuntimeDiagnostics}=require('./native-diagnostics');
 const runtimeMode=process.env.WSM_RUNTIME_FORMAL_SOURCE_CANCEL_ONLY==='1'?'source-cancel':process.env.WSM_RUNTIME_FORMAL_TARGET_ONLY==='1'?'target':'all';
 const runtimeTransport=process.env.WSM_RUNTIME_NATIVE_TRANSPORT==='1'?'native-http-edge':'formal-capture-bridge';
 const runtimeExpectedCount=runtimeMode==='all'?4:1;
@@ -61,15 +62,9 @@ function retainFixtureFailureDiagnostics(roleRoot,role){
  if(role!=='Target')return;
  const source=path.join(roleRoot,'safe-error-diagnostics.jsonl');if(!fs.existsSync(source))return;
  const records=fs.readFileSync(source,'utf8').split(/\r?\n/).filter(Boolean).map(line=>JSON.parse(line));
- for(const record of records){
-  if(record.SchemaVersion!==1||record.Role!=='Target'||record.FixtureScope!=='ControlledWizardRuntime')throw new Error('Refusing to retain an unscoped runtime diagnostic.');
-  for(const key of ['ExceptionType','Message','FullyQualifiedErrorId','Category','ScriptStackTrace','PositionMessage'])if(typeof record[key]!=='string')throw new Error(`Malformed runtime diagnostic field ${key}.`);
-  record.ExceptionType=record.ExceptionType.slice(0,512);record.Message=record.Message.slice(0,4000);record.FullyQualifiedErrorId=record.FullyQualifiedErrorId.slice(0,512);record.ScriptStackTrace=record.ScriptStackTrace.slice(0,8000);record.PositionMessage=record.PositionMessage.slice(0,2000);
- }
  const evidencePath=process.env.WSM_NATIVE_EVIDENCE_PATH;if(!evidencePath)return;
  const destination=path.join(path.dirname(evidencePath),'native-runtime-diagnostics.json');
- const evidenceRecord={schemaVersion:1,suite:'native-runtime',mode:runtimeMode,engine:process.env.WSM_NATIVE_EVIDENCE_ENGINE||'unknown',transport:runtimeTransport,sourceCommit:process.env.WSM_NATIVE_EVIDENCE_SOURCE_SHA||process.env.GITHUB_SHA||null,runId:process.env.GITHUB_RUN_ID?`${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT||'1'}`:null,fixtureScope:'ControlledWizardRuntime',records};
- const temporary=`${destination}.${process.pid}.tmp`;fs.writeFileSync(temporary,JSON.stringify(evidenceRecord,null,2)+'\n','utf8');try{fs.renameSync(temporary,destination);}catch(error){try{fs.rmSync(destination,{force:true});}catch{}fs.renameSync(temporary,destination);}
+ writeRuntimeDiagnostics(destination,{mode:runtimeMode,engine:process.env.WSM_NATIVE_EVIDENCE_ENGINE||'unknown',transport:runtimeTransport,sourceCommit:process.env.WSM_NATIVE_EVIDENCE_SOURCE_SHA||process.env.GITHUB_SHA||null,runId:process.env.GITHUB_RUN_ID?`${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT||'1'}`:null},records);
  log(`Retained ${records.length} sanitized Target fixture exception record(s) as ${destination}.`);
 }
 async function reservePort(){return new Promise((resolve,reject)=>{const server=http.createServer();server.once('error',reject);server.listen(0,'127.0.0.1',()=>{const port=server.address()?.port;server.close(error=>error?reject(error):resolve(port));});});}

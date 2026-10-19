@@ -67,13 +67,40 @@ async function stopOwnedLauncher(child, consoleOrigin, options = {}) {
 }
 
 async function listenLoopback() {
-  const server = net.createServer(socket => socket.end());
+  const acceptedSocketErrors = [];
+  const server = net.createServer(socket => {
+    // canConnect deliberately closes a successful probe immediately. Windows
+    // may report that peer reset on this fixture socket while end() is in
+    // flight, so consume only that expected fixture teardown error and assert
+    // after server.close that no other socket error occurred.
+    socket.once('error', error => acceptedSocketErrors.push(error.code || 'UNKNOWN'));
+    socket.end();
+  });
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
   const address = server.address();
-  return { server, origin: `http://127.0.0.1:${address.port}` };
+  return { server, origin: `http://127.0.0.1:${address.port}`, acceptedSocketErrors };
+}
+
+async function forceProbeReset(fixture) {
+  const before = fixture.acceptedSocketErrors.length;
+  const origin = new URL(fixture.origin);
+  const clientErrors = [];
+  await new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host: origin.hostname, port: Number(origin.port) });
+    socket.on('error', error => clientErrors.push(error.code || 'UNKNOWN'));
+    socket.once('connect', () => {
+      socket.resetAndDestroy();
+      resolve();
+    });
+    socket.setTimeout(1000, () => { socket.destroy(); reject(new Error('Controlled reset probe did not connect.')); });
+  });
+  const deadline = Date.now() + 1000;
+  while (fixture.acceptedSocketErrors.length === before && Date.now() < deadline) await sleep(10);
+  assert.equal(fixture.acceptedSocketErrors[before], 'ECONNRESET', 'fixture listener must classify the deliberate peer reset');
+  assert.ok(clientErrors.every(code => code === 'ECONNRESET'), 'controlled reset probe may only surface its expected socket reset');
 }
 
 async function runTests() {
@@ -81,6 +108,8 @@ async function runTests() {
   const check = (condition, message) => { assert.ok(condition, message); checks++; };
   const fixture = await listenLoopback();
   try {
+    await forceProbeReset(fixture);
+    check(true, 'deliberate probe-client reset is handled by the owned fixture listener');
     let stillOpenRejected = false;
     try { await verifyConsoleStopped(fixture.origin, 40); }
     catch (error) { stillOpenRejected = /still accepts loopback/.test(error.message); }
@@ -123,6 +152,8 @@ async function runTests() {
 
     const closed = await new Promise((resolve, reject) => fixture.server.close(error => error ? reject(error) : resolve(true)));
     check(closed, 'controlled loopback listener closed');
+    check(fixture.acceptedSocketErrors.every(code => code === 'ECONNRESET'),
+      'only expected probe-client resets may occur on owned fixture sockets');
     await verifyConsoleStopped(fixture.origin, 3000);
     check(true, 'three connection refusals confirm the listener stopped');
 

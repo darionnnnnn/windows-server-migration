@@ -7,11 +7,13 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { startEvidence, validateRecord, validateFile } = require('./native-evidence');
 const { runTests: runLauncherCleanupTests } = require('./Test-NativeLauncherCleanup');
+const { runTests: runNativeDiagnosticTests } = require('./Test-NativeDiagnostics');
+const configuredEngine = process.env.WSM_NATIVE_EVIDENCE_ENGINE || (path.basename(process.env.WSM_PS_EXE || 'pwsh.exe').toLowerCase().startsWith('powershell') ? 'powershell' : 'pwsh');
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'wsm-native-evidence-test-'));
 const sourceCommit = '6eac316162cbcb19b5b0343e0d4cf12bb87bbf01';
 const expected = {
-  suite: 'native-runtime', engine: 'pwsh', transport: 'native-http-edge', mode: 'all',
+  suite: 'native-runtime', engine: configuredEngine, transport: 'native-http-edge', mode: 'all',
   journeyCount: 2, sourceCommit, runId: 'test-run-1'
 };
 const file = path.join(temp, 'passed.json');
@@ -60,7 +62,7 @@ try {
   let bad = cloned(); delete bad.engine; rejected(bad);
   bad = cloned(); bad.completedJourneyCount = 0; bad.completedJourneys = []; bad.expectedJourneyCount = 0; rejected(bad);
   bad = cloned(); bad.suite = 'native-probe'; rejected(bad);
-  bad = cloned(); bad.engine = 'powershell'; rejected(bad);
+  bad = cloned(); bad.engine = expected.engine === 'pwsh' ? 'powershell' : 'pwsh'; rejected(bad);
   bad = cloned(); bad.transport = 'formal-capture-bridge'; rejected(bad);
   bad = cloned(); bad.runId = 'old-run-0'; rejected(bad);
   bad = cloned(); bad.expectedJourneyCount = 3; rejected(bad);
@@ -104,4 +106,4 @@ try {
 }
 
 process.stdout.write(`PASS Test-NativeEvidence: ${checks} positive, negative, provisional, count, scope and reuse checks.\n`);
-runLauncherCleanupTests().catch(error => { console.error(error); process.exitCode = 1; });
+runLauncherCleanupTests().then(runNativeDiagnosticTests).catch(error => { console.error(error); process.exitCode = 1; });

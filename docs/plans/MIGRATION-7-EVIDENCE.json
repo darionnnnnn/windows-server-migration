@@ -249,7 +249,7 @@
         },
         {
           "path": "tests/Test-NativeEvidence.js",
-          "sha256": "AE11D592279F5E36C0F9AC0EA130EE3AE4C5024BF104CE71849CC43626AFBE8C"
+          "sha256": "8B45CAF33ED526990A1BB313F4EA50BC21ACF9813952399F0E2A40F418C4D317"
         },
         {
           "path": "tests/Test-NativeHtmlBridge.js",
@@ -261,7 +261,7 @@
         },
         {
           "path": "tests/Test-NativeWizardRuntimeHandler.js",
-          "sha256": "E991AA6A4DBD6BAB760442B07C68A0FB5B6302094D263DB41ED7049DE1CFE71C"
+          "sha256": "337662CF8AC724E84F68C2B366D35B219446BA28307109DA98A3369DCAB912A4"
         },
         {
           "path": "tests/Test-NativeWizardManagerJourney.js",
@@ -269,7 +269,7 @@
         },
         {
           "path": "tests/Test-NativeProbeRoles.js",
-          "sha256": "73791E4611423D6590A0CF73C3C4EF0143DF9A94C3F4F7E5157F7CCB79365ACE"
+          "sha256": "47E719C960BD7D30C08FF64E53869A87E586857B67610DF2C59CE5003247D52C"
         },
         {
           "path": "tests/Test-ReleaseWizardSmoke.ps1",
@@ -277,11 +277,19 @@
         },
         {
           "path": "tests/Start-WizardRuntimeTestServer.ps1",
-          "sha256": "185678D257FEF5F0010E6E52A79184E3B8E4CAD55ACA81D49C3C2FE41D4376B6"
+          "sha256": "5A4C9BCA9AFF4E65147364AF01343D034B530646CC78E2599D84BCF77EDC9F59"
         },
         {
           "path": "tests/Test-NativeLauncherCleanup.js",
-          "sha256": "C55732A9F0F2224C697107E1585CC9A4F24545B576C9DD10BC1D55E491696C01"
+          "sha256": "0AA3D6E67D6985BFE189763C474407AC2A2D20FC8614EFF0366059D011513DA7"
+        },
+        {
+          "path": "tests/native-diagnostics.js",
+          "sha256": "AAB6628E643086299A3999BBE1FEE3055DFC0CA4255B8F9361306FD0A19AB709"
+        },
+        {
+          "path": "tests/Test-NativeDiagnostics.js",
+          "sha256": "1097469FDEB0AE818659F3974CC0006E9FB4619C1D9886125256F4FA59AD5724"
         }
       ],
       "evidence": [
@@ -296,6 +304,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-B2-docs-only-1897568.json",
           "sha256": "02E552B38A4C6974188CCA914755F4847BEB3B5B8288646ECC8F2BB2CFE88DC4"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B2-diagnostics.json",
+          "sha256": "31F34BD0E37B1FFB5E073BA38C09451159B353328EC398936101DD6417CD6AFE"
         }
       ],
       "evidenceLog": {
@@ -303,7 +315,7 @@
         "sha256": "724A0E8854FA4525EB770D034B683D8A0FAC73E6DF1B38F75244E69894083508"
       },
       "casesExecuted": 30,
-      "result": "Local 30 evidence/cleanup checks passed; 10 original hosted suite records independently validated, covering 20 native HTTP/Edge journeys and 1 release module smoke. Earlier intermittent CI causes remain open.",
+      "result": "Diagnostic followup: each engine passes 23 evidence + 9 cleanup + 15 controlled diagnostic checks. Original native artifacts remain retained; original 6eac intermittent causes unresolved.",
       "limitations": [
         "Actual loopback helper checks do not replace native Edge release journey.",
         "Earlier 6eac316 WinPS51 runtime and Probe failures remain unresolved."
