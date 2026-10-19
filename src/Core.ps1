@@ -50,6 +50,7 @@ function Assert-WsmEnvelope($Data, [string]$Kind) {
     } elseif ($Data.SchemaVersion -eq 2) {
         if ($Kind -eq 'Catalog') { if (-not $Data.PSObject.Properties['GeneralHost'] -or -not (Get-Command Assert-WsmGeneralHostContract -ErrorAction SilentlyContinue)) { throw (New-WsmContractError 'Schema 2 Catalog requires the GeneralHost contract validator.') }; Assert-WsmGeneralHostContract $Data | Out-Null }
         elseif ($Kind -eq 'MigrationPlan') { if (-not $Data.PSObject.Properties['ScopeMode'] -or $Data.ScopeMode -cne 'GeneralHost' -or -not $Data.PSObject.Properties['GeneralHost']) { throw (New-WsmContractError 'Schema 2 MigrationPlan requires GeneralHost scope and contract.') }; if (-not (Get-Command Assert-WsmGeneralHostContract -ErrorAction SilentlyContinue)) { throw (New-WsmContractError 'GeneralHost contract validator is unavailable.') }; Assert-WsmGeneralHostContract $Data | Out-Null }
+        elseif($Kind -eq 'MigrationPackage'){if(-not (Get-Command Assert-WsmOfflineFullSetManifest -ErrorAction SilentlyContinue)){throw (New-WsmContractError 'Schema 2 MigrationPackage requires the OfflineFullSet reader; this reader does not support it.')};Assert-WsmOfflineFullSetManifest $Data | Out-Null}
         else { throw (New-WsmContractError 'Schema 2 is unsupported for this envelope kind.') }
     } elseif ($Data.SchemaVersion -eq 3) {
         if (@('Catalog','MigrationPlan') -cnotcontains $Kind -or $Data.ToolVersion -cne '0.4.0') { throw (New-WsmContractError 'Schema 3 requires tool version 0.4.0 and a Catalog or MigrationPlan envelope.') }

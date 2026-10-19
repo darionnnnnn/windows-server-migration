@@ -108,7 +108,7 @@ function Export-WsmLabValidationReport {
     $manifest=$null;$package=$null;$stateBinding=$null
     if($ManifestPath){
         # Read package and identity bindings before creating any output, so wrong-host or tampered inputs leave no report artifact.
-        $package=Test-WsmMigrationPackage $ManifestPath $ExpectedHash;$manifest=$package.Manifest
+        $package=Test-WsmMigrationPackage $ManifestPath $ExpectedHash;if($package.Plan.PSObject.Properties['Assistive'] -and $package.Plan.Assistive.ContractVersion -eq 2){throw 'LabValidation does not support OfflineFullSet CV2; no report was written.'};$manifest=$package.Manifest
         $expectedFingerprint=[string]$manifest.Source.Fingerprint;if($Role -eq 'Target'){$expectedFingerprint=[string]$manifest.Target.Fingerprint}
         if($identity.Fingerprint -cne $expectedFingerprint){throw (New-WsmContractError 'This host does not match the approved package role fingerprint.')}
         if($package.Plan.ToolFingerprint -ine $toolFingerprint){throw (New-WsmContractError 'Installed tool fingerprint differs from approved plan tool fingerprint.')}

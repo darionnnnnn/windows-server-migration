@@ -799,20 +799,31 @@
           "15.3 D3a：離線備份集材料與相容契約"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "in-progress",
+      "evidenceStatus": "implemented-unverified",
       "externalRequired": false,
       "externalStatus": "not-assessed",
       "signatureStatus": "not-required",
       "consumers": [],
       "environment": null,
       "inputs": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D3a-offline-controls.json",
+          "sha256": "AED61E46E9925929CCE87ABEC94749610C3678F64CE96D6C05F3CD2DCD469479"
+        }
+      ],
       "evidenceLog": null,
       "casesExecuted": 0,
       "result": null,
       "limitations": [],
-      "openIssues": [],
+      "openIssues": [
+        "D3a remains partial: sealed portable report/index integration is not yet complete.",
+        "Additional-volume binding was simulated; no native D/E volume capture or cold Target restore qualification.",
+        "CV2 ExactMembers remains C-only pending context-aware D3b integration; legacy direct NonC continues to reject it.",
+        "WizardBackup CV2 is deliberately blocked until D3b durable orchestration; restore CV2 is blocked until E3.",
+        "Independent-copy readiness, offline Target bootstrap, source-disabled restore, credentials and full round acceptance remain incomplete."
+      ],
       "historicalEvidence": []
     },
     {

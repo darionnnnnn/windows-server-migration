@@ -593,3 +593,10 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 明確 Unknown 可保存但不算準備完成；特殊產品只接受 External／NotNeeded。Portable 處置不移除可信安裝根目錄防護，也不授權備份套裝本體。
 - 主代理核對固定 368 檔快照與四檔改動，雙引擎各 17 項正式 catalog 審閱／提交／重開檢查通過，PS5.1 另通過既有表單 27 項與 GeneralHost gate 回歸。已計數 61 項；證據見 MIGRATION-7-C2-software-review.json。
 - HTML／CLI 操作接線及完整擷取／還原排除驗收仍待完成，C2 與整輪不標完成。
+
+### 17.19 D3a 離線完整集合與控制材料（部分完成）
+
+- 明確核准的 CV2 計畫採 ApprovedLocalVolumes，從可信來源盤點綁定磁碟，擷取再查實際來源。相同原位置、來源磁碟與 C／NonC 通道必須一致；C 槽精確集合、零長檔、空目錄及只有設定的集合保留原語意。
+- package schema 2 保存自足 full 控制材料及索引：來源盤點／軟體、核准材料、每檔 hash／大小／種類與核准及擷取時的根目錄覆蓋。新 reader 驗完整集合，Directory／ZIP 及報告用途收據沿用同一身分；控制材料缺失、竄改、多出檔案及版本不符均拒絕。
+- 主代理核對不可變快照 358 檔與 18 檔改動，雙引擎各 39 項實際核准→擷取→reader→Directory／ZIP→receipt 檢查通過；另保留前一固定快照的 29 項 ExactMembers、120 項 AssistiveRestore、transport／WizardBackup／DeliveryReceipts 回歸。後續產品差異僅來源通道 guard，已補負例；證據保存不同受測快照，不混稱同次測試。
+- 額外磁碟只驗模擬 binding，未宣稱 D／E 原生擷取。CV2 NonC ExactMembers、完整報告、耐久一鍵備份、獨立副本就緒及離線新機還原仍未完成；尚未接線的 WizardBackup／restore、delta／Fleet／Lab 入口明確拒絕新格式，避免部分成功。

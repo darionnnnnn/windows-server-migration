@@ -74,7 +74,7 @@ function Assert-WsmAssistiveContract($Data,[ValidateSet('Catalog','MigrationPlan
         if (-not $Data.PSObject.Properties['Assistive']) { throw (New-WsmContractError 'Schema 3 MigrationPlan requires Assistive source policy.') }
         $a=$Data.Assistive
         foreach($field in @('ContractVersion','PairId','SourceSnapshotHash','SourcePolicy','SourceSelectionsVersion','ApprovedItemIds','MaterialReferences','DiscoveryAuthority')){if(-not $a.PSObject.Properties[$field]){throw (New-WsmContractError ('MigrationPlan Assistive missing '+$field+'.'))}}
-        if($a.ContractVersion -ne 1 -or $a.PairId -cne $Data.PairId -or $a.SourceSnapshotHash -ine $Data.InventoryHash -or $a.SourcePolicy -cne 'SourceCOnly' -or ($a.SourceSelectionsVersion -isnot [int] -and $a.SourceSelectionsVersion -isnot [long]) -or $a.SourceSelectionsVersion -lt 1 -or $a.ApprovedItemIds -isnot [array] -or $a.MaterialReferences -isnot [array]){throw (New-WsmContractError 'Invalid sealed MigrationPlan Assistive policy.')}
+        if(($a.ContractVersion -notin @(1,2)) -or $a.PairId -cne $Data.PairId -or $a.SourceSnapshotHash -ine $Data.InventoryHash -or ($a.ContractVersion -eq 1 -and $a.SourcePolicy -cne 'SourceCOnly') -or ($a.ContractVersion -eq 2 -and $a.SourcePolicy -cne 'ApprovedLocalVolumes') -or ($a.SourceSelectionsVersion -isnot [int] -and $a.SourceSelectionsVersion -isnot [long]) -or $a.SourceSelectionsVersion -lt 1 -or $a.ApprovedItemIds -isnot [array] -or $a.MaterialReferences -isnot [array]){throw (New-WsmContractError 'Invalid sealed MigrationPlan Assistive policy.')}
         $authority=$a.DiscoveryAuthority
         Assert-WsmFields $authority @('SourceSnapshotReference','InventoryRevision','SelectionRevision','Dispositions','OsProvidedItems') @('SourceSnapshotReference','InventoryRevision','SelectionRevision','Dispositions')
         Assert-WsmAssistiveReference $authority.SourceSnapshotReference 'Sealed discovery authority'
@@ -100,6 +100,14 @@ function Assert-WsmAssistiveContract($Data,[ValidateSet('Catalog','MigrationPlan
             }
         }
         if($planIds.Count -ne $seen.Count){throw (New-WsmContractError 'Schema 3 plan may contain only selected approved Include items.')}
+        if($a.ContractVersion -eq 2){
+            if(-not $a.PSObject.Properties['ApprovedLocalVolumes'] -or $a.ApprovedLocalVolumes -isnot [array]){throw (New-WsmContractError 'CV2 requires approved local volume bindings.')}
+            if(-not $a.PSObject.Properties['ApprovedRootCoverage'] -or $a.ApprovedRootCoverage -isnot [array]){throw (New-WsmContractError 'CV2 requires approval-time installed-root coverage evidence.')}
+            $coverageByItem=@{};foreach($coverage in @($a.ApprovedRootCoverage)){Assert-WsmFields $coverage @('ItemId','Status','RootsChecked','SourceInventoryHash','Diagnostics') @('ItemId','Status','RootsChecked','SourceInventoryHash','Diagnostics');if($coverageByItem.ContainsKey([string]$coverage.ItemId) -or ($coverage.RootsChecked -isnot [int] -and $coverage.RootsChecked -isnot [long]) -or $coverage.RootsChecked -lt 0 -or [string]::IsNullOrWhiteSpace([string]$coverage.Status) -or $coverage.SourceInventoryHash -ine $a.SourceSnapshotHash -or $coverage.Diagnostics -isnot [array]){throw (New-WsmContractError 'CV2 approval-time installed-root coverage is stale or malformed.')};$coverageByItem[[string]$coverage.ItemId]=$true}
+            $scopeItems=@($Data.Items | Where-Object {$_.Decision -ceq 'Include' -and $_.MigrationSpec.Adapter -ceq 'FileScope'});if($scopeItems.Count -ne $a.ApprovedLocalVolumes.Count){throw (New-WsmContractError 'CV2 volume bindings must cover every included FileScope exactly once.')}
+            $volumeItems=@{};foreach($entry in $a.ApprovedLocalVolumes){Assert-WsmFields $entry @('ItemId','SourcePath','DeviceID','DriveLetter') @('ItemId','SourcePath','DeviceID','DriveLetter');if($volumeItems.ContainsKey([string]$entry.ItemId) -or [string]$entry.DeviceID -notmatch '^\\\\\?\\Volume\{[0-9a-fA-F-]{36}\}\\$' -or [string]$entry.DriveLetter -notmatch '^[A-Za-z]:$'){throw (New-WsmContractError 'Invalid or duplicate CV2 local volume binding.')};$volumeItems[[string]$entry.ItemId]=$entry}
+            if($coverageByItem.Count -ne $scopeItems.Count){throw (New-WsmContractError 'CV2 approval-time coverage must cover every included FileScope exactly once.')};foreach($item in $scopeItems){if(-not $coverageByItem.ContainsKey([string]$item.ItemId) -or -not $volumeItems.ContainsKey([string]$item.ItemId) -or (ConvertTo-WsmCanonicalPath ([string]$item.MigrationSpec.SourcePath)) -ine (ConvertTo-WsmCanonicalPath ([string]$item.MigrationSpec.TargetPath)) -or (ConvertTo-WsmCanonicalPath ([string]$item.MigrationSpec.SourcePath)) -ine (ConvertTo-WsmCanonicalPath ([string]$volumeItems[[string]$item.ItemId].SourcePath))){throw (New-WsmContractError 'CV2 requires one source-volume binding and canonical SourcePath == TargetPath per included FileScope.')};if([string]$item.MigrationSpec.TransferChannel -cnotin @('C','NonC')){throw (New-WsmContractError 'CV2 scope transfer classification is invalid.')}}
+        }
         foreach($reference in @($a.MaterialReferences)){Assert-WsmAssistiveReference $reference 'Material'}
         return $true
     }
@@ -123,7 +131,7 @@ function New-WsmAssistiveCatalogContract {
 }
 
 function New-WsmAssistiveMigrationPlanContract {
-    param([Parameter(Mandatory)]$Plan,[Parameter(Mandatory)]$Catalog)
+    param([Parameter(Mandatory)]$Plan,[Parameter(Mandatory)]$Catalog,[switch]$OfflineFullSet,[object[]]$ApprovedLocalVolumes=@(),[object[]]$ApprovedRootCoverage=@())
     Assert-WsmAssistiveContract $Catalog Catalog | Out-Null
     $planIds=@{};foreach($item in @($Plan.Items)){$planIds[[string]$item.ItemId]=$true}
     $selected=@($Catalog.Assistive.Selections.Items | Where-Object {$_.Selected -and $planIds.ContainsKey([string]$_.ItemId)} | ForEach-Object {[string]$_.ItemId} | Sort-Object -Unique)
@@ -142,7 +150,9 @@ function New-WsmAssistiveMigrationPlanContract {
         }
         $authority | Add-Member NoteProperty OsProvidedItems $sealedProofItems
     }
-    $Plan | Add-Member NoteProperty Assistive ([pscustomobject][ordered]@{ContractVersion=1;PairId=[string]$Catalog.PairId;SourceSnapshotHash=[string]$Catalog.Assistive.SourceSnapshot.SHA256;SourcePolicy='SourceCOnly';SourceSelectionsVersion=[int]$Catalog.Assistive.Selections.Revision;ApprovedItemIds=$selected;MaterialReferences=@($Catalog.Assistive.MaterialReferences);DiscoveryAuthority=$authority}) -Force
+    $contractVersion=1;$sourcePolicy='SourceCOnly';if($OfflineFullSet){$contractVersion=2;$sourcePolicy='ApprovedLocalVolumes'}
+    $Plan | Add-Member NoteProperty Assistive ([pscustomobject][ordered]@{ContractVersion=$contractVersion;PairId=[string]$Catalog.PairId;SourceSnapshotHash=[string]$Catalog.Assistive.SourceSnapshot.SHA256;SourcePolicy=$sourcePolicy;SourceSelectionsVersion=[int]$Catalog.Assistive.Selections.Revision;ApprovedItemIds=$selected;MaterialReferences=@($Catalog.Assistive.MaterialReferences);DiscoveryAuthority=$authority}) -Force
+    if($OfflineFullSet){$Plan.Assistive | Add-Member NoteProperty ApprovedLocalVolumes @($ApprovedLocalVolumes) -Force;$Plan.Assistive | Add-Member NoteProperty ApprovedRootCoverage @($ApprovedRootCoverage) -Force}
     Assert-WsmAssistiveContract $Plan MigrationPlan | Out-Null
     $Plan
 }

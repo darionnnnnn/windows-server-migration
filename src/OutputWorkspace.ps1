@@ -299,7 +299,7 @@ function Assert-WsmDirectoryDeliveryPathBudget {
     if(-not $parent){throw 'Directory delivery requires a dedicated child directory.'}
     $stage=Join-Path $parent ('.d-'+('0'*32))
     $paths=@($root,$stage)
-    foreach($name in $MemberNames){if($name -notin @('manifest.json','plan.json','artifacts.jsonl','freeze.json') -and $name -notmatch '^payload/[a-f0-9]{64}\.blob$'){throw 'Directory path budget requires an exact package member name.'};$relative=$name.Replace('/','\');foreach($base in @($root,$stage)){$file=Join-Path $base $relative;if($file.Length -gt 259 -or ([IO.Path]::GetDirectoryName($file)).Length -gt 247){throw 'Directory delivery exceeds supported Windows path limits; choose a shorter fixed WorkRoot before backup. No delivery files were created.'}}}
+    foreach($name in $MemberNames){if($name -notin @('manifest.json','plan.json','artifacts.jsonl','freeze.json') -and $name -notmatch '^payload/[a-f0-9]{64}\.blob$' -and $name -notmatch '^controls/(?:index\.json|source-inventory\.json|material-\d{4}-[a-f0-9]{64}\.bin)$'){throw 'Directory path budget requires an exact package member name.'};$relative=$name.Replace('/','\');foreach($base in @($root,$stage)){$file=Join-Path $base $relative;if($file.Length -gt 259 -or ([IO.Path]::GetDirectoryName($file)).Length -gt 247){throw 'Directory delivery exceeds supported Windows path limits; choose a shorter fixed WorkRoot before backup. No delivery files were created.'}}}
     if(@($paths|Where-Object {$_.Length -gt 247}).Count -or (Join-Path $parent ('delivery-'+('0'*36)+'.json')).Length -gt 259){throw 'Directory delivery exceeds supported Windows path limits; choose a shorter fixed WorkRoot before backup. No delivery files were created.'}
 }
 
@@ -312,7 +312,7 @@ function Export-WsmDirectoryDelivery {
     $required=@('manifest.json','plan.json','artifacts.jsonl');if($package.Manifest.Final){$required+=@('freeze.json')}
     $memberLookup=@{};$metadataBytes=[long]0
     foreach($member in $members){
-        if($member.Name -notin @('manifest.json','plan.json','artifacts.jsonl','freeze.json') -and $member.Name -notmatch '^payload/[a-f0-9]{64}\.blob$'){throw 'Package whitelist produced an unsupported member name.'}
+        if($member.Name -notin @('manifest.json','plan.json','artifacts.jsonl','freeze.json') -and $member.Name -notmatch '^payload/[a-f0-9]{64}\.blob$' -and $member.Name -notmatch '^controls/(?:index\.json|source-inventory\.json|material-\d{4}-[a-f0-9]{64}\.bin)$'){throw 'Package whitelist produced an unsupported member name.'}
         if($memberLookup.ContainsKey($member.Name)){throw 'Package whitelist contains a duplicate member.'}
         $memberLookup[$member.Name]=$true
         if($member.Name -notmatch '^payload/'){ $metadataBytes+=[long]$member.Bytes }
@@ -386,7 +386,7 @@ function Get-WsmDirectoryDeliveryFileIndex([string]$Root,[int]$MaxMembers=100000
             if(($attributes -band [IO.FileAttributes]::Directory) -ne 0){$pending.Push($entry);continue}
             if(($attributes -band [IO.FileAttributes]::Device) -ne 0){throw 'Directory delivery contains a non-file filesystem entry.'}
             $relative=$entry.Substring($rootPath.TrimEnd('\').Length).TrimStart('\').Replace('\','/')
-            if($relative -notmatch '^(?:manifest\.json|plan\.json|artifacts\.jsonl|freeze\.json|payload/[a-f0-9]{64}\.blob)$'){throw 'Directory delivery contains an unsupported member name.'}
+            if($relative -notmatch '^(?:manifest\.json|plan\.json|artifacts\.jsonl|freeze\.json|payload/[a-f0-9]{64}\.blob|controls/(?:index\.json|source-inventory\.json|material-\d{4}-[a-f0-9]{64}\.bin))$'){throw 'Directory delivery contains an unsupported member name.'}
             if($seenNames.ContainsKey($relative)){throw 'Directory delivery contains duplicate member names under Windows path rules.'}
             $seenNames[$relative]=$true
             $fileInfo=New-Object IO.FileInfo($entry)
@@ -427,7 +427,7 @@ function Import-WsmDirectoryDelivery {
         $name=[string]$member.Name
         if($name.Contains('\') -or $name.StartsWith('/') -or $name.Contains('//')){throw 'Directory delivery summary contains a noncanonical member name.'}
         Assert-WsmRelativePath ($name.Replace('/','\'))
-        if($name -notmatch '^(?:manifest\.json|plan\.json|artifacts\.jsonl|freeze\.json|payload/[a-f0-9]{64}\.blob)$'){throw 'Directory delivery summary contains an unsupported member name.'}
+        if($name -notmatch '^(?:manifest\.json|plan\.json|artifacts\.jsonl|freeze\.json|payload/[a-f0-9]{64}\.blob|controls/(?:index\.json|source-inventory\.json|material-\d{4}-[a-f0-9]{64}\.bin))$'){throw 'Directory delivery summary contains an unsupported member name.'}
         if($memberNames.ContainsKey($name)){throw 'Directory delivery summary contains duplicate member names.'}
         $memberNames[$name]=$true
         $bytes=[long]0;if(-not [long]::TryParse([string]$member.Bytes,[ref]$bytes) -or $bytes -lt 0 -or [string]$member.SHA256 -notmatch '^[a-fA-F0-9]{64}$'){throw 'Directory delivery summary contains an invalid member size or hash.'}

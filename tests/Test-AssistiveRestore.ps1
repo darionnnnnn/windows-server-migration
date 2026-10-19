@@ -8,6 +8,8 @@ try {
     & $module {
         param($root,$helper)
         . $helper
+        $script:originalGetWsmOperationPaths=(Get-Command Get-WsmOperationPaths -CommandType Function).ScriptBlock
+        $script:originalGetWsmOperationState=(Get-Command Get-WsmOperationState -CommandType Function).ScriptBlock
         $script:nativeAssistiveFileTopology=(Get-Command Assert-WsmAssistiveFileTopology -CommandType Function).ScriptBlock;$script:rejectAssistiveTopologyPath=''
         Set-Item Function:\script:Assert-WsmAssistiveFileTopology -Value {param([string]$Path,[switch]$ExactConfig,[string]$SourceRoot='', [string]$RelativePath='')if($script:rejectAssistiveTopologyPath -and [IO.Path]::GetFullPath($Path).Equals([IO.Path]::GetFullPath($script:rejectAssistiveTopologyPath),[StringComparison]::OrdinalIgnoreCase)){throw 'Fixture topology boundary rejection.'};& $script:nativeAssistiveFileTopology -Path $Path -ExactConfig:$ExactConfig -SourceRoot $SourceRoot -RelativePath $RelativePath}
         $script:nativeAssistiveRestoreDecision=(Get-Command Get-WsmAssistiveRestoreDecision -CommandType Function).ScriptBlock
@@ -57,7 +59,7 @@ try {
 
         $exactTarget=Join-Path $root 'exact-programfiles-target';[void][IO.Directory]::CreateDirectory($exactTarget);$exactText='{"site":"fixture"}';$exactArtifact=NewEntry 'appsettings.json' $exactText;$script:testEntries=@($exactArtifact);$exactTargetSpec=[pscustomobject]@{Adapter='FileScope';SourcePath=(Join-Path $root 'exact-source');TargetPath=$exactTarget;ContentSelection='ExactFiles';ConfigFiles=@([pscustomobject]@{RelativePath='appsettings.json';SHA256=(Get-WsmHashText $exactText);Owner='Fixture owner';Evidence='approved config hash'})};$item.MigrationSpec=$exactTargetSpec;$state.Items=@();$package.Manifest.Generation=8
         $aliasTargetRoot=Join-Path $root 'uncreated-protected-target'
-        & $module {param($exact,$alias)$script:exactTarget=$exact;$script:aliasTargetRoot=$alias} $exactTarget $aliasTargetRoot
+        $script:exactTarget=$exactTarget;$script:aliasTargetRoot=$aliasTargetRoot
         $physicalResolver=(Get-Command Get-WsmPhysicalPath -CommandType Function).ScriptBlock
         try{
             Set-Item Function:\script:Get-WsmPhysicalPath -Value {param([string]$Path)$base='\Device\HarddiskVolume123\Program Files\Fixture\Target';$full=[IO.Path]::GetFullPath($Path);$rootPath=[IO.Path]::GetFullPath($script:exactTarget);$aliasRoot=[IO.Path]::GetFullPath($script:aliasTargetRoot);if($full -ieq $rootPath){return $base};if($full.StartsWith($rootPath.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){return ($base+'\'+$full.Substring($rootPath.TrimEnd('\').Length).TrimStart('\'))};if($full -ieq $aliasRoot){return '\Device\HarddiskVolume123\Program Files\Fixture\Alias'};if($full.StartsWith($aliasRoot.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){return ('\Device\HarddiskVolume123\Program Files\Fixture\Alias\'+$full.Substring($aliasRoot.TrimEnd('\').Length).TrimStart('\'))};'\Device\HarddiskVolume123\Users\Fixture\Unrelated'}
@@ -210,16 +212,16 @@ try {
         $script:currentSoftwareFixture=$softwareCatalog
         $bindingPackage=$decisionPackage.PSObject.Copy();$bindingPackage.Plan=$plan.PSObject.Copy();$bindingPackage.Plan | Add-Member NoteProperty GeneralHost ([pscustomobject]@{SoftwareCatalog=[pscustomobject]@{Entries=@([pscustomobject]@{SoftwareId='sw-fixture';Version='1.2.3'})}}) -Force
         $goodObservedComparison=$comparison.PSObject.Copy();$goodObservedComparison.Rows=@($comparison.Rows[0].PSObject.Copy());$goodObservedComparison.Rows[0].Status='ChosenVersionObserved';$goodObservedComparison.Rows[0].ObservedTargetVersion='2.0.0';$receipt.Comparison=$goodObservedComparison;$receipt.ComparisonHash=Get-WsmHashText ($goodObservedComparison|ConvertTo-Json -Depth 100 -Compress)
-        $bindingResult=& $module {param($package,$decisionReceipt) Assert-WsmAssistiveReceiptComparisonBinding $package $decisionReceipt} $bindingPackage $receipt
+        $bindingResult=Assert-WsmAssistiveReceiptComparisonBinding $bindingPackage $receipt
         Check $bindingResult 'A comparison with exact chosen/observed equality and sealed source version was rejected.'
         $badDifferentComparison=$goodObservedComparison.PSObject.Copy();$badDifferentComparison.Rows=@($goodObservedComparison.Rows[0].PSObject.Copy());$badDifferentComparison.Rows[0].Status='DifferentFromChosenVersion';$receipt.Comparison=$badDifferentComparison;$receipt.ComparisonHash=Get-WsmHashText ($badDifferentComparison|ConvertTo-Json -Depth 100 -Compress)
-        $statusMismatchRejected=$false;try{& $module {param($package,$decisionReceipt) Assert-WsmAssistiveReceiptComparisonBinding $package $decisionReceipt} $bindingPackage $receipt|Out-Null}catch{$statusMismatchRejected=$true}
+        $statusMismatchRejected=$false;try{Assert-WsmAssistiveReceiptComparisonBinding $bindingPackage $receipt|Out-Null}catch{$statusMismatchRejected=$true}
         Check $statusMismatchRejected 'DifferentFromChosenVersion accepted equal chosen and observed versions.'
         $badChosenComparison=$goodObservedComparison.PSObject.Copy();$badChosenComparison.Rows=@($goodObservedComparison.Rows[0].PSObject.Copy());$badChosenComparison.Rows[0].ChosenVersion='3.0.0';$receipt.Comparison=$badChosenComparison;$receipt.ComparisonHash=Get-WsmHashText ($badChosenComparison|ConvertTo-Json -Depth 100 -Compress)
-        $chosenMismatchRejected=$false;try{& $module {param($package,$decisionReceipt) Assert-WsmAssistiveReceiptComparisonBinding $package $decisionReceipt} $bindingPackage $receipt|Out-Null}catch{$chosenMismatchRejected=$true}
+        $chosenMismatchRejected=$false;try{Assert-WsmAssistiveReceiptComparisonBinding $bindingPackage $receipt|Out-Null}catch{$chosenMismatchRejected=$true}
         Check $chosenMismatchRejected 'ChosenVersionObserved accepted unequal chosen and observed versions.'
         $badSourceComparison=$goodObservedComparison.PSObject.Copy();$badSourceComparison.Rows=@($goodObservedComparison.Rows[0].PSObject.Copy());$badSourceComparison.Rows[0].SourceVersion='8.8.8';$receipt.Comparison=$badSourceComparison;$receipt.ComparisonHash=Get-WsmHashText ($badSourceComparison|ConvertTo-Json -Depth 100 -Compress)
-        $sourceVersionMismatchRejected=$false;try{& $module {param($package,$decisionReceipt) Assert-WsmAssistiveReceiptComparisonBinding $package $decisionReceipt} $bindingPackage $receipt|Out-Null}catch{$sourceVersionMismatchRejected=$true}
+        $sourceVersionMismatchRejected=$false;try{Assert-WsmAssistiveReceiptComparisonBinding $bindingPackage $receipt|Out-Null}catch{$sourceVersionMismatchRejected=$true}
         Check $sourceVersionMismatchRejected 'Comparison SourceVersion differing from the sealed GeneralHost catalog was accepted.'
         $receipt.Comparison=$comparison;$receipt.ComparisonHash=Get-WsmHashText ($comparison|ConvertTo-Json -Depth 100 -Compress)
         $missingComparison=$receipt.PSObject.Copy();$missingComparison.PSObject.Properties.Remove('Comparison');Write-WsmJson $receiptPath $missingComparison;$receiptHash=(Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash.ToLowerInvariant();$missingRejected=$false;try{Get-WsmAssistiveRestoreDecision $decisionPackage $decisionPackage.SHA256 $receiptPath $receiptHash $snapshotPath|Out-Null}catch{$missingRejected=$true}
@@ -483,8 +485,8 @@ try {
         Set-Item Function:\Get-WsmAssistiveNonCResultRows -Value $script:nativeAssistiveNonCRowsForLoop
         Set-Item Function:\Assert-WsmAssistiveReceiptFresh -Value $script:nativeAssistiveAssertFreshForLoop
         Set-Item Function:\Register-WsmAssistivePackageMaterials -Value $script:nativeAssistiveRegisterJobForLoop
-        Set-Item Function:\Get-WsmOperationPaths -Value $script:nativeAssistiveGetPathsForLoop
-        Set-Item Function:\Get-WsmOperationState -Value $script:nativeAssistiveGetStateForLoop
+        Set-Item Function:\Get-WsmOperationPaths -Value $script:originalGetWsmOperationPaths
+        Set-Item Function:\Get-WsmOperationState -Value $script:originalGetWsmOperationState
         Set-Item Function:\Get-WsmAssistiveReservations -Value $script:nativeAssistiveReservationsForLoop
         Set-Item Function:\Confirm-WsmOutputStateCheckpoint -Value $script:nativeAssistiveCheckpointForLoop
         Set-Item Function:\Invoke-WsmIisConfigRestore -Value $script:nativeAssistiveIisWriteForLoop

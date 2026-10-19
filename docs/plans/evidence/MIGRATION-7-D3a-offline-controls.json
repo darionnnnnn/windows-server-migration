@@ -1,0 +1,129 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "D3a",
+  "runtimeBase": "8bc373e21af326dd086f08ce4ef5fa80549d3625",
+  "snapshot": "d3a-revised-8",
+  "snapshotIndexHash": "5A0ACA4E4CE06CC0AC1611563B02A0FD3F9CE373D86AF17074F642DA3165BAD4",
+  "verifiedUtc": "2026-10-19T06:45:52.920753+00:00",
+  "inputs": [
+    {
+      "path": "src/AssistiveContracts.ps1",
+      "sha256": "1C27404C5113D6082AAA78DF86C715FC8FEE7B7B7C1AA28AFA98364161E3C3EE"
+    },
+    {
+      "path": "src/AssistiveFiles.ps1",
+      "sha256": "C67E6CB50E1AD68B7502AAC95A05245EE6C03CFF77C5F48CEBA16E34910722A0"
+    },
+    {
+      "path": "src/AssistiveNonC.ps1",
+      "sha256": "81402DBDD93737CD4CCD9EA112CFA176FF51323730AF6D1BFD51FF2F0679D316"
+    },
+    {
+      "path": "src/AssistivePackaging.ps1",
+      "sha256": "A3D2DC245F394F0262A3C7D0120E9AB9A47EAF56DD8FEC990A11504D40A79D81"
+    },
+    {
+      "path": "src/AssistiveRestore.ps1",
+      "sha256": "3F24C2F8ED62875C17317D28AF72B8D6935272FEB7DFFF4FC1B5D950D9CAF341"
+    },
+    {
+      "path": "src/Core.ps1",
+      "sha256": "A4EFB513AD3CC6D2DE3E5EA6D8F9A3B51FEDE9B4CC349F3B762D14ACD6591E9A"
+    },
+    {
+      "path": "src/DeliveryReceipts.ps1",
+      "sha256": "4A5E83F5A93E96A9349DC19C5F061AA5270029A53150FE65E8F8A4F49B05ADC8"
+    },
+    {
+      "path": "src/DeltaContracts.ps1",
+      "sha256": "A4FC9CDF354E7DC7DBE347B31C94031B82CF295F79885F6E502903DEE9BFA90B"
+    },
+    {
+      "path": "src/DeltaWorkflow.ps1",
+      "sha256": "6EDBABFFA2C67C64A97DEC0DA0843D1B4EB60CF310B7DB36E1285772A0FA93EB"
+    },
+    {
+      "path": "src/LabValidation.ps1",
+      "sha256": "03F0C0B0AA1F9823D985368E1351B70A8EB791B6515BFA702A9B9569668A944E"
+    },
+    {
+      "path": "src/MigrationContracts.ps1",
+      "sha256": "CBDE6837F4D3D572E6CA14B18E3DBAAA464CF09A85C29CCB6869B9D70B802631"
+    },
+    {
+      "path": "src/OutputWorkspace.ps1",
+      "sha256": "D5BCD58BFED99CB6F918A8DEF850D13184FD83537D2C69C8BD62D9809D2D43F6"
+    },
+    {
+      "path": "src/PackageTransport.ps1",
+      "sha256": "87D75996AEC60AC45354A052AB0EEB27286FED34109A3ECB54760BB8A4D817AF"
+    },
+    {
+      "path": "src/Payload.ps1",
+      "sha256": "F260DE6752DA5A2CA1EF42D85AA44DF6439CE71BD8B942424273187BA5A0B4FA"
+    },
+    {
+      "path": "src/Restore.ps1",
+      "sha256": "CB3464C4D59541075D07C0A158B5E7D686BA7D09F54AE851165ADE3F6C9EB741"
+    },
+    {
+      "path": "src/WizardBackup.ps1",
+      "sha256": "2D3D0370FA5898EC2FF89C9A067A2F295DA2C8688E1ACE64DAC18362C8859154"
+    },
+    {
+      "path": "tests/Test-AssistiveRestore.ps1",
+      "sha256": "A1488AADC75E12A38E8CE7E8C8F3038861BD640648BBA0EA7B9D2511828B9DDC"
+    },
+    {
+      "path": "tests/Test-OfflineFullSet.ps1",
+      "sha256": "2B2F06BB8B3B67EF8D1922AA41B27B9A07ADC8D278B77A9B8DAED93FA6C4D664"
+    }
+  ],
+  "casesExecuted": 227,
+  "verification": "Primary checked immutable 358-file snapshot and exact 18-file scope; 39 OfflineFullSet checks on each engine. Prior revised5 primary regression evidence (29 ExactMembers, 120 AssistiveRestore, transport boundaries, WizardBackup and DeliveryReceipts) retained; later product change is only the stricter approved-volume channel guard, with revised8 negative tests. Logs preserve distinct runtimes rather than claiming one combined run.",
+  "result": "Explicit CV2 approved-local-volume plan and self-contained full package controls survive actual C-volume capture, package reader, ZIP/Directory transport and report-only receipt checks. CV1 remains unchanged; unsupported CV2 execution entry points refuse before writes.",
+  "logs": [
+    {
+      "name": "d3a-revised8-primary-ps51.log",
+      "sha256": "59E0E9B0A7A7E92581E877C614C437A7DCBA67D272DCB9B63640E5FC806BCCDF",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: 39 OfflineFullSet approval contract, native C-volume proof, package/readback, nested ZIP/Directory controls, receipt round-trips and negative integrity cases; additional-volume native qualification remains pending.\n"
+    },
+    {
+      "name": "d3a-revised8-primary-ps7.log",
+      "sha256": "6E79AB28683E8E286B0ADCE237BE9B0AD9F110AB47F9109F801102726A6A5B7A",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: 39 OfflineFullSet approval contract, native C-volume proof, package/readback, nested ZIP/Directory controls, receipt round-trips and negative integrity cases; additional-volume native qualification remains pending.\n"
+    },
+    {
+      "name": "d3a-revised5-primary-Test-ExactMembers.ps1.log",
+      "sha256": "EA2998DB6D0FDCB97C9B41E5581453D50A8A0B97F685D24EC8DCCEA11E6BFA4B",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: 29 ExactMembers contract, source hashing, package set equality, placement and restore checks; source candidate-to-approval hashing remains a separate D1/D2 connection.\n"
+    },
+    {
+      "name": "d3a-revised5-primary-Test-AssistiveRestore.ps1.log",
+      "sha256": "DE6629A4C42EC2FF7C6C15CEAE78833CB0FA5B4B40C58065362BC75DEA0332C8",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: 120 Assistive file ownership, per-file conflict, typed IIS mapping and safe manual-gap checks.\n"
+    },
+    {
+      "name": "d3a-revised5-primary-Test-TransportBoundaries.ps1.log",
+      "sha256": "AE5598ECECC20055000357D9AB5D0580A34943E78539C7A1C58C1D22D09B9C6D",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nTransport boundaries PASS (synthetic metadata; no large volumes written).\n"
+    },
+    {
+      "name": "d3a-revised5-primary-Test-WizardBackup.ps1.log",
+      "sha256": "6A94BE42EAB154FECC304D139299B9AF90E5553DEAB1B70886B4C785232B8594",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: durable pre-export cancellation.\nPASS: sealed package retry checkpoint.\nPASS: durable replay lookup.\nPASS: Directory delivery import and payload hash readback.\nPASS: enrolled ZIP backup attempt completed.\nPASS: ZIP transport import and payload hash readback.\nPASS: real sealed approval, source host binding, Directory and ZIP export/import, actual payload hash readback, and durable wizard result projection.\n"
+    },
+    {
+      "name": "d3a-revised5-primary-Test-DeliveryReceipts.ps1.log",
+      "sha256": "E5B16CE538C3505FABBB3D4215F4A98B517DFABF7C228D4D374B5D438D9714CA",
+      "text": "PASS: delivery Markdown escapes untrusted content without truncation; Fleet receipt projection is current-approval-bound and report-only.\nWARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nDelivery flow: workspace enrollment.\nDelivery flow: report reference projection.\nDelivery flow: full ZIP producer.\nDelivery flow: source LabReport receipt reference.\nDelivery flow: full Directory producer.\nDelivery flow: enrolled source ZIP producer.\nDelivery flow: enrolled source Directory producer.\nDelivery flow: native full import and target receipt.\nDelivery flow: manager stage-aware imports.\nDelivery flow: native delta receipt producers.\nPASS: full ZIP/directory and enrolled-source delivery documents plus ZIP and Directory delta producer→imported receipt flows are exact-bound, manager stage-aware, and report-only.\n"
+    }
+  ],
+  "limitations": [
+    "D3a remains partial: sealed portable report/index integration is not yet complete.",
+    "Additional-volume binding was simulated; no native D/E volume capture or cold Target restore qualification.",
+    "CV2 ExactMembers remains C-only pending context-aware D3b integration; legacy direct NonC continues to reject it.",
+    "WizardBackup CV2 is deliberately blocked until D3b durable orchestration; restore CV2 is blocked until E3.",
+    "Independent-copy readiness, offline Target bootstrap, source-disabled restore, credentials and full round acceptance remain incomplete."
+  ]
+}

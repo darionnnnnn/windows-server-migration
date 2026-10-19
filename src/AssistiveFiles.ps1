@@ -1,9 +1,54 @@
-﻿function Assert-WsmAssistiveSourceScope {
-    param($Spec,[ValidateSet('SourceCOnly')][string]$Policy='SourceCOnly',[switch]$Native)
+﻿function Get-WsmAssistiveApprovedVolumeForScope($Spec,$ApprovedVolumes) {
+    $source=ConvertTo-WsmCanonicalPath ([string]$Spec.SourcePath)
+    $target=ConvertTo-WsmCanonicalPath ([string]$Spec.TargetPath)
+    if($source -ine $target){throw 'OfflineFullSet requires the approved original logical source and target paths to be identical.'}
+    $matches=@($ApprovedVolumes | Where-Object { (ConvertTo-WsmCanonicalPath ([string]$_.SourcePath)) -ieq $source })
+    if($matches.Count -lt 1){throw 'OfflineFullSet scope is not bound to an approved local volume.'}
+    $volume=$matches[0]
+    Assert-WsmFields $volume @('ItemId','SourcePath','DeviceID','DriveLetter') @('ItemId','SourcePath','DeviceID','DriveLetter')
+    if([string]$volume.DeviceID -notmatch '^\\\\\?\\Volume\{[0-9a-fA-F-]{36}\}\\$' -or [string]$volume.DriveLetter -notmatch '^[A-Za-z]:$'){throw 'OfflineFullSet approved volume identity is malformed.'}
+    foreach($match in @($matches | Select-Object -Skip 1)){
+        Assert-WsmFields $match @('ItemId','SourcePath','DeviceID','DriveLetter') @('ItemId','SourcePath','DeviceID','DriveLetter')
+        if((ConvertTo-WsmCanonicalPath ([string]$match.SourcePath)) -ine $source -or [string]$match.DeviceID -ine [string]$volume.DeviceID -or [string]$match.DriveLetter -ine [string]$volume.DriveLetter){throw 'OfflineFullSet matching source-root bindings disagree on the approved local volume.'}
+    }
+    $volume
+}
+
+function New-WsmAssistiveApprovedLocalVolumeBindings($ScopeItems,$SourceInventory) {
+    Assert-WsmInventory $SourceInventory
+    $volumeItems=@($SourceInventory.Items | Where-Object {$_.Category -ceq 'Storage' -and $_.Kind -ceq 'Volume'})
+    $rows=New-Object 'System.Collections.Generic.List[object]'
+    foreach($item in @($ScopeItems)){
+        $spec=$item.MigrationSpec;$source=ConvertTo-WsmCanonicalPath ([string]$spec.SourcePath);$target=ConvertTo-WsmCanonicalPath ([string]$spec.TargetPath)
+        if($source -ine $target){throw 'OfflineFullSet requires the approved original logical source and target paths to be identical.'}
+        if($source -notmatch '^([A-Za-z]):\\'){throw 'OfflineFullSet only accepts local drive-rooted scopes.'};$drive=$matches[1]+':'
+        $snapshot=@($volumeItems | Where-Object {([string]$_.Settings.DriveLetter).TrimEnd('\') -ieq $drive})
+        if($snapshot.Count -ne 1){throw 'Trusted source inventory does not identify exactly one volume for the approved FileScope.'}
+        $device=[string]$snapshot[0].Settings.DeviceID;if($device -notmatch '^\\\\\?\\Volume\{[0-9a-fA-F-]{36}\}\\$'){throw 'Trusted source volume DeviceID is not a canonical volume GUID.'}
+        $rows.Add([pscustomobject][ordered]@{ItemId=[string]$item.ItemId;SourcePath=$source;DeviceID=$device;DriveLetter=$drive})
+    }
+    $rows.ToArray()
+}
+function Assert-WsmAssistiveSourceScope {
+    param($Spec,[ValidateSet('SourceCOnly','ApprovedLocalVolumes')][string]$Policy='SourceCOnly',[switch]$Native,$ApprovedVolumes=@())
     if($Spec.Adapter -cne 'FileScope'){throw 'Source channel policy requires FileScope.'}
     $path=ConvertTo-WsmCanonicalPath ([string]$Spec.SourcePath)
     if($path.StartsWith('\\')){throw 'External storage requires a dedicated approved provider workflow.'}
     $physical='';$cPhysical=''
+    if($Policy -ceq 'ApprovedLocalVolumes'){
+        $volume=Get-WsmAssistiveApprovedVolumeForScope $Spec $ApprovedVolumes
+        $channel=if([string]$volume.DriveLetter -ieq 'C:'){'C'}else{'NonC'}
+        if(-not $Spec.PSObject.Properties['TransferChannel'] -or [string]$Spec.TransferChannel -cne $channel){throw ('Reviewed channel does not match the approved source volume: '+$channel)}
+        if($Native){
+            $physical=Get-WsmPhysicalPath $path
+            $root=Get-WsmPhysicalPath ([string]$volume.DriveLetter+'\')
+            if(-not (Test-WsmPathOverlap $physical $root)){throw 'OfflineFullSet source path no longer resolves beneath its approved physical source volume.'}
+            $current=@(Get-CimInstance -ClassName Win32_Volume -ErrorAction Stop | Where-Object {([string]$_.DriveLetter).TrimEnd('\') -ieq [string]$volume.DriveLetter})
+            if($current.Count -ne 1 -or [string]$current[0].DeviceID -ine [string]$volume.DeviceID){throw 'OfflineFullSet native volume DeviceID changed since approval.'}
+        }
+        $physicalRoot=if($Native){$root.TrimEnd('\')}else{''}
+        return [pscustomobject]@{Channel='FullSet';PhysicalPath=$physical;SourceCPhysicalRoot=$physicalRoot;VolumeDeviceID=[string]$volume.DeviceID;PhysicalVolumeRoot=$physicalRoot;Policy=$Policy;NativeVerified=[bool]$Native}
+    }
     $isC=$path.StartsWith('C:\',[StringComparison]::OrdinalIgnoreCase)
     if($Native){$physical=Get-WsmPhysicalPath $path;$cPhysical=Get-WsmPhysicalPath 'C:\';if($isC -ne [bool](Test-WsmPathOverlap $physical $cPhysical)){throw 'Source drive alias disagrees with its physical C-volume classification; review the original native drive path before packaging or transfer.'}}
     $channel=if($isC){'C'}else{'NonC'}
@@ -14,6 +59,7 @@
 function Test-WsmAssistivePackageScope($Plan,$Item) {
     if($Item.Decision -cne 'Include' -or $Item.MigrationSpec.Adapter -cne 'FileScope'){return $false}
     if(-not $Plan.PSObject.Properties['Assistive']){return $true}
+    if($Plan.Assistive.ContractVersion -eq 2){return $true}
     $proof=Assert-WsmAssistiveSourceScope $Item.MigrationSpec $Plan.Assistive.SourcePolicy
     return ($proof.Channel -ceq 'C')
 }
@@ -24,16 +70,16 @@ function Assert-WsmAssistiveCollectionProofs($Manifest,$Plan) {
     $scopes=@{};foreach($item in $Plan.Items){if($item.Decision -ceq 'Include' -and $item.MigrationSpec.Adapter -ceq 'FileScope'){$scopes[$item.ItemId]=$item}}
     $seen=@{}
     foreach($proof in $Manifest.SourceCollectionProofs){
-        Assert-WsmFields $proof @('ItemId','Channel','PhysicalPath','SourceCPhysicalRoot','SourceFingerprint','NativeVerified') @('ItemId','Channel','PhysicalPath','SourceCPhysicalRoot','SourceFingerprint','NativeVerified')
-        if(-not $scopes.ContainsKey($proof.ItemId) -or $seen.ContainsKey($proof.ItemId) -or $proof.NativeVerified -isnot [bool] -or -not $proof.NativeVerified -or $proof.SourceFingerprint -cne $Plan.Source.Fingerprint -or $proof.Channel -cne $scopes[$proof.ItemId].MigrationSpec.TransferChannel){throw 'Source collection proof has invalid item, channel or host binding.'}
+        if($Plan.Assistive.ContractVersion -eq 2){Assert-WsmFields $proof @('ItemId','Channel','PhysicalPath','SourceCPhysicalRoot','SourceFingerprint','NativeVerified','VolumeDeviceID','PhysicalVolumeRoot') @('ItemId','Channel','PhysicalPath','SourceCPhysicalRoot','SourceFingerprint','NativeVerified','VolumeDeviceID','PhysicalVolumeRoot')}
+        else{Assert-WsmFields $proof @('ItemId','Channel','PhysicalPath','SourceCPhysicalRoot','SourceFingerprint','NativeVerified') @('ItemId','Channel','PhysicalPath','SourceCPhysicalRoot','SourceFingerprint','NativeVerified')}
+        if(-not $scopes.ContainsKey($proof.ItemId) -or $seen.ContainsKey($proof.ItemId) -or $proof.NativeVerified -isnot [bool] -or -not $proof.NativeVerified -or $proof.SourceFingerprint -cne $Plan.Source.Fingerprint){throw 'Source collection proof has invalid item, channel or host binding.'}
         if(-not $proof.PhysicalPath.StartsWith('\Device\',[StringComparison]::OrdinalIgnoreCase) -or -not $proof.SourceCPhysicalRoot.StartsWith('\Device\',[StringComparison]::OrdinalIgnoreCase)){throw 'Source physical volume evidence is absent.'}
-        if($proof.Channel -ceq 'C' -and -not (Test-WsmPathOverlap $proof.PhysicalPath $proof.SourceCPhysicalRoot)){throw 'Main payload was collected outside the physical source C volume.'}
-        if($proof.Channel -ceq 'NonC' -and (Test-WsmPathOverlap $proof.PhysicalPath $proof.SourceCPhysicalRoot)){throw 'NonC source collection proof resolves onto the physical source C volume.'}
+        if($Plan.Assistive.ContractVersion -eq 2){$approved=Get-WsmAssistiveApprovedVolumeForScope $scopes[$proof.ItemId].MigrationSpec $Plan.Assistive.ApprovedLocalVolumes;if($proof.Channel -cne 'FullSet' -or $proof.VolumeDeviceID -ine $approved.DeviceID -or [string]$proof.PhysicalVolumeRoot -notmatch '^\\Device\\HarddiskVolume[^\\]+$' -or -not (Test-WsmPathOverlap $proof.PhysicalPath $proof.PhysicalVolumeRoot)){throw 'OfflineFullSet collection proof does not match the approved local source volume.'}}
+        else{if($proof.Channel -cne $scopes[$proof.ItemId].MigrationSpec.TransferChannel){throw 'Source collection proof channel does not match approved scope.'};if($proof.Channel -ceq 'C' -and -not (Test-WsmPathOverlap $proof.PhysicalPath $proof.SourceCPhysicalRoot)){throw 'Main payload was collected outside the physical source C volume.'};if($proof.Channel -ceq 'NonC' -and (Test-WsmPathOverlap $proof.PhysicalPath $proof.SourceCPhysicalRoot)){throw 'NonC source collection proof resolves onto the physical source C volume.'}}
         $seen[$proof.ItemId]=$true
     }
     if($seen.Count -ne $scopes.Count){throw 'Source collection proof does not cover all reviewed local scopes.'}
 }
-
 function Assert-WsmAssistiveFileTopology {
     param([Parameter(Mandatory)][string]$Path,[switch]$ExactConfig,[switch]$MetadataOnly,[string]$SourceRoot='', [string]$RelativePath='',[string]$TrustedPeerRoot='',[string]$TrustedPeerPhysicalRoot='',[string]$TrustedPeerPhysicalPath='')
     $trustedPeer=([bool]$TrustedPeerRoot -or [bool]$TrustedPeerPhysicalRoot -or [bool]$TrustedPeerPhysicalPath)

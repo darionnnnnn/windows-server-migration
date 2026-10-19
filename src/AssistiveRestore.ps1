@@ -1,6 +1,7 @@
 ﻿function Get-WsmAssistiveRestoreDecision {
     param([Parameter(Mandatory)]$Package,[Parameter(Mandatory)][string]$ManifestHash,[Parameter(Mandatory)][string]$DecisionReceiptPath,[Parameter(Mandatory)][string]$DecisionReceiptHash,[string]$TargetSnapshotPath='')
     if($Package.Plan.SchemaVersion -ne 3){throw 'Assistive decision receipts are required only for schema 3 plans.'}
+    if($Package.Plan.Assistive -and $Package.Plan.Assistive.PSObject.Properties['ContractVersion'] -and [int]$Package.Plan.Assistive.ContractVersion -eq 2){throw 'OfflineFullSet CV2 restore execution is not supported in this stage; the package is verified, but no target write can begin before E3 target comparison and preview are implemented.'}
     Assert-WsmAssistiveContract $Package.Plan MigrationPlan | Out-Null
     if([string]$Package.Manifest.PairId -cne [string]$Package.Plan.PairId -or [string]$Package.Manifest.PlanHash -ine [string]$Package.PlanHash -or [string]$Package.SHA256 -ine $ManifestHash){throw 'Assistive package plan, pair, or manifest binding mismatch.'}
     Assert-WsmTrustedFile $DecisionReceiptPath $DecisionReceiptHash

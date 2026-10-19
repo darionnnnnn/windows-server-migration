@@ -110,6 +110,7 @@ function Assert-WsmDeltaPlanBinding($Plan,[string]$ExpectedHash,$Manifest) {
 function Read-WsmDeltaInput([string]$ManifestPath,[string]$ManifestHash,[string]$PlanPath,[string]$PlanHash) {
     Assert-WsmNoReparse $ManifestPath;Assert-WsmNoReparse $PlanPath
     $manifest=Read-WsmTrustedJson $ManifestPath $ManifestHash;Assert-WsmEnvelope $manifest 'MigrationPackage'
+    if($manifest.SchemaVersion -eq 2 -or ($manifest.PSObject.Properties['OfflineFullSet'] -and $manifest.OfflineFullSet)){throw 'Delta APIs do not support OfflineFullSet CV2; use a full package generation.'}
     foreach($id in @($manifest.PairId,$manifest.BatchId,$manifest.ApprovalId,$manifest.PackageId)){Assert-WsmId $id}
     if(($manifest.Generation -isnot [int] -and $manifest.Generation -isnot [long]) -or $manifest.Generation -lt 1 -or $manifest.ArtifactsHash -notmatch '^[a-f0-9]{64}$'){throw 'Invalid delta package generation/index contract.'}
     $plan=Read-WsmTrustedJson $PlanPath $PlanHash;Assert-WsmEnvelope $plan 'MigrationPlan';Assert-WsmDeltaPlanBinding $plan $PlanHash $manifest

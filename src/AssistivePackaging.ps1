@@ -34,7 +34,11 @@ function Get-WsmAssistivePackageMaterialRows($Package) {
         $path=Join-Path $root $name
         if([IO.File]::Exists($path)){$rows.Add([pscustomobject]@{Path=$path;SHA256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();Kind=('PackageControl/'+$name)})}
     }
-    foreach($artifact in (Read-WsmArtifactLines (Join-Path $root 'artifacts.jsonl') $Package.Manifest.ArtifactsHash)){
+    if($Package.Manifest.SchemaVersion -eq 2){
+        $controlIndex=Read-WsmJson (Join-Path $root 'controls/index.json')
+        foreach($control in @($controlIndex.Controls)){$path=Join-Path $root ([string]$control.Name).Replace('/','\');$rows.Add([pscustomobject]@{Path=$path;SHA256=[string]$control.SHA256;Kind=('PackageControl/'+[string]$control.Kind)})}
+        $indexPath=Join-Path $root 'controls/index.json';$rows.Add([pscustomobject]@{Path=$indexPath;SHA256=[string]$Package.Manifest.OfflineFullSet.ControlIndexHash;Kind='PackageControl/OfflineFullSetControlIndex'})
+    }    foreach($artifact in (Read-WsmArtifactLines (Join-Path $root 'artifacts.jsonl') $Package.Manifest.ArtifactsHash)){
         if($artifact.Data){foreach($chunk in $artifact.Data.Chunks){if(-not $seen.ContainsKey([string]$chunk.Hash)){$seen[[string]$chunk.Hash]=$true;$rows.Add([pscustomobject]@{Path=(Join-Path (Join-Path $root 'payload') ($chunk.Hash+'.blob'));SHA256=[string]$chunk.Hash;Kind='PayloadChunk'})}}}
     }
     $rows.ToArray()

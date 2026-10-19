@@ -157,6 +157,7 @@ function Get-WsmWizardBackupImpactPreview {
     if(-not $planRef){$machine=Get-WsmMachineIdentity;return [pscustomobject][ordered]@{Kind='WizardBackupImpactPreview';Status='Blocked';PairId=$PairId;SourceHost=[pscustomobject]@{HostId=[string]$profile.HostId;Name=[string]$machine.Name;Fingerprint=[string]$profile.Fingerprint};Reason='No current target-bound approved plan is valid for this source host.';Producers=@();SharedImpact=@();PriorState=[pscustomobject]@{Location=(Join-Path $Workspace ('pairs\freeze-'+$PairId+'-*'));Description='Existing source freeze attempts and recovery baselines, if any; retain them for owner review.'};EvidenceRequirements=@('Import and verify the current target-bound approved plan before backup.');FreezeRequired=$false;FreezeAuthorized=$false;SourceChanged=$false;ProductionVerified=$false}}
     $plan=Read-WsmMigrationPlan $planRef.Path $planRef.SHA256
     if($plan.PairId -cne $PairId -or $plan.Source.HostId -cne $profile.HostId -or $plan.Source.Fingerprint -cne $profile.Fingerprint){throw 'The approved plan is not bound to this current source workspace and selected migration.'}
+    Assert-WsmWizardBackupPlanSupported $plan
     $trustedInventory=Get-WsmWizardBackupTrustedInventory $Workspace $profile $plan $Jobs
     $rows=New-Object 'System.Collections.Generic.List[object]';$shared=New-Object 'System.Collections.Generic.List[object]';$mutable=$false;$nonC=$false
     foreach($item in @($plan.Items | Where-Object Decision -CEQ 'Include')){
@@ -187,6 +188,7 @@ function Invoke-WsmWizardStartBackup {
     $planRef=Get-WsmWizardCurrentApprovedPlan $Workspace $PairId $profile $null $Jobs;if(-not $planRef){throw 'No current target-bound approved plan is valid for this enrolled source host; continue management preparation before backup.'}
     $plan=Read-WsmMigrationPlan $planRef.Path $planRef.SHA256
     if($plan.PairId -cne $PairId -or $plan.Source.HostId -cne $profile.HostId -or $plan.Source.Fingerprint -cne $profile.Fingerprint){throw 'The approved plan is not bound to this current source workspace and selected migration.'}
+    Assert-WsmWizardBackupPlanSupported $plan
     $inventory=Get-WsmWizardPlanInventoryBinding $plan
     $included=@($plan.Items|Where-Object Decision -CEQ 'Include')
     $nonCIncluded=@($included|Where-Object {$_.MigrationSpec -and $_.MigrationSpec.Adapter -ceq 'FileScope' -and $_.MigrationSpec.TransferChannel -ceq 'NonC'}).Count -gt 0
@@ -270,4 +272,8 @@ function Invoke-WsmWizardStartBackup {
         }catch{$resumeStage='PackageVerified';$record.ResumeStage=$resumeStage;$record.Stage=if($_.Exception.Data['CancellationRequested']){'Cancelled'}else{'Failed'};if($freezeRequired -and $record.Freeze){$record.SourceResumeRequired=$true};$record.Error=[pscustomobject]@{Code=$(if($record.Stage -eq 'Cancelled'){'cancelled'}else{'delivery_failed'});Message='搬移封裝已核驗，但交接材料未完整產生；可從同一作業嘗試續作。'};$record.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $path $record $Workspace;throw}
     }
     ConvertTo-WsmWizardBackupResult $record $OperationId
+}
+
+function Assert-WsmWizardBackupPlanSupported($Plan) {
+    if($Plan.PSObject.Properties['Assistive'] -and $Plan.Assistive.ContractVersion -ge 2){throw 'Wizard backup does not yet support Assistive ContractVersion 2 OfflineFullSet plans; use the CV2 package workflow directly.'}
 }
