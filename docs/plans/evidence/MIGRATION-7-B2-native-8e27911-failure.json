@@ -1,0 +1,122 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "B2",
+  "runId": 39218233442,
+  "jobId": 117947084077,
+  "artifactId": 12170677696,
+  "artifactSHA256": "4172B4B75B7FA4AB47509CAB366C85A6A42081F8F4573D6C079A93C44CC78483",
+  "runtime": {
+    "schemaVersion": 1,
+    "status": "Failed",
+    "suite": "native-runtime",
+    "engine": "pwsh",
+    "engineVersion": "7.6.6",
+    "transport": "native-http-edge",
+    "mode": "all",
+    "sourceCommit": "8e279111ac7bde2ff591d797dd1040ef223dedba",
+    "runId": "39218233442-1",
+    "measure": "completed-journeys",
+    "expectedJourneyCount": 4,
+    "completedJourneyCount": 3,
+    "completedJourneys": [
+      {
+        "name": "Source-cancel-with-concurrent-Probe",
+        "role": "Source",
+        "expectedTerminal": "Cancelled"
+      },
+      {
+        "name": "Source-Directory-backup",
+        "role": "Source",
+        "deliveryMode": "Directory"
+      },
+      {
+        "name": "Source-ZIP-backup",
+        "role": "Source",
+        "deliveryMode": "Zip"
+      }
+    ],
+    "fixtureLimits": {
+      "productionQualification": false,
+      "liveWorkloads": false,
+      "controlledWindowsHost": true,
+      "externalSmbQualification": false,
+      "actualServices": false
+    },
+    "startedUtc": "2026-10-19T07:48:18.996Z",
+    "failure": "AssertionError [ERR_ASSERTION]: {\"jobId\":\"b2286a2d-8f07-4cd6-8936-0cda1c60ab16\",\"action\":\"TargetRestore\",\"Actor\":{\"WindowsPrincipal\":\"runnervm0xl3a\\\\runneradmin\",\"WindowsSID\":\"S-1-5-21-4239583824-265399229-1323058055-500\",\"ExecutionHost\":\"runnervm0xl3a\",\"ProcessId\":5888,\"PowerShellVersion\":\"7.6.6\",\"ObservedUtc\":\"2026-10-19T07:50:01.1812848Z\",\"IdentitySource\":\"WindowsProcess\",\"BrowserHumanAuthenticated\":false},\"workspace\":\"R:\\\\target-4\\\\workspace\\\\target\",\"pairId\":\"fb0cb813-bb84-4a42-80f0-5a5dbb0e6e7d\",\"role\":\"Target\",\"sessionId\":\"cfedf9be-914f-4103-9592-ab3d963b9583\",\"contextId\":\"5ec4e25e-0d4f-4f94-a177-1af0ec69741a\",\"startedRevision\":6,\"startedDecisionRevision\":6,\"startedSelectionRevision\":6,\"startedDataVersion\":\"1eab957018aa5f64b658927c86624669f8c3c4038c1a1580bc17e9eb75e4f1f1\",\"status\":\"ReviewRequired\",\"StartedUtc\":\"2026-10-19T07:50:01.1813713Z\",\"CompletedUtc\":\"2026-10-19T07:50:03.1661132Z\",\"canCancel\":false,\"progress\":{\"activity\":\"Validating package (bounded artifact memory)\",\"statusDescription\":\"Processing\",\"currentOperation\":\"\",\"percent\":null,\"processedCount\":null,\"updatedUtc\":\"2026-10-19T07:50:02.7846939Z\"},\"outputs\":[{\"Status\":\"Partial\",\"PairId\":\"fb0cb813-bb84-4a42-80f0-5a5dbb0e6e7d\",\"PlanHash\":\"ca242547c5d7d875b1d0235965c51336600ccd261b162ccebae71457c507b5e3\",\"ManifestHash\":\"64688e4c973bf810fbadbe4851a105b25f4b4079b5069f0df8846a0439b4ca4a\",\"Generation\":1,\"Decision\":\"RestoreNow\",\"TargetSnapshotHash\":\"63a4d9befd3c17f98e8320d45b1582704f3d7d1aee6b195630f4dd02b77f6fb1\",\"DecisionReceiptHash\":\"a424396fcec61c4cc4c26b9a2954f679ec3fb963a4f844022bf8238efbf2553b\",\"SelectedItemIds\":[\"7f848058c60ba204867b337e0545701c9d43fcaf50632d721c0b516a15c16f4e\"],\"Rows\":[{\"ItemId\":\"7f848058c60ba204867b337e0545701c9d43fcaf50632d721c0b516a15c16f4e\",\"Name\":\"Formal runtime folder\",\"Adapter\":\"FileScope\",\"Action\":\"RestoreNow\",\"Status\":\"Ready\",\"Reason\":\"\",\"Rollback\":\"Per-item journal; exact owned state only\",\"RebootPossible\":false}],\"ItemResults\":[{\"ItemId\":\"7f848058c60ba204867b337e0545701c9d43fcaf50632d721c0b516a15c16f4e\",\"Status\":\"Failed\"}],\"ItemResultsHash\":\"d330d1ff0877d336bb72ad850f919750129a066cb8717855a1542b3ec91e3b71\",\"Deferred\":[],\"JournalPath\":\"R:\\\\target-4\\\\workspace\\\\target\\\\pairs\\\\fb0cb813-bb84-4a42-80f0-5a5dbb0e6e7d\\\\restore-journals\\\\3aee124d667139859ed30fda82b7159139e0281f6a1c5617650435d4ee32f070.jsonl\",\"JournalHash\":\"3aee124d667139859ed30fda82b7159139e0281f6a1c5617650435d4ee32f070\",\"AttemptOperationId\":\"b2286a2d-8f07-4cd6-8936-0cda1c60ab16\",\"Stage\":\"Partial\",\"PendingOperations\":[],\"BusinessValidationRequired\":true,\"ProductionVerified\":false,\"AuthoritativeApproval\":false,\"SafeProjectedItemResults\":true}],\"artifacts\":[]}\n    at runRole (D:\\a\\windows-server-migration\\windows-server-migration\\tests\\Test-NativeWizardRuntimeHandler.js:139:534)\n    at async D:\\a\\windows-server-migration\\windows-server-migration\\tests\\Test-NativeWizardRuntimeHandler.js:162:17",
+    "finishedUtc": "2026-10-19T07:50:04.563Z"
+  },
+  "diagnostics": {
+    "schemaVersion": 1,
+    "suite": "native-runtime",
+    "mode": "all",
+    "engine": "pwsh",
+    "transport": "native-http-edge",
+    "sourceCommit": "8e279111ac7bde2ff591d797dd1040ef223dedba",
+    "runId": "39218233442-1",
+    "fixtureScope": "ControlledWizardRuntime",
+    "records": [
+      {
+        "SchemaVersion": 1,
+        "DiagnosticId": "6a011f72-7c12-4c84-871f-658fa39ff593",
+        "Role": "Target",
+        "FixtureScope": "ControlledWizardRuntime",
+        "EngineVersion": "7.6.6",
+        "Transport": "native-http-edge",
+        "ObservedUtc": "2026-10-19T07:49:39.2169262Z",
+        "ExceptionType": "System.Management.Automation.RuntimeException",
+        "Message": "RejectedToken",
+        "FullyQualifiedErrorId": "RejectedToken",
+        "Category": "OperationStopped",
+        "InnerExceptions": [
+          {
+            "Type": "System.Management.Automation.RuntimeException",
+            "Message": "RejectedToken"
+          }
+        ],
+        "ScriptStackTrace": "at Start-WsmHtmlConsole, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-SBb5jJ\\runtime\\src\\HtmlConsole.ps1: line 827\r\nat <ScriptBlock>, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-SBb5jJ\\runtime\\tests\\Start-WizardRuntimeTestServer.ps1: line 209\r\nat <ScriptBlock>, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-SBb5jJ\\runtime\\tests\\Start-WizardRuntimeTestServer.ps1: line 13",
+        "PositionMessage": "At C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-SBb5jJ\\runtime\\src\\HtmlConsole.ps1:827 char:122\r\n+ … r $request.Headers['x-wsm-token'] -cne $token){throw 'RejectedToken'}\r\n+                                                  ~~~~~~~~~~~~~~~~~~~~~",
+        "CallStack": [
+          "script:Get-WsmHtmlSafeError",
+          "Start-WsmHtmlConsole",
+          "<ScriptBlock>",
+          "<ScriptBlock>"
+        ]
+      },
+      {
+        "SchemaVersion": 1,
+        "DiagnosticId": "6860ddd2-48e4-47e3-beb2-1900c2293217",
+        "Role": "Target",
+        "FixtureScope": "ControlledWizardRuntime",
+        "EngineVersion": "7.6.6",
+        "Transport": "native-http-edge",
+        "ObservedUtc": "2026-10-19T07:49:41.0816537Z",
+        "ExceptionType": "System.InvalidOperationException",
+        "Message": "WorkspaceWorkerBusy: another console worker or recovery currently owns this workspace. Wait for it to finish, then retry.",
+        "FullyQualifiedErrorId": "WorkspaceWorkerBusy: another console worker or recovery currently owns this workspace. Wait for it to finish, then retry.",
+        "Category": "OperationStopped",
+        "InnerExceptions": [
+          {
+            "Type": "System.InvalidOperationException",
+            "Message": "WorkspaceWorkerBusy: another console worker or recovery currently owns this workspace. Wait for it to finish, then retry."
+          },
+          {
+            "Type": "System.IO.IOException",
+            "Message": "The process cannot access the file 'R:\\target-4\\workspace\\target\\console-worker.lock' because it is being used by another process."
+          }
+        ],
+        "ScriptStackTrace": "at Enter-WsmWorkspaceWorkerGuard, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-SBb5jJ\\runtime\\src\\OperationRequests.ps1: line 200\r\nat Start-WsmHtmlConsole, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-SBb5jJ\\runtime\\src\\HtmlConsole.ps1: line 857\r\nat <ScriptBlock>, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-SBb5jJ\\runtime\\tests\\Start-WizardRuntimeTestServer.ps1: line 209\r\nat <ScriptBlock>, C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-SBb5jJ\\runtime\\tests\\Start-WizardRuntimeTestServer.ps1: line 13",
+        "PositionMessage": "At C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wsm-runtime-formal-SBb5jJ\\runtime\\src\\OperationRequests.ps1:200 char:363\r\n+ … $_.Exception);$busy.Data['WsmWorkspaceWorkerBusy']=$true;throw $busy}\r\n+                                                            ~~~~~~~~~~~",
+        "CallStack": [
+          "script:Get-WsmHtmlSafeError",
+          "Start-WsmHtmlConsole",
+          "<ScriptBlock>",
+          "<ScriptBlock>"
+        ]
+      }
+    ]
+  },
+  "assessment": "PowerShell 7 TargetRestore returned Partial with a failed FileScope item. Actual item error was removed from the safe output and not captured by the exception collector. Root cause is not established. Journal append 22 and diagnostic 6 checks passed in the same failed job; these do not replace the missing fourth native journey. PowerShell 5.1 release job and gaps run succeeded according to GitHub metadata.",
+  "status": "Open",
+  "productionVerified": false
+}

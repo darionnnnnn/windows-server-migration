@@ -613,3 +613,8 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - `990650f` 的原生 release 與 gaps 工作流程均成功；主代理另外下載 release 雙引擎原始 artifact、核對 GitHub SHA256，再由正式 validator 驗明 native-runtime／native-http-edge／all scope、提交版本及 run identity，各有四條完成旅程。原始紀錄保存於 `MIGRATION-7-B2-native-journal-fixed.json`；這是已提交程式的八條旅程，不包含尚未提交的 F4 或 CV2 離線還原。
 - native-release 的既有 runtime matrix 新增日誌 append／diagnostics 回歸，使用每個 leg 已選定的 PowerShell 執行檔，診斷測試明確指定 RecoveryPath；原生旅程失敗時仍會跑診斷回歸，取消時不跑。主代理核對 YAML 結構、engine 綁定及 diff；此新增步驟的遠端執行結果待本次推送後取得，不把本地或先前工作流程成功冒稱新步驟已通過。
 - 後續綠燈不等於已找回歷史缺失的原始 I/O 例外；並行 reader 競爭與較早失敗仍保留，本輪不標完成。
+
+### 17.22 B2 最新原生 CI 失敗保留
+
+- `8e27911`／release `39218233442` 的 PS7 TargetRestore 回傳 Partial，FileScope 項目 Failed，僅完成三條原生旅程；同一 job 的 22 項 append 與 6 項診斷回歸通過，不抵銷第四條旅程失敗。PS5.1 與 gaps 成功只記為各自結果。
+- 主代理核驗原始 artifact SHA256，保存 runtime 與 diagnostics；現有診斷只捕捉預期的 token／worker busy 拒絕，實際項目錯誤被安全投影移除，尚無足夠證據判定根因。補強受控診斷與處理並行 reader 競爭繼續列入本輪，不能以先前綠燈或重跑成功結案。
