@@ -586,3 +586,10 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 主代理核對 354ca5c／run39207067746 的原始 artifact SHA256 及 ZIP 內原始證據：PS5.1 探測只完成 Source／Target 兩個流程，Manager terminal Failed；原紀錄未保留 underlying job error，不能從同提交 release 綠燈宣稱修復。
 - 真正 polling 回應在 journey assertion 前保存角色／狀態、固定安全錯誤碼及 correlation UUID、有限 collector 狀態。沒有保存 error message、輸入、路徑、原始 inventory 或秘密；Failed 仍是 Failed。
 - 主代理核驗固定 363 檔快照及雙引擎各 27 項診斷檢查。完整本機 Edge 流程在進入 polling 前 navigation timeout，保留 NotPassed 限制；新 consumer 需 CI 實際驗收，既有各失敗根因尚未結案。
+
+### 17.18 C2 軟體批次審閱核心（部分完成）
+
+- 正式審閱列出全體已驗軟體、使用者 SID／scope／架構／位置、覆蓋缺口、目前處置及相關工作負載；未審閱不自動填 Unknown。提交綁預覽 hash、DecisionRevision 與明確確認，只更新使用者指定的列，沿用既有 GeneralHost 儲存及 CAS。
+- 明確 Unknown 可保存但不算準備完成；特殊產品只接受 External／NotNeeded。Portable 處置不移除可信安裝根目錄防護，也不授權備份套裝本體。
+- 主代理核對固定 368 檔快照與四檔改動，雙引擎各 17 項正式 catalog 審閱／提交／重開檢查通過，PS5.1 另通過既有表單 27 項與 GeneralHost gate 回歸。已計數 61 項；證據見 MIGRATION-7-C2-software-review.json。
+- HTML／CLI 操作接線及完整擷取／還原排除驗收仍待完成，C2 與整輪不標完成。

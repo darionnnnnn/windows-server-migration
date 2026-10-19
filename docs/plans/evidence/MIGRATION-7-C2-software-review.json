@@ -1,0 +1,55 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "C2",
+  "runtimeBase": "b87eae7f0d9bd5a519c0015aaa0fad40029c110d",
+  "snapshot": "c2-software-disposition-review-f8b2ce7511e7401b86d10a0711ca76bb",
+  "verifiedUtc": "2026-10-19T06:43:54.378527+00:00",
+  "inputs": [
+    {
+      "path": "src/SoftwareDispositionReview.ps1",
+      "sha256": "A39B2425FD4A688942C4284F2B6E786C45C23E5B57A051D31C4448D9B65DA04C"
+    },
+    {
+      "path": "src/WindowsServerMigration.psm1",
+      "sha256": "5166637D979C4B598728488CEBDD26CBE4053D477583ECF664041E46B162F9F9"
+    },
+    {
+      "path": "src/WindowsServerMigration.psd1",
+      "sha256": "74325A016DBFDC5FD3E3D8C9F7EAE6D5D87AD8BD5C69C116F90A38F3555FBE39"
+    },
+    {
+      "path": "tests/Test-SoftwareDispositionReview.ps1",
+      "sha256": "D20119066E82B3CE0623611F2CC5E3FD9FCF5C2F7246EF43C56796C31685C000"
+    }
+  ],
+  "casesExecuted": 61,
+  "verification": "Primary verified all 368 snapshot hashes and exact four-file diff; 17 formal catalog checks per engine, 27 existing form checks in PS5.1, and GeneralHost gates regression (not added to counted total).",
+  "result": "Formal review, explicit partial batch submission, CAS and reopen preserve all software facts and untouched decisions. Unknown does not grant readiness; Portable cannot remove trusted installation-root protection.",
+  "logs": [
+    {
+      "name": "c2-primary-ps51.log",
+      "sha256": "89281B80F3C2D294028C3DA1E1FA3E5F989F3A5D705F1D5DA3E5BD88638C3108",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS Test-SoftwareDispositionReview: 17 formal review, CAS, batch preservation, dependency-gate and root-protection checks.\n"
+    },
+    {
+      "name": "c2-primary-ps7.log",
+      "sha256": "9BE86E1424D6D519502B15DF82852E614E1BCC38C7C63BA3F49525C2101E3057",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS Test-SoftwareDispositionReview: 17 formal review, CAS, batch preservation, dependency-gate and root-protection checks.\n"
+    },
+    {
+      "name": "c2-primary-settings.log",
+      "sha256": "0A80D3F44D8ECA2A0450CB052264AEBCDC211AF311E09D6ECAE2FEA909AFE50E",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: 27 Assistive settings form checks; actual core consumer applied server-bound documents, with stale, unknown, unsupported and extra-field inputs rejected.\n"
+    },
+    {
+      "name": "c2-primary-gates.log",
+      "sha256": "CC670CD6FD4171397E5CB30AABA1348359D416BF6DA424C5B63591D2389277A7",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: GeneralHost schema, phase gates, receipt bindings, scoped invalidation, source refresh, required NotNeeded, and staged transition before cutover proof.\n"
+    }
+  ],
+  "limitations": [
+    "No browser or CLI menu wiring in this slice.",
+    "C2 is incomplete pending user-facing review integration and full capture/restore exclusion proof.",
+    "Selected-dependency gate and root guard tests are isolated contract evidence, not actual Server product migration."
+  ]
+}
