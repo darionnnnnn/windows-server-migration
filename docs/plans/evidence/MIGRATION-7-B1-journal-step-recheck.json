@@ -1,0 +1,45 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "B1",
+  "snapshot": "work/r7/b1-recheck-d5c7a6b2d5e84e84897c9e0f5e9f046c",
+  "inputs": [
+    {
+      "path": ".github/workflows/native-release.yml",
+      "sha256": "9F1A4D23799490F6D57A81E6058D91179D8C9CA9A5933E4FA8419F620DF830FB"
+    },
+    {
+      "path": ".github/workflows/native-round6-gaps.yml",
+      "sha256": "6082A15936B835E629A58D80885B04114C3C5B1FA08E68D185361A6AEB86A9C0"
+    },
+    {
+      "path": "tools/Get-NativeAcceptanceScope.ps1",
+      "sha256": "794BB82842C27DDC4A3677F12C8E5F74B7838A7D2F16FCCBB53B7065F5CD0136"
+    },
+    {
+      "path": "tests/Test-NativeAcceptanceScope.ps1",
+      "sha256": "E78F20105AFC4274831B691E902A97775F9CC25F1E96FDF9568C564549CA3444"
+    }
+  ],
+  "checksPerEngine": 124,
+  "logs": [
+    {
+      "engine": "ps51",
+      "sha256": "CAA226F44A7F416688EB8623F448B6A6E7D4637ED2A9555CE0B74FEC12D930E8",
+      "output": "PASS Test-NativeAcceptanceScope: 124 checks on Desktop 5.1.26100.9711; changed/deleted/renamed paths, mappings, manual scope, fail-closed diff, docs-only and mutation detection.\n"
+    },
+    {
+      "engine": "ps7",
+      "sha256": "8292230F26DB3238130EF7DAE27A72BE7563E35D8457585939A64BF5B960DC6C",
+      "output": "PASS Test-NativeAcceptanceScope: 124 checks on Core 7.6.5; changed/deleted/renamed paths, mappings, manual scope, fail-closed diff, docs-only and mutation detection.\n"
+    }
+  ],
+  "workflowCheck": "PyYAML parsing and journal step runtime scope/selected engine/test command binding passed.",
+  "supersedesInputBindingsFrom": "MIGRATION-7-B1.json",
+  "reason": "8e27911 added the journal regression CI step; previous B1 workflow hash became stale. Revalidated exact current workflow/selector/test inputs; preserve previous evidence unchanged.",
+  "testOnlyChange": "Validate canonical direct-temp path and non-reparse identity before recursive mutation-fixture cleanup.",
+  "limitations": [
+    "Selector assertions are not native journey counts.",
+    "8e27911 native TargetRestore failure remains open; d7dde46 later workflow success does not establish its root cause.",
+    "D3b and F4a are actively being implemented but have no stage acceptance."
+  ]
+}

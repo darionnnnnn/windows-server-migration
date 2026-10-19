@@ -109,6 +109,10 @@ try {
     try { Assert-Scope $mutated $product 'mutation must be rejected' } catch { $caught = $true }
     Assert-True $caught 'selector mapping mutation was not detected'
 }
-finally { Remove-Item -LiteralPath $mutationDir -Recurse -Force }
+finally {
+    $resolved = [IO.Path]::GetFullPath($mutationDir)
+    if ([IO.Path]::GetDirectoryName($resolved).TrimEnd('\') -ine [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') -or [IO.Path]::GetFileName($resolved) -notmatch '^native-scope-mutation-[0-9a-f]{32}$' -or ((Get-Item -LiteralPath $resolved).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Refusing cleanup outside the exact non-reparse scope mutation test directory.' }
+    Remove-Item -LiteralPath $resolved -Recurse -Force
+}
 
 Write-Output "PASS Test-NativeAcceptanceScope: $checks checks on $($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion); changed/deleted/renamed paths, mappings, manual scope, fail-closed diff, docs-only and mutation detection."

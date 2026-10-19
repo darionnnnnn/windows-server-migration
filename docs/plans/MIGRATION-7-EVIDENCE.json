@@ -132,7 +132,7 @@
       "inputs": [
         {
           "path": ".github/workflows/native-release.yml",
-          "sha256": "475D20289408DE67FE1A70006F6CAD0CED994FBBD306C92CB9A7017EA35D3ED2"
+          "sha256": "9F1A4D23799490F6D57A81E6058D91179D8C9CA9A5933E4FA8419F620DF830FB"
         },
         {
           "path": ".github/workflows/native-round6-gaps.yml",
@@ -144,21 +144,25 @@
         },
         {
           "path": "tests/Test-NativeAcceptanceScope.ps1",
-          "sha256": "A4BEF06B50175C38B2BD28A3D86AA2EEF35E8BC1F1CDB2A7A0A294BE6ED25C2D"
+          "sha256": "E78F20105AFC4274831B691E902A97775F9CC25F1E96FDF9568C564549CA3444"
         }
       ],
       "evidence": [
         {
           "path": "docs/plans/evidence/MIGRATION-7-B1.json",
           "sha256": "F49F26AC26DABD2D15F44C7DC7CCE209A907DC7E30FE51BEE81C985CF4B5D860"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B1-journal-step-recheck.json",
+          "sha256": "EA3CD5BA75653E368E81B1440020CDC401A06D76AEB4E99285B043DA4496831B"
         }
       ],
       "evidenceLog": {
-        "path": "docs/plans/evidence/MIGRATION-7-B1.json",
-        "sha256": "F49F26AC26DABD2D15F44C7DC7CCE209A907DC7E30FE51BEE81C985CF4B5D860"
+        "path": "docs/plans/evidence/MIGRATION-7-B1-journal-step-recheck.json",
+        "sha256": "EA3CD5BA75653E368E81B1440020CDC401A06D76AEB4E99285B043DA4496831B"
       },
       "casesExecuted": 248,
-      "result": "B1 selector revalidated after B2 workflow integration: 124 checks on each engine.",
+      "result": "Current workflow/selector binding revalidated after journal CI step: 124 checks per engine and YAML step binding; historical evidence retained.",
       "limitations": [
         "Selector assertions, not native journey counts."
       ],
@@ -860,7 +864,7 @@
           "15.4 D3b：實際封存與獨立可恢復判準"
         ]
       },
-      "implementationStatus": "not-started",
+      "implementationStatus": "in-progress",
       "evidenceStatus": "not-collected",
       "externalRequired": false,
       "externalStatus": "not-assessed",
@@ -873,7 +877,11 @@
       "casesExecuted": 0,
       "result": null,
       "limitations": [],
-      "openIssues": [],
+      "openIssues": [
+        "Uncommitted continuation slice is under completeness review; no stage acceptance yet.",
+        "Independent-copy verification and parent readiness remain unimplemented.",
+        "Historical attestation-before-seal bound and delivery independence from SourceResume are being corrected before formal tests."
+      ],
       "historicalEvidence": []
     },
     {
@@ -1181,7 +1189,7 @@
           "16.4 F4a／E3b／F4b：帳密、鎖與原生副作用"
         ]
       },
-      "implementationStatus": "not-started",
+      "implementationStatus": "in-progress",
       "evidenceStatus": "not-collected",
       "externalRequired": false,
       "externalStatus": "not-assessed",
@@ -1194,7 +1202,11 @@
       "casesExecuted": 0,
       "result": null,
       "limitations": [],
-      "openIssues": [],
+      "openIssues": [
+        "Uncommitted Service-only challenge implementation is checkpointed; formal route acceptance previously failed.",
+        "Legacy Service restore reservation compatibility and atomic cross-pair target mutation boundary require acceptance.",
+        "Other credential consumers and independent dependency-group progress remain incomplete."
+      ],
       "historicalEvidence": []
     },
     {
