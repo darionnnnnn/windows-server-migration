@@ -751,6 +751,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-B2-native-d085097.json",
           "sha256": "2792FA27032D510CD3F4A4663C47C03ABA46E891772BFB838FEF4B492412928D"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2-exact-review.json",
+          "sha256": "213C00B800290234B56A04B0EC922DC2D002D8F5F9F7D7360B36AEB1EDB44FF5"
         }
       ],
       "evidenceLog": {
@@ -767,7 +771,8 @@
       ],
       "openIssues": [
         "Connect confirmed candidates to sealed exact member set.",
-        "Complete non-C offline full-set route and integrated D2 acceptance."
+        "Complete non-C offline full-set route and integrated D2 acceptance.",
+        "ExactMembers review/save seam verified; source candidate confirmation and immutable Manager intent handoff are still required."
       ],
       "historicalEvidence": []
     },

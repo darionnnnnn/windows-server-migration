@@ -1,0 +1,51 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "D2",
+  "runtimeBase": "5a92d45456e39c077997f9bf3a0b9156fe9c8132",
+  "snapshot": "exact-review-final-7bf40f8cc50a4c7c9b7010344979121a",
+  "verifiedUtc": "2026-10-19T06:26:03.131753+00:00",
+  "inputs": [
+    {
+      "path": "src/AssistiveReviewForms.ps1",
+      "sha256": "7CAAD5DFD81AB13067F8E511317EE09E4EB88917DB3BE15A5D54455F4CB02C2A"
+    },
+    {
+      "path": "src/WizardPreparation.ps1",
+      "sha256": "8118F0C1824FFBC67C00C9DB520BD8BF9A94485CAD4F7A536C220AEB847BDB5C"
+    },
+    {
+      "path": "tests/Test-ExactMemberReview.ps1",
+      "sha256": "89243452A789FD719F60485FF40D661B331E0967F7ECFE38C122139539ED13AF"
+    }
+  ],
+  "casesExecuted": 99,
+  "verification": "Primary implemented and independently executed the formal review/save/reopen seam on an immutable 364-file snapshot; PS5.1 and PS7, 13 checks each.",
+  "result": "2,001-member exact set remains intact through owner review; bounded read-only summary; cannot widen through direct typed review or wizard; stale review/summary forgery refused; LocalGroup editing preserved. Optional DesiredFinalState no longer crashes FileScope review.",
+  "logs": [
+    {
+      "name": "exact-review-final-ps51.log",
+      "sha256": "B6613386275D9D22EE23D4D0907A559232F4F854DFDE07D72EFCF03D45E1050B",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: 13 exact-member review checks; formal save/reopen, bounded 2001-member summary, immutable identity, stale review and LocalGroup isolation.\n"
+    },
+    {
+      "name": "exact-review-final-ps7.log",
+      "sha256": "BCE0736C6BDFE5DBD9DE9DC2DF674B07ACBF2C7ABBF4376082A84793DBA02406",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: 13 exact-member review checks; formal save/reopen, bounded 2001-member summary, immutable identity, stale review and LocalGroup isolation.\n"
+    },
+    {
+      "name": "exact-review-final-Test-WizardPreparation.ps1.log",
+      "sha256": "36CC6CA1D07071AD775AE000F5D2A9BC55958EF34C9583A6488F876DA295D0EA",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: 29 plain form/core specification, bounds, source identity and stale review checks.\n"
+    },
+    {
+      "name": "exact-review-final-Test-AssistiveReviewForms.ps1.log",
+      "sha256": "830C3989E9BDD3F7A3F71B15AB789BC06D9824BC051830388669475245F4AE8A",
+      "text": "WARNING: The names of some imported commands from the module 'WindowsServerMigration' include unapproved verbs that \nmight make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with\n the Verbose parameter. For a list of approved verbs, type Get-Verb.\nPASS: 44 Assistive review form checks.\n"
+    }
+  ],
+  "limitations": [
+    "This slice consumes an existing ExactMembers specification; source candidate confirmation, fresh hashing and Manager intent bridge remain incomplete.",
+    "No browser rendering or native source/target qualification claim. Full member listing is not replaced by the bounded review summary."
+  ],
+  "regression": "PS5.1: existing WizardPreparation 29 and AssistiveReviewForms 44 assertions passed on the same snapshot."
+}
