@@ -618,3 +618,9 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 
 - `8e27911`／release `39218233442` 的 PS7 TargetRestore 回傳 Partial，FileScope 項目 Failed，僅完成三條原生旅程；同一 job 的 22 項 append 與 6 項診斷回歸通過，不抵銷第四條旅程失敗。PS5.1 與 gaps 成功只記為各自結果。
 - 主代理核驗原始 artifact SHA256，保存 runtime 與 diagnostics；現有診斷只捕捉預期的 token／worker busy 拒絕，實際項目錯誤被安全投影移除，尚無足夠證據判定根因。補強受控診斷與處理並行 reader 競爭繼續列入本輪，不能以先前綠燈或重跑成功結案。
+
+### 17.23 D2 來源候選確認與核准鏈（部分完成）
+
+- 來源確認綁定本次盤點與不可變掃描 checkpoint，重新查核精確檔案與 hash；Source／Manager 保存相同內容定址材料。Manager 匯入不探測來源路徑，採穩定項目身分、CAS 與原位置，重新確認使已 Include 項目回 Pending，核准時再次比對實際精確集合。
+- 主代理複查修正 FieldPointer 長度誤作字串比較，以及 ExactFile 缺少 C 根目錄邊界驗證。固定 377 檔快照前後核對，雙引擎各 35 項通過，包含正式核准、fixture 專用 typed freeze、實際擷取及 CV2 reader 材料保留；未宣稱真實工作負載停機或原生跨磁碟驗收。
+- 空目錄目前明確拒絕，工作負載引用尚為證據而非相依映射；HTML 接線、完整未選候選／缺口離線報告、長 WorkRoot 與大型檔案取消界限仍在本輪補齊。D2 與整輪維持未完成。

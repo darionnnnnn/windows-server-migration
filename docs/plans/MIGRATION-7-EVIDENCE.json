@@ -790,6 +790,10 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-D2-exact-review.json",
           "sha256": "213C00B800290234B56A04B0EC922DC2D002D8F5F9F7D7360B36AEB1EDB44FF5"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2-candidate-confirmation.json",
+          "sha256": "BBF1FD985FAA6A7C2DBEFA83BAB511B93F1462DD5CB714CDD1C89EA12104740A"
         }
       ],
       "evidenceLog": {

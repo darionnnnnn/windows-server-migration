@@ -1,0 +1,59 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "D2",
+  "status": "PartialImplementationVerified",
+  "snapshot": "work/r7/d2-candidate-confirmation-fix2-de170b3fc226465eb747731a05004ef5",
+  "base": "8e279111ac7bde2ff591d797dd1040ef223dedba",
+  "snapshotIndexSHA256": "859600FCA3A5E416BEA818573C6AD3C11FC77A03EEF7D88DBE551EBFAD4F07DF",
+  "files": [
+    {
+      "path": "src/SourceCandidateConfirmation.ps1",
+      "sha256": "7B94ECF0BC7BB3507573BD49CBD42DAAA9D1A8AAD27FFA4F4425FEE1BAA8D267"
+    },
+    {
+      "path": "src/MigrationContracts.ps1",
+      "sha256": "606F5664A179615F210C37CB020D68EEA344AAAD39F3BEA2BE42417DAF2E7DE9"
+    },
+    {
+      "path": "src/WindowsServerMigration.psm1",
+      "sha256": "10D1839E18C416542FD3A36F1DA8435FF344EDD03C8DF9E31132D7A1073A16BA"
+    },
+    {
+      "path": "src/WindowsServerMigration.psd1",
+      "sha256": "F42E42C236F682CF89081D821E45C95779FEC28705CC0905EBED5B1386A754C8"
+    },
+    {
+      "path": "tests/Test-SourceCandidateConfirmation.ps1",
+      "sha256": "50B87D46E04EE8EAFA6C6854D06E13EF66E1ACED8E245E1BF1C0100E8622B2B7"
+    }
+  ],
+  "primaryChecks": [
+    {
+      "engine": "ps51",
+      "path": "work/r7/d2-fix2-primary-ps51.log",
+      "sha256": "47E3E2E1C115309481BEDAAB70385147C6A8E1A68E450B5E3D61228585461D29",
+      "checks": 35
+    },
+    {
+      "engine": "ps7",
+      "path": "work/r7/d2-fix2-primary-ps7.log",
+      "sha256": "5A57CDEE5D6DADD42F38FEB9B4B626D5DB18B619721B3038D7EEF96D147F72DA",
+      "checks": 35
+    }
+  ],
+  "verified": [
+    "377 immutable inputs audited before and after tests; exactly five implementation/test differences.",
+    "Source current scan and inventory binding, fresh member hashes, immutable content-addressed confirmation material.",
+    "Manager import, stable identity, CAS, exact original target path, pending review and seal-time confirmation-member equality.",
+    "Actual schema-3 CV2 approval, typed fixture freeze, capture and package reader preserve confirmation reference and hash.",
+    "FieldPointer numeric length boundaries 999/2048 accepted and 2049/10000 rejected; ExactFile C-root boundaries rejected."
+  ],
+  "limitations": [
+    "Directory selections containing empty directories are rejected in this slice; preservation remains required.",
+    "Workload references are evidence only; dependency and FileScopeMapping integration pending.",
+    "HTML and one-click full user journey pending.",
+    "All-unselected candidates, full scan artifacts and coverage gaps need separate portable report controls.",
+    "Long workspace path budget and bounded large-file cancellation still need round-level review.",
+    "No real producer, IIS, task or additional-volume host qualification; production gates unchanged."
+  ]
+}
