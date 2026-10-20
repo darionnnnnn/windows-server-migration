@@ -754,6 +754,16 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：新增 TargetRestoreContinuation 43（四個中斷斷點、相依阻擋、已擁有不重寫、預覽漂移、重送、終態與取消拒絕、pre-write 重新詢問、ItemResults 合併、秘密哨兵），AssistiveRestore 140、WizardRestore 85、ServiceCredentialChallenge 46、AssistiveRecoveryBoundaries 6、RecoveryContracts、AssistiveRollback 16、TaskFolderJournal、HtmlConsole 114、WizardRuntime 161、WizardHtmlRuntimeProjection 185、ScriptEncoding、Node WizardRuntimeTargetUi 通過。突變：續作改回整體阻擋、不標 NeedsReconciliation、拿掉相依阻擋（subagent 做）、漂移容忍不檢查列歸屬（主代理做）都轉紅。
 - 限制：`Resume-WsmWizardTargetRestore` 以替身 projection／package 測試，真實封裝的續作由 G 旅程驗證；Partial（含未知項）為終態，需人工 Repair 或重新預覽；中途丟例外的 ContinuationId 不能重用。HTML／CLI 入口在 E3b-2。
 
+### 17.45 E3b-2 續作與失效接到 HTML 控制端與 CLI（E3b 後端完成，部分驗證）
+
+- Sonnet 5.5 subagent 實作；subagent 在等自己的背景測試時失聯（沒有回報），主代理從工作樹接手，逐段審 diff、重跑全部驗收並突變。
+- 核心抽出單一判定 `Test-WsmWizardTargetRestorePreviewCurrent`（hash 相同，或差異只由本父作業自身寫入造成）與單一撤銷 `Revoke-WsmWizardTargetRestoreParent`，Resume、HTML 秘密回覆與新的還原共用。新增唯讀 `Get-WsmWizardTargetRestoreResumePreview`（不寫檔、不取鎖、不換 owner）、黏著取消 `Stop-WsmWizardTargetRestoreParent`（不刪已寫入目標、不動 pending），以及 `Invoke-WsmWizardSupersedeStaleTargetRestoreParent`：開始新還原時，舊的非終態父作業若預覽已不是目前預覽就先撤銷（舊 worker 仍活著則拒絕；預覽相同、有未對帳 intent 或無法判定預覽時維持原規則）。
+- HTML：重啟後 Interrupted 的 TargetRestore 帶唯讀計算的 `resumable`；`GET /api/jobs/{id}/resume-preview`；`POST /api/jobs/{id}/resume`（只收 GUID continuationId 與 `confirm:true`，同一 id 重送不開第二個 worker，worker 活著時另一 id 回 409，同一 job 改 Running 並記 `continuations`）；Resume 回 `NeedsNewPreview` 時 job 為 `ReviewRequired`、`reason=PreviewChanged`、不可再續作；秘密回覆前重算預覽，已變就撤銷、job 改 Cancelled、回 409 `challenge_revoked_preview_changed`，不啟動 worker、收到的秘密直接丟棄；`POST /api/jobs/{id}/cancel` 可黏著取消沒有 worker 的 Interrupted 父作業。worker 完成處理抽成 `Complete-WsmHtmlFinishedJob`，Resume worker 在模組 scope 內執行（核心未匯出）。
+- CLI：互動還原若有可續作且預覽仍是目前的父作業，列出 id 與待對帳數，只有輸入 `RESUME` 才續作；讀不到輸入時回 `InputUnavailable`／`NotResumed`，不讀隱藏輸入。
+- 主代理驗收補正：`Test-HtmlConsole` 的清理 helper 在 worker 仍鎖住檔案時丟出的 IO 錯誤會蓋掉真正的斷言失敗，改為清理失敗只發警告；修正後兩個突變才顯示專屬訊息。
+- 驗證（WinPS 5.1）：HtmlConsole 148（原 114）、TargetRestoreContinuation 72（原 43）、WizardRestore 85、ServiceCredentialChallenge 46、OperationRequests、AssistiveRestore 140、WizardRuntime 161、WizardHtmlRuntimeProjection 185、WizardTextRuntime 65、TextConsole 18、ScriptEncoding；Node WizardRuntimeTargetUi 與真實 Edge 的 NativeWizardRuntimeHandler 通過。突變：同 continuationId 重送不短路、秘密回覆跳過漂移檢查、新還原不檢查舊 worker，皆以專屬斷言轉紅。
+- 限制：畫面上的續作按鈕與帳密對話框屬 F4b；程序真正被結束後的續作由 G 旅程驗證。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

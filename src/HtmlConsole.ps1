@@ -595,7 +595,7 @@ function Get-WsmHtmlSafeError([string]$ExceptionMessage,[string]$ExceptionType='
     if($ExceptionMessage -match 'RejectedOrigin') { return (New-WsmHtmlError 'This request came from an unrecognized page origin.' 'rejected_origin' 'Use the console at its current local URL and retry from that page.') }
     if($ExceptionMessage -match 'RejectedHost') { return (New-WsmHtmlError 'This request used an unrecognized local address.' 'rejected_host' 'Open the console from its current local URL and retry.') }
     if($ExceptionType -ceq 'System.UnauthorizedAccessException' -or $ExceptionMessage -match 'UnauthorizedAccess|access.*denied|administrator privilege') { return (New-WsmHtmlError 'This operation needs permission that is not available to the current Windows user.' 'permission_denied' 'Ask an administrator to review the required permission and run the operation from the authorized account.') }
-    if($ExceptionMessage -match 'worker limit|active jobs|Wait for active jobs') { return (New-WsmHtmlError 'A local operation is still active.' 'active_operation' 'Check the operation history and wait for the active operation to finish.') }
+    if($ExceptionMessage -match 'worker limit|active jobs|Wait for active jobs|still has a running worker') { return (New-WsmHtmlError 'A local operation is still active.' 'active_operation' 'Check the operation history and wait for the active operation to finish.') }
     if($ExceptionMessage -match '^ReportUnavailable') { return (New-WsmHtmlError 'The verified report is unavailable.' 'report_unavailable' 'Refresh operation history and verify the report still exists and matches its recorded hash.') }
     if($ExceptionMessage -match 'JobContextMismatch|UnknownJob|Unknown report|hash changed|trusted file') { return (New-WsmHtmlError 'The requested operation or report is no longer available.' 'operation_unavailable' 'Refresh operation history and use its current report or recovery guidance.') }
     if($ExceptionMessage -match 'Unknown route|Unknown view|Unknown action|Invalid role|Unsupported operation|parameter|JSON body|Malformed|Duplicate query') { return (New-WsmHtmlError 'The request could not be used.' 'invalid_request' 'Review the current page and its fields, then try again.') }
@@ -743,7 +743,7 @@ function Get-WsmHtmlRequestHashForBody([string]$Workspace,[string]$PairId,[strin
 
 function Import-WsmHtmlJobHistory([string]$consoleRoot,[hashtable]$jobs,[hashtable]$keys,$RecoveryGuard=$null) {
     $recoveryLanes=@{};foreach($guard in @($RecoveryGuard)){if($guard){Assert-WsmWorkspaceWorkerGuard $guard (Split-Path $consoleRoot -Parent);$recoveryLanes[[string]$guard.Lane]=$true}}
-    foreach($old in @(Get-ChildItem -LiteralPath $consoleRoot -Filter '*.json' -File)){Assert-WsmNoReparse $old.FullName;$record=Read-WsmJson $old.FullName;Assert-WsmId ([string]$record.jobId);if([IO.Path]::GetFileNameWithoutExtension($old.Name) -cne [string]$record.jobId -or $jobs.ContainsKey([string]$record.jobId)){throw 'Invalid durable job identity.'};if($record.PSObject.Properties['idempotencyKey'] -and $record.PSObject.Properties['RequestHash']){Assert-WsmId ([string]$record.idempotencyKey);if([string]$record.RequestHash -notmatch '^[a-f0-9]{64}$' -or $keys.ContainsKey([string]$record.idempotencyKey)){throw 'Invalid durable idempotency record.'};$keys[[string]$record.idempotencyKey]=@{Hash=[string]$record.RequestHash;Id=[string]$record.jobId}};foreach($field in @('workspace','pairId','role','sessionId','contextId','startedRevision','startedDecisionRevision','startedSelectionRevision','startedDataVersion')){if(-not $record.PSObject.Properties[$field]){$record|Add-Member NoteProperty $field $null -Force}};if($recoveryLanes.ContainsKey($(if((Get-WsmTextMetadataValue $record 'action' '') -ceq 'DeveloperProbe'){'DeveloperProbe'}else{'Migration'})) -and $record.status -in @('Running','CancelRequested')){$record.status='Interrupted';Write-WsmJson $old.FullName $record};if([string](Get-WsmTextMetadataValue $record 'action' '') -ceq 'TargetRestore' -and [string]$record.status -in @('Interrupted','WaitingForInput')){try{$challenge=Get-WsmHtmlTargetRestoreChallenge ([string]$record.workspace) $record;$record.status='WaitingForInput';$record.CompletedUtc=$null;$record|Add-Member NoteProperty requiredSecretRefs @($challenge.Challenge.RequiredSecretRefs) -Force;$record|Add-Member NoteProperty credentialRequirements @(Get-WsmHtmlChallengeRequirements $challenge.Challenge) -Force;$record|Add-Member NoteProperty recoveryReadbackRequired ([bool]$challenge.RecoverablePreWrite) -Force;Write-WsmJson $old.FullName $record}catch{}};$record|Add-Member NoteProperty canCancel $false -Force;$jobs[$record.jobId]=@{Record=$record;Path=$old.FullName;Handle=$null;PowerShell=$null;CancellationToken=$null}}
+    foreach($old in @(Get-ChildItem -LiteralPath $consoleRoot -Filter '*.json' -File)){Assert-WsmNoReparse $old.FullName;$record=Read-WsmJson $old.FullName;Assert-WsmId ([string]$record.jobId);if([IO.Path]::GetFileNameWithoutExtension($old.Name) -cne [string]$record.jobId -or $jobs.ContainsKey([string]$record.jobId)){throw 'Invalid durable job identity.'};if($record.PSObject.Properties['idempotencyKey'] -and $record.PSObject.Properties['RequestHash']){Assert-WsmId ([string]$record.idempotencyKey);if([string]$record.RequestHash -notmatch '^[a-f0-9]{64}$' -or $keys.ContainsKey([string]$record.idempotencyKey)){throw 'Invalid durable idempotency record.'};$keys[[string]$record.idempotencyKey]=@{Hash=[string]$record.RequestHash;Id=[string]$record.jobId}};foreach($field in @('workspace','pairId','role','sessionId','contextId','startedRevision','startedDecisionRevision','startedSelectionRevision','startedDataVersion')){if(-not $record.PSObject.Properties[$field]){$record|Add-Member NoteProperty $field $null -Force}};if($recoveryLanes.ContainsKey($(if((Get-WsmTextMetadataValue $record 'action' '') -ceq 'DeveloperProbe'){'DeveloperProbe'}else{'Migration'})) -and $record.status -in @('Running','CancelRequested')){$record.status='Interrupted';Write-WsmJson $old.FullName $record};if([string](Get-WsmTextMetadataValue $record 'action' '') -ceq 'TargetRestore' -and [string]$record.status -in @('Interrupted','WaitingForInput')){try{$challenge=Get-WsmHtmlTargetRestoreChallenge ([string]$record.workspace) $record;$record.status='WaitingForInput';$record.CompletedUtc=$null;$record|Add-Member NoteProperty requiredSecretRefs @($challenge.Challenge.RequiredSecretRefs) -Force;$record|Add-Member NoteProperty credentialRequirements @(Get-WsmHtmlChallengeRequirements $challenge.Challenge) -Force;$record|Add-Member NoteProperty recoveryReadbackRequired ([bool]$challenge.RecoverablePreWrite) -Force;Write-WsmJson $old.FullName $record}catch{}};if([string](Get-WsmTextMetadataValue $record 'action' '') -ceq 'TargetRestore'){$record|Add-Member NoteProperty resumable (Get-WsmHtmlTargetRestoreResumable $record) -Force};$record|Add-Member NoteProperty canCancel $false -Force;$jobs[$record.jobId]=@{Record=$record;Path=$old.FullName;Handle=$null;PowerShell=$null;CancellationToken=$null}}
 }
 
 function Get-WsmHtmlChallengeActor {
@@ -782,6 +782,185 @@ function Get-WsmHtmlTargetRestoreRetryWaitOutput([string]$Workspace,$Record) {
     $binding=Get-WsmHtmlTargetRestoreChallenge $Workspace $Record
     if([string]$binding.State.Stage -cne 'WaitingForInput' -or [string]$binding.Attempt.Status -cne 'WaitingForInput' -or [string]$binding.Challenge.State -cne 'WaitingForInput'){return $null}
     [pscustomobject][ordered]@{Status='WaitingForInput';ParentOperationId=[string]$Record.jobId;PreviewHash=[string]$Record.targetRestorePreviewHash;RequiredSecretRefs=@($binding.Challenge.RequiredSecretRefs);CredentialRequirements=@(Get-WsmHtmlChallengeRequirements $binding.Challenge);NoTargetWrites=$true;ResumeRequired=$true;ProductionVerified=$false}
+}
+
+function Get-WsmHtmlTargetRestoreResumable($Record) {
+    # Read-only projection: true only when the durable state holds a non-terminal attempt that belongs to this very job.
+    try{
+        if([string](Get-WsmTextMetadataValue $Record 'action' '') -cne 'TargetRestore'){return $false}
+        $workspace=[string](Get-WsmTextMetadataValue $Record 'workspace' '');$pairId=[string](Get-WsmTextMetadataValue $Record 'pairId' '');$jobId=[string](Get-WsmTextMetadataValue $Record 'jobId' '')
+        if(-not $workspace -or -not $pairId -or -not $jobId){return $false}
+        $statePath=Join-Path (Join-Path (Join-Path ([IO.Path]::GetFullPath($workspace)) 'pairs') $pairId) 'state.json'
+        if(-not [IO.File]::Exists($statePath)){return $false}
+        Assert-WsmNoReparse $statePath;$state=Read-WsmJson $statePath
+        if(-not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.RestoreAttempt){return $false}
+        $attempt=$state.RestoreAttempt
+        return ([string]$attempt.OperationId -ceq $jobId -and [string]$attempt.Status -cin @('Running','WaitingForInput') -and [string]$state.Stage -cin @('Running','WaitingForInput'))
+    }catch{return $false}
+}
+
+function New-WsmHtmlTargetRestoreWorker([string]$ModulePath,[string]$CommandName,$Arguments) {
+    if($CommandName -cnotin @('Invoke-WsmWizardTargetRestore','Resume-WsmWizardTargetRestore')){throw 'Unsupported TargetRestore worker command.'}
+    $worker=[Management.Automation.PowerShell]::Create()
+    if($CommandName -ceq 'Invoke-WsmWizardTargetRestore'){
+        [void]$worker.AddScript('param($modulePath,$commandName,$arguments) Import-Module $modulePath -Force -DisableNameChecking; $ConfirmPreference="None"; $ErrorActionPreference="Stop"; $command=Get-Command $commandName -CommandType Function; if($command.Parameters.ContainsKey("Confirm")){$arguments.Confirm=$false}; & $command @arguments').AddArgument($ModulePath).AddArgument($CommandName).AddArgument($Arguments)
+    }else{
+        # The continuation core is module-internal (not exported), so the worker runs it inside the module scope.
+        [void]$worker.AddScript('param($modulePath,$commandName,$arguments) $module=Import-Module $modulePath -Force -DisableNameChecking -PassThru; $ConfirmPreference="None"; $ErrorActionPreference="Stop"; & $module { param($commandName,$arguments) $command=Get-Command $commandName -CommandType Function; & $command @arguments } $commandName $arguments').AddArgument($ModulePath).AddArgument($CommandName).AddArgument($Arguments)
+    }
+    $worker
+}
+
+function Set-WsmHtmlJobSuperseded($Job,[string]$Reason,[string]$Status='Cancelled') {
+    # The durable parent was revoked (preview changed) or superseded by a newer restore: the job ends here and can never be resumed.
+    $Job.Record.Status=$Status;$Job.Record.CompletedUtc=Get-WsmUtc;$Job.Record.canCancel=$false
+    $Job.Record|Add-Member NoteProperty resumable $false -Force;$Job.Record|Add-Member NoteProperty reason $Reason -Force
+    $Job.Record|Add-Member NoteProperty requiredSecretRefs @() -Force;$Job.Record|Add-Member NoteProperty credentialRequirements @() -Force
+    $Job.Record|Add-Member NoteProperty outputs @([pscustomobject]@{Status=$Status;ParentOperationId=[string]$Job.Record.jobId;Reason=$Reason;NoTargetWrites=$true;ProductionVerified=$false}) -Force
+    Write-WsmJson $Job.Path $Job.Record
+}
+
+function Invoke-WsmHtmlSupersedeStaleRestore([string]$Workspace,[string]$PairId,[hashtable]$Jobs,[string]$PreviewHash,[string]$OperationId) {
+    # A new TargetRestore after the choices or installed software changed: the core revokes an older parent whose preview is gone
+    # (a live worker refuses); the HTML side only retires that parent's job record.
+    $staleParent=Invoke-WsmWizardSupersedeStaleTargetRestoreParent -Workspace $Workspace -PairId $PairId -OperationId $OperationId -PreviewHash $PreviewHash -Jobs (Get-WsmHtmlWizardJobs $Jobs $Workspace)
+    if($staleParent -and $Jobs.ContainsKey([string]$staleParent)){Set-WsmHtmlJobSuperseded $Jobs[[string]$staleParent] 'Superseded'}
+    [string]$staleParent
+}
+
+function Get-WsmHtmlResumePreview([string]$Workspace,$Job,[hashtable]$Jobs) {
+    $record=$Job.Record
+    $core=Get-WsmWizardTargetRestoreResumePreview -Workspace $Workspace -PairId ([string]$record.pairId) -ParentOperationId ([string]$record.jobId) -Jobs (Get-WsmHtmlWizardJobs $Jobs $Workspace)
+    $resumable=[bool]$core.Resumable;$reason=[string]$core.Reason
+    if($resumable -and ($Job.Handle -and -not $Job.Handle.IsCompleted)){$resumable=$false;$reason='WorkerRunning'}
+    elseif($resumable -and [string]$record.status -cne 'Interrupted'){$resumable=$false;$reason=if([string]$record.status -ceq 'WaitingForInput'){'WaitingForInput'}else{'JobNotInterrupted'}}
+    [pscustomobject][ordered]@{resumable=$resumable;reason=$reason;previewCurrent=[bool]$core.PreviewCurrent;pendingItems=@($core.PendingItems);challengeState=[string]$core.ChallengeState;credentialRequirements=@(ConvertTo-WsmHtmlCredentialRequirements $core.CredentialRequirements)}
+}
+
+function New-WsmHtmlTargetRestoreResumeArguments([string]$Workspace,$Record,[object[]]$Jobs,[string]$ContinuationId,[string]$SessionId,[string]$ContextId) {
+    $pairId=[string]$Record.pairId;$ctx=Assert-WsmWizardTargetRole $Workspace $pairId;$packageRecord=Get-WsmWizardTargetPackage $Workspace $pairId $ctx $Jobs
+    $context=[pscustomobject][ordered]@{Role='Target';Actor=(Get-WsmHtmlChallengeActor);SessionId=$SessionId;ContextId=$ContextId;Revision=[int]$packageRecord.Package.Manifest.DecisionRevision;OperationId=[string]$Record.jobId}
+    $token=New-WsmCancellationToken -StateDirectory (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs') -PairId $pairId -PlanHash ([string]$ctx.Received.SHA256) -ManifestHash ([string]$packageRecord.ManifestHash) -OperationId ([string]$Record.jobId)
+    @{Workspace=[IO.Path]::GetFullPath($Workspace);PairId=$pairId;ParentOperationId=[string]$Record.jobId;ContinuationId=$ContinuationId;Jobs=$Jobs;CancellationToken=$token;Secrets=@{};GeneralHostEvidence=@();ChallengeContext=$context}
+}
+
+function Invoke-WsmHtmlResumeRequest {
+    param([string]$Workspace,[string]$PairId,[string]$Role,[hashtable]$Jobs,[string]$JobId,[string]$BodyText,[string]$SessionId,[string]$ContextId,[string]$ModulePath,[hashtable]$Out)
+    if(-not $Jobs.ContainsKey($JobId)){throw 'UnknownJob'}
+    $job=$Jobs[$JobId];Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role
+    if($Role -cne 'Target' -or [string]$job.Record.action -cne 'TargetRestore'){throw 'Only a TargetRestore parent of the enrolled Target role can be resumed.'}
+    $body=ConvertFrom-WsmJson $BodyText;Assert-WsmFields $body @('continuationId','confirm') @('continuationId','confirm')
+    if($body.confirm -isnot [bool] -or -not $body.confirm){throw 'Malformed resume request: confirm must be the JSON boolean true.'}
+    $guid=[Guid]::Empty;if($body.continuationId -isnot [string] -or -not [Guid]::TryParseExact([string]$body.continuationId,'D',[ref]$guid)){throw 'Malformed resume request: continuationId must be a GUID string.'}
+    $continuationId=$guid.ToString('D')
+    # The same continuationId again never starts a second worker: it reports the current state of the same job.
+    if($job.Record.PSObject.Properties['continuations'] -and @($job.Record.continuations|Where-Object {[string]$_.continuationId -ceq $continuationId}).Count){$Out.Status=202;$Out.Response=@{job=(ConvertTo-WsmHtmlPublicJobRecord $job.Record)};return}
+    if($job.Handle -and -not $job.Handle.IsCompleted){$Out.Status=409;$Out.Response=New-WsmHtmlError 'A local operation is still active for this restore.' 'active_operation' 'Wait for the running continuation to finish, or request its safe cancellation, before sending another continuation.';return}
+    if([string]$job.Record.status -cne 'Interrupted'){throw 'Only an Interrupted TargetRestore parent can be resumed; other states use their own controls.'}
+    if(-not (Get-WsmHtmlTargetRestoreResumable $job.Record)){throw 'The TargetRestore parent is terminal, cancelled or superseded and can never be resumed.'}
+    $arguments=New-WsmHtmlTargetRestoreResumeArguments $Workspace $job.Record (Get-WsmHtmlWizardJobs $Jobs $Workspace) $continuationId $SessionId $ContextId
+    $guard=Enter-WsmWorkspaceWorkerGuard -Workspace $Workspace -OperationId ([string]$job.Record.jobId) -Role 'Target' -PairId ([string]$job.Record.pairId) -Action 'TargetRestore'
+    $worker=$null;$started=$false
+    try{
+        $worker=New-WsmHtmlTargetRestoreWorker $ModulePath 'Resume-WsmWizardTargetRestore' $arguments
+        $priorContinuations=@();if($job.Record.PSObject.Properties['continuations']){$priorContinuations=@($job.Record.continuations)}
+        $job.Record.Status='Running';$job.Record.CompletedUtc=$null;$job.Record.canCancel=$true
+        $job.Record|Add-Member NoteProperty resumable $false -Force;$job.Record|Add-Member NoteProperty requiredSecretRefs @() -Force;$job.Record|Add-Member NoteProperty credentialRequirements @() -Force;$job.Record|Add-Member NoteProperty outputs @() -Force
+        if($job.Record.PSObject.Properties['error']){$job.Record.PSObject.Properties.Remove('error')};if($job.Record.PSObject.Properties['reason']){$job.Record.PSObject.Properties.Remove('reason')}
+        $job.Record|Add-Member NoteProperty continuations (@($priorContinuations)+@([pscustomobject][ordered]@{continuationId=$continuationId;startedUtc=(Get-WsmUtc);completedUtc=$null;status='Running'})) -Force
+        $jobPath=$job.Path;Write-WsmJson $jobPath $job.Record
+        $running=@{Record=$job.Record;Path=$jobPath;PowerShell=$worker;Handle=$null;CancellationToken=$arguments.CancellationToken;WorkerGuard=$guard;SecretCredentials=$null;WorkerCommandName='Resume-WsmWizardTargetRestore'}
+        $guard=$null;$Jobs[$JobId]=$running
+        Start-WsmHtmlCredentialJobWorker $running
+        $started=$true
+        $Out.Status=202;$Out.Response=@{job=(ConvertTo-WsmHtmlPublicJobRecord $running.Record)}
+    }catch{
+        if($started){throw}
+        # Nothing was started: the parent stays Interrupted so the operator can retry with a fresh continuationId.
+        if($worker){try{$worker.Dispose()}catch{}}
+        $job.Record.Status='Interrupted';$job.Record.CompletedUtc=$null;$job.Record.canCancel=$false
+        $job.Record|Add-Member NoteProperty resumable (Get-WsmHtmlTargetRestoreResumable $job.Record) -Force
+        if($job.Record.PSObject.Properties['continuations']){$job.Record|Add-Member NoteProperty continuations @($job.Record.continuations|Where-Object {[string]$_.continuationId -cne $continuationId}) -Force}
+        $Jobs[$JobId]=@{Record=$job.Record;Path=$job.Path;Handle=$null;PowerShell=$null;CancellationToken=$null}
+        try{Write-WsmJson $job.Path $job.Record}catch{}
+        throw
+    }finally{if($guard){Exit-WsmWorkspaceWorkerGuard $guard}}
+}
+
+function Stop-WsmHtmlInterruptedTargetRestore([string]$Workspace,[string]$Role,[hashtable]$Jobs,$Job) {
+    # An Interrupted parent has no worker to ask politely: cancel it durably in the core (nothing already written is deleted).
+    $record=$Job.Record
+    if($Role -cne 'Target' -or [string]$record.action -cne 'TargetRestore' -or [string]$record.status -cne 'Interrupted' -or ($Job.Handle -and -not $Job.Handle.IsCompleted)){throw 'Only an Interrupted TargetRestore parent without a live worker can be cancelled this way.'}
+    if(Get-WsmHtmlTargetRestoreResumable $record){[void](Stop-WsmWizardTargetRestoreParent -StateDirectory (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs') -PairId ([string]$record.pairId) -ParentOperationId ([string]$record.jobId) -Jobs (Get-WsmHtmlWizardJobs $Jobs $Workspace))}
+    Set-WsmHtmlJobSuperseded $Job 'OperatorCancelled'
+    ConvertTo-WsmHtmlPublicJobRecord $record
+}
+
+function Complete-WsmHtmlFinishedJob($Job,[string]$Workspace,[hashtable]$Jobs,[string]$ErrorRoot) {
+    # Worker result handling, shared by the console loop and its tests.
+    $output=@();$waitingForInput=$false
+    try{
+        $output=@($Job.PowerShell.EndInvoke($Job.Handle))
+        $waitRows=@($output|Where-Object {$_.PSObject -and $_.PSObject.Properties['Status'] -and [string]$_.Status -ceq 'WaitingForInput'})
+        $needsNewRows=@($output|Where-Object {$_.PSObject -and $_.PSObject.Properties['Status'] -and [string]$_.Status -ceq 'NeedsNewPreview'})
+        if([string]$Job.Record.action -ceq 'TargetRestore' -and $waitRows.Count -eq 1){$waitingForInput=$true;$Job.Record.Status='WaitingForInput';$Job.Record.CompletedUtc=$null;$Job.Record|Add-Member NoteProperty requiredSecretRefs @($waitRows[0].RequiredSecretRefs|Where-Object {$_ -is [string]}) -Force;$Job.Record|Add-Member NoteProperty credentialRequirements @(Get-WsmHtmlOutputRequirements $waitRows[0]) -Force;$Job.Record|Add-Member NoteProperty challengePreviewHash ([string]$waitRows[0].PreviewHash) -Force}
+        elseif([string]$Job.Record.action -ceq 'TargetRestore' -and $needsNewRows.Count -eq 1){$Job.Record.Status='ReviewRequired';$Job.Record|Add-Member NoteProperty reason 'PreviewChanged' -Force}
+        else{$code=Get-WsmOperationStatusCode $output;$Job.Record.Status=if($code -eq 0){'Succeeded'}elseif($code -eq 3){'Cancelled'}elseif($code -eq 1){'Failed'}else{'ReviewRequired'};if($code -eq 1){$workerError=Get-WsmHtmlSafeError 'WorkerReportedFailure';$Job.Record|Add-Member NoteProperty error $workerError -Force;try{Write-WsmHtmlErrorRecord $ErrorRoot $workerError '/worker' ([string]$Job.Record.pairId)}catch{}}}
+    }catch{
+        $workerFailure=$_;$Job.Record.Status=Get-WsmWorkerFailureStatus $workerFailure
+        if([string]$Job.Record.action -ceq 'TargetRestore' -and $Job.Record.Status -ceq 'Failed'){try{$retryWait=Get-WsmHtmlTargetRestoreRetryWaitOutput $Workspace $Job.Record;if($retryWait){$waitingForInput=$true;$Job.Record.Status='WaitingForInput';$Job.Record.CompletedUtc=$null;$Job.Record|Add-Member NoteProperty requiredSecretRefs @($retryWait.RequiredSecretRefs) -Force;$Job.Record|Add-Member NoteProperty credentialRequirements @(Get-WsmHtmlOutputRequirements $retryWait) -Force;$output=@($retryWait)}}catch{}}
+        if(-not $waitingForInput -and $Job.Record.Status -ceq 'Failed'){$workerError=Get-WsmHtmlSafeError $workerFailure.Exception.Message $workerFailure.Exception.GetType().FullName;$Job.Record|Add-Member NoteProperty error $workerError -Force;try{Write-WsmHtmlErrorRecord $ErrorRoot $workerError '/worker' ([string]$Job.Record.pairId)}catch{}}
+    }
+    if([string]$Job.Record.action -ceq 'TargetRestore'){
+        $Job.Record|Add-Member NoteProperty resumable $(if([string]$Job.Record.status -ceq 'ReviewRequired' -and $Job.Record.PSObject.Properties['reason'] -and [string]$Job.Record.reason -ceq 'PreviewChanged'){$false}else{[bool](Get-WsmHtmlTargetRestoreResumable $Job.Record)}) -Force
+        if($Job.Record.PSObject.Properties['continuations']){$open=@($Job.Record.continuations|Where-Object {[string]$_.status -ceq 'Running'});foreach($entry in $open){$entry.status=[string]$Job.Record.Status;$entry.completedUtc=Get-WsmUtc}}
+    }
+    if($waitingForInput){$Job.Record|Add-Member NoteProperty outputs @(Get-WsmHtmlResultProjection $output) -Force;$Job.Record.canCancel=$false;$Job.Handle=$null;Write-WsmHtmlCredentialJobAndReleaseRuntime $Job;return}
+    if(-not $output.Count -and $Job.Record.Status -in @('Failed','Cancelled')){try{$output=@(Get-WsmHtmlWizardTerminalOutput $Job.Record (Get-WsmHtmlWizardJobs $Jobs $Workspace)|Where-Object {$null -ne $_})}catch{}}
+    $Job.Record|Add-Member NoteProperty outputs @(Get-WsmHtmlResultProjection $output) -Force
+    if($Job.Record.action -ceq 'ImportApprovedPlan' -and @($Job.Record.outputs).Count -eq 1){$importResult=$Job.Record.outputs[0];if($importResult.PairId -and $importResult.Status -ceq 'ImportedVerified'){$Job.Record|Add-Member NoteProperty result ([pscustomobject][ordered]@{Status=[string]$importResult.Status;PairId=[string]$importResult.PairId;SHA256=[string]$importResult.SHA256;ProductionVerified=$false}) -Force}}
+    $Job.Record|Add-Member NoteProperty reportArtifacts @(Get-WsmHtmlReportArtifacts $Job.Record.action $Job.Record.outputs $Workspace) -Force
+    $Job.Record.canCancel=$false
+    $Job.Record.CompletedUtc=Get-WsmUtc;$Job.Handle=$null;Write-WsmHtmlCredentialJobAndReleaseRuntime $Job
+}
+
+function Submit-WsmHtmlServiceCredentials {
+    param([string]$Workspace,[string]$PairId,[string]$Role,[hashtable]$Jobs,[string]$JobId,$Request,[string]$SessionId,[string]$ContextId,[string]$ModulePath,[hashtable]$Out)
+    $worker=$null;$workerArguments=$null;$secretValues=$null;$submissionGuard=$null;$body=$null;$workerStarted=$false;$job=$null
+    try{
+        if(-not $Request.Headers.ContainsKey('content-type') -or $Request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw 'JSON body required.'}
+        if(-not $Jobs.ContainsKey($JobId)){throw 'UnknownJob'};$job=$Jobs[$JobId];Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role
+        if($Role -cne 'Target' -or [string]$job.Record.action -cne 'TargetRestore' -or [string]$job.Record.status -cne 'WaitingForInput'){throw 'TargetRestore parent is not waiting for secure service credentials.'}
+        $body=ConvertFrom-WsmJson $Request.Body;Assert-WsmFields $body @('credentials','takeover') @('credentials');if($body.PSObject.Properties['takeover'] -and $body.takeover -isnot [bool]){throw 'Explicit takeover flag must be boolean.'}
+        $challengeBinding=Get-WsmHtmlTargetRestoreChallenge $Workspace $job.Record;$takeover=$false;if($body.PSObject.Properties['takeover']){$takeover=[bool]$body.takeover}
+        # The reviewed preview must still be the current one before any secret is materialized or a worker exists. A different preview revokes the
+        # challenge in the core (attempt Superseded, reservations released), ends this job and starts nothing; the received secret is simply dropped.
+        $currentProjection=$null;try{$currentProjection=Get-WsmWizardTargetRestoreProjection -Workspace $Workspace -PairId ([string]$job.Record.pairId) -Jobs (Get-WsmHtmlWizardJobs $Jobs $Workspace)}catch{$currentProjection=$null}
+        if(-not (Test-WsmWizardTargetRestorePreviewCurrent $challengeBinding.Attempt $challengeBinding.State $currentProjection)){
+            Revoke-WsmWizardTargetRestoreParent -StateDirectory $challengeBinding.StateDirectory -PairId ([string]$job.Record.pairId) -ParentOperationId ([string]$job.Record.jobId) -Reason 'PreviewChanged'
+            Set-WsmHtmlJobSuperseded $job 'PreviewChanged'
+            $Out.Status=409;$Out.Response=New-WsmHtmlError 'The reviewed restore preview changed, so this credential reply was not used.' 'challenge_revoked_preview_changed' 'Nothing was written. Review the restore preview again and start a new restore.'
+            return
+        }
+        $resumeContext=New-WsmHtmlCredentialResumeContext $Workspace $job.Record $Jobs $body.credentials $challengeBinding.Challenge $SessionId $ContextId -Takeover:$takeover;$secretValues=$resumeContext.Secrets;$workerArguments=$resumeContext.Arguments;$submissionGuard=$resumeContext.Guard
+        try{
+            $commandName='Invoke-WsmWizardTargetRestore';$worker=New-WsmHtmlTargetRestoreWorker $ModulePath $commandName $workerArguments
+            $job.Record.Status='Running';$job.Record.CompletedUtc=$null;$job.Record.canCancel=$true;$job.Record|Add-Member NoteProperty requiredSecretRefs @() -Force;$job.Record|Add-Member NoteProperty credentialRequirements @() -Force;$job.Record|Add-Member NoteProperty outputs @() -Force
+            $jobPath=$job.Path;Write-WsmJson $jobPath $job.Record
+            $guard=$submissionGuard;$submissionGuard=$null;$job=@{Record=$job.Record;Path=$jobPath;PowerShell=$worker;Handle=$null;CancellationToken=$workerArguments.CancellationToken;WorkerGuard=$guard;SecretCredentials=$secretValues;WorkerCommandName=$commandName};$Jobs[$JobId]=$job;$secretValues=$null
+            Start-WsmHtmlCredentialJobWorker $job
+            $workerStarted=$true
+            $Out.Response=@{job=(ConvertTo-WsmHtmlPublicJobRecord $job.Record)};$Out.Status=202
+        }catch{
+            if($workerStarted){throw}
+            if($worker){try{$worker.Dispose()}catch{}}
+            if($job){Clear-WsmHtmlCredentialJobRuntime $job}
+            $retryWait=$null;try{$retryWait=Get-WsmHtmlTargetRestoreRetryWaitOutput $Workspace $job.Record}catch{}
+            if($retryWait){Set-WsmHtmlCredentialJobWaitingForRetry $job $retryWait;$Out.SafeError=New-WsmHtmlError 'The secure credential worker did not start.' 'credential_resume_not_started' 'This TargetRestore parent remains WaitingForInput; retry the same parent after checking local workspace availability. No native write began.'}
+            else{$job.Record.Status='Interrupted';$job.Record.CompletedUtc=$null;$job.Record.canCancel=$false;$Out.SafeError=New-WsmHtmlError 'The secure credential worker outcome needs recovery.' 'credential_resume_outcome_unknown' 'Inspect the same TargetRestore parent and authoritative journal before deciding whether to resume; no automatic replay was attempted.';try{$job.Record|Add-Member NoteProperty error $Out.SafeError -Force;Write-WsmJson $job.Path $job.Record}catch{}}
+            throw
+        }
+    }finally{if($submissionGuard){Exit-WsmWorkspaceWorkerGuard $submissionGuard};if($secretValues){Clear-WsmHtmlServiceCredentialValues $secretValues};$secretValues=$null;$body=$null;$workerArguments=$null;if($Request){$Request.Body=''}}
 }
 
 function ConvertTo-WsmHtmlServiceCredentials($InputObject,$Challenge) {
@@ -887,16 +1066,7 @@ function Start-WsmHtmlConsole {
                     $observed|Add-Member NoteProperty canCancel $false -Force;$job.Record=$observed
                 }
                 $progress=Get-WsmHtmlProgressProjection $job;if($progress){$job.Record|Add-Member NoteProperty progress $progress -Force}
-                if($job.Handle -and $job.Handle.IsCompleted){
-                    $output=@();$waitingForInput=$false;try{$output=@($job.PowerShell.EndInvoke($job.Handle));$waitRows=@($output|Where-Object {$_.PSObject -and $_.PSObject.Properties['Status'] -and [string]$_.Status -ceq 'WaitingForInput'});if([string]$job.Record.action -ceq 'TargetRestore' -and $waitRows.Count -eq 1){$waitingForInput=$true;$job.Record.Status='WaitingForInput';$job.Record.CompletedUtc=$null;$job.Record|Add-Member NoteProperty requiredSecretRefs @($waitRows[0].RequiredSecretRefs|Where-Object {$_ -is [string]}) -Force;$job.Record|Add-Member NoteProperty credentialRequirements @(Get-WsmHtmlOutputRequirements $waitRows[0]) -Force;$job.Record|Add-Member NoteProperty challengePreviewHash ([string]$waitRows[0].PreviewHash) -Force}else{$code=Get-WsmOperationStatusCode $output;$job.Record.Status=if($code -eq 0){'Succeeded'}elseif($code -eq 3){'Cancelled'}elseif($code -eq 1){'Failed'}else{'ReviewRequired'};if($code -eq 1){$workerError=Get-WsmHtmlSafeError 'WorkerReportedFailure';$job.Record|Add-Member NoteProperty error $workerError -Force;try{Write-WsmHtmlErrorRecord $errorRoot $workerError '/worker' ([string]$job.Record.pairId)}catch{}}}}catch{$workerFailure=$_;$job.Record.Status=Get-WsmWorkerFailureStatus $workerFailure;if([string]$job.Record.action -ceq 'TargetRestore' -and $job.Record.Status -ceq 'Failed'){try{$retryWait=Get-WsmHtmlTargetRestoreRetryWaitOutput $Workspace $job.Record;if($retryWait){$waitingForInput=$true;$job.Record.Status='WaitingForInput';$job.Record.CompletedUtc=$null;$job.Record|Add-Member NoteProperty requiredSecretRefs @($retryWait.RequiredSecretRefs) -Force;$job.Record|Add-Member NoteProperty credentialRequirements @(Get-WsmHtmlOutputRequirements $retryWait) -Force;$output=@($retryWait)}}catch{}};if(-not $waitingForInput -and $job.Record.Status -ceq 'Failed'){$workerError=Get-WsmHtmlSafeError $workerFailure.Exception.Message $workerFailure.Exception.GetType().FullName;$job.Record|Add-Member NoteProperty error $workerError -Force;try{Write-WsmHtmlErrorRecord $errorRoot $workerError '/worker' ([string]$job.Record.pairId)}catch{}}}
-                    if($waitingForInput){$job.Record|Add-Member NoteProperty outputs @(Get-WsmHtmlResultProjection $output) -Force;$job.Record.canCancel=$false;$job.Handle=$null;Write-WsmHtmlCredentialJobAndReleaseRuntime $job;continue}
-                    if(-not $output.Count -and $job.Record.Status -in @('Failed','Cancelled')){try{$output=@(Get-WsmHtmlWizardTerminalOutput $job.Record (Get-WsmHtmlWizardJobs $jobs $Workspace)|Where-Object {$null -ne $_})}catch{}}
-                    $job.Record|Add-Member NoteProperty outputs @(Get-WsmHtmlResultProjection $output) -Force
-                    if($job.Record.action -ceq 'ImportApprovedPlan' -and @($job.Record.outputs).Count -eq 1){$importResult=$job.Record.outputs[0];if($importResult.PairId -and $importResult.Status -ceq 'ImportedVerified'){$job.Record|Add-Member NoteProperty result ([pscustomobject][ordered]@{Status=[string]$importResult.Status;PairId=[string]$importResult.PairId;SHA256=[string]$importResult.SHA256;ProductionVerified=$false}) -Force}}
-                    $job.Record|Add-Member NoteProperty reportArtifacts @(Get-WsmHtmlReportArtifacts $job.Record.action $job.Record.outputs $Workspace) -Force
-                    $job.Record.canCancel=$false
-                    $job.Record.CompletedUtc=Get-WsmUtc;$job.Handle=$null;Write-WsmHtmlCredentialJobAndReleaseRuntime $job
-                }
+                if($job.Handle -and $job.Handle.IsCompleted){Complete-WsmHtmlFinishedJob $job $Workspace $jobs $errorRoot}
             }
             if(-not $listener.Pending()){Start-Sleep -Milliseconds 50;continue}
             $client=$listener.AcceptTcpClient()
@@ -1030,42 +1200,34 @@ function Start-WsmHtmlConsole {
                         $job.Record.Status='Cancelled';$job.Record.CompletedUtc=Get-WsmUtc;$job.Record.canCancel=$false;$job.Record|Add-Member NoteProperty outputs @([pscustomobject]@{Status='Cancelled';ParentOperationId=[string]$job.Record.jobId;NoTargetWrites=$true;ProductionVerified=$false}) -Force;Write-WsmJson $job.Path $job.Record;$response=ConvertTo-WsmHtmlPublicJobRecord $job.Record
                     }
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/service-credentials$' -and $request.Method -ceq 'POST'){
-                        $id=$Matches[1];$worker=$null;$workerArguments=$null;$secretValues=$null;$submissionGuard=$null;$body=$null;$workerStarted=$false
-                        try{
-                            if(-not $request.Headers.ContainsKey('content-type') -or $request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw 'JSON body required.'}
-                            if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};$job=$jobs[$id];Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role
-                            if($Role -cne 'Target' -or [string]$job.Record.action -cne 'TargetRestore' -or [string]$job.Record.status -cne 'WaitingForInput'){throw 'TargetRestore parent is not waiting for secure service credentials.'}
-                            $body=ConvertFrom-WsmJson $request.Body;Assert-WsmFields $body @('credentials','takeover') @('credentials');if($body.PSObject.Properties['takeover'] -and $body.takeover -isnot [bool]){throw 'Explicit takeover flag must be boolean.'}
-                            $challengeBinding=Get-WsmHtmlTargetRestoreChallenge $Workspace $job.Record;$takeover=$false;if($body.PSObject.Properties['takeover']){$takeover=[bool]$body.takeover}
-                            $resumeContext=New-WsmHtmlCredentialResumeContext $Workspace $job.Record $jobs $body.credentials $challengeBinding.Challenge $sessionId $contextId -Takeover:$takeover;$secretValues=$resumeContext.Secrets;$workerArguments=$resumeContext.Arguments;$submissionGuard=$resumeContext.Guard
-                            try{
-                                $command=Get-Command Invoke-WsmWizardTargetRestore -CommandType Function;$worker=[Management.Automation.PowerShell]::Create()
-                                [void]$worker.AddScript('param($modulePath,$commandName,$arguments) Import-Module $modulePath -Force -DisableNameChecking; $ConfirmPreference="None"; $ErrorActionPreference="Stop"; $command=Get-Command $commandName -CommandType Function; if($command.Parameters.ContainsKey("Confirm")){$arguments.Confirm=$false}; & $command @arguments').AddArgument($modulePath).AddArgument($command.Name).AddArgument($workerArguments)
-                                $job.Record.Status='Running';$job.Record.CompletedUtc=$null;$job.Record.canCancel=$true;$job.Record|Add-Member NoteProperty requiredSecretRefs @() -Force;$job.Record|Add-Member NoteProperty credentialRequirements @() -Force;$job.Record|Add-Member NoteProperty outputs @() -Force
-                                $jobPath=$job.Path;Write-WsmJson $jobPath $job.Record
-                                $guard=$submissionGuard;$submissionGuard=$null;$job=@{Record=$job.Record;Path=$jobPath;PowerShell=$worker;Handle=$null;CancellationToken=$workerArguments.CancellationToken;WorkerGuard=$guard;SecretCredentials=$secretValues;WorkerCommandName=$command.Name};$jobs[$id]=$job;$secretValues=$null
-                                Start-WsmHtmlCredentialJobWorker $job
-                                $workerStarted=$true
-                                $response=@{job=(ConvertTo-WsmHtmlPublicJobRecord $job.Record)};$status=202
-                            }catch{
-                                if($workerStarted){throw}
-                                if($worker){try{$worker.Dispose()}catch{}}
-                                if($job){Clear-WsmHtmlCredentialJobRuntime $job}
-                                $retryWait=$null;try{$retryWait=Get-WsmHtmlTargetRestoreRetryWaitOutput $Workspace $job.Record}catch{}
-                                if($retryWait){Set-WsmHtmlCredentialJobWaitingForRetry $job $retryWait;$requestSafeError=New-WsmHtmlError 'The secure credential worker did not start.' 'credential_resume_not_started' 'This TargetRestore parent remains WaitingForInput; retry the same parent after checking local workspace availability. No native write began.'}
-                                else{$job.Record.Status='Interrupted';$job.Record.CompletedUtc=$null;$job.Record.canCancel=$false;$requestSafeError=New-WsmHtmlError 'The secure credential worker outcome needs recovery.' 'credential_resume_outcome_unknown' 'Inspect the same TargetRestore parent and authoritative journal before deciding whether to resume; no automatic replay was attempted.';try{$job.Record|Add-Member NoteProperty error $requestSafeError -Force;Write-WsmJson $job.Path $job.Record}catch{}}
-                                throw
-                            }
-                        }finally{if($submissionGuard){Exit-WsmWorkspaceWorkerGuard $submissionGuard};if($secretValues){Clear-WsmHtmlServiceCredentialValues $secretValues};$secretValues=$null;$body=$null;$workerArguments=$null;if($request){$request.Body=''}}
+                        $credentialOut=@{Status=202;Response=$null;SafeError=$null}
+                        try{Submit-WsmHtmlServiceCredentials -Workspace $Workspace -PairId $PairId -Role $Role -Jobs $jobs -JobId $Matches[1] -Request $request -SessionId $sessionId -ContextId $contextId -ModulePath $modulePath -Out $credentialOut}finally{if($credentialOut.SafeError){$requestSafeError=$credentialOut.SafeError}}
+                        $status=$credentialOut.Status;$response=$credentialOut.Response
+                    }
+                    elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/resume-preview$' -and $request.Method -ceq 'GET'){
+                        $id=$Matches[1];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};$job=$jobs[$id];Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role
+                        if($Role -cne 'Target' -or [string]$job.Record.action -cne 'TargetRestore'){throw 'Only a TargetRestore parent of the enrolled Target role has a resume preview.'}
+                        $response=Get-WsmHtmlResumePreview $Workspace $job $jobs
+                    }
+                    elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/resume$' -and $request.Method -ceq 'POST'){
+                        if(-not $request.Headers.ContainsKey('content-type') -or $request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw 'JSON body required.'}
+                        $resumeOut=@{Status=202;Response=$null}
+                        Invoke-WsmHtmlResumeRequest -Workspace $Workspace -PairId $PairId -Role $Role -Jobs $jobs -JobId $Matches[1] -BodyText $request.Body -SessionId $sessionId -ContextId $contextId -ModulePath $modulePath -Out $resumeOut
+                        $status=$resumeOut.Status;$response=$resumeOut.Response
                     }
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})(/cancel)?$'){
                         $id=$Matches[1];$cancel=$Matches[2];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};$job=$jobs[$id];if($cancel -and $request.Method -ceq 'POST'){Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role}
+                        if($cancel -and $request.Method -ceq 'POST' -and [string](Get-WsmTextMetadataValue $job.Record 'action' '') -ceq 'TargetRestore' -and [string](Get-WsmTextMetadataValue $job.Record 'status' '') -ceq 'Interrupted' -and (-not $job.Handle -or $job.Handle.IsCompleted)){
+                            $response=Stop-WsmHtmlInterruptedTargetRestore $Workspace $Role $jobs $job
+                        }
+                        else{
                         if($cancel -and $request.Method -ceq 'POST'){
                             if(-not $job.Handle -or $job.Handle.IsCompleted){throw 'Job has already stopped; inspect its authoritative journal before recovery.'}
                             if($job.Record.action -ceq 'DeveloperProbe' -and $job.CancellationToken){Request-WsmDeveloperProbeCancellation -CancellationToken $job.CancellationToken | Out-Null;$job.Record.Status='CancelRequested'}
                             elseif($job.CancellationToken){Request-WsmCancellation -Token $job.CancellationToken -Owner ([Environment]::UserName) -Evidence 'User requested cancellation from local HTML console' | Out-Null;$job.Record.Status='CancelRequested'}else{throw 'NoSafeCancellationBoundary'}
                         }
                         $response=ConvertTo-WsmHtmlPublicJobRecord $job.Record
+                        }
                     }
                     elseif($route -ceq '/api/spec-review' -and $request.Method -ceq 'GET'){
                         if($query.ContainsKey('contextId') -and $query.contextId -cne $contextId){$status=409;$response=New-WsmHtmlError 'The console context changed before this review was read.' 'stale_context' 'Refresh the current context and request the review again.'}
@@ -1189,6 +1351,7 @@ function Start-WsmHtmlConsole {
                                 else{
                                     $submissionGuard=Enter-WsmWorkspaceWorkerGuard -Workspace $Workspace -OperationId $body.operationId -Role $Role -PairId $PairId -Action $body.action
                                     try{
+                                    if($body.action -ceq 'TargetRestore'){[void](Invoke-WsmHtmlSupersedeStaleRestore $Workspace $PairId $jobs ([string]$body.args.PreviewHash) ([string]$body.operationId))}
                                     $record=[pscustomobject]@{jobId=$body.operationId;action=$body.action;idempotencyKey=[string]$body.idempotencyKey;RequestHash=$hash;Actor=(Get-WsmExecutionActor);workspace=$Workspace;pairId=$(if($body.action -ceq 'DeveloperProbe'){''}else{$PairId});role=$Role;sessionId=$sessionId;contextId=$contextId;startedRevision=$revision;startedDecisionRevision=$currentVector.decisionRevision;startedSelectionRevision=$currentVector.selectionRevision;startedDataVersion=$currentVector.dataVersion;status='Running';StartedUtc=(Get-WsmUtc);CompletedUtc=$null;canCancel=$false}
                                     if($body.action -ceq 'TargetRestore'){$record|Add-Member NoteProperty targetRestorePreviewHash ([string]$body.args.PreviewHash) -Force}
                                     $recordPath=Join-Path $consoleRoot ($body.operationId+'.json')

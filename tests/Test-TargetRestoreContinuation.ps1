@@ -216,6 +216,92 @@ try {
         Check ($durable -notmatch [regex]::Escape($sentinel)) 'The synthetic secret sentinel reached durable state or journal.'
         Check ($durable -match 'AssistiveRestoreContinuation') 'The continuation journal event was not written.'
 
+        # ---- E3b-2 core: one shared judgment, sticky cancel, read-only resume preview, newer restore over a stale parent ----
+        Set-Item Function:\Get-WsmWizardTargetPreviewHash -Value {param($Preview,$PairId,$PlanHash,$ManifestHash,$Generation,$ReceiptHash,$TargetSnapshotHash,$ComparisonHash,$ComparisonRevision,$SelectionRevision,$Decision)[string]$script:fixture.Projection.PreviewHash}
+        function AddWaitingChallenge($Fixture,$Paths){
+            $st=Get-WsmOperationState $Paths $Fixture.Package
+            $st|Add-Member NoteProperty AssistiveServiceChallenge ([pscustomobject]@{State='WaitingForInput';ParentOperationId=$Fixture.Parent;PairId=$Fixture.Pair;Role='Target';Actor='A';SessionId='S';ContextId='C';Revision=1;ManifestHash=$manifestHash;Generation=7;PreviewHash=$previewHash;RequiredSecretRefs=@('SecretX');Requirements=@([pscustomobject]@{SecretRef='SecretX';Kinds=@('Service');ItemIds=@('i');DisplayNames=@('d');ApprovedAccount='D\u'});ServiceReservations=@();CreatedUtc=(Get-WsmUtc);UpdatedUtc=(Get-WsmUtc)}) -Force
+            $st.Stage='WaitingForInput';$st.RestoreAttempt.Status='WaitingForInput';Add-WsmJournal $Paths $st 'AssistiveServiceCredentialChallengeWaiting' '' $st.AssistiveServiceChallenge
+        }
+        function FileHash([string]$path){(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}
+        function Restart($Fixture,[string]$NewOperationId,[string]$Hash,[object[]]$Jobs=@()){
+            $script:fixture=$Fixture
+            Invoke-WsmWizardTargetRestore -Workspace $root -PairId $Fixture.Pair -PreviewHash $Hash -Jobs $Jobs -OperationId $NewOperationId -CancellationToken ([pscustomobject]@{OperationId=$NewOperationId})
+        }
+
+        # shared judgment: exact hash, own-write drift, anything else is a changed review
+        ResetNative;$j1=NewFixture @('PoolA','PoolB');$pj1=NewInterruptedState $j1;$sj1=Get-WsmOperationState $pj1 $j1.Package
+        Check (Test-WsmWizardTargetRestorePreviewCurrent $sj1.RestoreAttempt $sj1 $j1.Projection) 'The shared judgment rejected an identical preview hash.'
+        $j1.Projection.PreviewHash=('1'*64)
+        Check (-not (Test-WsmWizardTargetRestorePreviewCurrent $sj1.RestoreAttempt $sj1 $j1.Projection)) 'The shared judgment accepted a different hash with no own-write explanation.'
+        $explained=NewFixture @('PoolA','PoolB') @{PoolA='MergeIntoExisting'};$pe=NewInterruptedState $explained -Owned @{PoolA=1};$se=Get-WsmOperationState $pe $explained.Package;$explained.Projection.PreviewHash=('2'*64)
+        Check (Test-WsmWizardTargetRestorePreviewCurrent $se.RestoreAttempt $se $explained.Projection) 'The shared judgment ignored the tolerance for rows this parent itself wrote.'
+
+        # read-only resume preview: no file changes at all
+        ResetNative;$j2=NewFixture @('PoolA','PoolB');$pj2=NewInterruptedState $j2 -Pending @{PoolA='NativeAbsent'};$script:fixture=$j2
+        $beforeState=FileHash $pj2.State;$beforeJournal=FileHash $pj2.Journal
+        $rp=Get-WsmWizardTargetRestoreResumePreview -Workspace $root -PairId $j2.Pair -ParentOperationId $j2.Parent
+        Check ((FileHash $pj2.State) -ceq $beforeState -and (FileHash $pj2.Journal) -ceq $beforeJournal) 'The resume preview wrote state or journal.'
+        Check ($rp.Resumable -and $rp.PreviewCurrent -and $rp.Reason -ceq 'Resumable' -and $rp.PendingCount -eq 1 -and $rp.PendingItems[0].itemId -ceq $j2.Ids['PoolA'] -and $rp.PendingItems[0].displayName -ceq 'PoolA' -and $rp.PendingItems[0].phase -ceq 'AssistiveAdapterCreating') 'The resume preview did not report the pending item with its name and phase.'
+        $j2.Projection.PreviewHash=('3'*64);$rp2=Get-WsmWizardTargetRestoreResumePreview -Workspace $root -PairId $j2.Pair -ParentOperationId $j2.Parent
+        Check ($rp2.Resumable -and -not $rp2.PreviewCurrent -and $rp2.Reason -ceq 'PreviewChanged') 'The resume preview did not flag a changed preview.'
+        Check (-not (Get-WsmWizardTargetRestoreResumePreview -Workspace $root -PairId $j2.Pair -ParentOperationId ([Guid]::NewGuid().ToString('D'))).Resumable) 'The resume preview accepted another parent id.'
+
+        # sticky cancel: attempt and challenge Cancelled, pending record and native object kept, never resumable afterwards
+        ResetNative;$j3=NewFixture @('PoolA','PoolB');$pj3=NewInterruptedState $j3 -Pending @{PoolA='NativeAppliedUnprovable'};AddWaitingChallenge $j3 $pj3
+        Reject {Stop-WsmWizardTargetRestoreParent -StateDirectory $pairsDirectory -PairId $j3.Pair -ParentOperationId $j3.Parent -Jobs @([pscustomobject]@{jobId=$j3.Parent;status='Running'})} 'A parent with a running worker was cancelled by the sticky cancel.'
+        $stopped=Stop-WsmWizardTargetRestoreParent -StateDirectory $pairsDirectory -PairId $j3.Pair -ParentOperationId $j3.Parent
+        $s3=StateOf $j3
+        Check ($stopped.Status -ceq 'Cancelled' -and [string]$s3.RestoreAttempt.Status -ceq 'Cancelled' -and [string]$s3.AssistiveServiceChallenge.State -ceq 'Cancelled' -and [string]$s3.Stage -ceq 'Cancelled') 'The sticky cancel did not mark attempt, challenge and stage Cancelled.'
+        Check (@($s3.PendingOperations).Count -eq 1 -and $script:native.ContainsKey('poola') -and $script:writes -eq 0) 'The sticky cancel removed a pending record or touched a native object.'
+        Check ((Get-Content -LiteralPath (Get-WsmOperationPaths $pairsDirectory $j3.Pair).Journal -Raw) -match 'AssistiveRestoreParentCancelled') 'The sticky cancel left no journal event.'
+        Reject {ResumeNow $j3} 'A cancelled parent accepted a continuation.'
+        Reject {Stop-WsmWizardTargetRestoreParent -StateDirectory $pairsDirectory -PairId $j3.Pair -ParentOperationId $j3.Parent} 'A cancelled parent was cancelled twice.'
+        Check (-not (Get-WsmWizardTargetRestoreResumePreview -Workspace $root -PairId $j3.Pair).Resumable) 'A cancelled parent still reported itself resumable.'
+
+        # contract 6, three cases. (a) changed preview: older parent revoked first, then the new restore runs
+        ResetNative;$k1=NewFixture @('PoolA','PoolB');$pk1=NewInterruptedState $k1;AddWaitingChallenge $k1 $pk1;$k1.Projection.PreviewHash=('4'*64);$newId=[Guid]::NewGuid().ToString('D')
+        $rk1=Restart $k1 $newId ('4'*64);$sk1=StateOf $k1
+        Check ($rk1.Status -ceq 'Succeeded' -and $script:writes -eq 2 -and [string]$sk1.RestoreAttempt.OperationId -ceq $newId) 'A changed preview did not let the new restore proceed after revoking the older parent.'
+        Check ([string]$sk1.AssistiveServiceChallenge.State -ceq 'Revoked' -and [string]$sk1.AssistiveServiceChallenge.RevokeReason -ceq 'SupersededByNewPreview') 'The older parent challenge was not revoked with the superseded reason.'
+        Check ((Get-Content -LiteralPath (Get-WsmOperationPaths $pairsDirectory $k1.Pair).Journal -Raw) -match ('AssistiveRestoreParentSuperseded.*'+$k1.Parent)) 'Superseding the older parent left no journal event naming it.'
+        # (b) unchanged preview: existing rule stays, nothing is revoked automatically
+        ResetNative;$k2=NewFixture @('PoolA','PoolB');$pk2=NewInterruptedState $k2;AddWaitingChallenge $k2 $pk2
+        Reject {Restart $k2 ([Guid]::NewGuid().ToString('D')) $previewHash} 'A new restore silently took over a waiting parent whose preview is unchanged.'
+        $sk2=StateOf $k2
+        Check ([string]$sk2.AssistiveServiceChallenge.State -ceq 'WaitingForInput' -and [string]$sk2.RestoreAttempt.Status -ceq 'WaitingForInput' -and $script:writes -eq 0) 'An unchanged-preview parent was revoked or written by a refused restore.'
+        # (c) older worker still alive: refused, nothing revoked
+        ResetNative;$k3=NewFixture @('PoolA','PoolB');$pk3=NewInterruptedState $k3;AddWaitingChallenge $k3 $pk3;$k3.Projection.PreviewHash=('5'*64)
+        Reject {Restart $k3 ([Guid]::NewGuid().ToString('D')) ('5'*64) @([pscustomobject]@{jobId=$k3.Parent;status='Running'})} 'A new restore started while the older parent worker was alive.'
+        $sk3=StateOf $k3
+        Check ([string]$sk3.AssistiveServiceChallenge.State -ceq 'WaitingForInput' -and [string]$sk3.RestoreAttempt.Status -ceq 'WaitingForInput' -and $script:writes -eq 0) 'A live older parent was revoked or written by a refused restore.'
+        # (d) unresolved native intent is never auto-revoked
+        ResetNative;$k4=NewFixture @('PoolA','PoolB');$pk4=NewInterruptedState $k4 -Pending @{PoolA='NativeAbsent'};$k4.Projection.PreviewHash=('6'*64)
+        $script:fixture=$k4
+        Check ((Invoke-WsmWizardSupersedeStaleTargetRestoreParent -Workspace $root -PairId $k4.Pair -OperationId ([Guid]::NewGuid().ToString('D')) -PreviewHash ('6'*64) -Projection $k4.Projection) -ceq '') 'A parent with an unresolved native intent was auto-revoked.'
+        Check ([string](StateOf $k4).RestoreAttempt.Status -ceq 'Running') 'The pending-intent parent changed state.'
+
+        # ---- CLI: an interrupted parent is resumed only after RESUME is typed ----
+        $originalCliPrompt=(Get-Command Read-WsmWizardValue -CommandType Function).ScriptBlock
+        try{
+            ResetNative;$c1=NewFixture @('PoolA','PoolB','SiteA','SiteB');[void](NewInterruptedState $c1);$script:fixture=$c1
+            Set-Item Function:\Read-WsmWizardValue -Value {param([string]$Label,[switch]$Optional)$script:cliPrompts++;'NO'};$script:cliPrompts=0
+            $declined=Invoke-WsmWizardTargetRestoreResumeFlow $root $pairsDirectory $c1.Package @()
+            Check ($declined.Status -ceq 'NotResumed' -and $declined.ParentOperationId -ceq $c1.Parent -and $declined.NoTargetWrites -and $script:cliPrompts -eq 1 -and $script:writes -eq 0 -and -not (StateOf $c1).RestoreAttempt.PSObject.Properties['Continuations']) 'A CLI answer other than RESUME resumed or changed the parent.'
+            Set-Item Function:\Read-WsmWizardValue -Value {param([string]$Label,[switch]$Optional)throw (New-Object IO.EndOfStreamException('Console input ended.'))}
+            $noInput=Invoke-WsmWizardTargetRestoreResumeFlow $root $pairsDirectory $c1.Package @()
+            Check ($noInput.Status -ceq 'InputUnavailable' -and $script:writes -eq 0) 'Unavailable CLI input did not return a recognizable non-success result.'
+            Set-Item Function:\Read-WsmWizardValue -Value {param([string]$Label,[switch]$Optional)throw 'Required value is blank.'}
+            Check ((Invoke-WsmWizardTargetRestoreResumeFlow $root $pairsDirectory $c1.Package @()).Status -ceq 'NotResumed') 'A blank CLI answer was not treated as no action.'
+            Set-Item Function:\Read-WsmWizardValue -Value {param([string]$Label,[switch]$Optional)'RESUME'}
+            $resumed=Invoke-WsmWizardTargetRestoreResumeFlow $root $pairsDirectory $c1.Package @()
+            Check ($resumed.Status -ceq 'Succeeded' -and $script:writes -eq 4 -and @((StateOf $c1).RestoreAttempt.Continuations).Count -eq 1) 'Typing RESUME did not continue the same parent through Resume-WsmWizardTargetRestore.'
+            # nothing to resume (terminal) or a preview that changed: the normal restore flow decides
+            Check ($null -eq (Invoke-WsmWizardTargetRestoreResumeFlow $root $pairsDirectory $c1.Package @())) 'A terminal parent was offered for resume.'
+            ResetNative;$c2=NewFixture @('PoolA');[void](NewInterruptedState $c2);$c2.Projection.PreviewHash=('8'*64);$script:fixture=$c2
+            Check ($null -eq (Invoke-WsmWizardTargetRestoreResumeFlow $root $pairsDirectory $c2.Package @())) 'A parent whose preview changed was offered for resume instead of a new restore.'
+        }finally{Set-Item Function:\Read-WsmWizardValue -Value $originalCliPrompt}
+
         Write-Host ('PASS: TargetRestore continuation core ('+$script:checks+' checks).')
     } $root
 } finally {

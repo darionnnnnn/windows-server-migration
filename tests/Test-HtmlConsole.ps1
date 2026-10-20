@@ -19,7 +19,8 @@ public class WsmHttpFixtureStream : System.IO.MemoryStream {
         if([IO.Directory]::Exists($full) -or [IO.File]::Exists($full)){$item=Get-Item -LiteralPath $full -Force;if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'Refusing cleanup of a reparse-point test root.'};if(-not $item.PSIsContainer){throw 'Refusing cleanup because the test root is not a directory.'}}
         return $full
     }
-    function Remove-WsmHtmlChallengeTestRoot([string]$Path,[string]$Prefix){$full=Assert-WsmHtmlChallengeTestRoot $Path $Prefix;if([IO.Directory]::Exists($full)){Remove-Item -LiteralPath $full -Recurse -Force}}
+    # 清理失敗（例如仍被 worker 鎖住）只發警告，不能蓋掉 finally 之前真正的斷言失敗。
+    function Remove-WsmHtmlChallengeTestRoot([string]$Path,[string]$Prefix){$full=Assert-WsmHtmlChallengeTestRoot $Path $Prefix;if([IO.Directory]::Exists($full)){try{Remove-Item -LiteralPath $full -Recurse -Force -ErrorAction Stop}catch{Write-Warning ('Test cleanup could not remove '+$full+': '+$_.Exception.GetType().Name)}}}
     $script:httpChecks=0
     function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:httpChecks++}
     function Reject([scriptblock]$Action,[string]$Message){$failed=$false;try{& $Action | Out-Null}catch{$failed=$true};Check $failed $Message}
@@ -284,5 +285,125 @@ public class WsmHttpFixtureStream : System.IO.MemoryStream {
     $waitingProjection=@(Get-WsmHtmlResultProjection @([pscustomobject]@{Status='WaitingForInput';ParentOperationId=$challengeParent;PreviewHash=$challengePreview;RequiredSecretRefs=@('ServiceSecretA');NoTargetWrites=$true;ResumeRequired=$true;ProductionVerified=$false;ServiceReservations=@([pscustomobject]@{ResourceKey='must-not-project'})}))
     $waitingJson=$waitingProjection|ConvertTo-Json -Depth 20 -Compress;$secretNeedle='must-not-project|'+[regex]::Escape($secretCanary);Check ($waitingProjection.Count -eq 1 -and $waitingProjection[0].Status -ceq 'WaitingForInput' -and $waitingProjection[0].ParentOperationId -ceq $challengeParent -and $waitingProjection[0].NoTargetWrites -eq $true -and $waitingProjection[0].ResumeRequired -eq $true -and $waitingJson -notmatch $secretNeedle) 'WaitingForInput safe projection leaked credentials/reservations or lost the explicit no-write challenge state.'
     $longRootError=Get-WsmHtmlSafeError 'WorkRoot initialization exceeds supported Windows PowerShell 5.1 path limits';Check ($longRootError.code -ceq 'workroot_path_too_long' -and $longRootError.nextStep -match 'shorter dedicated WorkRoot') 'Overlong WorkRoot did not expose actionable safe preflight guidance.'
+    # ---- E3b-2: explicit resume, resume preview, interrupted cancel, drift on secret reply, stale parent (stand-in worker; core files are real) ----
+    $resumeRoot=Join-Path ([IO.Path]::GetTempPath()) ('wsm-html-resume-'+[guid]::NewGuid().ToString('N'));[void](Assert-WsmHtmlChallengeTestRoot $resumeRoot 'wsm-html-resume-');if([IO.Directory]::Exists($resumeRoot) -or [IO.File]::Exists($resumeRoot)){throw 'Generated HTML resume test root unexpectedly already exists.'}
+    [void][IO.Directory]::CreateDirectory($resumeRoot);$resumeConsole=Join-Path $resumeRoot 'console-jobs';[void][IO.Directory]::CreateDirectory($resumeConsole)
+    $resumeOriginals=@{};foreach($mockName in @('Assert-WsmWizardTargetRole','Get-WsmWizardTargetPackage','Get-WsmWizardTargetRestoreProjection','Test-WsmMigrationPackage','Get-WsmHtmlChallengeActor','New-WsmHtmlTargetRestoreWorker','New-WsmHtmlTargetRestoreChallengeArguments')){$resumeOriginals[$mockName]=(Get-Command $mockName -CommandType Function).ScriptBlock}
+    try{
+        $resumePair=[guid]::NewGuid().ToString('D');$resumeSentinel='SYNTHETIC-RESUME-SENTINEL-7d21';$resumeHash=('a'*64)
+        $script:resumeWorkersCreated=0;$script:resumeLastCommand='';$script:resumeLastArguments=$null;$script:resumeNextOutput=@();$script:resumeLastWorker=$null;$script:resumeProjectionHash=$resumeHash
+        $script:newStubWorker={param($Output)$w=[pscustomobject]@{Begin=0;Disposed=0;Handle=$null;Output=@($Output)};$w|Add-Member ScriptMethod BeginInvoke {$this.Begin++;$this.Handle=[pscustomobject]@{IsCompleted=$false};$this.Handle};$w|Add-Member ScriptMethod EndInvoke {param($handle)@($this.Output)};$w|Add-Member ScriptMethod Dispose {$this.Disposed++};$w}
+        Set-Item Function:\Assert-WsmWizardTargetRole -Value {param([string]$Workspace,[string]$PairId)[pscustomobject]@{Received=[pscustomobject]@{SHA256=('c'*64)}}}
+        Set-Item Function:\Get-WsmWizardTargetPackage -Value {param([string]$Workspace,[string]$PairId,$Context,[object[]]$Jobs)[pscustomobject]@{Package=[pscustomobject]@{Manifest=[pscustomobject]@{DecisionRevision=12}};ManifestHash=('b'*64)}}
+        Set-Item Function:\Get-WsmWizardTargetRestoreProjection -Value {param($Workspace,$PairId,$Jobs,$GeneralHostEvidence)[pscustomobject]@{Status='Previewed';PreviewHash=$script:resumeProjectionHash;ManifestHash=('b'*64);ManifestPath='C:\fixture\manifest.json';Generation=4;ReceiptHash=('e'*64);TargetSnapshotHash=('f'*64);SelectedItemIds=@('fixture-item');PlanHash=('c'*64);Rows=@()}}
+        Set-Item Function:\Test-WsmMigrationPackage -Value {param($Path,$ExpectedHash)$null}
+        Set-Item Function:\Get-WsmHtmlChallengeActor -Value {'S-1-5-18@FIXTURE'}
+        Set-Item Function:\New-WsmHtmlTargetRestoreWorker -Value {param([string]$ModulePath,[string]$CommandName,$Arguments)$script:resumeWorkersCreated++;$script:resumeLastCommand=$CommandName;$script:resumeLastArguments=$Arguments;$w=& $script:newStubWorker $script:resumeNextOutput;$script:resumeLastWorker=$w;$w}
+        Set-Item Function:\New-WsmHtmlTargetRestoreChallengeArguments -Value {param($Workspace,$Record,$Jobs,$Secrets,$SessionId,$ContextId,$Takeover)@{Secrets=$Secrets;CancellationToken=[pscustomobject]@{OperationId=[string]$Record.jobId}}}
+        # A durable TargetRestore parent as a restart leaves it, with its console job record, imported through the real history loader.
+        $resumeJobs=@{};$resumeKeys=@{}
+        function NewResumeFixture([string]$AttemptStatus='Running',[string]$JobStatus='Running',[bool]$WithChallenge=$false,[string]$StateHash=$resumeHash){
+            $id=[guid]::NewGuid().ToString('D');$paths=Get-WsmOperationPaths (Join-Path $resumeRoot 'pairs') $resumePair
+            $attempt=[pscustomobject]@{OperationId=$id;Status=$AttemptStatus;ManifestHash=('b'*64);Generation=4;WizardPreviewHash=$StateHash;DecisionReceiptHash=('e'*64);TargetSnapshotHash=('f'*64);SelectedItemIds=@('fixture-item')}
+            $state=[pscustomobject]@{PairId=$resumePair;Stage=$AttemptStatus;RunId=[guid]::NewGuid().ToString();Sequence=0;ResultSequence=0;JournalHash=('0'*64);JournalSegment=0;PendingOperations=@();Items=@();RestoreAttempt=$attempt}
+            if($WithChallenge){$state|Add-Member NoteProperty AssistiveServiceChallenge ([pscustomobject]@{ParentOperationId=$id;PairId=$resumePair;Role='Target';Actor='S-1-5-18@FIXTURE';SessionId='fixture-session';ContextId='fixture-context';Revision=12;PreviewHash=$StateHash;ManifestHash=('b'*64);Generation=4;State='WaitingForInput';RequiredSecretRefs=@('ServiceSecretA');Requirements=@([pscustomobject]@{SecretRef='ServiceSecretA';Kinds=@('Service');ItemIds=@('fixture-item');DisplayNames=@('Fixture service');ApprovedAccount='CONTOSO\svc-app'});ServiceReservations=@();CreatedUtc=(Get-WsmUtc);UpdatedUtc=(Get-WsmUtc)}) -Force}
+            Write-WsmJson $paths.State $state
+            $record=[pscustomobject]@{jobId=$id;action='TargetRestore';idempotencyKey=[guid]::NewGuid().ToString('D');RequestHash=('d'*64);workspace=$resumeRoot;pairId=$resumePair;role='Target';sessionId='old-session';contextId='old-context';startedRevision=1;startedDecisionRevision=1;startedSelectionRevision=1;startedDataVersion='v';status=$JobStatus;StartedUtc=(Get-WsmUtc);CompletedUtc=$null;canCancel=($JobStatus -ceq 'Running');targetRestorePreviewHash=$StateHash}
+            Write-WsmJson (Join-Path $resumeConsole ($id+'.json')) $record
+            [pscustomobject]@{Id=$id;StatePath=$paths.State;JournalPath=$paths.Journal;JobPath=(Join-Path $resumeConsole ($id+'.json'))}
+        }
+        function ReloadResumeJobs(){$script:reloadGuard=Enter-WsmWorkspaceWorkerGuard -Workspace $resumeRoot -Action 'TestHistoryRecovery';try{$resumeJobs.Clear();$resumeKeys.Clear();Import-WsmHtmlJobHistory $resumeConsole $resumeJobs $resumeKeys -RecoveryGuard $script:reloadGuard}finally{Exit-WsmWorkspaceWorkerGuard $script:reloadGuard}}
+        function ResumeCall([string]$Id,[string]$Body){$out=@{Status=202;Response=$null};Invoke-WsmHtmlResumeRequest -Workspace $resumeRoot -PairId $resumePair -Role 'Target' -Jobs $resumeJobs -JobId $Id -BodyText $Body -SessionId 'new-session' -ContextId 'new-context' -ModulePath 'C:\fixture\module.psd1' -Out $out;$out}
+        function ResumeBody([string]$Cid,$Confirm=$true){(([ordered]@{continuationId=$Cid;confirm=$Confirm})|ConvertTo-Json -Compress)}
+
+        $fxA=NewResumeFixture
+        # another job of the same pair (the durable attempt is not its own) and a finished job
+        $otherId=[guid]::NewGuid().ToString('D');$doneId=[guid]::NewGuid().ToString('D')
+        foreach($extra in @(@($otherId,'Running'),@($doneId,'Succeeded'))){$extraRecord=Read-WsmJson $fxA.JobPath;$extraRecord.jobId=$extra[0];$extraRecord.idempotencyKey=[guid]::NewGuid().ToString('D');$extraRecord.status=$extra[1];$extraRecord.canCancel=$false;Write-WsmJson (Join-Path $resumeConsole ($extra[0]+'.json')) $extraRecord}
+        ReloadResumeJobs
+        $idA=$fxA.Id
+        Check ($resumeJobs[$idA].Record.status -ceq 'Interrupted' -and $resumeJobs[$idA].Record.resumable -eq $true -and -not $resumeJobs[$idA].Record.canCancel) 'A restarted Interrupted TargetRestore with a non-terminal attempt of its own did not project resumable=true.'
+        Check ($resumeJobs[$otherId].Record.resumable -eq $false -and $resumeJobs[$doneId].Record.status -ceq 'Succeeded') 'A job whose durable attempt belongs to another job was projected as resumable.'
+        # contract 2: the preview is read-only
+        $stateHashBefore=(Get-FileHash -LiteralPath $fxA.StatePath).Hash;$jobHashBefore=(Get-FileHash -LiteralPath $fxA.JobPath).Hash
+        $resumePreview=Get-WsmHtmlResumePreview $resumeRoot $resumeJobs[$idA] $resumeJobs
+        Check ($resumePreview.resumable -and $resumePreview.previewCurrent -and $resumePreview.reason -ceq 'Resumable' -and @($resumePreview.pendingItems).Count -eq 0 -and $resumePreview.challengeState -ceq '' -and @($resumePreview.credentialRequirements).Count -eq 0) 'The resume preview projection lost its fields.'
+        $script:resumeProjectionHash=('9'*64);$changedPreview=Get-WsmHtmlResumePreview $resumeRoot $resumeJobs[$idA] $resumeJobs;$script:resumeProjectionHash=$resumeHash
+        Check ($changedPreview.resumable -and -not $changedPreview.previewCurrent) 'The resume preview did not report a changed current preview.'
+        Check ((Get-FileHash -LiteralPath $fxA.StatePath).Hash -ceq $stateHashBefore -and (Get-FileHash -LiteralPath $fxA.JobPath).Hash -ceq $jobHashBefore -and -not (Test-Path -LiteralPath $fxA.JournalPath)) 'The resume preview changed the state file, job file or journal.'
+        # contract 3: whitelist and confirmation
+        $cid1=[guid]::NewGuid().ToString('D')
+        Reject {ResumeCall $idA ('{"continuationId":"'+$cid1+'","confirm":true,"extra":1}')} 'Resume accepted an extra field.'
+        Reject {ResumeCall $idA (ResumeBody $cid1 $false)} 'Resume accepted confirm=false.'
+        Reject {ResumeCall $idA ('{"continuationId":"'+$cid1+'","confirm":"true"}')} 'Resume accepted a string confirm.'
+        Reject {ResumeCall $idA (ResumeBody 'not-a-guid')} 'Resume accepted a non-GUID continuationId.'
+        Reject {ResumeCall $idA ('{"confirm":true}')} 'Resume accepted a body without continuationId.'
+        Reject {ResumeCall $doneId (ResumeBody $cid1)} 'Resume accepted a job that is not Interrupted.'
+        Check ($script:resumeWorkersCreated -eq 0 -and $resumeJobs[$idA].Record.status -ceq 'Interrupted') 'A rejected resume created a worker or changed the job.'
+        $started=ResumeCall $idA (ResumeBody $cid1)
+        Check ($started.Status -eq 202 -and $started.Response.job.jobId -ceq $idA -and $resumeJobs[$idA].Record.status -ceq 'Running' -and $null -eq $resumeJobs[$idA].Record.CompletedUtc -and $script:resumeWorkersCreated -eq 1 -and $script:resumeLastWorker.Begin -eq 1 -and $script:resumeLastCommand -ceq 'Resume-WsmWizardTargetRestore') 'Resume did not start exactly one worker on the same job and set it Running.'
+        Check ($script:resumeLastArguments.ParentOperationId -ceq $idA -and $script:resumeLastArguments.ContinuationId -ceq $cid1 -and $script:resumeLastArguments.Secrets.Count -eq 0 -and $script:resumeLastArguments.ChallengeContext.OperationId -ceq $idA -and $script:resumeLastArguments.ChallengeContext.SessionId -ceq 'new-session') 'The worker request was not bound to the same parent, the new continuation and the current session.'
+        $persisted=Read-WsmJson $fxA.JobPath
+        Check ($persisted.status -ceq 'Running' -and @($persisted.continuations).Count -eq 1 -and $persisted.continuations[0].continuationId -ceq $cid1 -and $persisted.resumable -eq $false) 'The durable job record did not note the continuation.'
+        $replayed=ResumeCall $idA (ResumeBody $cid1)
+        Check ($replayed.Status -eq 202 -and $replayed.Response.job.jobId -ceq $idA -and $script:resumeWorkersCreated -eq 1 -and $script:resumeLastWorker.Begin -eq 1 -and @($resumeJobs[$idA].Record.continuations).Count -eq 1) 'Resending the same continuationId started a second worker or recorded a second continuation.'
+        $second=ResumeCall $idA (ResumeBody ([guid]::NewGuid().ToString('D')))
+        Check ($second.Status -eq 409 -and $second.Response.code -ceq 'active_operation' -and $script:resumeWorkersCreated -eq 1) 'A different continuationId was not refused with 409 while the worker was alive.'
+        # contract 4: NeedsNewPreview ends the job as ReviewRequired and never resumable
+        $resumeJobs[$idA].Handle.IsCompleted=$true;$script:resumeLastWorker.Output=@([pscustomobject]@{Status='NeedsNewPreview';PairId=$resumePair;ParentOperationId=$idA;Reason='PreviewChanged';NoTargetWrites=$true})
+        Complete-WsmHtmlFinishedJob $resumeJobs[$idA] $resumeRoot $resumeJobs (Join-Path $resumeRoot 'errors')
+        $afterNew=Read-WsmJson $fxA.JobPath
+        Check ($resumeJobs[$idA].Record.status -ceq 'ReviewRequired' -and $resumeJobs[$idA].Record.reason -ceq 'PreviewChanged' -and $resumeJobs[$idA].Record.resumable -eq $false -and $afterNew.status -ceq 'ReviewRequired' -and $afterNew.reason -ceq 'PreviewChanged' -and $afterNew.continuations[0].status -ceq 'ReviewRequired' -and $null -ne $resumeJobs[$idA].Record.CompletedUtc) 'NeedsNewPreview did not end the job as ReviewRequired (PreviewChanged, not resumable).'
+        $guardAfter=Enter-WsmWorkspaceWorkerGuard -Workspace $resumeRoot -Action 'TargetRestore';Exit-WsmWorkspaceWorkerGuard $guardAfter
+        # a WaitingForInput output keeps the same job and asks for the credentials; Succeeded takes the normal completion
+        $fxWait=NewResumeFixture;ReloadResumeJobs;$script:resumeNextOutput=@([pscustomobject]@{Status='WaitingForInput';PairId=$resumePair;ParentOperationId=$fxWait.Id;PreviewHash=$resumeHash;RequiredSecretRefs=@('ServiceSecretA');CredentialRequirements=@([pscustomobject]@{SecretRef='ServiceSecretA';Kinds=@('Service');ItemIds=@('fixture-item');DisplayNames=@('Fixture service');ApprovedAccount='CONTOSO\svc-app'});NoTargetWrites=$true;ResumeRequired=$true;ProductionVerified=$false})
+        [void](ResumeCall $fxWait.Id (ResumeBody ([guid]::NewGuid().ToString('D'))));$resumeJobs[$fxWait.Id].Handle.IsCompleted=$true
+        Complete-WsmHtmlFinishedJob $resumeJobs[$fxWait.Id] $resumeRoot $resumeJobs (Join-Path $resumeRoot 'errors')
+        Check ($resumeJobs[$fxWait.Id].Record.status -ceq 'WaitingForInput' -and $null -eq $resumeJobs[$fxWait.Id].Record.CompletedUtc -and $resumeJobs[$fxWait.Id].Record.requiredSecretRefs[0] -ceq 'ServiceSecretA' -and $resumeJobs[$fxWait.Id].Record.credentialRequirements[0].SecretRef -ceq 'ServiceSecretA') 'A WaitingForInput continuation output did not keep the same job waiting with its credential requirements.'
+        $fxOk=NewResumeFixture;ReloadResumeJobs;$script:resumeNextOutput=@([pscustomobject]@{Status='Succeeded';Stage='Succeeded';PairId=$resumePair})
+        [void](ResumeCall $fxOk.Id (ResumeBody ([guid]::NewGuid().ToString('D'))));$resumeJobs[$fxOk.Id].Handle.IsCompleted=$true
+        Complete-WsmHtmlFinishedJob $resumeJobs[$fxOk.Id] $resumeRoot $resumeJobs (Join-Path $resumeRoot 'errors')
+        Check ($resumeJobs[$fxOk.Id].Record.status -ceq 'Succeeded' -and $null -ne $resumeJobs[$fxOk.Id].Record.CompletedUtc) 'A Succeeded continuation output did not take the normal completion.'
+        # contract 7: cancel an Interrupted parent; resume and secret reply are refused afterwards
+        $fxCancel=NewResumeFixture;ReloadResumeJobs;$cancelJob=$resumeJobs[$fxCancel.Id]
+        Check ($cancelJob.Record.status -ceq 'Interrupted' -and $cancelJob.Record.resumable) 'The cancel fixture was not an Interrupted resumable parent.'
+        $workersBeforeCancel=$script:resumeWorkersCreated
+        $cancelled=Stop-WsmHtmlInterruptedTargetRestore $resumeRoot 'Target' $resumeJobs $cancelJob
+        $cancelState=Read-WsmJson $fxCancel.StatePath;$cancelDurable=Read-WsmJson $fxCancel.JobPath
+        Check ($cancelled.status -ceq 'Cancelled' -and $cancelJob.Record.status -ceq 'Cancelled' -and $cancelJob.Record.resumable -eq $false -and $cancelDurable.status -ceq 'Cancelled' -and [string]$cancelState.RestoreAttempt.Status -ceq 'Cancelled' -and [string]$cancelState.Stage -ceq 'Cancelled') 'Cancelling an Interrupted parent did not make job and durable attempt Cancelled.'
+        Reject {ResumeCall $fxCancel.Id (ResumeBody ([guid]::NewGuid().ToString('D')))} 'A cancelled parent accepted a resume.'
+        $cancelReply=@{Status=202;Response=$null;SafeError=$null}
+        Reject {Submit-WsmHtmlServiceCredentials -Workspace $resumeRoot -PairId $resumePair -Role 'Target' -Jobs $resumeJobs -JobId $fxCancel.Id -Request ([pscustomobject]@{Headers=@{'content-type'='application/json'};Body='{"credentials":{}}'}) -SessionId 's' -ContextId 'c' -ModulePath 'M' -Out $cancelReply} 'A cancelled parent accepted a secret reply.'
+        Reject {Stop-WsmHtmlInterruptedTargetRestore $resumeRoot 'Target' $resumeJobs $cancelJob} 'A cancelled parent was cancelled twice.'
+        Check ($script:resumeWorkersCreated -eq $workersBeforeCancel) 'Cancelling or refusing after cancel created a worker.'
+        # contract 5: secret reply after the preview changed
+        $fxDrift=NewResumeFixture 'WaitingForInput' 'WaitingForInput' $true;ReloadResumeJobs;$driftJob=$resumeJobs[$fxDrift.Id]
+        Check ($driftJob.Record.status -ceq 'WaitingForInput') 'The drift fixture was not waiting for credentials.'
+        $driftBody='{"credentials":{"ServiceSecretA":{"username":"CONTOSO\\svc-app","password":"'+$resumeSentinel+'"}}}'
+        $driftRequest=[pscustomobject]@{Headers=@{'content-type'='application/json'};Body=$driftBody}
+        $script:resumeProjectionHash=('8'*64);$workersBeforeDrift=$script:resumeWorkersCreated;$driftReply=@{Status=202;Response=$null;SafeError=$null}
+        Submit-WsmHtmlServiceCredentials -Workspace $resumeRoot -PairId $resumePair -Role 'Target' -Jobs $resumeJobs -JobId $fxDrift.Id -Request $driftRequest -SessionId 'fixture-session' -ContextId 'fixture-context' -ModulePath 'M' -Out $driftReply
+        $driftState=Read-WsmJson $fxDrift.StatePath;$driftJobFile=Read-WsmJson $fxDrift.JobPath
+        Check ($driftReply.Status -eq 409 -and $driftReply.Response.code -ceq 'challenge_revoked_preview_changed' -and $script:resumeWorkersCreated -eq $workersBeforeDrift) 'A secret reply after a preview change was not refused with 409 challenge_revoked_preview_changed or started a worker.'
+        Check ($driftJob.Record.status -ceq 'Cancelled' -and $driftJob.Record.reason -ceq 'PreviewChanged' -and $driftJobFile.status -ceq 'Cancelled' -and [string]$driftState.AssistiveServiceChallenge.State -ceq 'Revoked' -and [string]$driftState.RestoreAttempt.Status -ceq 'Superseded') 'The drifted secret reply did not revoke the challenge, supersede the attempt and cancel the job.'
+        $driftDurable=[IO.File]::ReadAllText($fxDrift.StatePath)+[IO.File]::ReadAllText($fxDrift.JournalPath)+[IO.File]::ReadAllText($fxDrift.JobPath)+($driftReply|ConvertTo-Json -Depth 8)
+        Check ($driftDurable -notmatch [regex]::Escape($resumeSentinel) -and $driftRequest.Body -ceq '') 'The synthetic secret reached the job record, state, journal or response, or the request body was not cleared.'
+        # the same reply with an unchanged preview still starts the worker (the extraction kept the old behaviour)
+        $fxSame=NewResumeFixture 'WaitingForInput' 'WaitingForInput' $true;ReloadResumeJobs;$script:resumeProjectionHash=$resumeHash;$sameReply=@{Status=202;Response=$null;SafeError=$null}
+        Submit-WsmHtmlServiceCredentials -Workspace $resumeRoot -PairId $resumePair -Role 'Target' -Jobs $resumeJobs -JobId $fxSame.Id -Request ([pscustomobject]@{Headers=@{'content-type'='application/json'};Body=$driftBody}) -SessionId 'fixture-session' -ContextId 'fixture-context' -ModulePath 'M' -Out $sameReply
+        Check ($sameReply.Status -eq 202 -and $script:resumeWorkersCreated -eq $workersBeforeDrift+1 -and $resumeJobs[$fxSame.Id].Record.status -ceq 'Running' -and $script:resumeLastCommand -ceq 'Invoke-WsmWizardTargetRestore') 'A secret reply with an unchanged preview no longer started its worker.'
+        Clear-WsmHtmlCredentialJobRuntime $resumeJobs[$fxSame.Id]
+        # contract 6 (HTML side): a newer restore retires an older parent whose preview is gone; a live older worker refuses it
+        $fxOld=NewResumeFixture 'WaitingForInput' 'WaitingForInput' $true;ReloadResumeJobs;$script:resumeProjectionHash=('7'*64)
+        $superseded=Invoke-WsmHtmlSupersedeStaleRestore $resumeRoot $resumePair $resumeJobs ('7'*64) ([guid]::NewGuid().ToString('D'))
+        $oldState=Read-WsmJson $fxOld.StatePath
+        Check ($superseded -ceq $fxOld.Id -and $resumeJobs[$fxOld.Id].Record.status -ceq 'Cancelled' -and $resumeJobs[$fxOld.Id].Record.reason -ceq 'Superseded' -and [string]$oldState.AssistiveServiceChallenge.State -ceq 'Revoked' -and [string]$oldState.RestoreAttempt.Status -ceq 'Superseded') 'The older parent was not revoked in the core and retired as Cancelled/Superseded.'
+        $fxLive=NewResumeFixture 'Running' 'Running';$resumeJobs[$fxLive.Id]=@{Record=([pscustomobject]@{jobId=$fxLive.Id;action='TargetRestore';workspace=$resumeRoot;pairId=$resumePair;role='Target';status='Running'});Path=$fxLive.JobPath;Handle=[pscustomobject]@{IsCompleted=$false};PowerShell=$null}
+        Reject {Invoke-WsmHtmlSupersedeStaleRestore $resumeRoot $resumePair $resumeJobs ('7'*64) ([guid]::NewGuid().ToString('D'))} 'A newer restore was accepted while the older parent worker was alive.'
+        Check ([string](Read-WsmJson $fxLive.StatePath).RestoreAttempt.Status -ceq 'Running') 'A refused newer restore changed the live older parent.'
+    }finally{
+        foreach($mockName in $resumeOriginals.Keys){Set-Item ('Function:\'+$mockName) -Value $resumeOriginals[$mockName]}
+        Remove-WsmHtmlChallengeTestRoot $resumeRoot 'wsm-html-resume-'
+    }
     Write-Host ('PASS: '+$script:httpChecks+' native HTTP parser/writer and typed action checks; live browser transport is independently probed.')
 }

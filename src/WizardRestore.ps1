@@ -231,6 +231,8 @@ function Invoke-WsmWizardTargetRestore {
     $package=Test-WsmMigrationPackage $projection.ManifestPath $projection.ManifestHash
     $stateDirectory=Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs'
     $paths=Get-WsmOperationPaths $stateDirectory $PairId;$state=Get-WsmOperationState $paths $package
+    # A new restore after the choices or installed software changed must not be stuck behind an older parent whose reviewed preview is gone.
+    if(Invoke-WsmWizardSupersedeStaleTargetRestoreParent -Workspace $Workspace -PairId $PairId -OperationId $OperationId -PreviewHash $PreviewHash -Jobs $Jobs -GeneralHostEvidence $GeneralHostEvidence -Projection $projection -Package $package){$state=Get-WsmOperationState $paths $package}
     $waitingChallengeResume=$false
     if($state.PSObject.Properties['AssistiveServiceChallenge'] -and [string]$state.AssistiveServiceChallenge.State -ceq 'WaitingForInput'){
         $challenge=$state.AssistiveServiceChallenge;$attempt=$null;if($state.PSObject.Properties['RestoreAttempt']){$attempt=$state.RestoreAttempt}
@@ -309,6 +311,123 @@ function Set-WsmWizardContinuationResult($Paths,$Package,[string]$ParentOperatio
     }
 }
 
+function Test-WsmWizardTargetRestorePreviewCurrent($Attempt,$State,$Projection) {
+    # The one judgment of "the reviewed preview of this parent is still the current preview": exact hash, or a difference
+    # that only this parent's own native work explains. Resume, the HTML secret reply, the CLI prompt and a new restore all use it.
+    if(-not $Attempt -or -not $Attempt.PSObject.Properties['WizardPreviewHash']){return $false}
+    $stored=[string]$Attempt.WizardPreviewHash;if($stored -notmatch '^[a-f0-9]{64}$'){return $false}
+    if(-not $Projection -or [string]$Projection.Status -cne 'Previewed'){return $false}
+    if([string]$Projection.PreviewHash -ieq $stored){return $true}
+    [bool](Test-WsmWizardContinuationDriftExplained $Attempt $State $Projection)
+}
+
+function Revoke-WsmWizardTargetRestoreParent {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$StateDirectory,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ParentOperationId,[string]$Reason='PreviewChanged',$Package=$null,[string]$ContinuationId='',$ContinuationResult=$null,[string]$Actor='',[string]$SessionId='')
+    # Reviewed context changed: revoke the challenge, supersede the parent and release its Service reservations. No native write happens
+    # and no pending intent is touched. Shared by Resume, the HTML secret reply and a new restore over a stale parent.
+    Assert-WsmId $PairId;Assert-WsmId $ParentOperationId
+    $paths=Get-WsmOperationPaths $StateDirectory $PairId
+    Invoke-WsmLocked $paths.Root {
+        $current=if($Package){Get-WsmOperationState $paths $Package}else{Read-WsmJson $paths.State}
+        if(-not $current.PSObject.Properties['RestoreAttempt'] -or -not $current.RestoreAttempt -or [string]$current.RestoreAttempt.OperationId -cne $ParentOperationId){throw 'The TargetRestore parent changed while it was being superseded.'}
+        $currentAttempt=$current.RestoreAttempt
+        if([string]$currentAttempt.Status -cnotin @('Running','WaitingForInput')){throw 'The TargetRestore parent is no longer active and cannot be superseded.'}
+        if($current.PSObject.Properties['AssistiveServiceChallenge'] -and $current.AssistiveServiceChallenge){
+            $currentChallenge=$current.AssistiveServiceChallenge
+            if([string]$currentChallenge.State -cin @('WaitingForInput','Running')){
+                if(-not @($current.PendingOperations).Count){foreach($reservation in @($currentChallenge.ServiceReservations)){Revoke-WsmAssistiveServiceChallengeReservation -Workspace $StateDirectory -ResourceKey ([string]$reservation.ResourceKey) -PairId $PairId -ItemId ([string]$reservation.ItemId) -OperationId $ParentOperationId -Created ([bool]$reservation.Created) | Out-Null}}
+                $currentChallenge.State='Revoked';$currentChallenge|Add-Member NoteProperty RevokeReason $Reason -Force;$currentChallenge.UpdatedUtc=Get-WsmUtc
+            }
+        }
+        $currentAttempt|Add-Member NoteProperty Status 'Superseded' -Force;$currentAttempt|Add-Member NoteProperty SupersededUtc (Get-WsmUtc) -Force;$current.Stage='Superseded'
+        if($ContinuationId){
+            $records=@();if($currentAttempt.PSObject.Properties['Continuations']){$records=@($currentAttempt.Continuations)}
+            $currentAttempt|Add-Member NoteProperty Continuations (@($records)+@([pscustomobject][ordered]@{ContinuationId=$ContinuationId;StartedUtc=(Get-WsmUtc);Actor=$Actor;SessionId=$SessionId;Result=$ContinuationResult})) -Force
+            Add-WsmJournal $paths $current 'AssistiveRestoreContinuation' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;ContinuationId=$ContinuationId;Phase='Superseded';Reason=$Reason})
+        }else{
+            Add-WsmJournal $paths $current 'AssistiveRestoreParentSuperseded' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;Reason=$Reason})
+        }
+    }
+}
+
+function Stop-WsmWizardTargetRestoreParent {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$StateDirectory,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ParentOperationId,[object[]]$Jobs=@())
+    # Sticky cancel of an interrupted (or still waiting) parent with no live worker: attempt and challenge become Cancelled and the
+    # Service reservations are released. Native objects already written and the pending records are kept untouched for later review.
+    Assert-WsmId $PairId;Assert-WsmId $ParentOperationId
+    foreach($job in @($Jobs)){if($job -and $job.PSObject.Properties['jobId'] -and [string]$job.jobId -ceq $ParentOperationId -and $job.PSObject.Properties['status'] -and [string]$job.status -cin @('Running','CancelRequested')){throw 'The TargetRestore parent still has a running worker; request a safe cancellation instead.'}}
+    $paths=Get-WsmOperationPaths $StateDirectory $PairId
+    Invoke-WsmLocked $paths.Root {
+        $current=Read-WsmJson $paths.State
+        if($current.PairId -cne $PairId -or -not $current.PSObject.Properties['RestoreAttempt'] -or -not $current.RestoreAttempt -or [string]$current.RestoreAttempt.OperationId -cne $ParentOperationId){throw 'No durable TargetRestore parent matches the requested ParentOperationId.'}
+        $currentAttempt=$current.RestoreAttempt
+        if([string]$currentAttempt.Status -cnotin @('Running','WaitingForInput')){throw ('The TargetRestore parent already reached a terminal state ('+[string]$currentAttempt.Status+') and cannot be cancelled again.')}
+        $pendingCount=@($current.PendingOperations).Count
+        if($current.PSObject.Properties['AssistiveServiceChallenge'] -and $current.AssistiveServiceChallenge){
+            $currentChallenge=$current.AssistiveServiceChallenge
+            if([string]$currentChallenge.State -cin @('WaitingForInput','Running')){
+                if(-not $pendingCount){foreach($reservation in @($currentChallenge.ServiceReservations)){Revoke-WsmAssistiveServiceChallengeReservation -Workspace $StateDirectory -ResourceKey ([string]$reservation.ResourceKey) -PairId $PairId -ItemId ([string]$reservation.ItemId) -OperationId $ParentOperationId -Created ([bool]$reservation.Created) | Out-Null}}
+                $currentChallenge.State='Cancelled';$currentChallenge|Add-Member NoteProperty CancelReason 'Operator cancelled interrupted TargetRestore parent' -Force;$currentChallenge.UpdatedUtc=Get-WsmUtc
+            }
+        }
+        $currentAttempt|Add-Member NoteProperty Status 'Cancelled' -Force;$currentAttempt|Add-Member NoteProperty CancelledUtc (Get-WsmUtc) -Force;$current.Stage='Cancelled'
+        Add-WsmJournal $paths $current 'AssistiveRestoreParentCancelled' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;PendingOperationCount=$pendingCount})
+        [pscustomobject][ordered]@{Status='Cancelled';PairId=$PairId;ParentOperationId=$ParentOperationId;PendingOperationCount=$pendingCount;NoTargetWrites=$true;ProductionVerified=$false}
+    }
+}
+
+function Invoke-WsmWizardSupersedeStaleTargetRestoreParent {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[string]$OperationId='',[string]$PreviewHash='',[object[]]$Jobs=@(),[object[]]$GeneralHostEvidence=@(),$Projection=$null,$Package=$null)
+    # Starting a new TargetRestore after the choices or the installed software changed: an older non-terminal parent whose reviewed
+    # preview is no longer current is revoked first (returns its id). A live worker refuses; an unchanged preview, an unresolved native
+    # intent or an unjudgeable preview keeps the existing rules (resume or explicit takeover, never an automatic revoke).
+    Assert-WsmId $PairId
+    $stateDirectory=Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs';$statePath=Join-Path (Join-Path $stateDirectory $PairId) 'state.json'
+    if(-not [IO.File]::Exists($statePath)){return ''}
+    $state=Read-WsmJson $statePath
+    if(-not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.RestoreAttempt){return ''}
+    $attempt=$state.RestoreAttempt;$oldId=[string]$attempt.OperationId
+    if(-not $oldId -or $oldId -ceq $OperationId -or [string]$attempt.Status -cnotin @('Running','WaitingForInput') -or [string]$state.Stage -cnotin @('Running','WaitingForInput')){return ''}
+    foreach($job in @($Jobs)){if($job -and $job.PSObject.Properties['jobId'] -and [string]$job.jobId -ceq $oldId -and $job.PSObject.Properties['status'] -and [string]$job.status -cin @('Running','CancelRequested')){throw 'An earlier TargetRestore parent still has a running worker; wait for it or request its safe cancellation before starting another restore.'}}
+    if(-not $Projection){$Projection=Get-WsmWizardTargetRestoreProjection -Workspace $Workspace -PairId $PairId -Jobs $Jobs -GeneralHostEvidence $GeneralHostEvidence}
+    if([string]$Projection.Status -cne 'Previewed'){return ''}
+    if($PreviewHash -and [string]$Projection.PreviewHash -ine $PreviewHash){return ''}
+    if(Test-WsmWizardTargetRestorePreviewCurrent $attempt $state $Projection){return ''}
+    if(@($state.PendingOperations).Count){return ''}
+    if(-not $Package){$Package=Test-WsmMigrationPackage $Projection.ManifestPath $Projection.ManifestHash}
+    Revoke-WsmWizardTargetRestoreParent -StateDirectory $stateDirectory -PairId $PairId -ParentOperationId $oldId -Reason 'SupersededByNewPreview' -Package $Package
+    $oldId
+}
+
+function Get-WsmWizardTargetRestoreResumePreview {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[string]$ParentOperationId='',[object[]]$Jobs=@(),[object[]]$GeneralHostEvidence=@())
+    # Read-only: never writes a file, takes a lock or changes an owner. Carries no secret.
+    Assert-WsmId $PairId
+    $result=[ordered]@{Resumable=$false;Reason='NoParent';PreviewCurrent=$false;PendingItems=@();PendingCount=0;ChallengeState='';CredentialRequirements=@();ParentOperationId='';PreviewHash=''}
+    $statePath=Join-Path (Join-Path (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs') $PairId) 'state.json'
+    if(-not [IO.File]::Exists($statePath)){return [pscustomobject]$result}
+    Assert-WsmNoReparse $statePath
+    $state=Read-WsmJson $statePath
+    if(-not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.RestoreAttempt){return [pscustomobject]$result}
+    $attempt=$state.RestoreAttempt;$result.ParentOperationId=[string]$attempt.OperationId;if($attempt.PSObject.Properties['WizardPreviewHash']){$result.PreviewHash=[string]$attempt.WizardPreviewHash}
+    if($ParentOperationId -and [string]$attempt.OperationId -cne $ParentOperationId){$result.Reason='ParentMismatch';return [pscustomobject]$result}
+    $challenge=$null;if($state.PSObject.Properties['AssistiveServiceChallenge'] -and $state.AssistiveServiceChallenge){$challenge=$state.AssistiveServiceChallenge;$result.ChallengeState=[string]$challenge.State;if($challenge.PSObject.Properties['Requirements']){$result.CredentialRequirements=@($challenge.Requirements)}}
+    $attemptStatus=[string]$attempt.Status
+    if($attemptStatus -ceq 'Superseded' -or [string]$state.Stage -ceq 'Superseded' -or $result.ChallengeState -ceq 'Revoked'){$result.Reason='Superseded';return [pscustomobject]$result}
+    if($attemptStatus -ceq 'Cancelled' -or [string]$state.Stage -ceq 'Cancelled' -or $result.ChallengeState -ceq 'Cancelled'){$result.Reason='Cancelled';return [pscustomobject]$result}
+    if($attemptStatus -cnotin @('Running','WaitingForInput') -or [string]$state.Stage -cnotin @('Running','WaitingForInput')){$result.Reason='Terminal';return [pscustomobject]$result}
+    $pending=@($state.PendingOperations);$result.PendingCount=$pending.Count
+    $names=@{}
+    $projection=$null;try{$projection=Get-WsmWizardTargetRestoreProjection -Workspace $Workspace -PairId $PairId -Jobs $Jobs -GeneralHostEvidence $GeneralHostEvidence}catch{$projection=$null}
+    if($projection -and [string]$projection.Status -ceq 'Previewed'){try{$package=Test-WsmMigrationPackage $projection.ManifestPath $projection.ManifestHash;foreach($item in @($package.Plan.Items)){$names[[string]$item.ItemId]=[string]$item.Name}}catch{}}
+    $result.PendingItems=@(foreach($op in $pending){$itemId=[string]$op.ItemId;$phase='';if($op.PSObject.Properties['Phase']){$phase=[string]$op.Phase};[pscustomobject][ordered]@{itemId=$itemId;displayName=$(if($names.ContainsKey($itemId)){$names[$itemId]}else{$itemId});phase=$phase}})
+    $result.Resumable=$true;$result.Reason='Resumable'
+    if(-not $projection -or [string]$projection.Status -cne 'Previewed'){$result.Reason='PreviewUnavailable'}
+    elseif(Test-WsmWizardTargetRestorePreviewCurrent $attempt $state $projection){$result.PreviewCurrent=$true}
+    else{$result.Reason='PreviewChanged'}
+    [pscustomobject]$result
+}
+
 function Resume-WsmWizardTargetRestore {
     [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ParentOperationId,[Parameter(Mandatory)][string]$ContinuationId,[object[]]$Jobs=@(),$CancellationToken=$null,[hashtable]$Secrets=@{},[object[]]$GeneralHostEvidence=@(),[object]$ChallengeContext=$null)
     # Explicit continuation of one interrupted or still-waiting TargetRestore parent. A restart never resumes by itself.
@@ -334,26 +453,12 @@ function Resume-WsmWizardTargetRestore {
     if($projection.Status -cne 'Previewed'){throw ('Target restore preview is no longer available (current status: '+[string]$projection.Status+'); preview again.')}
     $package=Test-WsmMigrationPackage $projection.ManifestPath $projection.ManifestHash
     $contextActor=[string](Get-WsmExecutionActor);$contextSession='';if($ChallengeContext){if($ChallengeContext.PSObject.Properties['Actor']){$contextActor=[string]$ChallengeContext.Actor};if($ChallengeContext.PSObject.Properties['SessionId']){$contextSession=[string]$ChallengeContext.SessionId}}
-    $accepted=([string]$projection.PreviewHash -ieq $storedHash)
-    if(-not $accepted){$accepted=Test-WsmWizardContinuationDriftExplained $attempt $state $projection}
+    # The same judgment (exact hash, or only this parent's own writes explain the difference) decides every caller: resume, secret reply and a new restore.
+    $accepted=Test-WsmWizardTargetRestorePreviewCurrent $attempt $state $projection
     if(-not $accepted){
         # Reviewed context changed: revoke the challenge, supersede the parent and release its Service reservations. No native write happens.
         $needsNew=[pscustomobject][ordered]@{Status='NeedsNewPreview';PairId=$PairId;ParentOperationId=$ParentOperationId;ContinuationId=$ContinuationId;PreviousPreviewHash=$storedHash;CurrentPreviewHash=[string]$projection.PreviewHash;Reason='PreviewChanged';NoTargetWrites=$true;ProductionVerified=$false}
-        Invoke-WsmLocked $paths.Root {
-            $current=Get-WsmOperationState $paths $package;$currentAttempt=$current.RestoreAttempt
-            if(-not $currentAttempt -or [string]$currentAttempt.OperationId -cne $ParentOperationId){throw 'The TargetRestore parent changed while it was being superseded.'}
-            if($current.PSObject.Properties['AssistiveServiceChallenge'] -and $current.AssistiveServiceChallenge){
-                $currentChallenge=$current.AssistiveServiceChallenge
-                if([string]$currentChallenge.State -cin @('WaitingForInput','Running')){
-                    if(-not @($current.PendingOperations).Count){foreach($reservation in @($currentChallenge.ServiceReservations)){Revoke-WsmAssistiveServiceChallengeReservation -Workspace $stateDirectory -ResourceKey ([string]$reservation.ResourceKey) -PairId $PairId -ItemId ([string]$reservation.ItemId) -OperationId $ParentOperationId -Created ([bool]$reservation.Created) | Out-Null}}
-                    $currentChallenge.State='Revoked';$currentChallenge|Add-Member NoteProperty RevokeReason 'PreviewChanged' -Force;$currentChallenge.UpdatedUtc=Get-WsmUtc
-                }
-            }
-            $currentAttempt|Add-Member NoteProperty Status 'Superseded' -Force;$currentAttempt|Add-Member NoteProperty SupersededUtc (Get-WsmUtc) -Force;$current.Stage='Superseded'
-            $records=@();if($currentAttempt.PSObject.Properties['Continuations']){$records=@($currentAttempt.Continuations)}
-            $currentAttempt|Add-Member NoteProperty Continuations (@($records)+@([pscustomobject][ordered]@{ContinuationId=$ContinuationId;StartedUtc=(Get-WsmUtc);Actor=$contextActor;SessionId=$contextSession;Result=$needsNew})) -Force
-            Add-WsmJournal $paths $current 'AssistiveRestoreContinuation' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;ContinuationId=$ContinuationId;Phase='Superseded';Reason='PreviewChanged'})
-        }
+        Revoke-WsmWizardTargetRestoreParent -StateDirectory $stateDirectory -PairId $PairId -ParentOperationId $ParentOperationId -Reason 'PreviewChanged' -Package $package -ContinuationId $ContinuationId -ContinuationResult $needsNew -Actor $contextActor -SessionId $contextSession
         return $needsNew
     }
     Invoke-WsmLocked $paths.Root {
