@@ -687,6 +687,12 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：WizardProgress（含完成紀錄不覆蓋、位元組格式、長路徑截斷）、WizardBackup、OfflineFullSet 50、HtmlConsole 112 通過；突變（投影不挑 Id 32）會轉紅。`Test-WizardProgress.ps1` 原本就沒有 BOM，所以測試中的中文改用 Unicode 跳脫字元。
 - 尚未做：「最近完成 20 筆」清單併入 F3-T 的逐項結果；實際畫面上的進度文字只由投影測試佐證，沒有在真實備份過程中截圖。
 
+### 17.32 F3-T1 備份逐項結果集與安裝軟體資料（部分完成）
+
+- Sonnet 5.5 subagent 實作，主代理審查並獨立驗證。備份交付時另產生 `backup-item-results.json`（放在交付描述檔旁邊，不進封裝本體），內容包括：逐項列（計畫項目與來源盤點合併；已備份／未備份；原因碼、中文原因、下一步、檔案數、位元組、盤點狀態）、安裝軟體列（來自計畫 GeneralHost 的 SoftwareCatalog 與 SoftwareDecisions；同名不同版本分開列）、Windows 角色與功能列，以及軟體盤點的覆蓋缺口。來源盤點的取得方式：CV2 用封裝內已驗證的 `controls/source-inventory.json`，其他計畫用可信盤點，兩者都沒有時標為 Unavailable。attempt 紀錄 `ItemResults` 的雜湊與筆數；這一步失敗不會讓備份失敗。獨立副本會一併複製並驗證這個檔案。
+- 驗證（WinPS 5.1）：WizardBackup（真實 Directory／ZIP 結果、規則 a～i 純函式、軟體列、失敗不中斷）、OfflineFullSet 50、WizardBackupRecovery、WizardRuntime、HtmlConsole 通過。突變（獨立副本跳過結果檔雜湊）會轉紅。subagent 把測試檔原有的 3 行 CRLF 統一成 LF。
+- 尚未完成：讀取檢視（F3-T2）、三分頁畫面（F3-T3）、離線靜態報告（F3-T4）；新機狀態欄位屬 E3a。
+
 ## 18. 第五次定案：使用者目標對照與備份端優先
 
 > 2026-10-20 使用者盤點後定案；介面規格經 ui-ux-pro-max（HTML／CSS 指引、WCAG 2.2 AA 檢查目標）檢視。本節只補規格與調整順序，不改第 1 節目標，也不改核准、秘密、production gate 的邊界。與前文順序衝突時以本節為準，其餘契約不變。本節是規劃，不是完成證據。

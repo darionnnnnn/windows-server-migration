@@ -115,3 +115,113 @@ function Get-WsmHtmlProgressProjection($Job) {
     if($Job -is [Collections.IDictionary]){$Job['ObservedProgressCount']=$streamCount}else{$Job|Add-Member NoteProperty ObservedProgressCount $streamCount -Force}
     [pscustomobject][ordered]@{activity=$activity;statusDescription=$status;currentOperation=$operation;percent=$percent;processedCount=$processedCount;updatedUtc=$updated}
 }
+
+function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[bool]$OfflineFullSet) {
+    $reasonText=@{
+        PayloadCaptured=@('資料已封存並驗證','無')
+        ConfigurationCaptured=@('設定定義已封存在核准計畫中','無')
+        ExternalHandling=@('此範圍標示為外部處理，未包含在備份中','依外部處理程序另行搬移')
+        SeparateNonCTransfer=@('非 C 範圍使用舊格式的另行直傳，未包含在此備份中','完成非 C 直傳與結果匯入')
+        NoCapturedContent=@('已選取但沒有擷取到任何內容','確認來源路徑仍存在後重新備份')
+        ManualHandling=@('此項目需要人工處理，工具不會備份','依人工程序處理')
+        Excluded=@('已明確排除','若需要搬移，回到審閱重新納入並重新核准')
+        NotIncluded=@('審閱決策不是納入','完成審閱決策後重新核准')
+        NotSelected=@('已發現但未選入本次搬移','若需要搬移，回到審閱選入並重新核准')
+    }
+    $get={param($o,$n) if($null -eq $o){return $null};if($o -is [Collections.IDictionary]){if($o.Contains($n)){return $o[$n]};return $null};if($o.PSObject.Properties[$n]){return $o.$n};return $null}
+    $stats=@{}
+    foreach($artifact in @($ArtifactRows)){
+        if($null -eq $artifact){continue}
+        $artifactItemId=[string]$artifact.ItemId
+        if(-not $stats.ContainsKey($artifactItemId)){$stats[$artifactItemId]=@{Records=0;Files=0;Bytes=[long]0}}
+        $stat=$stats[$artifactItemId];$stat.Records++
+        if(-not $artifact.Directory){$stat.Files++;if($artifact.Data){$stat.Bytes+=[long]$artifact.Data.Bytes}}
+    }
+    $planById=[ordered]@{};foreach($planItem in @($Plan.Items)){$planById[[string]$planItem.ItemId]=$planItem}
+    $inventoryById=@{};if($Inventory){foreach($inventoryItem in @($Inventory.Items)){$inventoryById[[string]$inventoryItem.ItemId]=$inventoryItem}}
+    $ids=New-Object 'System.Collections.Generic.List[string]'
+    foreach($id in $planById.Keys){$ids.Add([string]$id)}
+    foreach($id in $inventoryById.Keys){if(-not $planById.Contains($id)){$ids.Add([string]$id)}}
+    $rows=New-Object 'System.Collections.Generic.List[object]'
+    foreach($id in $ids){
+        $planItem=$null;if($planById.Contains($id)){$planItem=$planById[$id]}
+        $inventoryItem=$null;if($inventoryById.ContainsKey($id)){$inventoryItem=$inventoryById[$id]}
+        $base=$(if($planItem){$planItem}else{$inventoryItem})
+        $decision=$(if($planItem){[string](& $get $planItem 'Decision')}else{''})
+        $included=($decision -ceq 'Include')
+        $spec=$(if($planItem){& $get $planItem 'MigrationSpec'}else{$null})
+        $adapter=[string](& $get $spec 'Adapter')
+        $isFileScope=($adapter -ceq 'FileScope')
+        $transferChannel=$(if($isFileScope){[string](& $get $spec 'TransferChannel')}else{''})
+        if($isFileScope -and -not $transferChannel){$transferChannel='C'}
+        $stat=$(if($stats.ContainsKey($id)){$stats[$id]}else{@{Records=0;Files=0;Bytes=[long]0}})
+        $status='NotBackedUp';$code='NotSelected';$files=0;$bytes=[long]0
+        if($included -and $isFileScope -and $transferChannel -ceq 'External'){$code='ExternalHandling'}
+        elseif($included -and $isFileScope -and $transferChannel -ceq 'NonC' -and -not $OfflineFullSet){$code='SeparateNonCTransfer'}
+        elseif($included -and $stat.Records -gt 0){$status='BackedUp';$code='PayloadCaptured';$files=[long]$stat.Files;$bytes=[long]$stat.Bytes}
+        elseif($included -and $isFileScope){$code='NoCapturedContent'}
+        elseif($included -and (-not $spec -or $adapter -ceq 'ManualWorkflow')){$code='ManualHandling'}
+        elseif($included){$status='BackedUp';$code='ConfigurationCaptured'}
+        elseif($planItem -and $decision -ceq 'Exclude'){$code='Excluded'}
+        elseif($planItem){$code='NotIncluded'}
+        $settings=& $get $base 'Settings'
+        $location=''
+        if($isFileScope){$location=[string](& $get $spec 'SourcePath')}
+        else{foreach($settingName in @('Path','PhysicalPath')){$settingValue=& $get $settings $settingName;if($null -ne $settingValue -and [string]$settingValue){$location=[string]$settingValue;break}}}
+        if(-not $location){$location=[string](& $get $base 'NaturalKey')}
+        $channel=''
+        if($planItem){
+            if($isFileScope){$channel=$transferChannel}
+            elseif($adapter -ceq 'Certificate' -or [string](& $get $planItem 'Kind') -ceq 'Certificate'){$channel='Certificate'}
+            else{$channel='Configuration'}
+        }
+        $rows.Add([pscustomobject][ordered]@{ItemId=$id;Name=[string](& $get $base 'Name');Kind=[string](& $get $base 'Kind');Category=[string](& $get $base 'Category');Location=$location;Channel=$channel;Status=$status;ReasonCode=$code;Reason=$reasonText[$code][0];NextStep=$reasonText[$code][1];Files=$files;Bytes=$bytes;Decision=$decision;DiscoveryStatus=$(if($inventoryItem){[string](& $get $inventoryItem 'Status')}else{''})})
+    }
+    @($rows.ToArray() | Sort-Object -Property @{Expression={if($_.Status -ceq 'BackedUp'){0}else{1}}},@{Expression={([string]$_.Name).ToLowerInvariant()}})
+}
+
+function Get-WsmBackupSoftwareRows($Plan,$Inventory) {
+    $dispositionText=@{Reinstall='新機重新安裝';Portable='可攜版，隨資料搬移';KeepCompatible='保留相容版本';External='由外部處理';NotNeeded='新機不需要';SpecialProduct='特殊產品，人工處理';Unknown='尚未決定';Undecided='尚未決定'}
+    $general=$(if($Plan.PSObject.Properties['GeneralHost']){$Plan.GeneralHost}else{$null})
+    $catalog=$null
+    if($general -and $general.PSObject.Properties['SoftwareCatalog'] -and $general.SoftwareCatalog -and $general.SoftwareCatalog.PSObject.Properties['Entries']){$catalog=$general.SoftwareCatalog}
+    elseif($Inventory -and $Inventory.PSObject.Properties['SoftwareCatalog'] -and $Inventory.SoftwareCatalog -and $Inventory.SoftwareCatalog.PSObject.Properties['Entries']){$catalog=$Inventory.SoftwareCatalog}
+    $decisionById=@{}
+    if($general -and $general.PSObject.Properties['SoftwareDecisions']){foreach($decision in @($general.SoftwareDecisions)){if($decision){$decisionById[[string]$decision.SoftwareId]=$decision}}}
+    $softwareRows=New-Object 'System.Collections.Generic.List[object]'
+    if($catalog){
+        foreach($entry in @($catalog.Entries)){
+            $softwareId=[string]$entry.SoftwareId
+            $disposition=$(if($decisionById.ContainsKey($softwareId)){[string]$decisionById[$softwareId].Disposition}else{'Undecided'})
+            if(-not $dispositionText.ContainsKey($disposition)){$disposition='Unknown'}
+            $version=[string]$entry.Version;if([string]::IsNullOrWhiteSpace($version)){$version='未知'}
+            $softwareRows.Add([pscustomobject][ordered]@{SoftwareId=$softwareId;Name=[string]$entry.Name;Version=$version;Publisher=[string]$entry.Publisher;Architecture=[string]$entry.Architecture;Scope=[string]$entry.Scope;Location=[string]$entry.Location;SourceKind=[string]$entry.SourceKind;Disposition=$disposition;DispositionText=$dispositionText[$disposition]})
+        }
+    }
+    $featureRows=New-Object 'System.Collections.Generic.List[object]'
+    if($Inventory){foreach($inventoryItem in @($Inventory.Items)){if($inventoryItem.Category -ceq 'Roles' -and $inventoryItem.Kind -ceq 'WindowsFeature'){$featureRows.Add([pscustomobject][ordered]@{Name=[string]$inventoryItem.Name;FeatureName=[string]$inventoryItem.NaturalKey})}}}
+    $coverageGaps=New-Object 'System.Collections.Generic.List[object]'
+    if($catalog -and $catalog.PSObject.Properties['Coverage']){
+        foreach($coverage in @($catalog.Coverage)){
+            if($coverage -and [string]$coverage.Status -cne 'Success'){
+                $gap=[ordered]@{Status=[string]$coverage.Status}
+                foreach($field in @('Probe','Scope','SID','View','EvidenceKind','ErrorKind','ItemId')){if($coverage.PSObject.Properties[$field] -and $null -ne $coverage.$field -and $coverage.$field -is [string]){$gap[$field]=[string]$coverage.$field}}
+                $coverageGaps.Add([pscustomobject]$gap)
+            }
+        }
+    }
+    [pscustomobject]@{
+        SoftwareRows=@($softwareRows.ToArray() | Sort-Object -Property @{Expression={([string]$_.Name).ToLowerInvariant()}},@{Expression={([string]$_.Version).ToLowerInvariant()}})
+        FeatureRows=@($featureRows.ToArray())
+        CoverageGaps=@($coverageGaps.ToArray())
+    }
+}
+
+function Export-WsmBackupItemResults([string]$Path,[object[]]$Rows,$Meta) {
+    $allRows=@($Rows)
+    $backedUp=@($allRows | Where-Object Status -CEQ 'BackedUp').Count
+    $counts=[ordered]@{Total=$allRows.Count;BackedUp=$backedUp;NotBackedUp=($allRows.Count-$backedUp);Software=@($Meta.Software.SoftwareRows).Count;Features=@($Meta.Software.FeatureRows).Count}
+    $document=[pscustomobject][ordered]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='BackupItemResults';PairId=[string]$Meta.PairId;AttemptId=[string]$Meta.AttemptId;PlanHash=[string]$Meta.PlanHash;ManifestHash=[string]$Meta.ManifestHash;InventorySource=[string]$Meta.InventorySource;GeneratedUtc=(Get-WsmUtc);Counts=[pscustomobject]$counts;Software=[pscustomobject][ordered]@{SoftwareRows=@($Meta.Software.SoftwareRows);FeatureRows=@($Meta.Software.FeatureRows);CoverageGaps=@($Meta.Software.CoverageGaps)};Rows=$allRows}
+    Write-WsmJson $Path $document
+    [pscustomobject]@{Path=[IO.Path]::GetFullPath($Path);SHA256=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant();Counts=[pscustomobject]$counts;InventorySource=[string]$Meta.InventorySource}
+}

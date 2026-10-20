@@ -98,6 +98,19 @@ try {
         $successOperationId=[Guid]::NewGuid().ToString('D');$successToken=New-WsmCancellationToken -StateDirectory (Join-Path $sourceRoot 'pairs') -PairId $catalog.PairId -PlanHash $approved.SHA256 -OperationId $successOperationId
         $result=Invoke-WsmWizardStartBackup -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -Jobs @() -CancellationToken $successToken
         if($result.Status -cne 'Delivered' -or $result.Stage -cne 'Delivered' -or $result.DeliveryMode -cne 'Directory' -or [long]$result.VolumeBytes -ne 0 -or -not $result.CoreExport.Sealed -or -not $result.PackageTest.Valid -or -not $result.Delivery.SHA256){throw 'Wizard backup did not finish the real core export, package verification, and enrolled directory delivery chain.'}
+        $assertItemResults={
+            param($BackupResult,[string]$Label)
+            $itemResults=$BackupResult.ItemResults
+            if(-not $itemResults -or $itemResults.Status -cne 'Generated'){throw ($Label+': backup item results were not generated.')}
+            if(-not [IO.File]::Exists($itemResults.Path) -or (Get-FileHash -LiteralPath $itemResults.Path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $itemResults.SHA256){throw ($Label+': backup item results file is missing or its SHA256 differs from the attempt record.')}
+            if([IO.Path]::GetDirectoryName($itemResults.Path) -cne [IO.Path]::GetDirectoryName([string]$BackupResult.Delivery.Path)){throw ($Label+': backup item results were not written next to the delivery descriptor.')}
+            if($itemResults.Counts.BackedUp -lt 1 -or $itemResults.Counts.Total -ne ($itemResults.Counts.BackedUp+$itemResults.Counts.NotBackedUp)){throw ($Label+': backup item result counts are inconsistent.')}
+            $itemResultsDocument=Read-WsmJson $itemResults.Path
+            $fixtureRows=@($itemResultsDocument.Rows | Where-Object ItemId -CEQ $item.ItemId)
+            if($fixtureRows.Count -ne 1 -or $fixtureRows[0].Status -cne 'BackedUp' -or $fixtureRows[0].ReasonCode -cne 'PayloadCaptured' -or [int]$fixtureRows[0].Files -ne 2){throw ($Label+': the fixture FileScope item was not reported as a backed-up payload with two files.')}
+            if($itemResultsDocument.Kind -cne 'BackupItemResults' -or $itemResultsDocument.Counts.Total -ne $itemResults.Counts.Total -or -not $itemResultsDocument.Software.PSObject.Properties['SoftwareRows']){throw ($Label+': backup item results document shape is wrong.')}
+        }
+        & $assertItemResults $result 'Directory'
         $package=Test-WsmMigrationPackage $result.CoreExport.ManifestPath $result.CoreExport.SHA256
         $deliveryRoot=[string]$result.Delivery.Directory;if(-not $deliveryRoot){throw 'Directory-mode delivery did not return its exact owned delivery directory.'}
         $artifacts=@(Read-WsmArtifactLines (Join-Path $package.Root 'artifacts.jsonl') $package.Manifest.ArtifactsHash)
@@ -134,6 +147,7 @@ try {
         $zipResult=Invoke-WsmWizardStartBackup -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $zipOperationId -DeliveryMode Zip -VolumeBytes 134217728 -Jobs @() -CancellationToken $zipToken
         Write-Host 'PASS: enrolled ZIP backup attempt completed.'
         if($zipResult.Status -cne 'Delivered' -or $zipResult.DeliveryMode -cne 'Zip' -or [long]$zipResult.VolumeBytes -ne 134217728 -or $zipResult.Delivery.Mode -cne 'Zip' -or -not [IO.File]::Exists($zipResult.Delivery.Path) -or $zipResult.Delivery.SHA256 -notmatch '^[a-f0-9]{64}$'){throw 'Wizard backup did not produce the real enrolled ZIP transport.'}
+        & $assertItemResults $zipResult 'ZIP'
         $zipTransport=Read-WsmTrustedJson $zipResult.Delivery.Path $zipResult.Delivery.SHA256
         foreach($volume in @($zipTransport.Volumes)){$volumePath=Join-Path (Split-Path -Parent $zipResult.Delivery.Path) $volume.Name;if((Get-FileHash -LiteralPath $volumePath -Algorithm SHA256).Hash -ine $volume.Hash -or (New-Object IO.FileInfo($volumePath)).Length -ne $volume.Bytes){throw 'ZIP transport volume bytes or hash differ from its durable transport descriptor.'}}
         $script:backupFixtureFingerprint=('b'*64)
@@ -199,6 +213,21 @@ try {
                 if($copiedHash -ine $srcHash){throw ('Case a: Copied blob hash mismatch for ' + $blob.Name)}
             }
 
+            $copiedItemResultsA = Join-Path $copyRootA 'transport\backup-item-results.json'
+            if(-not [IO.File]::Exists($copiedItemResultsA)){throw 'Case a: backup-item-results.json was not copied into the independent copy.'}
+            $itemResultsOriginalBytes = [IO.File]::ReadAllBytes($copiedItemResultsA)
+            $itemResultsTamperBytes = [byte[]]$itemResultsOriginalBytes.Clone()
+            $itemResultsTamperBytes[0] = [byte]($itemResultsTamperBytes[0] -bxor 0x01)
+            [IO.File]::WriteAllBytes($copiedItemResultsA, $itemResultsTamperBytes)
+            $itemResultsTamperRejected = $false
+            try {
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destA -Mode VerifyExisting | Out-Null
+            } catch {
+                $itemResultsTamperRejected = $_.Exception.Message -like '*backup-item-results.json*'
+            }
+            [IO.File]::WriteAllBytes($copiedItemResultsA, $itemResultsOriginalBytes)
+            if(-not $itemResultsTamperRejected){throw 'Case a: a one-byte change to the copied backup-item-results.json was not rejected by VerifyExisting.'}
+
             # Case b: ZIP / Copy / Network
             $destB = Join-Path $Root 'copy-dest-b'; [void][IO.Directory]::CreateDirectory($destB)
             $script:fixtureMediaClass = 'Network'
@@ -245,6 +274,7 @@ try {
             [void][IO.Directory]::CreateDirectory($transportE)
             Copy-Item -LiteralPath $result.Delivery.Path -Destination $transportE -Force
             Copy-Item -LiteralPath $result.Delivery.Directory -Destination $transportE -Recurse -Force
+            Copy-Item -LiteralPath $result.ItemResults.Path -Destination $transportE -Force
             $script:fixtureMediaClass = 'Removable'
             $resE = Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destE -Mode VerifyExisting
             if($resE.OfflineReadiness -cne 'Verified' -or $resE.IndependentCopy.Status -cne 'Verified'){throw 'Case e: Manual copy VerifyExisting not verified.'}
@@ -389,6 +419,65 @@ try {
         $certificatePlan=[pscustomobject]@{Items=@([pscustomobject]@{ItemId=('4'*64);Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='Certificate';Desired=[pscustomobject]@{ArtifactHash=('5'*64)}}})}
         $certificateSummary=Get-WsmWizardChannelSummary $certificatePlan ([pscustomobject]@{Valid=$true;Final=$true}) ([pscustomobject]@{SHA256=('d'*64)})
         if($certificateSummary.OverallStatus -cne 'Succeeded' -or $certificateSummary.Certificate.Status -cne 'VerifiedPayloadDelivered'){throw 'A package already accepted by the real deep verifier did not report its included certificate artifact as delivered.'}
+        # Backup item results: pure row rules (a-i), software rows, and non-fatal failure.
+        $irItem={param([string]$Id,[string]$Name,$Spec,[string]$Decision,[string]$Kind='DataRoot',[string]$Category='Storage')[pscustomobject]@{ItemId=$Id;Name=$Name;Kind=$Kind;Category=$Category;NaturalKey=('key-'+$Id);Settings=[pscustomobject]@{Path=('C:\settings\'+$Id)};Decision=$Decision;MigrationSpec=$Spec}}
+        $irFile={param([string]$Channel)[pscustomobject]@{Adapter='FileScope';SourcePath=('D:\scope\'+$Channel);TransferChannel=$Channel}}
+        $irPlan=[pscustomobject]@{Items=@(
+            (& $irItem 'ext' 'A external' (& $irFile 'External') 'Include'),
+            (& $irItem 'nonc' 'B nonc' (& $irFile 'NonC') 'Include'),
+            (& $irItem 'cap' 'C captured' (& $irFile 'C') 'Include'),
+            (& $irItem 'nocap' 'D nocontent' (& $irFile 'C') 'Include'),
+            (& $irItem 'man' 'E manual' ([pscustomobject]@{Adapter='ManualWorkflow'}) 'Include'),
+            (& $irItem 'nospec' 'F nospec' $null 'Include'),
+            (& $irItem 'cfg' 'G config' ([pscustomobject]@{Adapter='Service'}) 'Include' 'Service' 'Services'),
+            (& $irItem 'exc' 'H excluded' (& $irFile 'C') 'Exclude'),
+            (& $irItem 'pend' 'I pending' (& $irFile 'C') 'Pending'))}
+        $irInventory=[pscustomobject]@{Items=@(
+            [pscustomobject]@{ItemId='cap';Name='C captured';Kind='DataRoot';Category='Storage';NaturalKey='key-cap';Settings=[pscustomobject]@{};Status='Success'},
+            [pscustomobject]@{ItemId='sel';Name='J selected-not';Kind='DataRoot';Category='Storage';NaturalKey='key-sel';Settings=[pscustomobject]@{Path='E:\only-inventory'};Status='PermissionDenied'})}
+        $irArtifacts=@(
+            [pscustomobject]@{ItemId='cap';RelativePath='dir';Directory=$true;Data=$null},
+            [pscustomobject]@{ItemId='cap';RelativePath='dir\a.txt';Directory=$false;Data=[pscustomobject]@{Bytes=10}},
+            [pscustomobject]@{ItemId='cap';RelativePath='dir\b.txt';Directory=$false;Data=[pscustomobject]@{Bytes=5}},
+            [pscustomobject]@{ItemId='cfg';RelativePath='ignored-by-config';Directory=$true;Data=$null})
+        $irRows=@(Get-WsmBackupItemResultRows $irPlan $irInventory $irArtifacts $false)
+        $irExpected=[ordered]@{ext=@('NotBackedUp','ExternalHandling');nonc=@('NotBackedUp','SeparateNonCTransfer');cap=@('BackedUp','PayloadCaptured');nocap=@('NotBackedUp','NoCapturedContent');man=@('NotBackedUp','ManualHandling');nospec=@('NotBackedUp','ManualHandling');cfg=@('BackedUp','PayloadCaptured');exc=@('NotBackedUp','Excluded');pend=@('NotBackedUp','NotIncluded');sel=@('NotBackedUp','NotSelected')}
+        if($irRows.Count -ne $irExpected.Count){throw ('Backup item rows must contain exactly one row per plan-or-inventory item; got '+$irRows.Count)}
+        foreach($expectedId in $irExpected.Keys){$irRow=@($irRows | Where-Object ItemId -CEQ $expectedId);if($irRow.Count -ne 1 -or $irRow[0].Status -cne $irExpected[$expectedId][0] -or $irRow[0].ReasonCode -cne $irExpected[$expectedId][1]){throw ('Backup item row rule mismatch for '+$expectedId+': '+(($irRow | ForEach-Object {$_.Status+'/'+$_.ReasonCode}) -join ','))}}
+        $irCapRow=@($irRows | Where-Object ItemId -CEQ 'cap')[0]
+        if($irCapRow.Files -ne 2 -or $irCapRow.Bytes -ne 15 -or $irCapRow.Location -cne 'D:\scope\C' -or $irCapRow.Channel -cne 'C'){throw 'Captured FileScope row did not carry its file count, byte sum, source path and channel.'}
+        $irCfgConfigRows=@(Get-WsmBackupItemResultRows ([pscustomobject]@{Items=@((& $irItem 'cfg2' 'G2 config' ([pscustomobject]@{Adapter='Service'}) 'Include' 'Service' 'Services'))}) $null @() $false)
+        if($irCfgConfigRows[0].Status -cne 'BackedUp' -or $irCfgConfigRows[0].ReasonCode -cne 'ConfigurationCaptured' -or $irCfgConfigRows[0].Files -ne 0 -or $irCfgConfigRows[0].Bytes -ne 0 -or $irCfgConfigRows[0].Channel -cne 'Configuration' -or $irCfgConfigRows[0].Location -cne 'C:\settings\cfg2'){throw 'Configuration-only Include row was not reported as captured configuration with zero files and its configuration channel/location.'}
+        if((@($irRows | Where-Object ItemId -CEQ 'sel')[0]).DiscoveryStatus -cne 'PermissionDenied' -or (@($irRows | Where-Object ItemId -CEQ 'sel')[0]).Channel -cne '' -or (@($irRows | Where-Object ItemId -CEQ 'sel')[0]).Location -cne 'E:\only-inventory'){throw 'Inventory-only row did not carry the inventory DiscoveryStatus, empty channel and Settings.Path location.'}
+        if((@($irRows | Where-Object ItemId -CEQ 'cap')[0]).DiscoveryStatus -cne 'Success' -or (@($irRows | Where-Object ItemId -CEQ 'cfg')[0]).DiscoveryStatus -cne ''){throw 'DiscoveryStatus must come from the inventory item when present and be empty otherwise.'}
+        $irFirstNot=-1;$irLastBacked=-1;for($irIndex=0;$irIndex -lt $irRows.Count;$irIndex++){if($irRows[$irIndex].Status -ceq 'BackedUp'){$irLastBacked=$irIndex}elseif($irFirstNot -lt 0){$irFirstNot=$irIndex}}
+        if($irLastBacked -ge $irFirstNot){throw 'Backup item rows must list BackedUp before NotBackedUp.'}
+        $irOfflineRows=@(Get-WsmBackupItemResultRows ([pscustomobject]@{Items=@((& $irItem 'nonc2' 'NonC with records' (& $irFile 'NonC') 'Include'))}) $null @([pscustomobject]@{ItemId='nonc2';RelativePath='x.txt';Directory=$false;Data=[pscustomobject]@{Bytes=3}}) $true)
+        if($irOfflineRows.Count -ne 1 -or $irOfflineRows[0].Status -cne 'BackedUp' -or $irOfflineRows[0].ReasonCode -cne 'PayloadCaptured'){throw 'An offline full-set NonC Include with captured records must be BackedUp.'}
+        $softwarePlan=[pscustomobject]@{Items=@();GeneralHost=[pscustomobject]@{
+            SoftwareCatalog=[pscustomobject]@{Entries=@(
+                [pscustomobject]@{SoftwareId='sw-a1';Name='Contoso Tool';Version='1.0';Publisher='Contoso';Architecture='x64';Scope='Machine';Location='C:\a';SourceKind='Uninstall'},
+                [pscustomobject]@{SoftwareId='sw-a2';Name='Contoso Tool';Version='2.0';Publisher='Contoso';Architecture='x64';Scope='Machine';Location='C:\b';SourceKind='Uninstall'},
+                [pscustomobject]@{SoftwareId='sw-z';Name='Zeta Agent';Version='';Publisher='Zeta';Architecture='x86';Scope='User';Location='';SourceKind='Uninstall'});
+                Coverage=@([pscustomobject]@{Probe='Uninstall';Scope='Machine';SID='';View='64';Status='Success';EvidenceKind='Registry';Count=2},[pscustomobject]@{Probe='Uninstall';Scope='User';SID='S-1-5-21-1';View='64';Status='Partial';EvidenceKind='Registry';Count=0})}
+            SoftwareDecisions=@([pscustomobject]@{SoftwareId='sw-a1';Disposition='Reinstall'})}}
+        $softwareInventory=[pscustomobject]@{Items=@([pscustomobject]@{ItemId='feat1';Name='Web Server (IIS)';Kind='WindowsFeature';Category='Roles';NaturalKey='Web-Server';Settings=[pscustomobject]@{};Status='Success'},[pscustomobject]@{ItemId='other1';Name='Not a feature';Kind='DataRoot';Category='Storage';NaturalKey='x';Settings=[pscustomobject]@{};Status='Success'})}
+        $softwareResult=Get-WsmBackupSoftwareRows $softwarePlan $softwareInventory
+        $softwareRowsA=@($softwareResult.SoftwareRows | Where-Object Name -CEQ 'Contoso Tool');$softwareRowZ=@($softwareResult.SoftwareRows | Where-Object SoftwareId -CEQ 'sw-z')
+        if(@($softwareResult.SoftwareRows).Count -ne 3 -or $softwareRowsA.Count -ne 2 -or $softwareRowsA[0].Version -cne '1.0' -or $softwareRowsA[1].Version -cne '2.0'){throw 'Same-named software with different versions must be listed as separate rows.'}
+        if($softwareRowZ[0].Version -cne '未知'){throw 'A blank software version must display as the unknown label.'}
+        if($softwareRowsA[0].Disposition -cne 'Reinstall' -or $softwareRowsA[0].DispositionText -cne '新機重新安裝'){throw 'A Reinstall decision must show its Chinese disposition text.'}
+        if($softwareRowsA[1].Disposition -cne 'Undecided' -or $softwareRowsA[1].DispositionText -cne '尚未決定' -or $softwareRowZ[0].DispositionText -cne '尚未決定'){throw 'Software without a decision must show the undecided text.'}
+        if(@($softwareResult.FeatureRows).Count -ne 1 -or $softwareResult.FeatureRows[0].FeatureName -cne 'Web-Server' -or $softwareResult.FeatureRows[0].Name -cne 'Web Server (IIS)'){throw 'WindowsFeature inventory rows must be listed with their installable feature name.'}
+        if(@($softwareResult.CoverageGaps).Count -ne 1 -or $softwareResult.CoverageGaps[0].Status -cne 'Partial'){throw 'Only non-Success coverage rows may be reported as software coverage gaps.'}
+        # A failure while building the result set must not fail the backup itself.
+        $script:backupOriginalItemRows=(Get-Command Get-WsmBackupItemResultRows -CommandType Function).ScriptBlock
+        function script:Get-WsmBackupItemResultRows {param($Plan,$Inventory,[object[]]$ArtifactRows,[bool]$OfflineFullSet);throw 'Injected item result failure.'}
+        $itemFailureOperation=[Guid]::NewGuid().ToString('D');$itemFailureToken=New-WsmCancellationToken -StateDirectory (Join-Path $sourceRoot 'pairs') -PairId $catalog.PairId -PlanHash $approved.SHA256 -OperationId $itemFailureOperation
+        try{$itemFailureResult=Invoke-WsmWizardStartBackup -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $itemFailureOperation -DeliveryMode Directory -VolumeBytes 0 -Jobs @() -CancellationToken $itemFailureToken}
+        finally{Set-Item -Path Function:\script:Get-WsmBackupItemResultRows -Value $script:backupOriginalItemRows;Remove-Variable backupOriginalItemRows -Scope Script -ErrorAction SilentlyContinue}
+        if($itemFailureResult.Status -cne 'Delivered' -or $itemFailureResult.ItemResults.Status -cne 'Failed' -or $itemFailureResult.ItemResults.Error -notlike '*Injected item result failure*'){throw 'A failure while generating backup item results must leave the backup Delivered and record ItemResults as Failed.'}
+        Write-Host 'PASS: backup item results.'
         # Separate mutable FileScope approval proves the cancellation boundary is
         # reached before the producer-freeze provider could be invoked.
         . (Join-Path $PSScriptRoot 'ExternalReadinessEvidenceFixtures.ps1')
