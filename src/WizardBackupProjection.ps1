@@ -225,3 +225,37 @@ function Export-WsmBackupItemResults([string]$Path,[object[]]$Rows,$Meta) {
     Write-WsmJson $Path $document
     [pscustomobject]@{Path=[IO.Path]::GetFullPath($Path);SHA256=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant();Counts=[pscustomobject]$counts;InventorySource=[string]$Meta.InventorySource}
 }
+
+function Get-WsmWizardBackupItemResultsView([string]$Workspace,[string]$PairId) {
+    Assert-WsmId $PairId
+    $profile=Read-WsmOutputProfile $Workspace
+    if(-not $profile -or $profile.Role -cne 'Source'){throw 'Backup item results are only available on the enrolled Source workspace.'}
+    $planRef=Get-WsmWizardReceivedApprovedPlan $Workspace $PairId $profile
+    if(-not $planRef){return [pscustomobject]@{kind='BackupItemResultsView';available=$false;reason='尚未匯入已核准計畫，沒有備份結果可查看。'}}
+    $latest=$null
+    # Read-only: compute the backup root without the owned-directory helper, which would create it.
+    $viewBackupRoot=Join-Path (Join-Path (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'workspace-control') 'wizard-backups') $PairId
+    if(-not [IO.Directory]::Exists($viewBackupRoot)){return [pscustomobject]@{kind='BackupItemResultsView';available=$false;reason='目前還沒有已交付的備份。'}}
+    Assert-WsmNoReparse $viewBackupRoot
+    foreach($file in @(Get-ChildItem -LiteralPath $viewBackupRoot -Filter '*.json' -File)){
+        try{
+            $row=Read-WsmJson $file.FullName
+            [void](Assert-WsmWizardBackupAttempt $row $Workspace $PairId $profile)
+        }catch{continue}
+        if([string]$row.PlanHash -ine [string]$planRef.SHA256 -or $row.Stage -cne 'Delivered' -or -not $row.PSObject.Properties['ItemResults']){continue}
+        if(-not $latest -or [string]$row.UpdatedUtc -gt [string]$latest.UpdatedUtc){$latest=$row}
+    }
+    if(-not $latest){return [pscustomobject]@{kind='BackupItemResultsView';available=$false;reason='目前還沒有已交付的備份。'}}
+    $attempt=$latest;$itemResults=$attempt.ItemResults
+    if($itemResults.Status -cne 'Generated'){
+        $errorText=if($itemResults.PSObject.Properties['Error']){[string]$itemResults.Error}else{''}
+        return [pscustomobject]@{kind='BackupItemResultsView';available=$false;reason=('逐項結果產生失敗：'+$errorText);attemptId=[string]$attempt.AttemptId}
+    }
+    $failed=[pscustomobject]@{kind='BackupItemResultsView';available=$false;integrity='Failed';reason='逐項結果檔案已不存在或內容被更改，請重新備份。';attemptId=[string]$attempt.AttemptId}
+    $resultPath=[string]$itemResults.Path
+    Assert-WsmNoReparse $resultPath
+    if(-not [IO.File]::Exists($resultPath) -or (Get-FileHash -LiteralPath $resultPath -Algorithm SHA256).Hash -ine [string]$itemResults.SHA256){return $failed}
+    $document=Read-WsmJson $resultPath
+    if($document.Kind -cne 'BackupItemResults' -or $document.PairId -cne $PairId -or $document.AttemptId -cne [string]$attempt.AttemptId){return $failed}
+    [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software}
+}

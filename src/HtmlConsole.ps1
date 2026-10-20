@@ -531,6 +531,7 @@ function Get-WsmHtmlView {
         }
         return [pscustomobject]@{items=@();metrics=@{discovered='Unknown';selected='Unknown';approved='NotMeasured';executable='NotMeasured';pendingOrFailed='NotMeasured'};workloadStatus='NotStarted';stateReason=$reason;stateNextAction=$firstMeta}
     }
+    if($View -ceq 'backup-items'){if($Role -cne 'Source'){throw 'The backup-items view is only available to the Source role.'};return (Get-WsmWizardBackupItemResultsView $Workspace $PairId)}
     if($Role -in @('Source','Target') -and -not [IO.File]::Exists((Get-WsmCatalogPath $Workspace $PairId))){
         $profile=Read-WsmOutputProfile $Workspace
         if(-not $profile -or $profile.Role -cne $Role){throw 'View role does not match the enrolled workspace.'}

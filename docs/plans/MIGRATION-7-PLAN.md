@@ -693,6 +693,12 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：WizardBackup（真實 Directory／ZIP 結果、規則 a～i 純函式、軟體列、失敗不中斷）、OfflineFullSet 50、WizardBackupRecovery、WizardRuntime、HtmlConsole 通過。突變（獨立副本跳過結果檔雜湊）會轉紅。subagent 把測試檔原有的 3 行 CRLF 統一成 LF。
 - 尚未完成：讀取檢視（F3-T2）、三分頁畫面（F3-T3）、離線靜態報告（F3-T4）；新機狀態欄位屬 E3a。
 
+### 17.33 F3-T2 備份明細唯讀檢視（部分完成）
+
+- Sonnet 5.5 subagent 實作，主代理審查並獨立驗證。新增唯讀檢視 `GET /api/view?action=backup-items`（`Get-WsmWizardBackupItemResultsView`），只限 Source 角色。它讀取目前核准計畫最新一次已交付的 attempt，用 attempt 紀錄的雜湊驗證結果檔後回傳逐項列、軟體列與筆數；檔案遺失或被竄改時回 `integrity='Failed'`，不會回傳內容。這個檢視不建立作業紀錄，也不寫入任何檔案。
+- 主代理驗收補正：規格原本指定使用 `Get-WsmWizardBackupRoot`，但它在目錄不存在時會建立目錄，違反唯讀原則，已改為直接組出路徑。
+- 驗證（WinPS 5.1）：WizardBackup（可用、竄改、Target 角色拒絕）、HtmlConsole 112、WizardHtmlRuntimeProjection 185 通過；突變（不檢查結果檔雜湊）會轉紅。
+
 ## 18. 第五次定案：使用者目標對照與備份端優先
 
 > 2026-10-20 使用者盤點後定案；介面規格經 ui-ux-pro-max（HTML／CSS 指引、WCAG 2.2 AA 檢查目標）檢視。本節只補規格與調整順序，不改第 1 節目標，也不改核准、秘密、production gate 的邊界。與前文順序衝突時以本節為準，其餘契約不變。本節是規劃，不是完成證據。

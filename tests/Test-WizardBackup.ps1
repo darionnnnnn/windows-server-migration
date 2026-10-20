@@ -478,6 +478,22 @@ try {
         finally{Set-Item -Path Function:\script:Get-WsmBackupItemResultRows -Value $script:backupOriginalItemRows;Remove-Variable backupOriginalItemRows -Scope Script -ErrorAction SilentlyContinue}
         if($itemFailureResult.Status -cne 'Delivered' -or $itemFailureResult.ItemResults.Status -cne 'Failed' -or $itemFailureResult.ItemResults.Error -notlike '*Injected item result failure*'){throw 'A failure while generating backup item results must leave the backup Delivered and record ItemResults as Failed.'}
         Write-Host 'PASS: backup item results.'
+        $script:backupFixtureFingerprint=('a'*64)
+        $viewOperationId=[Guid]::NewGuid().ToString('D');$viewToken=New-WsmCancellationToken -StateDirectory (Join-Path $sourceRoot 'pairs') -PairId $catalog.PairId -PlanHash $approved.SHA256 -OperationId $viewOperationId
+        $viewBackup=Invoke-WsmWizardStartBackup -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $viewOperationId -DeliveryMode Directory -VolumeBytes 0 -Jobs @() -CancellationToken $viewToken
+        if($viewBackup.Status -cne 'Delivered' -or $viewBackup.ItemResults.Status -cne 'Generated'){throw 'The backup used by the item results view test must be delivered with generated item results.'}
+        $itemView=Get-WsmWizardBackupItemResultsView $sourceRoot $catalog.PairId
+        if($itemView.available -ne $true -or $itemView.integrity -cne 'Verified' -or @($itemView.rows).Count -ne [int]$itemView.counts.Total -or $itemView.attemptId -cne [string]$viewBackup.AttemptId -or $itemView.backupOperationId -cne $viewOperationId){throw 'The item results view must verify and return the latest delivered backup.'}
+        $viewResultPath=[string]$viewBackup.ItemResults.Path;$viewOriginalBytes=[IO.File]::ReadAllBytes($viewResultPath)
+        try{
+            $tamperedBytes=[byte[]]$viewOriginalBytes.Clone();$tamperedBytes[$tamperedBytes.Length-2]=[byte](($tamperedBytes[$tamperedBytes.Length-2]+1) % 256);[IO.File]::WriteAllBytes($viewResultPath,$tamperedBytes)
+            $tamperedView=Get-WsmWizardBackupItemResultsView $sourceRoot $catalog.PairId
+            if($tamperedView.available -ne $false -or $tamperedView.integrity -cne 'Failed'){throw 'A modified item results file must make the view fail integrity.'}
+        }finally{[IO.File]::WriteAllBytes($viewResultPath,$viewOriginalBytes)}
+        if((Get-WsmWizardBackupItemResultsView $sourceRoot $catalog.PairId).integrity -cne 'Verified'){throw 'Restoring the original item results bytes must verify again.'}
+        $targetRejected=$false;try{[void](Get-WsmHtmlView $targetRoot $catalog.PairId 'backup-items' 'Target')}catch{$targetRejected=($_.Exception.Message -like '*only available to the Source role*')}
+        if(-not $targetRejected){throw 'The backup-items view must be rejected for the Target role.'}
+        Write-Host 'PASS: backup item results view.'
         # Separate mutable FileScope approval proves the cancellation boundary is
         # reached before the producer-freeze provider could be invoked.
         . (Join-Path $PSScriptRoot 'ExternalReadinessEvidenceFixtures.ps1')
