@@ -68,6 +68,8 @@ try {
         $passwordForm=@(Get-WsmWizardPreparationForm ([ordered]@{SecretRef=''}) 'Service' 'UserPassword')
         $builtinForm=@(Get-WsmWizardPreparationForm ([ordered]@{SecretRef=''}) 'Service' 'LocalSystem')
         Check ($passwordForm[0].required -and -not $builtinForm[0].required) 'Service SecretRef requiredness depended on an unrelated dynamically scoped review instead of explicit account mode.'
+        $taskCredForm=@(Get-WsmWizardPreparationForm ([ordered]@{SecretRef=''}) 'ScheduledTask');$poolCredForm=@(Get-WsmWizardPreparationForm ([ordered]@{SecretRef=''}) 'IISPool');$plainCredForm=@(Get-WsmWizardPreparationForm ([ordered]@{Product=''}) 'IISPool')
+        Check ($taskCredForm[0].required -and $taskCredForm[0].editable -and $poolCredForm[0].required -and $poolCredForm[0].editable -and -not @($plainCredForm|Where-Object key -CEQ 'SecretRef').Count) 'Password task or SpecificUser pool SecretRef was not a required reference-only field, or an ordinary pool gained one.'
         Write-Output ('PASS: '+$script:wizardPreparationCheckCount+' plain form/core specification, bounds, source identity and stale review checks.')
     } $root (Join-Path $PSScriptRoot '../src/WizardPreparation.ps1')
 } finally {

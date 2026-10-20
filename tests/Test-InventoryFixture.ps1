@@ -103,4 +103,12 @@ $partialInventory=Get-Content $partial.Path -Raw -Encoding UTF8 | ConvertFrom-Js
     if(@($Inventory.Items | Where-Object {$_.Category -ceq 'Network' -and $_.Kind -ceq 'CollectorFailure'}).Count -ne 1){throw 'Interrupted firewall capture hid its failure.'}
     if(Test-WsmWindowsTargetNetworkCaptureComplete $Inventory){throw 'Interrupted native firewall capture allowed creation.'}
 } $partialInventory
+& $module {
+    $doc=New-Object Xml.XmlDocument;$doc.LoadXml('<applicationPools><add name="PoolA"><processModel identityType="SpecificUser" userName="FIXTURE\poolsvc" password="[enc:SYNTHETIC-SENTINEL]" /><recycling /></add><add name="PoolB"><processModel identityType="ApplicationPoolIdentity" /></add></applicationPools>')
+    $a=Get-WsmIisPoolCapture $doc.DocumentElement.ChildNodes[0];$b=Get-WsmIisPoolCapture $doc.DocumentElement.ChildNodes[1]
+    if((Read-WsmXml $a.Xml).SelectNodes('//*[@password]').Count -or $a.Xml -match 'password|SYNTHETIC-SENTINEL' -or -not $a.CredentialRequired -or -not $a.Xml.Contains('FIXTURE\poolsvc')){throw 'SpecificUser pool capture kept an encrypted password or lost its credential-required flag/account.'}
+    if($b.CredentialRequired){throw 'ApplicationPoolIdentity pool was marked credential-required.'}
+    if($doc.OuterXml -notmatch 'SYNTHETIC-SENTINEL'){throw 'Pool capture mutated the source configuration document.'}
+    if((ConvertTo-Json -InputObject @($a,$b) -Depth 6) -match 'SYNTHETIC-SENTINEL'){throw 'Serialized pool inventory contains the synthetic secret sentinel.'}
+}
 Write-Host ('PASS: collector partial failure, 12 scope gaps, stable retry identity and ZIP generation. Evidence: '+$root)

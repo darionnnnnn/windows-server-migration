@@ -64,4 +64,14 @@ Check (@($webB.WorkloadMappingReview | Where-Object {$_.FieldPointer -match 'IIS
 $legacy=$catalog.PSObject.Copy();$legacy.SchemaVersion=1;$legacy.PSObject.Properties.Remove('Assistive');$legacy.PSObject.Properties.Remove('WorkloadDiscovery');$legacyPath=Join-Path $workspace ('pairs\'+$catalog.PairId+'.json');SaveJson $legacy $legacyPath
 $legacyTaskPath=Join-Path $root 'legacy-task.json';New-WsmMigrationSpecTemplate $workspace $catalog.PairId $task.ItemId $legacyTaskPath | Out-Null;$legacyTask=Get-Content -LiteralPath $legacyTaskPath -Raw | ConvertFrom-Json
 Check ($legacyTask.Desired.Xml -eq $taskXml -and $legacyTask.DesiredFinalState -eq 'Enabled' -and -not $legacyTask.PSObject.Properties['WorkloadMappingReview']) 'Legacy draft behavior changed without Assistive opt-in.'
+& $module {param($HostId)
+    $ns='http://schemas.microsoft.com/windows/2004/02/mit/task'
+    function Draft($kind,$settings,$name){$item=New-WsmItem $HostId Tasks $kind $name $name $settings;$item | Add-Member NoteProperty AccountMapping $null;$item | Add-Member NoteProperty Mapping $null;Get-WsmMigrationSpecDraft $item ([pscustomobject]@{})}
+    $pwdTask=Draft 'ScheduledTask' @{TaskName='PwdTask';TaskPath='\';Xml=('<Task xmlns="'+$ns+'"><Principals><Principal id="Author"><UserId>FIXTURE\batch</UserId><LogonType>Password</LogonType></Principal></Principals><Settings><Enabled>true</Enabled></Settings><Actions Context="Author"><Exec><Command>C:\Fixture\a.exe</Command></Exec></Actions></Task>')} 'PwdTask'
+    $plainTask=Draft 'ScheduledTask' @{TaskName='PlainTask';TaskPath='\';Xml=('<Task xmlns="'+$ns+'"><Principals><Principal id="Author"><UserId>FIXTURE\batch</UserId><LogonType>S4U</LogonType></Principal></Principals><Settings><Enabled>true</Enabled></Settings><Actions Context="Author"><Exec><Command>C:\Fixture\a.exe</Command></Exec></Actions></Task>')} 'PlainTask'
+    $specificPool=Draft 'IISPool' @{Xml='<add name="P1"><processModel identityType="SpecificUser" userName="FIXTURE\poolsvc" /></add>'} 'P1'
+    $plainPool=Draft 'IISPool' @{Xml='<add name="P2"><processModel identityType="ApplicationPoolIdentity" /></add>'} 'P2'
+    if(-not $pwdTask.PSObject.Properties['SecretRef'] -or $pwdTask.SecretRef -cne '' -or -not $specificPool.PSObject.Properties['SecretRef'] -or $specificPool.SecretRef -cne ''){throw 'Password task or SpecificUser pool draft lacks the empty SecretRef placeholder.'}
+    if($plainTask.PSObject.Properties['SecretRef'] -or $plainPool.PSObject.Properties['SecretRef']){throw 'Non-password task or non-SpecificUser pool draft gained a SecretRef placeholder.'}
+} $hostId
 Write-Host ('PASS: R3-B workload graph and schema3 public draft consumer. Evidence: '+$root)

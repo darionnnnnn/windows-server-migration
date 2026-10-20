@@ -36,7 +36,7 @@ function Get-WsmWizardPreparationForm($Fields,[string]$Adapter='',[string]$Accou
         if($null -eq $Value -or $Value -is [string] -or $Value -is [bool] -or $Value -is [int] -or $Value -is [long]){
             $withheld=($Value -is [string] -and $Value -match '\[(?:review required|sensitive text|withheld)')
             $type=if($Value -is [bool]){'boolean'}elseif($Value -is [int] -or $Value -is [long]){'integer'}elseif($options.ContainsKey($Name) -and $Value -cin $options[$Name]){'choice'}else{'text'}
-            $requiresSecretRef=($Key -ceq 'SecretRef' -and ($Adapter -ceq 'LocalUser' -or ($Adapter -ceq 'Service' -and [string]$AccountMode -ceq 'UserPassword')))
+            $requiresSecretRef=($Key -ceq 'SecretRef' -and ($Adapter -ceq 'LocalUser' -or ($Adapter -ceq 'Service' -and [string]$AccountMode -ceq 'UserPassword') -or $Adapter -cin @('ScheduledTask','IISPool')))
             $requiresPublicCertificate=($Key -ceq 'Desired/ArtifactPath' -and $Adapter -ceq 'Certificate')
             $requiredCommand=$false
             if($Key -match '^WorkloadFieldReviews/(\d+)/Value$' -and $Fields.Contains('WorkloadFieldReviews')){$position=[int]$Matches[1];$reviews=@($Fields.WorkloadFieldReviews);if($position -lt $reviews.Count){$requiredCommand=([string]$reviews[$position].FieldPointer -match '/Command$')}}

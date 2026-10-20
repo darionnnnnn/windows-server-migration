@@ -258,9 +258,10 @@ function Submit-WsmAssistiveSpecReview {
         default {if($spec.PSObject.Properties[$key]){$spec.$key=$value}else{$spec | Add-Member NoteProperty $key $value}}
     }}
     if($Fields.Contains('SecretRef')){
-        if($spec.Adapter -notin @('LocalUser','Certificate','Service') -or $Fields['SecretRef'] -isnot [string] -or ([string]$Fields['SecretRef'] -and [string]$Fields['SecretRef'] -notmatch '^[A-Za-z0-9_.-]{1,128}$')){throw 'SecretRef is a reference identifier only; passwords and credential values are never accepted.'}
+        if($spec.Adapter -notin @('LocalUser','Certificate','Service','ScheduledTask','IISPool') -or ($spec.Adapter -cin @('ScheduledTask','IISPool') -and -not (Get-WsmAdapterCredentialRequirement $spec)) -or $Fields['SecretRef'] -isnot [string] -or ([string]$Fields['SecretRef'] -and [string]$Fields['SecretRef'] -notmatch '^[A-Za-z0-9_.-]{1,128}$')){throw 'SecretRef is a reference identifier only; passwords and credential values are never accepted.'}
         $spec.SecretRef=[string]$Fields['SecretRef']
     }
+    if($spec.Adapter -cin @('ScheduledTask','IISPool') -and (Get-WsmAdapterCredentialRequirement $spec) -and (-not $spec.PSObject.Properties['SecretRef'] -or [string]::IsNullOrWhiteSpace([string]$spec.SecretRef))){throw 'A password-based task or specific-user pool requires a SecretRef identifier; credential values are never accepted here.'}
     if($spec.Adapter -ceq 'Service' -and $spec.PSObject.Properties['AccountMode'] -and [string]$spec.AccountMode -ceq 'UserPassword' -and (-not $spec.PSObject.Properties['SecretRef'] -or [string]::IsNullOrWhiteSpace([string]$spec.SecretRef))){throw 'A UserPassword service account requires a SecretRef identifier; credential values are never accepted here.'}
     if($Fields.Contains('Desired')){
         if($Fields['Desired'] -isnot [System.Collections.IDictionary] -and $null -eq $Fields['Desired'].PSObject){throw 'Typed Desired answers must be a structured value.'}

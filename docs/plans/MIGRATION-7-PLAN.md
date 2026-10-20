@@ -730,6 +730,15 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證：WizardRuntimeTargetUi（預設全選、停用項、全選／全不選、空選取不可送出、群組 indeterminate、最後只送出所選項、本機比較按鈕）、WizardRuntime、WizardHtmlRuntimeProjection、WizardRestore 85、真實 Edge 原生測試通過；突變（預設不勾）會轉紅。
 - 說明：摘要「可還原 y」包含已還原項（它們仍可被明確勾選再次還原）。
 
+### 17.39 F4a-2 排程與 IIS pool 的帳密需求（計畫／審閱端，部分完成）
+
+- 依第 19 節，Sonnet 5.5 subagent 實作，主代理審查並獨立驗證。新增 `Get-WsmAdapterCredentialRequirement`：Service（UserPassword）、排程（`LogonType=Password`，帳號取 Principal 的 UserId）、IIS pool（`identityType=SpecificUser`，帳號取 `userName`）回傳 Kind、SecretRef 與已核准帳號；`Assert-WsmAdapterDesired` 改用它，已核准帳號為空時拒絕。盤點擷取 IIS pool 時移除所有 `password` 屬性並標 `CredentialRequired`（`Get-WsmIisPoolCapture`）。計畫產生為這兩種加上 SecretRef 佔位，審閱表單只對真正需要帳密的排程／pool 開放並必填 SecretRef。
+- 主代理驗收補正：Service 備援分支的內建帳號正規式寫成單反斜線（`\S`、`\L`、`\N`），在 .NET 會變成「非空白」或直接丟 ArgumentException；改為雙反斜線，並補「尚未審閱的內建帳號服務不得要求帳密」的反例。
+- 驗證（WinPS 5.1）：Adapters、IisContracts、ServiceIdentity、WizardPreparation 30、InventoryFixture、WorkloadDiscovery、ServiceCredentialChallenge 15、AssistiveRestore 137、WizardPreparationBulk 43、ScriptEncoding 通過。突變：pool 判斷失效、不移除密碼屬性、審閱表單不要求 SecretRef、還原正規式修正，都會轉紅。
+- 既有失敗（在乾淨的 580e7f8 副本同樣重現，不歸因本段）：`Test-WizardPreparationAdapters` 與 `Test-AssistiveReviewForms` 都停在 `Complete typed review is required for Task/@TaskPath`。因此 Password 排程的審閱表單送出沒有端對端測試（pool 的送出有）。
+- 尚未完成：還原端 challenge（F4a-3）。盤點的完整 applicationHost 擷取只驗到純函式層。
+- 證據帳本未結：`tools/Test-PlanEvidence.ps1` 在乾淨的 580e7f8 副本（LF 與 CRLF 兩種 checkout）都失敗：A1 證據檔雜湊與帳本不符，c95b8d6 重綁 E0 時記錄的 `src/MigrationWizard.ps1` 雜湊也與已提交內容的兩種換行版本都不符。本段沒有重綁 E0，帳本修復另案處理，不在本段宣稱證據通過。
+
 ## 18. 第五次定案：使用者目標對照與備份端優先
 
 > 2026-10-20 使用者盤點後定案；介面規格經 ui-ux-pro-max（HTML／CSS 指引、WCAG 2.2 AA 檢查目標）檢視。本節只補規格與調整順序，不改第 1 節目標，也不改核准、秘密、production gate 的邊界。與前文順序衝突時以本節為準，其餘契約不變。本節是規劃，不是完成證據。
@@ -841,3 +850,31 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 不以進度百分比代表備份覆蓋率。
   - 不新增 UI 框架、CDN 或遠端字型。
   - 工作台目前沒有深色主題，本輪也不新增。
+
+## 19. 第六次定案：還原端剩餘段落（F4a 其餘、E3b、F4b、G）
+
+> 2026-10-20 依第 18.2 節順序接續還原端。本節只補現況核對、使用者定案與切段，不改第 15／16 節的契約。本節是規劃，不是完成證據。
+
+### 19.1 現況核對（580e7f8）
+
+- 帳密 challenge 只涵蓋 Service（`AccountMode=UserPassword`）。Password 排程與 SpecificUser 的 IIS pool 在計畫與審閱表單都無法帶 SecretRef，所以永遠無法核准；IIS pool 擷取時把 `processModel/@password`（IIS 加密字串）存進盤點與備份。
+- 還原時排程／pool 若缺帳密，會先寫 `AssistiveAdapterIntent` 才失敗，留下 PendingOperations，之後整個父作業被擋到人工 Repair。
+- `Get-WsmIisElementSnapshot` 會把 pool 的 `password` 屬性（Microsoft.Web.Administration 讀出的是解密後明文）收進 Before／readback 快照，再進 state 與 journal。
+- 沒有通用續作：中斷的 TargetRestore 停在 Interrupted 沒有出口；只要有一筆 PendingOperations 就擋住整個父作業；舊 challenge 在改選或補裝後只會被拒，不會失效，新的還原反而被舊 challenge 卡住。
+- 已有：同一父作業的 WaitingForInput、帳密端點與取消端點、以 ownership 判定已成功項不重寫、逐項對帳函式 `Complete-WsmAssistiveOperationRepair`、`sessionStorage` 的同分頁重開讀回與伺服器端 job 清單。
+
+### 19.2 使用者定案（2026-10-20）
+
+- F4b 的 HTML 帳密對話框套用 ui-ux-pro-max（原生 `<dialog>`、焦點管理、WCAG 2.2 AA、320px 寬度，沿用 `console.css` tokens）；E3b 的續作按鈕也併入同一次 UI 檢視。
+- G 主旅程的原生帳號寫入（建立服務／排程／pool）以窄型 fixture 替身，檔案還原走真實原位置寫入與 readback；證據標明替身邊界，不宣稱企業帳號實測。
+- 程序中斷後無法證明 native 結果的項目，只擋該項與它的相依項（IISSite→IISPool、Service→Service），其他獨立項照常續作；父作業為 Partial，不顯示全部完成。
+
+### 19.3 切段與順序
+
+F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 pool 密碼）→ F4a-3（還原端 challenge 涵蓋三種 consumer、預覽標示、缺帳密不寫 intent、IIS 快照不含密碼）→ E3b-1（核心續作與逐項對帳）→ E3b-2（HTML／CLI 續作、恢復預覽、預覽漂移時撤銷舊 challenge）→ F4b（對話框與續作按鈕）→ G（主整合旅程劇本）。每段 Sonnet 5.5 subagent 實作，主代理審 diff、跑測試與突變後 commit／push。
+
+### 19.4 明確不做
+
+- IIS 站台虛擬目錄的 connect-as 密碼：維持既有拒絕，不在本輪接 challenge。
+- IIS 組態區段的原始擷取（`RawEvidenceProtected`）仍保存整段 applicationHost 內容，可能含加密密碼；這是既有設計，本輪只記為未結事項，不改。
+- 不新增跨程序秘密 broker；秘密仍只在同程序 runspace 的記憶體交付。
