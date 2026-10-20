@@ -6,12 +6,15 @@
     [Parameter(Mandatory)][string]$ResponseCapturePath,
     [Parameter(Mandatory)][string]$PayloadRoot,
     [switch]$DiagnosticSelfTest,
+    [switch]$ServiceChallenge,
+    [switch]$FailCredentialBeginOnce,
+    [switch]$RestartOnly,
     [ValidateSet('ItemByItem','Automatic')][string]$WizardMode='ItemByItem'
 )
 $ErrorActionPreference='Stop'
 $module=Import-Module (Join-Path $PSScriptRoot '../src/WindowsServerMigration.psd1') -Force -PassThru -DisableNameChecking
 & $module {
-    param($Role,$Workspace,$ReadyPath,$StopFile,$ResponseCapturePath,$PayloadRoot,$WizardMode)
+    param($Role,$Workspace,$ReadyPath,$StopFile,$ResponseCapturePath,$PayloadRoot,$WizardMode,$ServiceChallenge,$FailCredentialBeginOnce,$RestartOnly)
     $script:FixtureCaptureRoot=$ResponseCapturePath;$script:FixtureCaptureSequence=0;$script:FixtureRole=$Role
     $script:FixtureCorrelationId=''
     $script:FixtureTimingRoot=Join-Path ([IO.Path]::GetDirectoryName($ResponseCapturePath)) 'callee-timings'
@@ -53,6 +56,34 @@ finally{
         Set-Item -Path ("Function:\$timedName") -Value ([scriptblock]::Create($wrapperText))
     }
     [IO.File]::WriteAllText((Join-Path $script:FixtureTimingRoot "$Role-installed.json"),($timedAvailability|ConvertTo-Json -Depth 4),[Text.Encoding]::UTF8)
+    if($Role -ceq 'Target' -and $ServiceChallenge){
+        $script:FixtureOriginalAdapterRestore=(Get-Command Invoke-WsmAdapterRestore -CommandType Function).ScriptBlock
+        function script:Invoke-WsmAdapterRestore($Spec,[hashtable]$Secrets,$Package,$InstallerBaseline=$null,[scriptblock]$BeforeFolderCreate,[scriptblock]$AfterFolderCreate,[object[]]$OwnedReceipts=@(),[object[]]$SharedReceipts=@(),[string]$Workspace='',[string]$OperationId=''){
+            if([string]$Spec.Adapter -ceq 'Service' -and [string]$Spec.AccountMode -ceq 'UserPassword'){
+                $credential=$Secrets[[string]$Spec.SecretRef]
+                $approved=($credential -is [Management.Automation.PSCredential] -and $credential.UserName -ceq [string]$Spec.Desired.Account -and $credential.GetNetworkCredential().Password -ceq 'FORMAL-VALID-CANARY')
+                Write-WsmJson (Join-Path $Workspace 'fixture-native-service-boundary.json') ([pscustomobject]@{OperationId=$OperationId;Adapter='Service';CredentialWasBound=$approved;ActualServiceMutation=$false})
+                if(-not $approved){throw 'Controlled fixture Service boundary rejected unbound credential.'}
+                return [pscustomobject]@{RebootRequired=$false;AuxiliaryOwnership=@()}
+            }
+            & $script:FixtureOriginalAdapterRestore $Spec $Secrets $Package $InstallerBaseline $BeforeFolderCreate $AfterFolderCreate $OwnedReceipts $SharedReceipts $Workspace $OperationId
+        }
+        $script:FixtureOriginalAdapterVerify=(Get-Command Test-WsmAdapterConfiguration -CommandType Function).ScriptBlock
+        function script:Test-WsmAdapterConfiguration($Spec,[string]$Phase='Current',[object[]]$SecurityReceipts=@()){
+            if([string]$Spec.Adapter -ceq 'Service' -and [string]$Spec.AccountMode -ceq 'UserPassword'){
+                return [pscustomobject]@{Passed=$true;Problems=@();Actual=[pscustomobject]@{Name=[string]$Spec.Desired.Name;StartName=[string]$Spec.Desired.Account;FixtureBoundary=$true}}
+            }
+            & $script:FixtureOriginalAdapterVerify $Spec $Phase $SecurityReceipts
+        }
+        if($FailCredentialBeginOnce){
+            $script:FixtureFailCredentialBeginOnce=$true
+            $script:FixtureOriginalCredentialWorkerStart=(Get-Command Start-WsmHtmlCredentialJobWorker -CommandType Function).ScriptBlock
+    function script:Start-WsmHtmlCredentialJobWorker($Job){
+                if($script:FixtureFailCredentialBeginOnce){$script:FixtureFailCredentialBeginOnce=$false;throw 'Injected credential worker start failure before BeginInvoke.'}
+                & $script:FixtureOriginalCredentialWorkerStart $Job
+            }
+        }
+    }
     $script:TestOriginalReadRequest=${function:Read-WsmLocalHttpRequest}
     $script:TestOriginalWriter=${function:Write-WsmLocalHttpResponse}
     $script:TestOriginalSafeError=${function:Get-WsmHtmlSafeError}
@@ -121,6 +152,12 @@ finally{
         }finally{if($worker){$worker.Dispose()};if($runspace){$runspace.Close();$runspace.Dispose()}}
         return
     }
+    if($RestartOnly){
+        $consoleWorkspace=if($Role -ceq 'Source'){Join-Path $Workspace 'source'}elseif($Role -ceq 'Target'){Join-Path $Workspace 'target'}else{Join-Path $Workspace 'manager'}
+        $consolePair=if($Role -ceq 'Target'){''}else{''}
+        Start-WsmHtmlConsole -Workspace $consoleWorkspace -PairId $consolePair -Role $Role -NoBrowser -ReadyPath $ReadyPath -StopFile $StopFile
+        return
+    }
     $sourceRoot=Join-Path $Workspace 'source';$managerRoot=Join-Path $Workspace 'manager';$targetRoot=Join-Path $Workspace 'target'
     $env:WSM_RUNTIME_TEST_FINGERPRINT='a'*64;$sourceProfile=Initialize-WsmOutputWorkspace $sourceRoot Source
     $env:WSM_RUNTIME_TEST_FINGERPRINT='b'*64;$targetProfile=Initialize-WsmOutputWorkspace $targetRoot Target
@@ -134,7 +171,10 @@ finally{
     [IO.File]::WriteAllText((Join-Path $sourceData 'settings.ini'),'immutable source settings')
     $source=[pscustomobject]@{HostId=$sourceProfile.HostId;Fingerprint=$sourceProfile.Profile.Fingerprint;Name='Formal source'}
     $item=New-WsmItem $source.HostId Storage DataRoot 'Formal runtime folder' 'formal-runtime-folder' ([pscustomobject]@{Path=$sourceData}) @() Success FileScope
-    $inventory=New-WsmInventory $source 1 @($item)
+    $serviceItem=$null
+    if($ServiceChallenge){$serviceItem=New-WsmItem $source.HostId Services Service 'Target fixture service' 'FixtureChallengeService' ([pscustomobject]@{Name='FixtureChallengeService';Status='Observed'}) @() Success Manual}
+    $sourceItems=@($item);if($serviceItem){$sourceItems+=,$serviceItem}
+    $inventory=New-WsmInventory $source 1 $sourceItems
     $inventory|Add-Member NoteProperty SoftwareCatalog ([pscustomobject][ordered]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='SoftwareCatalog';Source=[pscustomobject][ordered]@{HostId=$source.HostId;Fingerprint=$source.Fingerprint;Name=$source.Name;InventoryRevision=1;InventoryProjectionHash=(Get-WsmSoftwareInventoryProjectionHash $inventory)};CaptureContext=[pscustomobject][ordered]@{CapturedUtc=(Get-WsmUtc);CaptureIdentity='formal controlled inventory fixture';AccountContext='System';CaptureHost='formal-runtime-fixture';PowerShellVersion='5.1';RequestedPortableRoots=@()};Entries=@();Coverage=@([pscustomobject][ordered]@{Probe='Fixture';Scope='Machine';SID='';View='Fixture';Status='Success';EvidenceKind='ControlledNativeObservation';Count=0;Budget=[pscustomobject]@{MaxEntries=100};ErrorKind=$null;ObservedUtc=(Get-WsmUtc)});PreparationRequirements=@();CatalogProjectionHash=('0'*64)}) -Force
     $inventory.SoftwareCatalog.CatalogProjectionHash=Get-WsmSoftwareCatalogProjectionHash $inventory.SoftwareCatalog
     Assert-WsmSoftwareCatalog $inventory.SoftwareCatalog -SourceInventory $inventory|Out-Null
@@ -147,8 +187,16 @@ finally{
     $specPath=Join-Path $Workspace 'approved-spec.json';Write-WsmJson $specPath $spec
     $catalog=Get-WsmCatalog $managerRoot $catalog.PairId
     Set-WsmMigrationSpec $managerRoot $catalog.PairId $item.ItemId $specPath (Get-FileHash -LiteralPath $specPath -Algorithm SHA256).Hash $catalog.DecisionRevision|Out-Null
+    if($serviceItem){
+        $serviceSupplement=[pscustomobject][ordered]@{ServiceType='Win32OwnProcess';ErrorControl='Normal';LoadOrderGroup='';DelayedAutoStart=$false;FailureActions=[pscustomobject][ordered]@{ResetPeriodSeconds=0;RebootMessage='';Command='';Actions=@()};FailureActionsOnNonCrashFailures=$false;ServiceSidType='None';RequiredPrivileges=@();Environment=@();Triggers=@()}
+        $serviceSpec=[pscustomobject][ordered]@{Adapter='Service';AccountMode='UserPassword';SecretRef='FixtureServiceCredential';Owner='Formal controlled fixture';Evidence='Reviewed test-only service fixture';DesiredFinalState='Automatic';Desired=[pscustomobject][ordered]@{Name='FixtureChallengeService';DisplayName='Fixture Challenge Service';Account='CONTOSO\svc-app';BinaryPathName='C:\Fixture\service.exe';Dependencies=@();Description='Controlled credential route fixture';Supplement=$serviceSupplement}}
+        $serviceSpecPath=Join-Path $Workspace 'approved-service-spec.json';Write-WsmJson $serviceSpecPath $serviceSpec
+        $catalog=Get-WsmCatalog $managerRoot $catalog.PairId
+        Set-WsmMigrationSpec $managerRoot $catalog.PairId $serviceItem.ItemId $serviceSpecPath (Get-FileHash -LiteralPath $serviceSpecPath -Algorithm SHA256).Hash $catalog.DecisionRevision|Out-Null
+    }
     $catalog=Get-WsmCatalog $managerRoot $catalog.PairId
-    $catalog=Set-WsmDecision $managerRoot $catalog.PairId @($item.ItemId) Include 'Formal runtime fixture' $catalog.DecisionRevision
+    $decisionItems=@($item.ItemId);if($serviceItem){$decisionItems+=,$serviceItem.ItemId}
+    $catalog=Set-WsmDecision $managerRoot $catalog.PairId $decisionItems Include 'Formal runtime fixture' $catalog.DecisionRevision
     $approvedPath=Join-Path $Workspace 'approved-plan.json'
     $approved=Approve-WsmMigrationPlan $managerRoot $catalog.PairId $targetIdentityPath $targetIdentityHash $approvedPath $catalog.DecisionRevision 'ISOLATED-PILOT'
     $approvalJob=[pscustomobject][ordered]@{jobId=[Guid]::NewGuid().ToString('D');operationId='';action='ApproveMigration';role='Manager';workspace=$managerRoot;pairId=$catalog.PairId;status='Succeeded';CompletedUtc=(Get-WsmUtc);outputs=@([pscustomobject]@{Path=[IO.Path]::GetFullPath($approvedPath);SHA256=[string]$approved.SHA256})}
@@ -167,7 +215,7 @@ finally{
         if($sourceBackup.Status -cne 'Delivered' -or $sourceBackup.Delivery.Mode -cne 'Directory' -or -not $sourceBackup.Delivery.Directory){throw 'Controlled Target setup could not produce a real sealed Directory package.'}
         $targetData=Join-Path $Workspace 'target-restore-root'
         $targetFacts=[pscustomobject]@{HostId=$targetProfile.HostId;Fingerprint=$targetProfile.Profile.Fingerprint;Name='Formal target'}
-        $targetItem=New-WsmItem $targetFacts.HostId Services Service 'Target fixture service' 'FixtureSvc' ([pscustomobject]@{Name='FixtureSvc';Status='Observed'}) @() Success Manual
+        $targetItem=if($ServiceChallenge){New-WsmItem $targetFacts.HostId Services Service 'Target fixture service' 'FixtureChallengeService' ([pscustomobject]@{Name='FixtureChallengeService';Status='Observed';Account='CONTOSO\svc-app'}) @() Success Manual}else{New-WsmItem $targetFacts.HostId Services Service 'Target fixture service' 'FixtureSvc' ([pscustomobject]@{Name='FixtureSvc';Status='Observed'}) @() Success Manual}
         $targetInventory=New-WsmInventory $targetFacts 1 @($targetItem)
         $targetInventory|Add-Member NoteProperty SoftwareCatalog ([pscustomobject][ordered]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='SoftwareCatalog';Source=[pscustomobject][ordered]@{HostId=$targetFacts.HostId;Fingerprint=$targetFacts.Fingerprint;Name=$targetFacts.Name;InventoryRevision=1;InventoryProjectionHash=(Get-WsmSoftwareInventoryProjectionHash $targetInventory)};CaptureContext=[pscustomobject][ordered]@{CapturedUtc=(Get-WsmUtc);CaptureIdentity='formal controlled native observation fixture';AccountContext='System';CaptureHost='formal-runtime-fixture';PowerShellVersion='5.1';RequestedPortableRoots=@()};Entries=@();Coverage=@([pscustomobject][ordered]@{Probe='Fixture';Scope='Machine';SID='';View='Fixture';Status='Success';EvidenceKind='ControlledNativeObservation';Count=0;Budget=[pscustomobject]@{MaxEntries=100};ErrorKind=$null;ObservedUtc=(Get-WsmUtc)});PreparationRequirements=@();CatalogProjectionHash=('0'*64)}) -Force
         $targetInventory.SoftwareCatalog.CatalogProjectionHash=Get-WsmSoftwareCatalogProjectionHash $targetInventory.SoftwareCatalog
@@ -191,7 +239,8 @@ finally{
         Set-WsmWizardState $targetRoot $catalog.PairId Target $targetState.Revision ([pscustomobject]@{CurrentStep='handoff';Mode='ItemByItem'})|Out-Null
         $profilePath=Join-Path (Join-Path $targetRoot 'workspace-control') 'output-profile.json'
         $profileHash=(Get-FileHash -LiteralPath $profilePath -Algorithm SHA256).Hash.ToLowerInvariant()
-        $fixture=[pscustomobject][ordered]@{Role='Target';PairId=$catalog.PairId;ItemId=$item.ItemId;TargetItemId=$targetItem.ItemId;PlanPath=$approvedPath;PlanHash=$approved.SHA256;Directory=$sourceBackup.Delivery.Directory;SummaryPath=$sourceBackup.Delivery.Path;SummaryHash=$sourceBackup.Delivery.SHA256;ComparisonPath=$comparison.Path;ComparisonHash=$comparison.SHA256;InventoryPath=$targetInventoryPath;InventoryHash=$targetInventoryHash;ProfilePath=$profilePath;ProfileHash=$profileHash;PayloadName='fixture.txt';PayloadText='formal runtime payload bytes';RestorePath=(Join-Path $Workspace 'restored-payload')}
+        $restoreItemId=if($ServiceChallenge){$serviceItem.ItemId}else{$item.ItemId}
+        $fixture=[pscustomobject][ordered]@{Role='Target';PairId=$catalog.PairId;ItemId=$restoreItemId;TargetItemId=$targetItem.ItemId;ServiceChallenge=[bool]$ServiceChallenge;PlanPath=$approvedPath;PlanHash=$approved.SHA256;Directory=$sourceBackup.Delivery.Directory;SummaryPath=$sourceBackup.Delivery.Path;SummaryHash=$sourceBackup.Delivery.SHA256;ComparisonPath=$comparison.Path;ComparisonHash=$comparison.SHA256;InventoryPath=$targetInventoryPath;InventoryHash=$targetInventoryHash;ProfilePath=$profilePath;ProfileHash=$profileHash;PayloadName='fixture.txt';PayloadText='formal runtime payload bytes';RestorePath=(Join-Path $Workspace 'restored-payload')}
     }
     Write-WsmJson ($ReadyPath+'.fixture') $fixture
     $consoleWorkspace=if($Role -ceq 'Source'){$sourceRoot}else{$targetRoot}
@@ -213,4 +262,4 @@ finally{
         [IO.File]::WriteAllText($tracePath,$detail,(New-Object Text.UTF8Encoding($false)))
         throw
     }
-} $Role $Workspace $ReadyPath $StopFile $ResponseCapturePath $PayloadRoot $WizardMode
+} $Role $Workspace $ReadyPath $StopFile $ResponseCapturePath $PayloadRoot $WizardMode $ServiceChallenge $FailCredentialBeginOnce $RestartOnly

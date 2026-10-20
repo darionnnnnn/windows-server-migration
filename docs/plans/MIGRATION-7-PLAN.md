@@ -639,6 +639,20 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 固定 382 檔快照前後核對，六檔變更；雙引擎各 19 項映射、35 項候選確認、28 項動作索引、18 項路徑覆蓋及正式工作負載草稿回歸通過。更新 D1／D2／E0 的已驗 WorkloadDiscovery 輸入綁定，保留舊證據。
 - 本段為核心 API 整合，HTML、一鍵流程、空目錄、非 C 精確集合與離線 Target 還原仍待完成；未納入共用目錄的 F4 未驗改動，不宣稱本輪完成或真實 Server 資格。
 
+### 17.26 F4a 服務帳密等待第一切片與回歸修正（部分完成）
+
+- 2026-10-20 依第 18.2 節，先修 F4a 未提交改動造成的回歸，再以「F4a 部分完成」提交。主代理親自除錯（除錯不委派），找到並修正三個缺陷：
+  1. `Invoke-WsmAssistiveServiceMutationBatch` 在 `Invoke-WsmLocked` 的 scriptblock 裡執行 `& $Action`，但 `Invoke-WsmLocked` 自己的參數也叫 `$Action`，結果解析到 lock 自身而無限遞迴（CallDepthOverflow）。所有服務寫入、安裝程式副作用的服務啟用及 WindowsFeature 安裝都會因此失敗。修正方式是進入 lock 前先把 callback 存成 `$serviceMutationAction`。
+  2. WindowsFeature 分支抽成 `Invoke-WsmAdapterWindowsFeatureRestore` 時漏了原本的 `return`，`Invoke-WsmAdapterRestore` 因此多輸出一筆 `{RebootRequired=$false}`，回傳變成兩個物件，重開機結果與 InstallerSafety 無法保存。
+  3. `Invoke-WsmAssistiveRestore` 為了讓等待帳密的父作業續作而沿用 state 裡的 `RestoreAttempt`，但沿用條件沒有限制，連前一次已取消的 attempt 也會被撿回來，新的 OperationId 因此遺失。改為只沿用「同一父作業 id，而且狀態為 WaitingForInput 或 Running」的 attempt。
+- 測試補強：`Test-ServiceCredentialChallenge` 新增 callback 確實在 lock 內只執行一次的斷言（把修正 1 還原後，以 CallDepthOverflow 轉紅）。`Test-Adapters` 的 WindowsFeature 與 `Test-InstallerSafety` 的服務啟用改為傳入受信任的 reservation workspace 與目標 fingerprint，並新增「沒有 workspace 時拒絕」的反例。WindowsFeature 改用獨立的空 workspace，因為前面服務 fixture 留下的有效 reservation 會（正確地）擋住安裝。
+- 三個檔案（`AssistiveRestore.ps1`、`Recovery.ps1`、`Test-Adapters.ps1`）在未提交改動中被拿掉了 UTF-8 BOM，已依基準補回；這三個檔案都是純 ASCII，行為不受影響。
+- 驗證（只有 WinPS 5.1.26100.9711；本機沒有安裝 PS7，雙引擎仍待 CI）：ServiceCredentialChallenge 15、AssistiveRestore 135、AssistiveResources 34、HtmlConsole 112、WizardRestore 79 項通過；Adapters、InstallerSafety、ActivationRecovery、OperationRequests、RecoveryContracts、WizardRuntime、WizardRuntimeReadContext 通過；Node 的 NativeWizardRuntimeHandler 與 WizardRuntimeTargetUi 通過。`CutoverActivationWorkflow`（`SetAccessControl` 需要系統管理員權限）與 `WizardRuntimeUi`（Edge 逾時）在乾淨的 a4193aa 也失敗，屬環境性既有失敗，不歸因於本段，列為待查。
+- F4a 改了 `src/MigrationWizard.ps1`，E0 已重跑 WorkloadActionIndex 28、WorkloadPathCoverage 18 及 WorkloadDiscovery 回歸（只有 WinPS 5.1）後重新綁定，證據在 `docs/plans/evidence/MIGRATION-7-E0-f4a-rebind.json`，舊的雙引擎證據保留為歷史。D1／D2／B2 是進行中的階段，其輸入雜湊沒有重驗，因此不改。
+- 殘留的 `work/r7/f4a-service-990650f2` worktree 仍有未提交改動，沒有刪除，待使用者決定。
+- F4a 仍未完成：排程／IIS 帳密旅程、HTML 對話視窗（F4b）及完整離線旅程驗收仍待做。
+- 另發現：`tools/Test-PlanEvidence.ps1` 在主工作區會無限期卡住（行程跑超過 1.5 小時仍未結束），但在只含追蹤檔案的 worktree 副本中 2 秒內完成，研判與未追蹤的龐大 `work/` 目錄有關。本段的證據檢查改在含目前全部追蹤內容的 worktree 副本執行，待查根因。
+
 ## 18. 第五次定案：使用者目標對照與備份端優先
 
 > 2026-10-20 使用者盤點後定案；介面規格經 ui-ux-pro-max（HTML／CSS 指引、WCAG 2.2 AA 檢查目標）檢視。本節只補規格與調整順序，不改第 1 節目標，也不改核准、秘密、production gate 的邊界。與前文順序衝突時以本節為準，其餘契約不變。本節是規劃，不是完成證據。

@@ -1,0 +1,53 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "E0",
+  "verifiedUtc": "2026-10-20T02:16:33Z",
+  "verifier": "Primary agent rebind after F4a partial commit changed src/MigrationWizard.ps1",
+  "snapshotDirectory": "working tree (codex/migration-7 F4a partial, uncommitted at verification)",
+  "inputs": [
+    {
+      "path": "src/WorkloadDiscovery.ps1",
+      "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
+    },
+    {
+      "path": "src/MigrationWizard.ps1",
+      "sha256": "8CE336C0102175CA9EB7E40ACD1361149541FF29EC92B0674370355A536564BD"
+    },
+    {
+      "path": "tests/Test-WorkloadActionIndex.ps1",
+      "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+    },
+    {
+      "path": "tests/Test-WorkloadDiscovery.ps1",
+      "sha256": "BB7F1D453396AA0BF7A7A54B9E147E1BDA7B20E9F7DB64930976DDC65E18655C"
+    },
+    {
+      "path": "tests/Test-WorkloadPathCoverage.ps1",
+      "sha256": "3DB27979B2FC7F99963A7E08FD8EFBE2E92D3FD289A92B64E1AC771CDB019455"
+    }
+  ],
+  "environment": "Windows; Windows PowerShell 5.1.26100.9711 only",
+  "casesExecuted": 46,
+  "result": "WorkloadActionIndex 28 assertions and WorkloadPathCoverage 18 checks passed, public WorkloadDiscovery regression passed on WinPS 5.1 with the F4a-changed MigrationWizard.ps1.",
+  "limitations": [
+    "PowerShell 7 is not installed on this verification host; the PS7 half of the original dual-engine evidence is not re-run for this rebind and remains historical (MIGRATION-7-E0.json).",
+    "Fixture XML/draft tests; no live task registration or execution."
+  ],
+  "logs": [
+    {
+      "name": "e0-f4a-WorkloadActionIndex-ps51.log",
+      "sha256": "55831B0736ED3EE2FA579FD2F669A22AA1F8E5F84879E3940389B140045C3B8D",
+      "text": "警告: 有些來自模組 'WindowsServerMigration' \r\n的匯入命令名稱包含未核准的動詞，因此可能不易搜尋。若要尋找含有未核准動詞的命令，請使用 Verbose 參數再次執行 \r\nImport-Module 命令。如需核准動詞的清單，請輸入 Get-Verb。\nPASS: E0 original action indices, typed draft consumer, opaque argument redaction, Exec-only and same-location regression, and ambiguous/unsupported action handling. Assertions: 28\n"
+    },
+    {
+      "name": "e0-f4a-WorkloadDiscovery-ps51.log",
+      "sha256": "2EB48CB831232F53B4E7E6009F7769DB94D25E44DB99C7DCAED0F16C3D415DFD",
+      "text": "警告: 有些來自模組 'WindowsServerMigration' \r\n的匯入命令名稱包含未核准的動詞，因此可能不易搜尋。若要尋找含有未核准動詞的命令，請使用 Verbose 參數再次執行 \r\nImport-Module 命令。如需核准動詞的清單，請輸入 Get-Verb。\nPASS: R3-B workload graph and schema3 public draft consumer. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-workload-1e95a71d4cfb439a8a7752b4fa150f23\n"
+    },
+    {
+      "name": "e0-f4a-WorkloadPathCoverage-ps51.log",
+      "sha256": "5DBEED1AF9B396D944F5628C15B64F4B384D1417BC04B1EC9CF7545017C78D06",
+      "text": "PASS: 18 workload path coverage checks; unresolved Source context remains manual.\n"
+    }
+  ]
+}

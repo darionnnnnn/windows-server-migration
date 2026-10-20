@@ -189,7 +189,7 @@ function Get-WsmWizardTargetRestoreProjection {
 }
 
 function Invoke-WsmWizardTargetRestore {
-    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$PreviewHash,[object[]]$Jobs=@(),$CancellationToken=$null,[hashtable]$Secrets=@{},[object[]]$GeneralHostEvidence=@())
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$PreviewHash,[object[]]$Jobs=@(),$CancellationToken=$null,[hashtable]$Secrets=@{},[object[]]$GeneralHostEvidence=@(),[string]$OperationId='', [object]$ChallengeContext=$null)
     if($PreviewHash -notmatch '^[a-f0-9]{64}$'){throw 'A current exact Target restore PreviewHash is required.'}
     $projection=Get-WsmWizardTargetRestoreProjection -Workspace $Workspace -PairId $PairId -Jobs $Jobs -GeneralHostEvidence $GeneralHostEvidence
     if($projection.Status -cne 'Previewed'){throw ('Target restore preview is no longer available (current status: '+[string]$projection.Status+'); refresh the preview and require a new explicit restore confirmation.')}
@@ -200,11 +200,17 @@ function Invoke-WsmWizardTargetRestore {
     $package=Test-WsmMigrationPackage $projection.ManifestPath $projection.ManifestHash
     $stateDirectory=Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs'
     $paths=Get-WsmOperationPaths $stateDirectory $PairId;$state=Get-WsmOperationState $paths $package
+    $waitingChallengeResume=$false
+    if($state.PSObject.Properties['AssistiveServiceChallenge'] -and [string]$state.AssistiveServiceChallenge.State -ceq 'WaitingForInput'){
+        $challenge=$state.AssistiveServiceChallenge;$attempt=$null;if($state.PSObject.Properties['RestoreAttempt']){$attempt=$state.RestoreAttempt}
+        if(-not $attempt -or [string]$state.Stage -cne 'WaitingForInput' -or [string]$attempt.Status -cne 'WaitingForInput' -or -not $OperationId -or [string]$challenge.ParentOperationId -cne $OperationId -or [string]$attempt.OperationId -cne $OperationId -or [string]$attempt.ManifestHash -ine $projection.ManifestHash -or [long]$attempt.Generation -ne [long]$projection.Generation -or [string]$attempt.DecisionReceiptHash -ine $projection.ReceiptHash -or [string]$attempt.TargetSnapshotHash -ine $projection.TargetSnapshotHash -or [string]$attempt.WizardPreviewHash -ine $PreviewHash -or [string]$challenge.PreviewHash -ine $PreviewHash -or (@($attempt.SelectedItemIds|Sort-Object -Unique)-join "`n") -cne (@($projection.SelectedItemIds|Sort-Object -Unique)-join "`n")){throw 'Waiting Service challenge does not match the exact durable TargetRestore parent; refresh or explicitly take over through the challenge control.'}
+        $waitingChallengeResume=$true
+    }
     # A successful restore may itself change the live filesystem rows that fed the
     # preview (for example Create becomes MergeIntoExistingDirectory). Allow only
     # an exact replay of the preview bound into the durable attempt, after all
     # current package/receipt/snapshot bindings were revalidated by the projection.
-    if($state.PSObject.Properties['RestoreAttempt'] -and $state.RestoreAttempt.PSObject.Properties['WizardPreviewHash'] -and
+    if(-not $waitingChallengeResume -and $state.PSObject.Properties['RestoreAttempt'] -and $state.RestoreAttempt.PSObject.Properties['WizardPreviewHash'] -and
        [string]$state.RestoreAttempt.WizardPreviewHash -ceq $PreviewHash -and
        [string]$state.RestoreAttempt.ManifestHash -ieq $projection.ManifestHash -and
        [long]$state.RestoreAttempt.Generation -eq [long]$projection.Generation -and
@@ -229,11 +235,13 @@ function Invoke-WsmWizardTargetRestore {
     $freshHash=Get-WsmWizardTargetPreviewHash $freshPreview $PairId $projection.PlanHash $projection.ManifestHash ([long]$projection.Generation) $projection.ReceiptHash $projection.TargetSnapshotHash $projection.ComparisonHash ([int]$projection.ComparisonRevision) ([int]$projection.SelectionRevision) ([string]$projection.Decision)
     if($freshHash -ine $PreviewHash){throw 'Target preview rows or readiness gates changed before restore; refresh and require a new explicit confirmation.'}
     $freshPreview | Add-Member NoteProperty WizardPreviewHash $PreviewHash -Force
-    if($state.PSObject.Properties['RestoreAttempt'] -and [string]$state.RestoreAttempt.ManifestHash -ieq $projection.ManifestHash -and [string]$state.RestoreAttempt.DecisionReceiptHash -ieq $projection.ReceiptHash -and [long]$state.RestoreAttempt.Generation -eq [long]$projection.Generation){
+    if(-not $waitingChallengeResume -and $state.PSObject.Properties['RestoreAttempt'] -and [string]$state.RestoreAttempt.ManifestHash -ieq $projection.ManifestHash -and [string]$state.RestoreAttempt.DecisionReceiptHash -ieq $projection.ReceiptHash -and [long]$state.RestoreAttempt.Generation -eq [long]$projection.Generation){
         if(@($state.PendingOperations).Count){throw 'The exact current restore attempt has an unresolved journal intent; repair it before retrying.'}
         if($state.Stage -in @('Succeeded','Partial','RebootRequired')){if(-not $state.RestoreAttempt.PSObject.Properties['ItemResults']){throw 'The exact current restore attempt has no durable item-result projection; retain the journal for review.'};$result=[pscustomobject]@{Results=@($state.RestoreAttempt.ItemResults);Deferred=@($projection.Rows | Where-Object Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired'))}}
         else{throw 'The exact current restore attempt is not terminal; inspect its journal and resume through core recovery before retrying.'}
-    }else{$result=Invoke-WsmAssistiveRestore $package $projection.ManifestHash $stateDirectory $Secrets @{} $CancellationToken $GeneralHostEvidence $projection.ReceiptPath $projection.ReceiptHash $projection.TargetSnapshotPath $freshPreview;$state=Get-WsmOperationState $paths $package}
+    }else{$result=Invoke-WsmAssistiveRestore $package $projection.ManifestHash $stateDirectory $Secrets @{} $CancellationToken $GeneralHostEvidence $projection.ReceiptPath $projection.ReceiptHash $projection.TargetSnapshotPath $freshPreview $OperationId $ChallengeContext;if($result -and $result.PSObject.Properties['Status'] -and [string]$result.Status -ceq 'WaitingForInput'){
+        return [pscustomobject][ordered]@{Status='WaitingForInput';PairId=$PairId;ParentOperationId=[string]$result.ParentOperationId;PlanHash=[string]$projection.PlanHash;ManifestHash=[string]$projection.ManifestHash;Generation=[long]$projection.Generation;Decision=[string]$projection.Decision;SelectedItemIds=@($projection.SelectedItemIds);RequiredSecretRefs=@($result.RequiredSecretRefs);ServiceReservations=@($result.ServiceReservations);PreviewHash=$PreviewHash;NoTargetWrites=$true;ResumeRequired=$true;ProductionVerified=$false}
+    };$state=Get-WsmOperationState $paths $package}
     $journalProof=Save-WsmWizardRestoreJournalSnapshot $paths $package ([string]$state.RestoreAttempt.OperationId) ([string]$state.Stage);$journalHash=[string]$journalProof.SHA256
     $attempt=$null;if($state.PSObject.Properties['RestoreAttempt']){$attempt=$state.RestoreAttempt}
     $itemResults=@($result.Results)

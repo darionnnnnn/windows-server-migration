@@ -949,10 +949,14 @@
         },
         {
           "path": "src/MigrationWizard.ps1",
-          "sha256": "2DDE19C2CE95521C47F8C47924BC1C5A8A41E4BB92F626BE2BD9167617672CFD"
+          "sha256": "8CE336C0102175CA9EB7E40ACD1361149541FF29EC92B0674370355A536564BD"
         }
       ],
       "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-E0-f4a-rebind.json",
+          "sha256": "53933E8CD0858B5F8935B459A6EF563C4ADB381C855FE99D58270DB6AE122A6D"
+        },
         {
           "path": "docs/plans/evidence/MIGRATION-7-E0.json",
           "sha256": "CA17DC58988E8CBA6F55C422758DBCEB127F9E630DF631EF9CAA70C7091D69F8"

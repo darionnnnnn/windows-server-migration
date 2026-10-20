@@ -38,7 +38,8 @@ function Invoke-WsmActivationSequence($Package,$Paths,$State,[switch]$Resume) {
         }else{$entry=$prior[0]}
         if($entry.BeforeHash -and $item.MigrationSpec.Adapter -notin @('FileScope','ManualWorkflow')){$observedHash=Get-WsmHashText ((Get-WsmAdapterState $item.MigrationSpec) | ConvertTo-Json -Depth 40 -Compress);if($observedHash -cne $entry.BeforeHash){throw 'Staged activation readback differs from the durable before-state; reconcile without replay.'}}
         # Intent is durable before the first native call. Never reset the transaction boundary on failure.
-        Invoke-WsmAdapterActivation $item.MigrationSpec $true $owned[0]
+        $reservationWorkspace=[IO.Path]::GetDirectoryName($Paths.Root)
+        Invoke-WsmAdapterActivation $item.MigrationSpec $true $owned[0] $reservationWorkspace '' ([string]$Package.Manifest.Target.Fingerprint)
         if(-not (Test-WsmActivationPhase $item $owned[0] Final $Package $State)){throw 'Activation returned without exact final configuration; retain intent and reconcile.'}
         $entry.Status='Completed';$entry.ObservedUtc=Get-WsmUtc;Add-WsmJournal $Paths $State 'ActivationCompleted' $item.ItemId $entry
     }

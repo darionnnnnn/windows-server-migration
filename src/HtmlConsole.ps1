@@ -400,9 +400,9 @@ function ConvertTo-WsmHtmlPreview($Result,[string]$Action,[int]$Revision,[string
 }
 
 function Get-WsmHtmlResultProjection($Output) {
-    $fields=@('Status','Stage','Path','SHA256','Hash','ReportPath','HtmlPath','ManifestPath','ManifestHash','Archive','ArchiveSHA256','RunId','PairId','CollectorCounts','Generation','Revision','ObservedChecks','PendingChecks','SpecPath','SpecHash','ReceiptPath','ReceiptHash','DecisionRevision','AssistiveRevision','SelectionRevision','TargetPhysicalId','RegistryRevision','ResourceKey','DocumentManifestPath','DocumentManifestHash','DocumentId','BundlePath','MemberCount','Valid','ProbeStatus','IndexPath','Kind','ExpectedRevision','PreviewPath','PreviewFileHash','PreviewHash','ReviewWindowsSettings','RowCount','ItemId','EntryCount','GapCount','ContentRead','BackupVerified','AuthoritativeApproval','SourceInventoryPath','SourceInventoryHash','SourceInventoryRevision','SourceIntentHash','ConfirmedChoiceCount','IncludedChoiceCount','ExcludedChoiceCount','AppliedChoiceCount','HandoffStatus','ImportPath','TargetInventoryPath','TargetInventoryHash','GeneratedDecisionsPath','GeneratedDecisionsHash','GeneratedRequirementsPath','GeneratedRequirementsHash','FailureCode','ReviewHash','Role','HostFingerprint','TaskPath','TaskName','TaskXmlSHA256','TaskSecuritySHA256','CapturedUtc','RawDefinitionReturned','RawDefinitionsReturned','RawDefinitionsIncluded','ProductionVerified','VendorVerified','ReadinessProof','BusinessAcceptance','ProviderId','Owner','SourceOS','TargetOS','TargetFingerprint','TargetSnapshotHash','TargetSnapshotUtc','SourceTaskXmlSHA256','SourceTaskSecuritySHA256','TargetTaskXmlSHA256','TargetTaskSecuritySHA256','SourceProviderProvenanceReference','TargetProviderProvenanceReference','TrustedBaselinePath','TrustedBaselineHash','TrustedBaselineOwner','SourceBaselineMatched','TargetBaselineMatched','DefinitionsDiffer','OSProvidedEligible','ValuesWithheld','EvidencePath','EvidenceHash','Disposition','ItemName','Adapter','Evidence','ArchiveBytes','ProductionQualified','BusinessValidated','SoftwareScopeStatus','SoftwareScopeSourceInventoryHash','SourceSnapshotHash','PreviewId','TargetIdentityPath','TargetIdentityHash','TrustMethod','ProducedUtc','ProducedLocal','ImportedUtc','ImportedLocal','TimeZone','NextOperator','NextMachine','NextAction','Duplicate','ScanId','ScanStatus','CandidateCount','CandidatePath','CandidateHash','ScannedEntryCount','VisitedDirectoryCount','GapCount','ExcludedAreaCount','RemainingDirectoryCount','SegmentNumber','SegmentCount','ExplicitContinuationRequired','ContinuationRequired','ContinuationScanId')
-    @(foreach($row in @($Output)){$safe=[ordered]@{};
-if($row){$modern=ConvertTo-WsmWizardHtmlValue $row;foreach($property in $modern.PSObject.Properties){$safe[$property.Name]=$property.Value};if($row.PSObject.Properties['ItemResultsHash'] -and $row.PSObject.Properties['ItemResults']){$safe.SafeProjectedItemResults=$true}}foreach($field in $fields){if($row -and $row.PSObject.Properties[$field]){$value=$row.$field;if($value -is [string] -or $value -is [ValueType]){$safe[$field]=$value}elseif($field -eq 'CollectorCounts'){$counts=[ordered]@{};foreach($countName in @('Completed','Partial','PermissionDenied','NotApplicable','TimedOut','Failed','Cancelled','NotScheduled')){if($value.PSObject.Properties[$countName]){$counts[$countName]=[int]$value.$countName}};$safe.CollectorCounts=[pscustomobject]$counts}}};if($row -and $row.PSObject.Properties['Kind'] -and $row.Kind -ceq 'WizardPreparationReview'){
+    $fields=@('Status','Stage','Path','SHA256','Hash','ReportPath','HtmlPath','ManifestPath','ManifestHash','Archive','ArchiveSHA256','RunId','PairId','CollectorCounts','Generation','Revision','ObservedChecks','PendingChecks','SpecPath','SpecHash','ReceiptPath','ReceiptHash','DecisionRevision','AssistiveRevision','SelectionRevision','TargetPhysicalId','RegistryRevision','ResourceKey','DocumentManifestPath','DocumentManifestHash','DocumentId','BundlePath','MemberCount','Valid','ProbeStatus','IndexPath','Kind','ExpectedRevision','PreviewPath','PreviewFileHash','PreviewHash','ReviewWindowsSettings','RowCount','ItemId','EntryCount','GapCount','ContentRead','BackupVerified','AuthoritativeApproval','SourceInventoryPath','SourceInventoryHash','SourceInventoryRevision','SourceIntentHash','ConfirmedChoiceCount','IncludedChoiceCount','ExcludedChoiceCount','AppliedChoiceCount','HandoffStatus','ImportPath','TargetInventoryPath','TargetInventoryHash','GeneratedDecisionsPath','GeneratedDecisionsHash','GeneratedRequirementsPath','GeneratedRequirementsHash','FailureCode','ReviewHash','Role','HostFingerprint','TaskPath','TaskName','TaskXmlSHA256','TaskSecuritySHA256','CapturedUtc','RawDefinitionReturned','RawDefinitionsReturned','RawDefinitionsIncluded','ProductionVerified','VendorVerified','ReadinessProof','BusinessAcceptance','ProviderId','Owner','SourceOS','TargetOS','TargetFingerprint','TargetSnapshotHash','TargetSnapshotUtc','SourceTaskXmlSHA256','SourceTaskSecuritySHA256','TargetTaskXmlSHA256','TargetTaskSecuritySHA256','SourceProviderProvenanceReference','TargetProviderProvenanceReference','TrustedBaselinePath','TrustedBaselineHash','TrustedBaselineOwner','SourceBaselineMatched','TargetBaselineMatched','DefinitionsDiffer','OSProvidedEligible','ValuesWithheld','EvidencePath','EvidenceHash','Disposition','ItemName','Adapter','Evidence','ArchiveBytes','ProductionQualified','BusinessValidated','SoftwareScopeStatus','SoftwareScopeSourceInventoryHash','SourceSnapshotHash','PreviewId','TargetIdentityPath','TargetIdentityHash','TrustMethod','ProducedUtc','ProducedLocal','ImportedUtc','ImportedLocal','TimeZone','NextOperator','NextMachine','NextAction','Duplicate','ScanId','ScanStatus','CandidateCount','CandidatePath','CandidateHash','ScannedEntryCount','VisitedDirectoryCount','GapCount','ExcludedAreaCount','RemainingDirectoryCount','SegmentNumber','SegmentCount','ExplicitContinuationRequired','ContinuationRequired','ContinuationScanId','ParentOperationId','NoTargetWrites','ResumeRequired','RequiredSecretRefs')
+    @(foreach($row in @($Output)){if($row -and $row.PSObject.Properties['Status'] -and [string]$row.Status -ceq 'WaitingForInput' -and $row.PSObject.Properties['RequiredSecretRefs']){$refs=@($row.RequiredSecretRefs|Where-Object {$_ -is [string] -and $_.Length -le 256});[pscustomobject][ordered]@{Status='WaitingForInput';ParentOperationId=[string]$row.ParentOperationId;PreviewHash=[string]$row.PreviewHash;RequiredSecretRefs=$refs;NoTargetWrites=[bool]$row.NoTargetWrites;ResumeRequired=[bool]$row.ResumeRequired;ProductionVerified=$false};continue};$safe=[ordered]@{};
+if($row){$modern=ConvertTo-WsmWizardHtmlValue $row;foreach($property in $modern.PSObject.Properties){$safe[$property.Name]=$property.Value};if($row.PSObject.Properties['ItemResultsHash'] -and $row.PSObject.Properties['ItemResults']){$safe.SafeProjectedItemResults=$true}}foreach($field in $fields){if($row -and $row.PSObject.Properties[$field]){$value=$row.$field;if($value -is [string] -or $value -is [ValueType]){$safe[$field]=$value}elseif($field -eq 'CollectorCounts'){$counts=[ordered]@{};foreach($countName in @('Completed','Partial','PermissionDenied','NotApplicable','TimedOut','Failed','Cancelled','NotScheduled')){if($value.PSObject.Properties[$countName]){$counts[$countName]=[int]$value.$countName}};$safe.CollectorCounts=[pscustomobject]$counts}}};if($row -and $row.PSObject.Properties['Status'] -and [string]$row.Status -ceq 'WaitingForInput' -and $row.PSObject.Properties['RequiredSecretRefs']){$safe.RequiredSecretRefs=@($row.RequiredSecretRefs|Where-Object {$_ -is [string] -and $_.Length -le 256})};if($row -and $row.PSObject.Properties['Kind'] -and $row.Kind -ceq 'WizardPreparationReview'){
  $safe.FormFields=@(foreach($form in @($row.FormFields)){[pscustomobject][ordered]@{key=[string]$form.key;label=[string]$form.label;type=[string]$form.type;value=$form.value;required=[bool]$form.required;editable=[bool]$form.editable;options=@($form.options);origin=[string]$form.origin;provenance=$form.provenance}})
  foreach($name in @('DefaultPriority','MissingTypedFields','SoftwareScopeDiagnostics','SoftwareExclusionCandidates')){if($row.PSObject.Properties[$name]){$safe[$name]=$row.$name}}
 };if($row -and $row.PSObject.Properties['Kind'] -and $row.Kind -cin @('WizardTargetHandoffPreview','WizardTargetHandoffExport')){
@@ -616,7 +616,7 @@ function Write-WsmHtmlErrorRecord([string]$ErrorRoot,$SafeError,[string]$Route,[
 
 function ConvertTo-WsmHtmlPublicJobRecord($Record) {
     $public=[ordered]@{}
-    foreach($property in $Record.PSObject.Properties){if($property.Name -notin @('idempotencyKey','RequestHash','reportArtifacts')){if($Record.action -ceq 'DeveloperProbe' -and $property.Name -eq 'outputs'){$public.outputs=@(foreach($output in @($property.Value)){$safe=[ordered]@{};foreach($field in @('Status','SHA256','RunId','ArchiveBytes','CollectorCounts','CollectorResults','ProductionQualified','BusinessValidated')){if($output -and $output.PSObject.Properties[$field]){$safe[$field]=$output.$field}};[pscustomobject]$safe})}else{$public[$property.Name]=$property.Value}}}
+    foreach($property in $Record.PSObject.Properties){if($property.Name -notin @('idempotencyKey','RequestHash','reportArtifacts','targetRestorePreviewHash','challengePreviewHash')){if($Record.action -ceq 'DeveloperProbe' -and $property.Name -eq 'outputs'){$public.outputs=@(foreach($output in @($property.Value)){$safe=[ordered]@{};foreach($field in @('Status','SHA256','RunId','ArchiveBytes','CollectorCounts','CollectorResults','ProductionQualified','BusinessValidated')){if($output -and $output.PSObject.Properties[$field]){$safe[$field]=$output.$field}};[pscustomobject]$safe})}else{$public[$property.Name]=$property.Value}}}
     if($Record.PSObject.Properties['reportArtifacts']){$public.artifacts=@(for($i=0;$i -lt @($Record.reportArtifacts).Count;$i++){$item=$Record.reportArtifacts[$i];[pscustomobject]@{index=$i;label=$item.Label;sha256=$item.SHA256;kind=$item.Kind;contentType=$item.ContentType}})}
     [pscustomobject]$public
 }
@@ -742,7 +742,94 @@ function Get-WsmHtmlRequestHashForBody([string]$Workspace,[string]$PairId,[strin
 
 function Import-WsmHtmlJobHistory([string]$consoleRoot,[hashtable]$jobs,[hashtable]$keys,$RecoveryGuard=$null) {
     $recoveryLanes=@{};foreach($guard in @($RecoveryGuard)){if($guard){Assert-WsmWorkspaceWorkerGuard $guard (Split-Path $consoleRoot -Parent);$recoveryLanes[[string]$guard.Lane]=$true}}
-    foreach($old in @(Get-ChildItem -LiteralPath $consoleRoot -Filter '*.json' -File)){Assert-WsmNoReparse $old.FullName;$record=Read-WsmJson $old.FullName;Assert-WsmId ([string]$record.jobId);if([IO.Path]::GetFileNameWithoutExtension($old.Name) -cne [string]$record.jobId -or $jobs.ContainsKey([string]$record.jobId)){throw 'Invalid durable job identity.'};if($record.PSObject.Properties['idempotencyKey'] -and $record.PSObject.Properties['RequestHash']){Assert-WsmId ([string]$record.idempotencyKey);if([string]$record.RequestHash -notmatch '^[a-f0-9]{64}$' -or $keys.ContainsKey([string]$record.idempotencyKey)){throw 'Invalid durable idempotency record.'};$keys[[string]$record.idempotencyKey]=@{Hash=[string]$record.RequestHash;Id=[string]$record.jobId}};foreach($field in @('workspace','pairId','role','sessionId','contextId','startedRevision','startedDecisionRevision','startedSelectionRevision','startedDataVersion')){if(-not $record.PSObject.Properties[$field]){$record|Add-Member NoteProperty $field $null -Force}};if($recoveryLanes.ContainsKey($(if((Get-WsmTextMetadataValue $record 'action' '') -ceq 'DeveloperProbe'){'DeveloperProbe'}else{'Migration'})) -and $record.status -in @('Running','CancelRequested')){$record.status='Interrupted';Write-WsmJson $old.FullName $record};$record|Add-Member NoteProperty canCancel $false -Force;$jobs[$record.jobId]=@{Record=$record;Path=$old.FullName;Handle=$null;PowerShell=$null;CancellationToken=$null}}
+    foreach($old in @(Get-ChildItem -LiteralPath $consoleRoot -Filter '*.json' -File)){Assert-WsmNoReparse $old.FullName;$record=Read-WsmJson $old.FullName;Assert-WsmId ([string]$record.jobId);if([IO.Path]::GetFileNameWithoutExtension($old.Name) -cne [string]$record.jobId -or $jobs.ContainsKey([string]$record.jobId)){throw 'Invalid durable job identity.'};if($record.PSObject.Properties['idempotencyKey'] -and $record.PSObject.Properties['RequestHash']){Assert-WsmId ([string]$record.idempotencyKey);if([string]$record.RequestHash -notmatch '^[a-f0-9]{64}$' -or $keys.ContainsKey([string]$record.idempotencyKey)){throw 'Invalid durable idempotency record.'};$keys[[string]$record.idempotencyKey]=@{Hash=[string]$record.RequestHash;Id=[string]$record.jobId}};foreach($field in @('workspace','pairId','role','sessionId','contextId','startedRevision','startedDecisionRevision','startedSelectionRevision','startedDataVersion')){if(-not $record.PSObject.Properties[$field]){$record|Add-Member NoteProperty $field $null -Force}};if($recoveryLanes.ContainsKey($(if((Get-WsmTextMetadataValue $record 'action' '') -ceq 'DeveloperProbe'){'DeveloperProbe'}else{'Migration'})) -and $record.status -in @('Running','CancelRequested')){$record.status='Interrupted';Write-WsmJson $old.FullName $record};if([string](Get-WsmTextMetadataValue $record 'action' '') -ceq 'TargetRestore' -and [string]$record.status -in @('Interrupted','WaitingForInput')){try{$challenge=Get-WsmHtmlTargetRestoreChallenge ([string]$record.workspace) $record;$record.status='WaitingForInput';$record.CompletedUtc=$null;$record|Add-Member NoteProperty requiredSecretRefs @($challenge.Challenge.RequiredSecretRefs) -Force;$record|Add-Member NoteProperty recoveryReadbackRequired ([bool]$challenge.RecoverablePreWrite) -Force;Write-WsmJson $old.FullName $record}catch{}};$record|Add-Member NoteProperty canCancel $false -Force;$jobs[$record.jobId]=@{Record=$record;Path=$old.FullName;Handle=$null;PowerShell=$null;CancellationToken=$null}}
+}
+
+function Get-WsmHtmlChallengeActor {
+    $identity=Get-WsmExecutionActor
+    if(-not $identity -or -not $identity.WindowsSID -or -not $identity.ExecutionHost){throw 'Service credential challenge requires a stable local Windows actor identity.'}
+    ([string]$identity.WindowsSID+'@'+[string]$identity.ExecutionHost)
+}
+
+function Get-WsmHtmlTargetRestoreChallenge([string]$Workspace,$Record) {
+    if(-not $Record -or [string]$Record.action -cne 'TargetRestore' -or [string]$Record.role -cne 'Target' -or -not $Record.pairId -or -not $Record.targetRestorePreviewHash){throw 'Service credential challenge job provenance is incomplete.'}
+    $stateDirectory=Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs';$paths=Get-WsmOperationPaths $stateDirectory ([string]$Record.pairId)
+    if(-not [IO.File]::Exists($paths.State)){throw 'Durable TargetRestore state is unavailable.'};$state=Read-WsmJson $paths.State
+    if(-not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.PSObject.Properties['AssistiveServiceChallenge']){throw 'TargetRestore parent is not durably waiting for secure input.'}
+    $attempt=$state.RestoreAttempt;$challenge=$state.AssistiveServiceChallenge;$operationId=[string]$Record.jobId
+    if([string]$attempt.OperationId -cne $operationId -or [string]$challenge.ParentOperationId -cne $operationId -or [string]$challenge.PairId -cne [string]$Record.pairId -or [string]$attempt.WizardPreviewHash -ine [string]$Record.targetRestorePreviewHash -or [string]$challenge.PreviewHash -ine [string]$Record.targetRestorePreviewHash -or [string]$attempt.ManifestHash -ine [string]$challenge.ManifestHash -or [long]$attempt.Generation -ne [long]$challenge.Generation){throw 'Job record does not match the durable TargetRestore parent and challenge.'}
+    $recoverablePreWrite=$false
+    if([string]$state.Stage -ceq 'WaitingForInput' -and [string]$attempt.Status -ceq 'WaitingForInput' -and [string]$challenge.State -ceq 'WaitingForInput'){$recoverablePreWrite=$false}
+    elseif([string]$challenge.State -ceq 'Running'){$null=Test-WsmAssistiveServiceChallengePreWriteRecovery $stateDirectory $state $operationId;$recoverablePreWrite=$true}
+    else{throw 'TargetRestore parent is not durably waiting for secure input or safely recoverable before native writes.'}
+    [pscustomobject]@{StateDirectory=$stateDirectory;Paths=$paths;State=$state;Attempt=$attempt;Challenge=$challenge;RecoverablePreWrite=$recoverablePreWrite}
+}
+
+function Get-WsmHtmlTargetRestoreRetryWaitOutput([string]$Workspace,$Record) {
+    $binding=Get-WsmHtmlTargetRestoreChallenge $Workspace $Record
+    if([string]$binding.State.Stage -cne 'WaitingForInput' -or [string]$binding.Attempt.Status -cne 'WaitingForInput' -or [string]$binding.Challenge.State -cne 'WaitingForInput'){return $null}
+    [pscustomobject][ordered]@{Status='WaitingForInput';ParentOperationId=[string]$Record.jobId;PreviewHash=[string]$Record.targetRestorePreviewHash;RequiredSecretRefs=@($binding.Challenge.RequiredSecretRefs);NoTargetWrites=$true;ResumeRequired=$true;ProductionVerified=$false}
+}
+
+function ConvertTo-WsmHtmlServiceCredentials($InputObject,$Challenge) {
+    if(-not $InputObject -or $InputObject -isnot [System.Management.Automation.PSCustomObject]){throw 'Credentials must be an object keyed by the reviewed SecretRefs.'}
+    $refs=@($InputObject.PSObject.Properties.Name|Sort-Object -Unique);$expected=@($Challenge.RequiredSecretRefs|Sort-Object -Unique)
+    if(($refs -join "`n") -cne ($expected -join "`n")){throw 'Credential SecretRef set differs from the durable challenge.'}
+    $validated=@{}
+    foreach($ref in $expected){$entry=$InputObject.PSObject.Properties[$ref].Value;if(-not $entry -or $entry -isnot [System.Management.Automation.PSCustomObject]){throw 'Credential entry is malformed.'};Assert-WsmFields $entry @('username','password') @('username','password');$username=$entry.username;$password=$entry.password;if($username -isnot [string] -or $password -isnot [string] -or [string]::IsNullOrWhiteSpace($username) -or $username.Length -gt 256 -or $username -match '[\x00-\x1f]' -or [string]::IsNullOrEmpty($password) -or $password.Length -gt 4096){throw 'Credential entry is invalid.'};$validated[$ref]=@{Username=$username;Password=$password}}
+    $credentials=@{}
+    try{foreach($ref in $expected){$entry=$validated[$ref];$secure=ConvertTo-SecureString $entry.Password -AsPlainText -Force;$credentials[$ref]=New-Object Management.Automation.PSCredential($entry.Username,$secure)};return ,$credentials}catch{Clear-WsmHtmlServiceCredentialValues $credentials;throw}
+}
+function Clear-WsmHtmlServiceCredentialValues([hashtable]$Credentials) {
+    if(-not $Credentials){return}
+    foreach($credential in @($Credentials.Values)){if($credential -is [Management.Automation.PSCredential]){try{$credential.Password.Dispose()}catch{}}}
+    $Credentials.Clear()
+}
+function Clear-WsmHtmlJobSecrets($Job) {
+    if($Job -and $Job.ContainsKey('SecretCredentials') -and $Job.SecretCredentials){Clear-WsmHtmlServiceCredentialValues $Job.SecretCredentials;$Job.SecretCredentials=$null}
+}
+function Clear-WsmHtmlCredentialJobRuntime($Job) {
+    if(-not $Job){return}
+    try{if($Job.PowerShell){try{$Job.PowerShell.Dispose()}catch{}}}finally{
+        $Job.PowerShell=$null
+        try{Clear-WsmHtmlJobSecrets $Job}finally{if($Job.ContainsKey('WorkerGuard') -and $Job.WorkerGuard){try{Exit-WsmWorkspaceWorkerGuard $Job.WorkerGuard}finally{$Job.WorkerGuard=$null}}}
+    }
+}
+function Start-WsmHtmlCredentialJobWorker($Job) {
+    try{$Job.Handle=$Job.PowerShell.BeginInvoke()}catch{Clear-WsmHtmlCredentialJobRuntime $Job;throw}
+}
+function Write-WsmHtmlCredentialJobAndReleaseRuntime($Job) {
+    try{Write-WsmJson $Job.Path $Job.Record}finally{Clear-WsmHtmlCredentialJobRuntime $Job}
+}
+function Set-WsmHtmlCredentialJobWaitingForRetry($Job,$RetryOutput) {
+    if(-not $Job -or -not $RetryOutput -or [string]$RetryOutput.Status -cne 'WaitingForInput' -or [string]$RetryOutput.ParentOperationId -cne [string]$Job.Record.jobId){throw 'Credential retry output does not match the durable waiting parent.'}
+    $Job.Record.Status='WaitingForInput';$Job.Record.CompletedUtc=$null;$Job.Record.canCancel=$false
+    $Job.Record|Add-Member NoteProperty requiredSecretRefs @($RetryOutput.RequiredSecretRefs) -Force
+    $Job.Record|Add-Member NoteProperty outputs @(Get-WsmHtmlResultProjection @($RetryOutput)) -Force
+    if($Job.Record.PSObject.Properties['error']){$Job.Record.PSObject.Properties.Remove('error')}
+    Write-WsmJson $Job.Path $Job.Record
+}
+
+function New-WsmHtmlTargetRestoreChallengeArguments([string]$Workspace,$Record,[hashtable]$Jobs,[hashtable]$Secrets,[string]$SessionId,[string]$ContextId,[switch]$Takeover) {
+    $current=Get-WsmHtmlTargetRestoreChallenge $Workspace $Record;$challenge=$current.Challenge
+    $projection=Get-WsmWizardTargetRestoreProjection -Workspace $Workspace -PairId ([string]$Record.pairId) -Jobs (Get-WsmHtmlWizardJobs $Jobs $Workspace)
+    if([string]$projection.Status -cne 'Previewed' -or [string]$projection.PreviewHash -ine [string]$Record.targetRestorePreviewHash -or [string]$projection.ManifestHash -ine [string]$current.Attempt.ManifestHash -or [long]$projection.Generation -ne [long]$current.Attempt.Generation -or [string]$projection.ReceiptHash -ine [string]$current.Attempt.DecisionReceiptHash -or [string]$projection.TargetSnapshotHash -ine [string]$current.Attempt.TargetSnapshotHash -or (@($projection.SelectedItemIds|Sort-Object -Unique)-join "`n") -cne (@($current.Attempt.SelectedItemIds|Sort-Object -Unique)-join "`n")){throw 'Current TargetRestore preview no longer matches the durable waiting parent.'}
+    $actor=Get-WsmHtmlChallengeActor
+    if($current.RecoverablePreWrite -or [string]$challenge.Actor -cne $actor -or [string]$challenge.SessionId -cne $SessionId -or [string]$challenge.ContextId -cne $ContextId){
+        if(-not $Takeover){throw 'Service credential challenge belongs to another actor/session/context; explicit takeover is required.'}
+        Takeover-WsmAssistiveServiceCredentialChallenge -StateDirectory $current.StateDirectory -PairId ([string]$Record.pairId) -OperationId ([string]$Record.jobId) -PreviewHash ([string]$Record.targetRestorePreviewHash) -Actor $actor -SessionId $SessionId -ContextId $ContextId -Revision ([int]$challenge.Revision) -ConfirmTakeover | Out-Null
+    }
+    $package=Test-WsmMigrationPackage $projection.ManifestPath $projection.ManifestHash;$context=[pscustomobject][ordered]@{Role='Target';Actor=$actor;SessionId=$SessionId;ContextId=$ContextId;Revision=[int]$package.Manifest.DecisionRevision;OperationId=[string]$Record.jobId}
+    $token=New-WsmCancellationToken -PairId ([string]$Record.pairId) -PlanHash ([string]$projection.PlanHash) -ManifestHash ([string]$projection.ManifestHash) -OperationId ([string]$Record.jobId) -StateDirectory $current.StateDirectory
+    @{Workspace=[IO.Path]::GetFullPath($Workspace);PairId=[string]$Record.pairId;PreviewHash=[string]$projection.PreviewHash;Jobs=(Get-WsmHtmlWizardJobs $Jobs $Workspace);CancellationToken=$token;Secrets=$Secrets;GeneralHostEvidence=@();OperationId=[string]$Record.jobId;ChallengeContext=$context}
+}
+function New-WsmHtmlCredentialResumeContext([string]$Workspace,$Record,[hashtable]$Jobs,$CredentialInput,$Challenge,[string]$SessionId,[string]$ContextId,[switch]$Takeover) {
+    $secretValues=ConvertTo-WsmHtmlServiceCredentials $CredentialInput $Challenge
+    try{
+        $arguments=New-WsmHtmlTargetRestoreChallengeArguments $Workspace $Record $Jobs $secretValues $SessionId $ContextId -Takeover:$Takeover
+        $guard=Enter-WsmWorkspaceWorkerGuard -Workspace $Workspace -OperationId ([string]$Record.jobId) -Role 'Target' -PairId ([string]$Record.pairId) -Action 'TargetRestore'
+        [pscustomobject]@{Secrets=$secretValues;Arguments=$arguments;Guard=$guard}
+    }catch{Clear-WsmHtmlServiceCredentialValues $secretValues;throw}
 }
 
 function Start-WsmHtmlConsole {
@@ -787,13 +874,14 @@ function Start-WsmHtmlConsole {
                 }
                 $progress=Get-WsmHtmlProgressProjection $job;if($progress){$job.Record|Add-Member NoteProperty progress $progress -Force}
                 if($job.Handle -and $job.Handle.IsCompleted){
-                    $output=@();try{$output=@($job.PowerShell.EndInvoke($job.Handle));$code=Get-WsmOperationStatusCode $output;$job.Record.Status=if($code -eq 0){'Succeeded'}elseif($code -eq 3){'Cancelled'}elseif($code -eq 1){'Failed'}else{'ReviewRequired'};if($code -eq 1){$workerError=Get-WsmHtmlSafeError 'WorkerReportedFailure';$job.Record|Add-Member NoteProperty error $workerError -Force;try{Write-WsmHtmlErrorRecord $errorRoot $workerError '/worker' ([string]$job.Record.pairId)}catch{}}}catch{$job.Record.Status=Get-WsmWorkerFailureStatus $_;if($job.Record.Status -ceq 'Failed'){$workerError=Get-WsmHtmlSafeError $_.Exception.Message $_.Exception.GetType().FullName;$job.Record|Add-Member NoteProperty error $workerError -Force;try{Write-WsmHtmlErrorRecord $errorRoot $workerError '/worker' ([string]$job.Record.pairId)}catch{}}}
+                    $output=@();$waitingForInput=$false;try{$output=@($job.PowerShell.EndInvoke($job.Handle));$waitRows=@($output|Where-Object {$_.PSObject -and $_.PSObject.Properties['Status'] -and [string]$_.Status -ceq 'WaitingForInput'});if([string]$job.Record.action -ceq 'TargetRestore' -and $waitRows.Count -eq 1){$waitingForInput=$true;$job.Record.Status='WaitingForInput';$job.Record.CompletedUtc=$null;$job.Record|Add-Member NoteProperty requiredSecretRefs @($waitRows[0].RequiredSecretRefs|Where-Object {$_ -is [string]}) -Force;$job.Record|Add-Member NoteProperty challengePreviewHash ([string]$waitRows[0].PreviewHash) -Force}else{$code=Get-WsmOperationStatusCode $output;$job.Record.Status=if($code -eq 0){'Succeeded'}elseif($code -eq 3){'Cancelled'}elseif($code -eq 1){'Failed'}else{'ReviewRequired'};if($code -eq 1){$workerError=Get-WsmHtmlSafeError 'WorkerReportedFailure';$job.Record|Add-Member NoteProperty error $workerError -Force;try{Write-WsmHtmlErrorRecord $errorRoot $workerError '/worker' ([string]$job.Record.pairId)}catch{}}}}catch{$workerFailure=$_;$job.Record.Status=Get-WsmWorkerFailureStatus $workerFailure;if([string]$job.Record.action -ceq 'TargetRestore' -and $job.Record.Status -ceq 'Failed'){try{$retryWait=Get-WsmHtmlTargetRestoreRetryWaitOutput $Workspace $job.Record;if($retryWait){$waitingForInput=$true;$job.Record.Status='WaitingForInput';$job.Record.CompletedUtc=$null;$job.Record|Add-Member NoteProperty requiredSecretRefs @($retryWait.RequiredSecretRefs) -Force;$output=@($retryWait)}}catch{}};if(-not $waitingForInput -and $job.Record.Status -ceq 'Failed'){$workerError=Get-WsmHtmlSafeError $workerFailure.Exception.Message $workerFailure.Exception.GetType().FullName;$job.Record|Add-Member NoteProperty error $workerError -Force;try{Write-WsmHtmlErrorRecord $errorRoot $workerError '/worker' ([string]$job.Record.pairId)}catch{}}}
+                    if($waitingForInput){$job.Record|Add-Member NoteProperty outputs @(Get-WsmHtmlResultProjection $output) -Force;$job.Record.canCancel=$false;$job.Handle=$null;Write-WsmHtmlCredentialJobAndReleaseRuntime $job;continue}
                     if(-not $output.Count -and $job.Record.Status -in @('Failed','Cancelled')){try{$output=@(Get-WsmHtmlWizardTerminalOutput $job.Record (Get-WsmHtmlWizardJobs $jobs $Workspace)|Where-Object {$null -ne $_})}catch{}}
                     $job.Record|Add-Member NoteProperty outputs @(Get-WsmHtmlResultProjection $output) -Force
                     if($job.Record.action -ceq 'ImportApprovedPlan' -and @($job.Record.outputs).Count -eq 1){$importResult=$job.Record.outputs[0];if($importResult.PairId -and $importResult.Status -ceq 'ImportedVerified'){$job.Record|Add-Member NoteProperty result ([pscustomobject][ordered]@{Status=[string]$importResult.Status;PairId=[string]$importResult.PairId;SHA256=[string]$importResult.SHA256;ProductionVerified=$false}) -Force}}
                     $job.Record|Add-Member NoteProperty reportArtifacts @(Get-WsmHtmlReportArtifacts $job.Record.action $job.Record.outputs $Workspace) -Force
                     $job.Record.canCancel=$false
-                    $job.Record.CompletedUtc=Get-WsmUtc;$job.Handle=$null;$job.PowerShell.Dispose();$job.PowerShell=$null;try{Write-WsmJson $job.Path $job.Record}finally{if($job.ContainsKey('WorkerGuard') -and $job.WorkerGuard){Exit-WsmWorkspaceWorkerGuard $job.WorkerGuard;$job.WorkerGuard=$null}}
+                    $job.Record.CompletedUtc=Get-WsmUtc;$job.Handle=$null;Write-WsmHtmlCredentialJobAndReleaseRuntime $job
                 }
             }
             if(-not $listener.Pending()){Start-Sleep -Milliseconds 50;continue}
@@ -920,6 +1008,42 @@ function Start-WsmHtmlConsole {
                             else{Assert-WsmNoReparse $artifact.Path;Assert-WsmTrustedFile $artifact.Path $artifact.SHA256;Start-Process -FilePath $artifact.Path | Out-Null};$response=@{status='Opened';kind=$artifact.Kind;SHA256=$artifact.SHA256}
                         }catch{throw 'ReportUnavailable'}
                     }
+                    elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/service-credentials/cancel$' -and $request.Method -ceq 'POST'){
+                        $id=$Matches[1];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};$job=$jobs[$id];Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role
+                        if($Role -cne 'Target' -or [string]$job.Record.action -cne 'TargetRestore' -or [string]$job.Record.status -cne 'WaitingForInput'){throw 'TargetRestore parent is not waiting for secure service credentials.'}
+                        $body=ConvertFrom-WsmJson $request.Body;if($body -isnot [System.Management.Automation.PSCustomObject] -or @($body.PSObject.Properties).Count -ne 0){throw 'Credential cancellation body must be an empty JSON object.'};$binding=Get-WsmHtmlTargetRestoreChallenge $Workspace $job.Record
+                        Cancel-WsmAssistiveServiceCredentialChallenge -StateDirectory $binding.StateDirectory -PairId ([string]$job.Record.pairId) -OperationId ([string]$job.Record.jobId) -PreviewHash ([string]$job.Record.targetRestorePreviewHash) | Out-Null
+                        $job.Record.Status='Cancelled';$job.Record.CompletedUtc=Get-WsmUtc;$job.Record.canCancel=$false;$job.Record|Add-Member NoteProperty outputs @([pscustomobject]@{Status='Cancelled';ParentOperationId=[string]$job.Record.jobId;NoTargetWrites=$true;ProductionVerified=$false}) -Force;Write-WsmJson $job.Path $job.Record;$response=ConvertTo-WsmHtmlPublicJobRecord $job.Record
+                    }
+                    elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/service-credentials$' -and $request.Method -ceq 'POST'){
+                        $id=$Matches[1];$worker=$null;$workerArguments=$null;$secretValues=$null;$submissionGuard=$null;$body=$null;$workerStarted=$false
+                        try{
+                            if(-not $request.Headers.ContainsKey('content-type') -or $request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw 'JSON body required.'}
+                            if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};$job=$jobs[$id];Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role
+                            if($Role -cne 'Target' -or [string]$job.Record.action -cne 'TargetRestore' -or [string]$job.Record.status -cne 'WaitingForInput'){throw 'TargetRestore parent is not waiting for secure service credentials.'}
+                            $body=ConvertFrom-WsmJson $request.Body;Assert-WsmFields $body @('credentials','takeover') @('credentials');if($body.PSObject.Properties['takeover'] -and $body.takeover -isnot [bool]){throw 'Explicit takeover flag must be boolean.'}
+                            $challengeBinding=Get-WsmHtmlTargetRestoreChallenge $Workspace $job.Record;$takeover=$false;if($body.PSObject.Properties['takeover']){$takeover=[bool]$body.takeover}
+                            $resumeContext=New-WsmHtmlCredentialResumeContext $Workspace $job.Record $jobs $body.credentials $challengeBinding.Challenge $sessionId $contextId -Takeover:$takeover;$secretValues=$resumeContext.Secrets;$workerArguments=$resumeContext.Arguments;$submissionGuard=$resumeContext.Guard
+                            try{
+                                $command=Get-Command Invoke-WsmWizardTargetRestore -CommandType Function;$worker=[Management.Automation.PowerShell]::Create()
+                                [void]$worker.AddScript('param($modulePath,$commandName,$arguments) Import-Module $modulePath -Force -DisableNameChecking; $ConfirmPreference="None"; $ErrorActionPreference="Stop"; $command=Get-Command $commandName -CommandType Function; if($command.Parameters.ContainsKey("Confirm")){$arguments.Confirm=$false}; & $command @arguments').AddArgument($modulePath).AddArgument($command.Name).AddArgument($workerArguments)
+                                $job.Record.Status='Running';$job.Record.CompletedUtc=$null;$job.Record.canCancel=$true;$job.Record|Add-Member NoteProperty requiredSecretRefs @() -Force;$job.Record|Add-Member NoteProperty outputs @() -Force
+                                $jobPath=$job.Path;Write-WsmJson $jobPath $job.Record
+                                $guard=$submissionGuard;$submissionGuard=$null;$job=@{Record=$job.Record;Path=$jobPath;PowerShell=$worker;Handle=$null;CancellationToken=$workerArguments.CancellationToken;WorkerGuard=$guard;SecretCredentials=$secretValues;WorkerCommandName=$command.Name};$jobs[$id]=$job;$secretValues=$null
+                                Start-WsmHtmlCredentialJobWorker $job
+                                $workerStarted=$true
+                                $response=@{job=(ConvertTo-WsmHtmlPublicJobRecord $job.Record)};$status=202
+                            }catch{
+                                if($workerStarted){throw}
+                                if($worker){try{$worker.Dispose()}catch{}}
+                                if($job){Clear-WsmHtmlCredentialJobRuntime $job}
+                                $retryWait=$null;try{$retryWait=Get-WsmHtmlTargetRestoreRetryWaitOutput $Workspace $job.Record}catch{}
+                                if($retryWait){Set-WsmHtmlCredentialJobWaitingForRetry $job $retryWait;$requestSafeError=New-WsmHtmlError 'The secure credential worker did not start.' 'credential_resume_not_started' 'This TargetRestore parent remains WaitingForInput; retry the same parent after checking local workspace availability. No native write began.'}
+                                else{$job.Record.Status='Interrupted';$job.Record.CompletedUtc=$null;$job.Record.canCancel=$false;$requestSafeError=New-WsmHtmlError 'The secure credential worker outcome needs recovery.' 'credential_resume_outcome_unknown' 'Inspect the same TargetRestore parent and authoritative journal before deciding whether to resume; no automatic replay was attempted.';try{$job.Record|Add-Member NoteProperty error $requestSafeError -Force;Write-WsmJson $job.Path $job.Record}catch{}}
+                                throw
+                            }
+                        }finally{if($submissionGuard){Exit-WsmWorkspaceWorkerGuard $submissionGuard};if($secretValues){Clear-WsmHtmlServiceCredentialValues $secretValues};$secretValues=$null;$body=$null;$workerArguments=$null;if($request){$request.Body=''}}
+                    }
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})(/cancel)?$'){
                         $id=$Matches[1];$cancel=$Matches[2];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};$job=$jobs[$id];if($cancel -and $request.Method -ceq 'POST'){Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role}
                         if($cancel -and $request.Method -ceq 'POST'){
@@ -943,6 +1067,7 @@ function Start-WsmHtmlConsole {
                         Assert-WsmFields $body @('action','args','operationId','idempotencyKey','expectedRevision','expectedDecisionRevision','expectedSelectionRevision','expectedDataVersion','contextId') @('action','args','expectedRevision','contextId')
                         if($body.contextId -cne $contextId){$status=409;throw 'Review changed: context changed.'}
                         $map=Get-WsmHtmlActionMap;if(-not $map.Contains($body.action)){throw 'Unknown action.'}
+                        if($body.action -ceq 'TargetRestore'){if($Role -cne 'Target' -or -not $PairId){throw 'TargetRestore requires the enrolled Target role and pair.'};Assert-WsmFields $body.args @('PreviewHash','Workspace','PairId') @('PreviewHash');if($body.args.PSObject.Properties['Workspace'] -and [IO.Path]::GetFullPath([string]$body.args.Workspace) -ine [IO.Path]::GetFullPath($Workspace)){throw 'TargetRestore workspace binding does not match the enrolled workspace.'};if($body.args.PSObject.Properties['PairId'] -and [string]$body.args.PairId -cne [string]$PairId){throw 'TargetRestore pair binding does not match the enrolled pair.'};if([string]$body.args.PreviewHash -notmatch '^[a-fA-F0-9]{64}$'){throw 'TargetRestore requires the reviewed preview hash.'}}
                         $requestHash=$null
                         if($route -ceq '/api/operations'){
                             Assert-WsmId ([string]$body.operationId);Assert-WsmId ([string]$body.idempotencyKey)
@@ -1002,6 +1127,7 @@ function Start-WsmHtmlConsole {
                             }
                             if($body.action -eq 'DeveloperProbe'){$arguments.Workspace=$Workspace;$arguments.Role=$Role;$arguments.Origin=$origin;$arguments.PairId=''}else{foreach($binding in @(@('Workspace',$Workspace),@('PairId',$PairId))){if($command.Parameters.ContainsKey($binding[0]) -and -not $arguments.ContainsKey($binding[0])){$arguments[$binding[0]]=$binding[1]}}};if($body.action -ceq 'ImportApprovedPlan'){$arguments.Role=$Role;$arguments.OperationId=[string]$body.operationId};if($body.action -ceq 'ExportSourceReviewHandoff'){$arguments.Jobs=Get-WsmHtmlWizardJobs $jobs $Workspace}
                             if($command.Parameters.ContainsKey('Jobs')){$arguments.Jobs=Get-WsmHtmlWizardJobs $jobs $Workspace};if($route -ceq '/api/operations' -and $command.Parameters.ContainsKey('OperationId')){$arguments.OperationId=[string]$body.operationId}
+                            if($body.action -ceq 'TargetRestore'){$packageForChallenge=Get-WsmWizardTargetPackage $Workspace $PairId (Assert-WsmWizardTargetRole $Workspace $PairId) (Get-WsmHtmlWizardJobs $jobs $Workspace);$arguments.PreviewHash=[string]$body.args.PreviewHash;$arguments.OperationId=[string]$body.operationId;$arguments.GeneralHostEvidence=@();$arguments.ChallengeContext=[pscustomobject][ordered]@{Role='Target';Actor=(Get-WsmHtmlChallengeActor);SessionId=$sessionId;ContextId=$contextId;Revision=[int]$packageForChallenge.Package.Manifest.DecisionRevision;OperationId=[string]$body.operationId}}
                             if($command.Parameters.ContainsKey('WorkRoot')){if($arguments.ContainsKey('WorkRoot') -and [IO.Path]::GetFullPath([string]$arguments.WorkRoot) -ine [IO.Path]::GetFullPath($Workspace)){throw 'Session work root mismatch.'};$arguments.WorkRoot=$Workspace}
                             if($arguments.ContainsKey('Workspace') -and [IO.Path]::GetFullPath($arguments.Workspace) -ine [IO.Path]::GetFullPath($Workspace)){throw 'Session workspace mismatch.'}
                             $argumentPair=if($body.action -ceq 'DeveloperProbe'){''}else{$PairId}
@@ -1050,6 +1176,7 @@ function Start-WsmHtmlConsole {
                                     $submissionGuard=Enter-WsmWorkspaceWorkerGuard -Workspace $Workspace -OperationId $body.operationId -Role $Role -PairId $PairId -Action $body.action
                                     try{
                                     $record=[pscustomobject]@{jobId=$body.operationId;action=$body.action;idempotencyKey=[string]$body.idempotencyKey;RequestHash=$hash;Actor=(Get-WsmExecutionActor);workspace=$Workspace;pairId=$(if($body.action -ceq 'DeveloperProbe'){''}else{$PairId});role=$Role;sessionId=$sessionId;contextId=$contextId;startedRevision=$revision;startedDecisionRevision=$currentVector.decisionRevision;startedSelectionRevision=$currentVector.selectionRevision;startedDataVersion=$currentVector.dataVersion;status='Running';StartedUtc=(Get-WsmUtc);CompletedUtc=$null;canCancel=$false}
+                                    if($body.action -ceq 'TargetRestore'){$record|Add-Member NoteProperty targetRestorePreviewHash ([string]$body.args.PreviewHash) -Force}
                                     $recordPath=Join-Path $consoleRoot ($body.operationId+'.json')
                                     $cancellation=if($body.action -ceq 'DeveloperProbe'){New-WsmDeveloperProbeCancellationToken -Workspace $Workspace -OperationId $body.operationId}elseif($body.action -ceq 'InspectWizardFiles'){New-WsmCancellationToken -StateDirectory (Join-Path $Workspace 'pairs') -PairId $PairId -PlanHash $receivedPlan.SHA256 -OperationId $body.operationId}else{New-WsmHtmlCancellation $command $arguments $body.operationId (Get-WsmHtmlWizardJobs $jobs $Workspace)}
                                     if($command.Parameters.ContainsKey('CancellationToken') -and @($command.Parameters['CancellationToken'].Attributes | Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.Mandatory}).Count -and -not $cancellation){throw 'This operation requires a hash-bound safe cancellation context before submission.'}
@@ -1057,7 +1184,7 @@ function Start-WsmHtmlConsole {
                                     $worker=[Management.Automation.PowerShell]::Create()
                                     [void]$worker.AddScript('param($modulePath,$commandName,$arguments) Import-Module $modulePath -Force -DisableNameChecking; $ConfirmPreference="None"; $ErrorActionPreference="Stop"; $command=Get-Command $commandName -CommandType Function; if($command.Parameters.ContainsKey("Confirm")){$arguments.Confirm=$false}; & $command @arguments').AddArgument($modulePath).AddArgument($command.Name).AddArgument($arguments)
                                     $record.canCancel=($null -ne $cancellation);Write-WsmJson $recordPath $record
-                                    $job=@{Record=$record;Path=$recordPath;PowerShell=$null;Handle=$null;CancellationToken=$null;WorkerGuard=$submissionGuard};$submissionGuard=$null
+                                    $job=@{Record=$record;Path=$recordPath;PowerShell=$null;Handle=$null;CancellationToken=$null;WorkerGuard=$submissionGuard;WorkerCommandName=$(if($body.action -ceq 'TargetRestore'){$command.Name}else{''})};$submissionGuard=$null
                                     $jobs[$body.operationId]=$job;$keys[$body.idempotencyKey]=@{Hash=$hash;Id=$body.operationId}
                                     try{
                                         if($body.action -cne 'DeveloperProbe'){[void](Register-WsmWizardOperationJob $Workspace $record)}
@@ -1095,7 +1222,7 @@ function Start-WsmHtmlConsole {
         }
     }finally{
         $listener.Stop()
-        foreach($job in @($jobs.Values)){try{if($job.PowerShell){$job.PowerShell.Stop();$job.PowerShell.Dispose();$job.Record.Status='Interrupted';Write-WsmJson $job.Path $job.Record}}finally{if($job.ContainsKey('WorkerGuard') -and $job.WorkerGuard){Exit-WsmWorkspaceWorkerGuard $job.WorkerGuard;$job.WorkerGuard=$null}}}
+        foreach($job in @($jobs.Values)){try{if($job.PowerShell){$job.PowerShell.Stop();$job.PowerShell.Dispose();$job.Record.Status='Interrupted';Write-WsmJson $job.Path $job.Record}}finally{Clear-WsmHtmlJobSecrets $job;if($job.ContainsKey('WorkerGuard') -and $job.WorkerGuard){Exit-WsmWorkspaceWorkerGuard $job.WorkerGuard;$job.WorkerGuard=$null}}}
         $token=$null;$keys.Clear()
     }
 }

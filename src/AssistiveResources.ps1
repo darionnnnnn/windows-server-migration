@@ -45,7 +45,7 @@ function Test-WsmAssistiveResourceOverlap([string]$Left,[string]$Right) {
 
 function Get-WsmAssistiveTypedResourceIdentity([string]$TargetFingerprint,[string]$ResourceKind,[string]$ResourceName) {
     if($TargetFingerprint -notmatch '^[a-fA-F0-9]{64}$'){throw 'Typed resource ownership requires the trusted target machine fingerprint.'}
-    if(@('IISPool','IISSite','IISSection','IISLocation','TaskFolder','ScheduledTask') -cnotcontains $ResourceKind){throw 'Unknown non-file target resource kind.'}
+    if(@('IISPool','IISSite','IISSection','IISLocation','TaskFolder','ScheduledTask','Service') -cnotcontains $ResourceKind){throw 'Unknown non-file target resource kind.'}
     $name=$ResourceName.Trim();if(-not $name -or $name.Length -gt 512 -or $name -match '[\x00-\x1f]'){throw 'Typed target resource name is empty, too long, or contains control characters.'}
     switch($ResourceKind){
         'TaskFolder' {if($name -notmatch '^\\'){throw 'Task folder identity must be an absolute task path.'};$name='\'+(($name -split '[\\/]+'|Where-Object {$_}) -join '\')}
@@ -54,13 +54,14 @@ function Get-WsmAssistiveTypedResourceIdentity([string]$TargetFingerprint,[strin
         'IISSite' {if($name -notmatch '^(?:id:[0-9]+|name:.+)$'){throw 'IIS site identity must be `id:<numeric>` or `name:<exact>`.'}}
         'IISSection' {if($name -notmatch '^[^/\\]+/[^/\\]+(?:/[^/\\]+)*$'){throw 'IIS section identity must use canonical typed section path segments.'};$name=($name -split '/'|ForEach-Object {$_.ToLowerInvariant()}) -join '/'}
         'IISLocation' {if($name -notmatch '^site:[^|]+\|location:.+$'){throw 'IIS location identity must bind `site:<exact>|location:<exact>`.'}}
+        'Service' {if($name -match '[\\/]|[\x00-\x1f]' -or $name.Length -gt 256){throw 'Service identity must be its exact service key name.'}}
     }
     ('TypedTarget|'+$TargetFingerprint.ToLowerInvariant()+'|'+$ResourceKind+'|'+$name.ToLowerInvariant())
 }
 
 function Get-WsmAssistiveResourceReservationPreview {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ItemId,[string]$Path='',[Parameter(Mandatory)][ValidateSet('C','NonC')][string]$Channel,[Parameter(Mandatory)][string]$SourceHash,[string]$TargetPhysicalId='',[Parameter(Mandatory)][string[]]$ConsumerRefs,[string]$ProviderId='',[string]$PeerShareProofPath='',[string]$PeerShareProofHash='',[string]$ApprovedPeerFingerprint='',[ValidateSet('FileScope','IISPool','IISSite','IISSection','IISLocation','TaskFolder','ScheduledTask')][string]$ResourceKind='FileScope',[string]$ResourceName='',[string]$TargetFingerprint='', [string]$SealedPlanPath='', [string]$SealedPlanHash='')
+    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ItemId,[string]$Path='',[Parameter(Mandatory)][ValidateSet('C','NonC')][string]$Channel,[Parameter(Mandatory)][string]$SourceHash,[string]$TargetPhysicalId='',[Parameter(Mandatory)][string[]]$ConsumerRefs,[string]$ProviderId='',[string]$PeerShareProofPath='',[string]$PeerShareProofHash='',[string]$ApprovedPeerFingerprint='',[ValidateSet('FileScope','IISPool','IISSite','IISSection','IISLocation','TaskFolder','ScheduledTask','Service')][string]$ResourceKind='FileScope',[string]$ResourceName='',[string]$TargetFingerprint='', [string]$SealedPlanPath='', [string]$SealedPlanHash='',[string]$OperationId='')
     Assert-WsmId $PairId;Assert-WsmAssistiveHash $ItemId 'ItemId';Assert-WsmAssistiveHash $SourceHash 'Source hash'
     if(-not $ConsumerRefs.Count){throw 'At least one consumer reference is required.'}
     if($ResourceKind -eq 'FileScope'){$resource=Resolve-WsmAssistivePhysicalResource $Path $ProviderId $PeerShareProofPath $PeerShareProofHash $ApprovedPeerFingerprint;if($TargetPhysicalId -cne $resource.PhysicalIdentity){throw 'Supplied target physical identity does not match the resolved reviewed resource.'};$resourceName=$resource.Path;$providerIdentity=$resource.ProviderId;$TargetFingerprint=$ApprovedPeerFingerprint;if(-not $Path.StartsWith('\\')){$TargetFingerprint=(Get-WsmMachineIdentity).Fingerprint};if($TargetFingerprint -and $SealedPlanPath -and $SealedPlanHash){$sealedResourcePlan=Read-WsmMigrationPlan $SealedPlanPath $SealedPlanHash;if($sealedResourcePlan.Target.Fingerprint -ine $TargetFingerprint){throw 'FileScope resource proof does not match sealed target identity.'}}elseif($Path.StartsWith('\\')){throw 'Remote FileScope reservation requires trusted sealed plan identity binding.'};$targetIdentity='TargetFile|'+$TargetFingerprint.ToLowerInvariant()+'|'+$resource.CanonicalPhysicalPath}
@@ -70,9 +71,9 @@ function Get-WsmAssistiveResourceReservationPreview {
     $registry=Get-WsmAssistiveResourceRegistry $Workspace;$key=Get-WsmHashText $targetIdentity
     $existing=@($registry.Resources|Where-Object ResourceKey -CEQ $key);if($existing.Count -gt 1){throw 'Resource registry contains duplicate physical ownership records.'}
     $conflicts=@();$overlappingRecords=@($registry.Resources|Where-Object {$_.ResourceKind -ceq $ResourceKind -and $_.TargetFingerprint -ceq $TargetFingerprint -and (($ResourceKind -ceq 'FileScope' -and (Test-WsmAssistiveResourceOverlap ([string]$_.CanonicalPhysicalPath) ([string]$resource.CanonicalPhysicalPath))) -or ($ResourceKind -cne 'FileScope' -and $_.ResourceKey -ceq $key))})
-    foreach($rec in $overlappingRecords){foreach($owner in @($rec.Owners)){if($owner.SourceHash -ine $SourceHash -or $owner.ResourceName -cne $resourceName -or $owner.ResourceKind -cne $ResourceKind){$conflicts+=@($owner)}}}
+    foreach($rec in $overlappingRecords){foreach($owner in @($rec.Owners)){if($owner.SourceHash -ine $SourceHash -or $owner.ResourceName -cne $resourceName -or $owner.ResourceKind -cne $ResourceKind -or ($ResourceKind -ceq 'Service' -and $owner.ActiveOperationId -and [string]$owner.ActiveOperationId -cne $OperationId)){$conflicts+=@($owner)}}}
     $canonicalPath=if($ResourceKind -eq 'FileScope'){$resource.CanonicalPhysicalPath}else{$ResourceName}
-    $preview=[pscustomobject][ordered]@{SchemaVersion=1;Kind='AssistiveResourceReservationPreview';RegistryRevision=$registry.Revision;PairId=$PairId;ItemId=$ItemId.ToLowerInvariant();Channel=$Channel;ResourceKind=$ResourceKind;ResourceName=$resourceName;TargetFingerprint=$TargetFingerprint;ResourceKey=$key;PhysicalIdentity=$targetIdentity;CanonicalPhysicalPath=$canonicalPath;Path=$resourceName;ProviderId=$providerIdentity;SourceHash=$SourceHash.ToLowerInvariant();ConsumerRefs=@($ConsumerRefs|Sort-Object -Unique);ExistingOwners=$(if($existing.Count){@($existing[0].Owners)}else{@()});Conflicts=$conflicts;CanReserve=($conflicts.Count -eq 0);CreatedUtc=(Get-WsmUtc)}
+    $preview=[pscustomobject][ordered]@{SchemaVersion=1;Kind='AssistiveResourceReservationPreview';RegistryRevision=$registry.Revision;PairId=$PairId;ItemId=$ItemId.ToLowerInvariant();Channel=$Channel;ResourceKind=$ResourceKind;ResourceName=$resourceName;TargetFingerprint=$TargetFingerprint;ResourceKey=$key;PhysicalIdentity=$targetIdentity;CanonicalPhysicalPath=$canonicalPath;Path=$resourceName;ProviderId=$providerIdentity;SourceHash=$SourceHash.ToLowerInvariant();OperationId=$OperationId;ConsumerRefs=@($ConsumerRefs|Sort-Object -Unique);ExistingOwners=$(if($existing.Count){@($existing[0].Owners)}else{@()});Conflicts=$conflicts;CanReserve=($conflicts.Count -eq 0);CreatedUtc=(Get-WsmUtc)}
     $preview|Add-Member NoteProperty SHA256 (Get-WsmHashText ($preview|ConvertTo-Json -Depth 20 -Compress));$preview
 }
 
@@ -87,10 +88,73 @@ function Reserve-WsmAssistiveResource {
         $matches=@($registry.Resources|Where-Object ResourceKey -CEQ $Preview.ResourceKey);if($matches.Count -gt 1){throw 'Duplicate physical resource ownership.'}
         if(-not $matches.Count){$record=[pscustomobject][ordered]@{ResourceKey=$Preview.ResourceKey;PhysicalIdentity=$Preview.PhysicalIdentity;CanonicalPhysicalPath=$Preview.CanonicalPhysicalPath;ResourceKind=$Preview.ResourceKind;ResourceName=$Preview.ResourceName;TargetFingerprint=$Preview.TargetFingerprint;Path=$Preview.Path;ProviderId=$Preview.ProviderId;Owners=@();LastReleaseReason='';LastReleaseUtc=''};$registry.Resources=@($registry.Resources)+@($record)}else{$record=$matches[0]}
         foreach($owner in @($record.Owners)){if($owner.SourceHash -ine $Preview.SourceHash -or $owner.ResourceName -cne $Preview.ResourceName -or $owner.ResourceKind -cne $Preview.ResourceKind){throw 'Resource ownership changed while acquiring the reservation.'}}
-        $owner=[pscustomobject][ordered]@{PairId=$Preview.PairId;ItemId=$Preview.ItemId;Channel=$Preview.Channel;ResourceKind=$Preview.ResourceKind;ResourceName=$Preview.ResourceName;TargetFingerprint=$Preview.TargetFingerprint;SourceHash=$Preview.SourceHash;ConsumerRefs=@($Preview.ConsumerRefs);Reason=$Reason;ReservedUtc=(Get-WsmUtc);Prior=@();Desired=$null;Readback=$null;Undo=$null;DriftStatus='Unverified';EvidenceHash=''}
+        $activeOperationId='';if($Preview.ResourceKind -ceq 'Service'){$activeOperationId=[string]$Preview.OperationId}
+        $owner=[pscustomobject][ordered]@{PairId=$Preview.PairId;ItemId=$Preview.ItemId;Channel=$Preview.Channel;ResourceKind=$Preview.ResourceKind;ResourceName=$Preview.ResourceName;TargetFingerprint=$Preview.TargetFingerprint;SourceHash=$Preview.SourceHash;OperationId=[string]$Preview.OperationId;ActiveOperationId=$activeOperationId;ConsumerRefs=@($Preview.ConsumerRefs);Reason=$Reason;ReservedUtc=(Get-WsmUtc);Prior=@();Desired=$null;Readback=$null;Undo=$null;DriftStatus='Unverified';EvidenceHash=''}
         $others=@($record.Owners|Where-Object { $_.PairId -ceq $owner.PairId -and $_.ItemId -ceq $owner.ItemId -and $_.Channel -ceq $owner.Channel });if($others.Count){throw 'This consumer already owns a reservation; reconcile or release it explicitly.'}
         $record.Owners=@($record.Owners)+@($owner);Write-WsmAssistiveResourceRegistry $Workspace $registry
         [pscustomobject]@{ResourceKey=$record.ResourceKey;RegistryRevision=$registry.Revision;Owner=$owner;Reserved=$true}
+    }
+}
+
+function Set-WsmAssistiveServiceReservationOperation {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$ResourceKey,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ItemId,[Parameter(Mandatory)][string]$OperationId,[Parameter(Mandatory)][ValidateSet('WaitingForInput','Running','Released')][string]$State)
+    Assert-WsmAssistiveHash $ResourceKey 'Service resource key';Assert-WsmId $PairId;Assert-WsmAssistiveHash $ItemId 'Service item id';Assert-WsmId $OperationId
+    Invoke-WsmLocked $Workspace {
+        $registry=Get-WsmAssistiveResourceRegistry $Workspace;$records=@($registry.Resources|Where-Object ResourceKey -CEQ $ResourceKey);if($records.Count -ne 1 -or $records[0].ResourceKind -cne 'Service'){throw 'Service reservation was not found uniquely.'}
+        $owners=@($records[0].Owners|Where-Object {$_.PairId -ceq $PairId -and $_.ItemId -ceq $ItemId -and $_.ResourceKind -ceq 'Service'});if($owners.Count -ne 1){throw 'Exact service reservation owner was not found.'}
+        if([string]$owners[0].ActiveOperationId -and [string]$owners[0].ActiveOperationId -cne $OperationId){throw 'Service reservation is bound to another parent operation.'}
+        $owners[0] | Add-Member NoteProperty OperationId $OperationId -Force
+        $owners[0] | Add-Member NoteProperty ActiveOperationId $(if($State -ceq 'Released'){''}else{$OperationId}) -Force
+        $owners[0] | Add-Member NoteProperty ChallengeState $State -Force
+        $owners[0] | Add-Member NoteProperty UpdatedUtc (Get-WsmUtc) -Force
+        Write-WsmAssistiveResourceRegistry $Workspace $registry;$owners[0]
+    }
+}
+
+function Revoke-WsmAssistiveServiceChallengeReservation {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$ResourceKey,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ItemId,[Parameter(Mandatory)][string]$OperationId,[Parameter(Mandatory)][bool]$Created)
+    Assert-WsmAssistiveHash $ResourceKey 'Service resource key';Assert-WsmId $PairId;Assert-WsmAssistiveHash $ItemId 'Service item id';Assert-WsmId $OperationId
+    Invoke-WsmLocked $Workspace {
+        $registry=Get-WsmAssistiveResourceRegistry $Workspace;$records=@($registry.Resources|Where-Object {$_.ResourceKind -ceq 'Service' -and $_.ResourceKey -ceq $ResourceKey});if($records.Count -ne 1){throw 'Service challenge reservation was not found uniquely.'}
+        $record=$records[0];$owners=@($record.Owners|Where-Object {$_.PairId -ceq $PairId -and $_.ItemId -ceq $ItemId -and $_.ResourceKind -ceq 'Service'});if($owners.Count -ne 1){throw 'Service challenge owner was not found uniquely.'}
+        $owner=$owners[0];if([string]$owner.ActiveOperationId -cne $OperationId){throw 'Service reservation is not active for this challenge parent.'}
+        if($Created){if($owner.DriftStatus -in @('Unknown','Drifted')){throw 'A changed or uncertain service reservation must be repaired before revocation.'};$record.Owners=@($record.Owners|Where-Object {-not ($_ -eq $owner)})}
+        else{$owner|Add-Member NoteProperty ActiveOperationId '' -Force;$owner|Add-Member NoteProperty ChallengeState 'Released' -Force;$owner|Add-Member NoteProperty UpdatedUtc (Get-WsmUtc) -Force}
+        Write-WsmAssistiveResourceRegistry $Workspace $registry;$registry
+    }
+}
+
+function Assert-WsmAssistiveServiceReservationAvailable([string]$Workspace,[string]$TargetFingerprint,[string]$ServiceName,[string]$OperationId='',[string]$PairId='',[string]$ItemId='',[switch]$RequireOwner) {
+    if(-not $Workspace){throw 'Service mutations require their trusted reservation workspace context.'}
+    $identity=Get-WsmAssistiveTypedResourceIdentity $TargetFingerprint 'Service' $ServiceName;$key=Get-WsmHashText $identity;$registry=Get-WsmAssistiveResourceRegistry $Workspace
+    $records=@($registry.Resources|Where-Object {$_.ResourceKind -ceq 'Service' -and $_.ResourceKey -ceq $key})
+    if($records.Count -gt 1){throw 'Service resource registry contains duplicate ownership records.'}
+    $matchedOwner=$false
+    foreach($record in $records){
+        foreach($owner in @($record.Owners)){
+            if($owner.ActiveOperationId -and [string]$owner.ActiveOperationId -cne $OperationId){throw 'Target service is reserved by a waiting or active restore operation.'}
+            if($RequireOwner -and $owner.PairId -ceq $PairId -and $owner.ItemId -ceq $ItemId -and [string]$owner.ActiveOperationId -ceq $OperationId){$matchedOwner=$true}
+        }
+    }
+    if($RequireOwner){Assert-WsmId $PairId;Assert-WsmAssistiveHash $ItemId 'Service item id';Assert-WsmId $OperationId;if(-not $matchedOwner){throw 'Service restore requires the exact active parent reservation for this pair and item.'}}
+    $true
+}
+
+function Invoke-WsmAssistiveServiceMutation([string]$Workspace,[string]$TargetFingerprint,[string]$ServiceName,[string]$OperationId='',[string]$PairId='',[string]$ItemId='',[scriptblock]$Action,[switch]$RequireOwner) {
+    Invoke-WsmAssistiveServiceMutationBatch -Workspace $Workspace -TargetFingerprint $TargetFingerprint -ServiceNames @($ServiceName) -OperationId $OperationId -PairId $PairId -ItemId $ItemId -Action $Action -RequireOwner:$RequireOwner
+}
+
+function Invoke-WsmAssistiveServiceMutationBatch([string]$Workspace,[string]$TargetFingerprint,[string[]]$ServiceNames,[string]$OperationId='',[string]$PairId='',[string]$ItemId='',[scriptblock]$Action,[switch]$RequireOwner,[switch]$RejectAnyActiveServiceOwner) {
+    if(-not $Action){throw 'A target service mutation callback is required.'}
+    if(-not $Workspace){throw 'Target service mutations require their trusted reservation workspace.'}
+    # Invoke-WsmLocked names its own callback $Action; keep ours under a distinct name so the locked block cannot recurse into itself.
+    $serviceMutationAction=$Action
+    Invoke-WsmLocked $Workspace {
+        if($RejectAnyActiveServiceOwner){$registry=Get-WsmAssistiveResourceRegistry $Workspace;foreach($record in @($registry.Resources|Where-Object ResourceKind -CEQ 'Service')){foreach($owner in @($record.Owners)){if([string]$owner.ActiveOperationId){throw 'A target service is reserved by a waiting or active restore operation; installer mutation is blocked.'}}}}
+        foreach($name in @($ServiceNames)){if(-not [string]::IsNullOrWhiteSpace([string]$name)){[void](Assert-WsmAssistiveServiceReservationAvailable $Workspace $TargetFingerprint ([string]$name) $OperationId $PairId $ItemId -RequireOwner:$RequireOwner)}}
+        & $serviceMutationAction
     }
 }
 

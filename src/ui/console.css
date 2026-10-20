@@ -112,3 +112,9 @@ body{font-size:18px}
 .job-lookup{gap:12px;min-width:0}.job-lookup label{display:grid;gap:12px;min-width:0}
 #job-id-lookup{box-sizing:border-box;width:100%;min-width:0;min-height:48px;padding:10px 12px;font:inherit;font-size:18px;color:var(--ink);background:#fff;border:1px solid #71899b;border-radius:8px}
 #job-id-lookup:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+.service-credential-challenge { margin-top: 1rem; padding: 1rem; border: 2px solid var(--warn, #9a6700); border-radius: .5rem; background: var(--surface, #fff); }
+.service-credential-challenge h3 { margin-top: 0; }
+.service-credential-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem; margin: .75rem 0; }
+.service-credential-fields label, .service-challenge-takeover { display: grid; gap: .35rem; font-weight: 600; }
+.service-credential-fields input { box-sizing: border-box; width: 100%; padding: .55rem; }
+.service-challenge-takeover { display: flex; align-items: flex-start; margin: .8rem 0; font-weight: 400; }

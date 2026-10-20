@@ -29,6 +29,30 @@
     [pscustomobject]@{Receipt=$receipt;ReceiptPath=[IO.Path]::GetFullPath($DecisionReceiptPath);ReceiptHash=$DecisionReceiptHash.ToLowerInvariant();Snapshot=$snapshot;SnapshotPath=$(if($TargetSnapshotPath){[IO.Path]::GetFullPath($TargetSnapshotPath)}else{''});SelectedItemIds=@($allowed)}
 }
 
+function Resolve-WsmAssistiveRestoreParentOperationId([string]$OperationId,$CancellationToken,[switch]$RequireDurableParent) {
+    if($OperationId){Assert-WsmId $OperationId}
+    if($RequireDurableParent -and -not $OperationId){throw 'Target Service restore requires its explicit durable TargetRestore parent OperationId; a cancellation token cannot create or substitute the parent.'}
+    if($RequireDurableParent -and (-not $CancellationToken -or -not $CancellationToken.PSObject.Properties['OperationId'])){throw 'Target Service restore requires a cancellation token bound to its durable TargetRestore parent.'}
+    if($OperationId -and $CancellationToken -and $CancellationToken.PSObject.Properties['OperationId'] -and [string]$CancellationToken.OperationId -cne $OperationId){throw 'Service restore cancellation control must be bound to the same durable TargetRestore parent OperationId.'}
+    if($OperationId){return $OperationId}
+    if($CancellationToken -and $CancellationToken.PSObject.Properties['OperationId']){Assert-WsmId ([string]$CancellationToken.OperationId);return [string]$CancellationToken.OperationId}
+    if($RequireDurableParent){throw 'Target Service restore requires a cancellation token bound to its durable TargetRestore parent.'}
+    [Guid]::NewGuid().ToString('D')
+}
+
+function Test-WsmAssistiveServiceChallengePreWriteRecovery([string]$StateDirectory,$State,[string]$OperationId) {
+    $attempt=$State.RestoreAttempt;$challenge=$State.AssistiveServiceChallenge
+    if([string]$challenge.State -cne 'Running' -or [string]$challenge.ParentOperationId -cne $OperationId -or [string]$attempt.OperationId -cne $OperationId -or [string]$attempt.Status -notin @('WaitingForInput','Running') -or [string]$State.Stage -notin @('WaitingForInput','Running')){throw 'Service challenge is not in a recoverable pre-write state.'}
+    if(@($State.PendingOperations).Count){throw 'Service challenge has unresolved native intent; repair and read back the target before takeover.'}
+    if(@($attempt.ItemResults).Count){throw 'Service challenge already has target item results; do not replay this parent automatically.'}
+    $journal=Test-WsmJournal $StateDirectory ([string]$State.PairId);if(-not $journal.Consistent){throw 'Service challenge journal is inconsistent; repair and read back the target before takeover.'}
+    $paths=Get-WsmOperationPaths $StateDirectory ([string]$State.PairId);$events=@(Read-WsmJournalEvents $paths);$restoreStarts=@($events|Where-Object {$_.Row.Action -ceq 'AssistiveRestoreStarted' -and $_.Row.Detail -and [string]$_.Row.Detail.OperationId -ceq $OperationId}|Sort-Object {$_.Row.Sequence})
+    if($restoreStarts.Count){$startSequence=[long]$restoreStarts[-1].Row.Sequence;$postStart=@($events|Where-Object {[long]$_.Row.Sequence -gt $startSequence});if(@($postStart|Where-Object {$_.Row.Action -in @('AssistiveItemStarted','AssistiveItemCompleted','AssistiveItemFailed','AssistiveItemNeedsRepair','AssistiveRestoreCompleted','AssistiveRestoreCancelled')}).Count){throw 'Service challenge has crossed the native item boundary; explicit RepairOperation/readback is required before takeover.'}}
+    elseif([string]$State.Stage -ceq 'Running' -or [string]$attempt.Status -ceq 'Running'){throw 'Running service challenge has no matching durable restore-start journal; preserve it for manual reconciliation.'}
+    $currentItems=@($State.Items|Where-Object {$_.ItemId -in @($attempt.SelectedItemIds) -and [string]$_.AppliedManifestHash -ieq [string]$attempt.ManifestHash -and [long]$_.AppliedGeneration -eq [long]$attempt.Generation});if($currentItems.Count){throw 'Service challenge parent already has current-generation item readback; do not replay it automatically.'}
+    [pscustomobject]@{SafeToTakeOver=$true;JournalSequence=[long]$journal.JournalSequence;JournalHash=[string]$journal.JournalHash;NativeItemStarted=$false;PendingOperations=0}
+}
+
 function Assert-WsmAssistiveReceiptComparisonBinding($Package,$Receipt) {
     if(-not $Receipt.PSObject.Properties['Comparison'] -or -not $Receipt.PSObject.Properties['ComparisonHash']){throw 'Schema 3 target decision receipt must embed its exact reviewed comparison and hash.'}
     $comparison=$Receipt.Comparison
@@ -377,7 +401,7 @@ function Assert-WsmAssistiveMetadataReadback([string]$Path,$Expected,[hashtable]
     $actual
 }
 
-function Get-WsmAssistiveReservations($Item,$Package,[string]$Workspace,[switch]$PreviewOnly) {
+function Get-WsmAssistiveReservations($Item,$Package,[string]$Workspace,[switch]$PreviewOnly,[string]$OperationId='',[ValidateSet('Running','WaitingForInput')][string]$OperationState='Running') {
     if(-not (Get-Command Get-WsmAssistiveResourceReservationPreview -ErrorAction SilentlyContinue) -or -not (Get-Command Reserve-WsmAssistiveResource -ErrorAction SilentlyContinue)){throw 'Shared-resource reservation support is unavailable; this workload cannot be written safely.'}
     $spec=$Item.MigrationSpec;$channel='C';if($spec.Adapter -eq 'FileScope' -and $spec.PSObject.Properties['TransferChannel'] -and $spec.TransferChannel -eq 'NonC'){$channel='NonC'}
     $sourceHash=Get-WsmHashText ($spec | ConvertTo-Json -Depth 40 -Compress);if($spec.Adapter -eq 'IISLocation'){$location=[string]$spec.Desired.LocationPath;$coLocated=@($Package.Plan.Items | Where-Object {$_.Decision -ceq 'Include' -and $_.PSObject.Properties['MigrationSpec'] -and $_.MigrationSpec -and $_.MigrationSpec.PSObject.Properties['Adapter'] -and $_.MigrationSpec.Adapter -ceq 'IISLocation' -and $_.MigrationSpec.PSObject.Properties['Desired'] -and $_.MigrationSpec.Desired -and $_.MigrationSpec.Desired.PSObject.Properties['LocationPath'] -and [string]$_.MigrationSpec.Desired.LocationPath -ceq $location} | Sort-Object {$_.MigrationSpec.Desired.SectionPath},ItemId | ForEach-Object {$_.MigrationSpec});$sourceHash=Get-WsmHashText ($coLocated | ConvertTo-Json -Depth 40 -Compress)};$consumerRefs=@([string]$Item.ItemId);$requests=New-Object 'System.Collections.Generic.List[object]'
@@ -389,6 +413,7 @@ function Get-WsmAssistiveReservations($Item,$Package,[string]$Workspace,[switch]
         'IISSection' {$kind='IISSection';$name=[string]$spec.Desired.SectionPath}
         'IISLocation' {$kind='IISLocation';$name='site:'+([string]$spec.Desired.LocationPath.Split('/')[0])+'|location:'+([string]$spec.Desired.LocationPath)}
         'ScheduledTask' {$kind='ScheduledTask';$name=([string]$spec.Desired.TaskPath)+([string]$spec.Desired.TaskName)}
+        'Service' {$kind='Service';$name=[string]$spec.Desired.Name}
         default {return @()}
     }
     $names=@([pscustomobject]@{Kind=$kind;Name=$name});if($spec.Adapter -ceq 'FileScope' -and $spec.PSObject.Properties['ContentSelection'] -and $spec.ContentSelection -ceq 'ExactMembers'){$names=@(foreach($member in $spec.Members){[pscustomobject]@{Kind='FileScope';Name=(Join-Path ([string]$spec.TargetPath) ([string]$member.RelativePath))}})};$taskFolderSpecs=@()
@@ -396,15 +421,58 @@ function Get-WsmAssistiveReservations($Item,$Package,[string]$Workspace,[switch]
     foreach($resource in $names){
         $resourceSourceHash=$sourceHash;if($resource.Kind -eq 'TaskFolder'){$resourceSourceHash=Get-WsmHashText (($resource.Folder | Select-Object Path,SecurityHash,ExistingPolicy) | ConvertTo-Json -Depth 8 -Compress)}
         $args=@{Workspace=$Workspace;PairId=[string]$Package.Manifest.PairId;ItemId=[string]$Item.ItemId;Channel=$channel;SourceHash=$resourceSourceHash;ConsumerRefs=$consumerRefs;ResourceKind=$resource.Kind;ResourceName=$resource.Name;TargetFingerprint=[string]$Package.Manifest.Target.Fingerprint;SealedPlanPath=(Join-Path $Package.Root 'plan.json');SealedPlanHash=[string]$Package.Manifest.PlanHash}
+        if($resource.Kind -ceq 'Service'){Assert-WsmId $OperationId;$args.OperationId=$OperationId}
         if($resource.Kind -eq 'FileScope'){$args.Path=[string]$spec.TargetPath;$physical=Resolve-WsmAssistivePhysicalResource $args.Path 'LocalFileSystem';$args.TargetPhysicalId=$physical.PhysicalIdentity}
         $preview=Get-WsmAssistiveResourceReservationPreview @args
         if(-not $preview.CanReserve){throw 'Shared resource is reserved with a conflicting owner; this item remains unmodified.'}
-        if(@($preview.ExistingOwners | Where-Object {$_.PairId -ceq $Package.Manifest.PairId -and $_.ItemId -ceq $Item.ItemId -and $_.Channel -ceq $channel -and $_.SourceHash -ceq $resourceSourceHash}).Count){$requests.Add([pscustomobject]@{Preview=$preview;Existing=$true;Reservation=$null});continue}
+        $sameOwner=@($preview.ExistingOwners | Where-Object {$_.PairId -ceq $Package.Manifest.PairId -and $_.ItemId -ceq $Item.ItemId -and $_.Channel -ceq $channel -and $_.SourceHash -ceq $resourceSourceHash})
+        if($resource.Kind -ceq 'Service' -and $sameOwner.Count -and [string]$sameOwner[0].ActiveOperationId -and [string]$sameOwner[0].ActiveOperationId -cne $OperationId){throw 'Target service is reserved by another waiting or active restore operation.'}
+        if($sameOwner.Count){if($resource.Kind -ceq 'Service' -and -not $PreviewOnly){Set-WsmAssistiveServiceReservationOperation -Workspace $Workspace -ResourceKey $preview.ResourceKey -PairId $Package.Manifest.PairId -ItemId $Item.ItemId -OperationId $OperationId -State $OperationState | Out-Null};$requests.Add([pscustomobject]@{Preview=$preview;Existing=$true;Reservation=$null});continue}
         if($PreviewOnly){$requests.Add([pscustomobject]@{Preview=$preview;Existing=$false;Reservation=$null});continue}
         $reservation=Reserve-WsmAssistiveResource -Workspace $Workspace -Preview $preview -ExpectedPreviewHash $preview.SHA256 -ExpectedRevision $preview.RegistryRevision -Reason ('Assistive generation '+$Package.Manifest.Generation+' item '+$Item.ItemId)
+        if($resource.Kind -ceq 'Service' -and -not $PreviewOnly){Set-WsmAssistiveServiceReservationOperation -Workspace $Workspace -ResourceKey $preview.ResourceKey -PairId $Package.Manifest.PairId -ItemId $Item.ItemId -OperationId $OperationId -State $OperationState | Out-Null}
         $requests.Add([pscustomobject]@{Preview=$preview;Existing=$false;Reservation=$reservation})
     }
     $requests.ToArray()
+}
+
+function Cancel-WsmAssistiveServiceCredentialChallenge([string]$StateDirectory,[string]$PairId,[string]$OperationId,[string]$PreviewHash) {
+    Assert-WsmId $PairId;Assert-WsmId $OperationId;Assert-WsmAssistiveHash $PreviewHash 'Service challenge preview hash'
+    $paths=Get-WsmOperationPaths $StateDirectory $PairId
+    Invoke-WsmLocked $paths.Root {
+        $state=Read-WsmJson $paths.State
+        if($state.PairId -cne $PairId -or -not $state.PSObject.Properties['AssistiveServiceChallenge']){throw 'Durable Service credential challenge was not found.'}
+        $challenge=$state.AssistiveServiceChallenge
+        if([string]$challenge.ParentOperationId -cne $OperationId -or [string]$challenge.PreviewHash -ine $PreviewHash -or [string]$challenge.State -cne 'WaitingForInput'){throw 'Service credential challenge binding changed or is no longer cancellable.'}
+        foreach($reservation in @($challenge.ServiceReservations)){
+            Revoke-WsmAssistiveServiceChallengeReservation -Workspace $StateDirectory -ResourceKey ([string]$reservation.ResourceKey) -PairId $PairId -ItemId ([string]$reservation.ItemId) -OperationId $OperationId -Created ([bool]$reservation.Created) | Out-Null
+        }
+        $challenge.State='Cancelled';$challenge|Add-Member NoteProperty CancelReason 'Operator cancelled secure credential entry' -Force;$challenge.UpdatedUtc=Get-WsmUtc;$state.Stage='Cancelled'
+        if($state.PSObject.Properties['RestoreAttempt'] -and [string]$state.RestoreAttempt.OperationId -ceq $OperationId){$state.RestoreAttempt|Add-Member NoteProperty Status 'Cancelled' -Force;$state.RestoreAttempt|Add-Member NoteProperty CancelledUtc (Get-WsmUtc) -Force}
+        Add-WsmJournal $paths $state 'AssistiveServiceCredentialChallengeCancelled' '' $challenge
+        $challenge
+    }
+}
+
+function Takeover-WsmAssistiveServiceCredentialChallenge([string]$StateDirectory,[string]$PairId,[string]$OperationId,[string]$PreviewHash,[string]$Actor,[string]$SessionId,[string]$ContextId,[int]$Revision,[switch]$ConfirmTakeover) {
+    Assert-WsmId $PairId;Assert-WsmId $OperationId;Assert-WsmAssistiveHash $PreviewHash 'Service challenge preview hash'
+    if(-not $ConfirmTakeover){throw 'Service credential challenge takeover requires explicit operator confirmation.'}
+    foreach($binding in @(@($Actor,'actor'),@($SessionId,'session id'),@($ContextId,'context id'))){if([string]::IsNullOrWhiteSpace([string]$binding[0]) -or ([string]$binding[0]).Length -gt 256 -or [string]$binding[0] -match '[\x00-\x1f]'){throw ('Service challenge takeover has an invalid '+[string]$binding[1]+'.')}}
+    if($Revision -lt 0){throw 'Service challenge takeover requires the current Target decision revision.'}
+    $paths=Get-WsmOperationPaths $StateDirectory $PairId
+    Invoke-WsmLocked $paths.Root {
+        $state=Read-WsmJson $paths.State
+        if($state.PairId -cne $PairId -or -not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.PSObject.Properties['AssistiveServiceChallenge']){throw 'No durable TargetRestore parent is available for takeover.'}
+        $attempt=$state.RestoreAttempt;$challenge=$state.AssistiveServiceChallenge
+        if([string]$attempt.OperationId -cne $OperationId -or [string]$challenge.ParentOperationId -cne $OperationId -or [string]$challenge.PairId -cne $PairId -or [string]$challenge.PreviewHash -ine $PreviewHash -or [string]$attempt.WizardPreviewHash -ine $PreviewHash -or [string]$attempt.ManifestHash -ine [string]$challenge.ManifestHash -or [long]$attempt.Generation -ne [long]$challenge.Generation -or [int]$challenge.Revision -ne $Revision -or [string]$challenge.Role -cne 'Target'){throw 'Service credential challenge changed; takeover requires the same current durable TargetRestore parent and preview.'}
+        $readback=$null;if([string]$challenge.State -ceq 'Running'){$readback=Test-WsmAssistiveServiceChallengePreWriteRecovery $StateDirectory $state $OperationId;$state.Stage='WaitingForInput';$attempt.Status='WaitingForInput';$attempt|Add-Member NoteProperty LastPreWriteRecovery $readback -Force;$challenge.State='WaitingForInput';$challenge|Add-Member NoteProperty LastPreWriteRecovery $readback -Force}
+        elseif([string]$state.Stage -cne 'WaitingForInput' -or [string]$attempt.Status -cne 'WaitingForInput' -or [string]$challenge.State -cne 'WaitingForInput'){throw 'Service credential challenge state cannot be safely taken over.'}
+        if([string]$challenge.Actor -ceq $Actor -and [string]$challenge.SessionId -ceq $SessionId -and [string]$challenge.ContextId -ceq $ContextId){throw 'Current actor/session already owns this service challenge; takeover is unnecessary.'}
+        $takeoverCount=0;if($challenge.PSObject.Properties['TakeoverCount']){$takeoverCount=[int]$challenge.TakeoverCount};$takeoverCount++
+        $challenge.Actor=$Actor;$challenge.SessionId=$SessionId;$challenge.ContextId=$ContextId;$challenge|Add-Member NoteProperty TakeoverCount $takeoverCount -Force;$challenge|Add-Member NoteProperty LastTakeoverUtc (Get-WsmUtc) -Force
+        Add-WsmJournal $paths $state 'AssistiveServiceCredentialChallengeTakenOver' '' ([pscustomobject]@{ParentOperationId=$OperationId;PairId=$PairId;PreviewHash=$PreviewHash;Actor=$Actor;SessionId=$SessionId;ContextId=$ContextId;Revision=$Revision;TakeoverCount=$takeoverCount;PreWriteRecovery=$readback})
+        $challenge
+    }
 }
 
 function Set-WsmAssistiveReservationEvidence($Reservations,$Item,$Package,$Prior,$Desired,$Readback,$Undo,[string]$Workspace) {
@@ -448,7 +516,7 @@ function Complete-WsmAssistivePackageJob($Package,$Job,[string]$Workspace) {
     if($Job -and $Job.OperationId -and (Get-Command Set-WsmAssistiveJobLock -ErrorAction SilentlyContinue)){Set-WsmAssistiveJobLock -Workspace $Workspace -OperationId $Job.OperationId -PairId $Package.Manifest.PairId -Generation ([int]$Package.Manifest.Generation) -MaterialIds @($Job.MaterialIds) -Active $false | Out-Null}
 }
 
-function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$StateDirectory,[hashtable]$Secrets,[hashtable]$SidMap,$CancellationToken,[object[]]$GeneralHostEvidence,[string]$ReceiptPath,[string]$ReceiptHash,[string]$TargetSnapshotPath,$Preview) {
+function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$StateDirectory,[hashtable]$Secrets,[hashtable]$SidMap,$CancellationToken,[object[]]$GeneralHostEvidence,[string]$ReceiptPath,[string]$ReceiptHash,[string]$TargetSnapshotPath,$Preview,[string]$ParentOperationId='', [object]$ChallengeContext=$null) {
     $paths=Get-WsmOperationPaths $StateDirectory $Package.Manifest.PairId
     $state=Get-WsmOperationState $paths $Package
     if($state.Cutover){throw 'Restore after cutover requires reviewed data reconciliation; no automatic reverse synchronization.'}
@@ -457,10 +525,65 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     if($decision.Receipt.Decision -eq 'WaitForInstall'){return $Preview}
     Assert-WsmAssistiveReceiptFresh $Package $decision | Out-Null
     if(-not $decision.ReceiptPath -or -not $decision.ReceiptHash -or -not $decision.SnapshotPath -or -not $decision.Receipt.TargetSnapshotHash){throw 'Assistive restore decision has no canonical receipt and target snapshot references.'}
+    $serviceRows=New-Object 'System.Collections.Generic.List[object]';$serviceItemIds=@{};foreach($serviceItem in @($Package.Plan.Items|Where-Object {$_.MigrationSpec.Adapter -ceq 'Service'})){$serviceItemIds[[string]$serviceItem.ItemId]=$true};foreach($serviceRow in @($Preview.Rows)){if([string]$serviceRow.Status -ceq 'Ready' -and $serviceItemIds.ContainsKey([string]$serviceRow.ItemId)){$serviceRows.Add($serviceRow)}}
+    $ParentOperationId=Resolve-WsmAssistiveRestoreParentOperationId $ParentOperationId $CancellationToken -RequireDurableParent:([bool]$serviceRows.Count)
+    $contextRole='Target';$contextActor=[string](Get-WsmExecutionActor);$contextSession='';$contextId='';$contextRevision=-1
+    if($ChallengeContext){if($ChallengeContext.PSObject.Properties['Role']){$contextRole=[string]$ChallengeContext.Role};if($ChallengeContext.PSObject.Properties['Actor']){$contextActor=[string]$ChallengeContext.Actor};if($ChallengeContext.PSObject.Properties['SessionId']){$contextSession=[string]$ChallengeContext.SessionId};if($ChallengeContext.PSObject.Properties['ContextId']){$contextId=[string]$ChallengeContext.ContextId};if($ChallengeContext.PSObject.Properties['Revision']){$contextRevision=[int]$ChallengeContext.Revision}}
+    if($contextRole -cne 'Target' -or -not $contextActor -or $contextSession.Length -gt 256 -or $contextId.Length -gt 256 -or ($ChallengeContext -and $ChallengeContext.PSObject.Properties['OperationId'] -and [string]$ChallengeContext.OperationId -cne $ParentOperationId)){throw 'Service credential challenge must bind a valid Target actor/session context and parent operation id.'}
+    $challenge=$null;if($state.PSObject.Properties['AssistiveServiceChallenge']){$challenge=$state.AssistiveServiceChallenge;if([string]$challenge.ParentOperationId -cne $ParentOperationId){throw 'A prior Service credential challenge requires explicit owner takeover before another parent can resume it.'};if([string]$challenge.PairId -cne [string]$Package.Manifest.PairId -or [string]$challenge.ManifestHash -ine $ManifestHash -or [long]$challenge.Generation -ne [long]$Package.Manifest.Generation -or [string]$challenge.PreviewHash -ine [string]$Preview.WizardPreviewHash){throw 'Service credential challenge binding changed; refresh preview and establish a new reviewed operation.'};if([string]$challenge.Actor -cne $contextActor -or [string]$challenge.Role -cne $contextRole -or [string]$challenge.SessionId -cne $contextSession -or [string]$challenge.ContextId -cne $contextId -or [int]$challenge.Revision -ne $contextRevision){throw 'Service credential challenge actor/session/revision changed; explicit takeover is required.'};if([string]$challenge.State -cne 'WaitingForInput'){throw 'Service credential challenge is not waiting for input and cannot be replayed.'}}
+    $preflightItemsById=@{};foreach($item in @($Package.Plan.Items)){$preflightItemsById[[string]$item.ItemId]=$item}
+    $reviewedServiceRefs=New-Object 'System.Collections.Generic.List[string]';foreach($row in @($Preview.Rows|Where-Object Status -CEQ 'Ready')){$item=$preflightItemsById[[string]$row.ItemId];if($item -and $item.MigrationSpec.Adapter -ceq 'Service'){$policy=Get-WsmServiceAccountPolicy $item.MigrationSpec.Desired $item.MigrationSpec;if($policy.Mode -ceq 'UserPassword'){$reviewedServiceRefs.Add([string]$policy.SecretRef)}}};$expectedReviewedServiceRefs=@($reviewedServiceRefs.ToArray()|Sort-Object -Unique);$inputServiceRefs=@($Secrets.Keys|ForEach-Object {[string]$_}|Sort-Object -Unique);if(@($inputServiceRefs|Where-Object {$_ -cnotin $expectedReviewedServiceRefs}).Count){throw 'In-memory credential map contains a SecretRef outside the reviewed ready Service rows.'};$reservationOperationState='Running';if(@($expectedReviewedServiceRefs|Where-Object {$_ -cnotin $inputServiceRefs}).Count){$reservationOperationState='WaitingForInput'}
+    $serviceReservations=New-Object 'System.Collections.Generic.List[object]';$requiredSecretRefs=New-Object 'System.Collections.Generic.List[string]';$serviceSecretRefs=New-Object 'System.Collections.Generic.List[string]'
+    try {
+        foreach($row in @($Preview.Rows|Where-Object Status -CEQ 'Ready')){
+            $item=$preflightItemsById[[string]$row.ItemId];if(-not $item -or $item.MigrationSpec.Adapter -cne 'Service'){continue}
+            $spec=$item.MigrationSpec;$policy=Get-WsmServiceAccountPolicy $spec.Desired $spec
+            if($policy.Mode -eq 'ManagedServiceAccount'){[void](Test-WsmServiceAccountTargetPreflight $policy)}
+            elseif($policy.Mode -ceq 'UserPassword'){
+                $serviceSecretRefs.Add([string]$policy.SecretRef)
+                if($Secrets.ContainsKey([string]$policy.SecretRef)){[void](New-WsmServiceAccountCredential $policy $Secrets)}else{$requiredSecretRefs.Add([string]$policy.SecretRef)}
+            }
+            $reservations=@(Get-WsmAssistiveReservations $item $Package $StateDirectory -OperationId $ParentOperationId -OperationState $reservationOperationState)
+            foreach($reservation in $reservations){$serviceReservations.Add([pscustomobject]@{ItemId=[string]$item.ItemId;ResourceKey=[string]$reservation.Preview.ResourceKey;Created=($null -ne $reservation.Reservation)})}
+        }
+    } catch {
+        if(-not $challenge){
+        foreach($reservation in @($serviceReservations.ToArray())) {
+            try {
+                Set-WsmAssistiveServiceReservationOperation -Workspace $StateDirectory -ResourceKey $reservation.ResourceKey -PairId $Package.Manifest.PairId -ItemId $reservation.ItemId -OperationId $ParentOperationId -State Released | Out-Null
+                if($reservation.Created) {
+                    $registry=Get-WsmAssistiveResourceRegistry $StateDirectory
+                    $resource=@($registry.Resources | Where-Object ResourceKey -CEQ $reservation.ResourceKey | Select-Object -First 1)
+                    $owner=$null
+                    if($resource.Count){$owner=@($resource[0].Owners | Where-Object {$_.PairId -ceq $Package.Manifest.PairId -and $_.ItemId -ceq $reservation.ItemId -and $_.OperationId -ceq $ParentOperationId} | Select-Object -First 1)}
+                    if($owner){Release-WsmAssistiveResource -Workspace $StateDirectory -ResourceKey $reservation.ResourceKey -PairId $Package.Manifest.PairId -ItemId $reservation.ItemId -Channel ([string]$owner[0].Channel) -ExpectedRevision $registry.Revision -Reason 'Service credential preflight rejected before native write' | Out-Null}
+                }
+            } catch { }
+        }
+        }
+        throw
+    }
+    $expectedServiceRefs=@($serviceSecretRefs.ToArray()|Sort-Object -Unique);$providedServiceRefs=@($Secrets.Keys|ForEach-Object {[string]$_}|Sort-Object -Unique)
+    if(@($providedServiceRefs|Where-Object {$_ -cnotin $expectedServiceRefs}).Count){throw 'In-memory credential map contains a SecretRef outside the reviewed ready Service rows.'}
+    if($challenge){$challengeRefs=@($challenge.RequiredSecretRefs|Sort-Object -Unique);if(($challengeRefs -join "`n") -cne ($expectedServiceRefs -join "`n")){throw 'Service credential challenge SecretRef set changed; explicit review is required.'};if(-not $requiredSecretRefs.Count -and ($providedServiceRefs -join "`n") -cne ($challengeRefs -join "`n")){throw 'Service credential challenge did not receive its exact reviewed SecretRef set.'}}
+    if($requiredSecretRefs.Count){
+        foreach($reservation in @($serviceReservations.ToArray())){Set-WsmAssistiveServiceReservationOperation -Workspace $StateDirectory -ResourceKey $reservation.ResourceKey -PairId $Package.Manifest.PairId -ItemId $reservation.ItemId -OperationId $ParentOperationId -State WaitingForInput | Out-Null}
+        $existingAttempt=$null;if($state.PSObject.Properties['RestoreAttempt']){$existingAttempt=$state.RestoreAttempt}
+        if($existingAttempt){if([string]$existingAttempt.OperationId -cne $ParentOperationId -or [string]$existingAttempt.ManifestHash -ine $ManifestHash -or [long]$existingAttempt.Generation -ne [long]$Package.Manifest.Generation -or [string]$existingAttempt.DecisionReceiptHash -ine [string]$decision.ReceiptHash -or [string]$existingAttempt.TargetSnapshotHash -ine [string]$decision.Receipt.TargetSnapshotHash -or [string]$existingAttempt.WizardPreviewHash -ine [string]$Preview.WizardPreviewHash -or (@($existingAttempt.SelectedItemIds|Sort-Object -Unique)-join "`n") -cne (@($decision.SelectedItemIds|Sort-Object -Unique)-join "`n")){throw 'Durable TargetRestore parent changed before entering the Service credential challenge.'}}
+        else{$existingAttempt=[pscustomobject][ordered]@{ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviousManifest=$state.ManifestHash;OperationId=$ParentOperationId;DecisionReceiptPath=[string]$decision.ReceiptPath;DecisionReceiptHash=[string]$decision.ReceiptHash;TargetSnapshotPath=[string]$decision.SnapshotPath;TargetSnapshotHash=[string]$decision.Receipt.TargetSnapshotHash;SelectedItemIds=@($decision.SelectedItemIds);WizardPreviewHash=[string]$Preview.WizardPreviewHash;MaterialJobOperationId='';MaterialIds=@();ItemResults=@();Status='WaitingForInput';CreatedUtc=(Get-WsmUtc)}}
+        $state.ManifestHash=$ManifestHash;$state.Generation=[long]$Package.Manifest.Generation;$state.Stage='WaitingForInput';$state|Add-Member NoteProperty RestoreAttempt $existingAttempt -Force
+        if(-not $challenge){$challenge=[pscustomobject][ordered]@{State='WaitingForInput';ParentOperationId=$ParentOperationId;PairId=[string]$Package.Manifest.PairId;Role=$contextRole;Actor=$contextActor;SessionId=$contextSession;ContextId=$contextId;Revision=[int]$contextRevision;ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviewHash=[string]$Preview.WizardPreviewHash;RequiredSecretRefs=$expectedServiceRefs;ServiceReservations=@($serviceReservations.ToArray());CreatedUtc=Get-WsmUtc;UpdatedUtc=Get-WsmUtc};$state|Add-Member NoteProperty AssistiveServiceChallenge $challenge -Force}else{$challenge.RequiredSecretRefs=$expectedServiceRefs;$challenge.UpdatedUtc=Get-WsmUtc}
+        Add-WsmJournal $paths $state 'AssistiveServiceCredentialChallengeWaiting' '' $challenge
+        return [pscustomobject][ordered]@{Status='WaitingForInput';PairId=[string]$Package.Manifest.PairId;ParentOperationId=$ParentOperationId;RequiredSecretRefs=@($challenge.RequiredSecretRefs);ServiceReservations=@($challenge.ServiceReservations);ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviewHash=[string]$Preview.WizardPreviewHash;Role=$contextRole;Actor=$contextActor;SessionId=$contextSession;ContextId=$contextId;Revision=[int]$contextRevision;NoTargetWrites=$true;ResumeRequired=$true;ProductionVerified=$false}
+    }
+    if($challenge){$challenge.State='Running';$challenge.UpdatedUtc=Get-WsmUtc;Add-WsmJournal $paths $state 'AssistiveServiceCredentialChallengeResuming' '' $challenge}
     if($Preview.PSObject.Properties['NonCFileResults'] -and @($Preview.NonCFileResults).Count){$state | Add-Member NoteProperty AssistiveFileResults @($Preview.NonCFileResults) -Force;Add-WsmJournal $paths $state 'AssistiveNonCFileResultsImported' '' ([pscustomobject]@{Generation=[long]$Package.Manifest.Generation;Rows=@($Preview.NonCFileResults)})}
     $job=Register-WsmAssistivePackageMaterials $Package $decision $StateDirectory $Preview
     $state.Stage='Running'
-    $attempt=[pscustomobject]@{ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviousManifest=$state.ManifestHash;OperationId=$(if($CancellationToken){$CancellationToken.OperationId}else{[Guid]::NewGuid().ToString()});DecisionReceiptPath=[string]$decision.ReceiptPath;DecisionReceiptHash=[string]$decision.ReceiptHash;TargetSnapshotPath=[string]$decision.SnapshotPath;TargetSnapshotHash=[string]$decision.Receipt.TargetSnapshotHash;SelectedItemIds=@($decision.SelectedItemIds);WizardPreviewHash=$(if($Preview.PSObject.Properties['WizardPreviewHash']){[string]$Preview.WizardPreviewHash}else{''});MaterialJobOperationId=$job.OperationId;MaterialIds=@($job.MaterialIds);ItemResults=@()}
+    # Only the same durable parent still waiting for input (or taken over before native writes) continues; an earlier finished or cancelled attempt never lends its identity to a new restore.
+    $attempt=$null;if($state.PSObject.Properties['RestoreAttempt'] -and [string]$state.RestoreAttempt.OperationId -ceq $ParentOperationId -and [string]$state.RestoreAttempt.Status -cin @('WaitingForInput','Running')){$attempt=$state.RestoreAttempt}
+    if(-not $attempt){$attempt=[pscustomobject]@{ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviousManifest=$state.ManifestHash;OperationId=$ParentOperationId;DecisionReceiptPath=[string]$decision.ReceiptPath;DecisionReceiptHash=[string]$decision.ReceiptHash;TargetSnapshotPath=[string]$decision.SnapshotPath;TargetSnapshotHash=[string]$decision.Receipt.TargetSnapshotHash;SelectedItemIds=@($decision.SelectedItemIds);WizardPreviewHash=$(if($Preview.PSObject.Properties['WizardPreviewHash']){[string]$Preview.WizardPreviewHash}else{''});ItemResults=@()}}
+    $attempt|Add-Member NoteProperty MaterialJobOperationId $job.OperationId -Force;$attempt|Add-Member NoteProperty MaterialIds @($job.MaterialIds) -Force;$attempt|Add-Member NoteProperty Status 'Running' -Force;$attempt|Add-Member NoteProperty StartedUtc (Get-WsmUtc) -Force
     $state | Add-Member NoteProperty RestoreAttempt $attempt -Force
     Add-WsmJournal $paths $state 'AssistiveRestoreStarted' '' $attempt
     Confirm-WsmOutputStateCheckpoint -StateDirectory $StateDirectory -PairId $Package.Manifest.PairId -PlanHash $Package.Manifest.PlanHash
@@ -472,7 +595,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
         Assert-WsmAssistiveReceiptFresh $Package $decision | Out-Null
         $item=$itemsById[[string]$row.ItemId];$spec=$item.MigrationSpec
         try{
-            $reservations=@();if(-not ($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'NonC')){$reservations=Get-WsmAssistiveReservations $item $Package $StateDirectory}
+            $reservations=@();if(-not ($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'NonC')){$reservations=Get-WsmAssistiveReservations $item $Package $StateDirectory -OperationId $ParentOperationId}
             $priorRecord=@($state.Items | Where-Object ItemId -CEQ $item.ItemId);$undo=$null;if($priorRecord.Count){$undo=$priorRecord[0]}
             Add-WsmJournal $paths $state 'AssistiveItemStarted' $item.ItemId ([pscustomobject]@{Adapter=$spec.Adapter;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;DecisionReceiptHash=$decision.ReceiptHash})
             if($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'NonC'){$fileRows=@($Preview.NonCFileResults|Where-Object ItemId -CEQ $item.ItemId);if(-not $fileRows.Count -or @($fileRows|Where-Object {$_.Status -notin @('Applied','DirectoryReady') -or -not $_.EffectivePath -or [long]$_.Generation -ne [long]$Package.Manifest.Generation}).Count){throw 'NonC result lost its exact-generation native readback before G acceptance.'};$result=[pscustomobject]@{ItemId=$item.ItemId;Status='Succeeded';CreatedByTool=$false;ExternalOwnershipVerified=$true;OwnershipChannel='NonC';AppliedManifestHash=$ManifestHash;AppliedGeneration=[long]$Package.Manifest.Generation;ActualHash=(Get-WsmHashText ($fileRows|Sort-Object EntryId|ConvertTo-Json -Depth 20 -Compress));Target=$spec.TargetPath;OwnedFiles=@();OwnedDirectories=@();FileResults=$fileRows;Error='';NativeCode=0}}
@@ -500,7 +623,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
                         if((ConvertTo-WsmXmlComparable $candidate.DocumentElement) -cne (ConvertTo-WsmXmlComparable $desired.DocumentElement)){throw 'Reviewed IIS field changes do not produce the exact staged Desired.Xml.'}
                         $pending=[pscustomobject]@{ItemId=$item.ItemId;Phase='AssistiveAdapterCreating';Adapter=$spec.Adapter;ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;Before=$before;BeforeHash=(Get-WsmHashText ($before | ConvertTo-Json -Depth 30 -Compress));DesiredHash=(Get-WsmHashText ($spec.Desired | ConvertTo-Json -Depth 40 -Compress));AbsentBefore=$false;BootBefore='';InstallerBaselinePath='';InstallerBaselineHash='';FolderCreateIntents=@();AuxiliaryOwnership=@();UpdatedByTool=$true}
                         $state.PendingOperations=@($state.PendingOperations | Where-Object ItemId -CNE $item.ItemId)+@($pending);Add-WsmJournal $paths $state 'AssistiveAdapterIntent' $item.ItemId $pending
-                        $nativeResult=Invoke-WsmAdapterRestore $spec $Secrets $Package
+                        $nativeResult=Invoke-WsmAdapterRestore $spec $Secrets $Package -ReservationWorkspace $StateDirectory -ReservationOperationId $ParentOperationId
                         if(-not $nativeResult.PSObject.Properties['PriorXml'] -or [string]$nativeResult.PriorXml -cne [string]$before.Xml){throw 'Native IIS restore prior XML differs from the exact durable before-state; retain the pending intent for reconciliation.'}
                         $check=Test-WsmAdapterConfiguration $spec Staged;if(-not $check.Passed){throw ('Native IIS readback failed: '+($check.Problems -join '; '))}
                         $actual=Get-WsmHashText ($check.Actual | ConvertTo-Json -Depth 30 -Compress)
@@ -514,7 +637,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
                 }
                 else{
                     if($before.Exists -and -not ($prior.Count -eq 1 -and $prior[0].CreatedByTool -and $prior[0].AppliedManifestHash)) {throw 'Existing target object is not owned by a verified prior Assistive generation.'}
-                    if($before.Exists){$ownedReceipts=@();$allReceipts=@();if($spec.Adapter -ceq 'ScheduledTask'){$ifOwned=$prior[0].PSObject.Properties['AuxiliaryOwnership'];if($ifOwned){$ownedReceipts=@($prior[0].AuxiliaryOwnership)};$allReceipts=Get-WsmTaskSecurityReceiptsForSpec $spec (Get-WsmTaskSecurityOwnershipReceipts $state)};$check=Test-WsmAdapterConfiguration $spec Staged $allReceipts;if(-not $check.Passed){throw ('Prior owned object has drifted: '+($check.Problems -join '; '))};$actual=Get-WsmHashText ($check.Actual | ConvertTo-Json -Depth 30 -Compress);$priorStatus='Succeeded';$priorBoot='';$priorBaselinePath='';$priorBaselineHash='';$priorSafety=$null;$priorInstallerResult=$null;if($prior[0].PSObject.Properties['BootBefore']){$priorBoot=[string]$prior[0].BootBefore};if($prior[0].PSObject.Properties['InstallerBaselinePath']){$priorBaselinePath=[string]$prior[0].InstallerBaselinePath};if($prior[0].PSObject.Properties['InstallerBaselineHash']){$priorBaselineHash=[string]$prior[0].InstallerBaselineHash};if($prior[0].PSObject.Properties['InstallerSafety']){$priorSafety=$prior[0].InstallerSafety};if($prior[0].PSObject.Properties['InstallerResult']){$priorInstallerResult=$prior[0].InstallerResult};if($spec.Adapter -eq 'WindowsFeature'){$baselineOperation=[pscustomobject]@{ItemId=$item.ItemId;InstallerBaselinePath=$priorBaselinePath;InstallerBaselineHash=$priorBaselineHash};$baseline=Read-WsmInstallerBaseline $baselineOperation $paths $item.ItemId;$priorSafety=Protect-WsmInstallerSideEffects $spec.Desired $baseline;[void](Test-WsmInstallerConsumers $spec.Desired $priorSafety Staged);if($prior[0].Status -eq 'RebootRequired'){Assert-WsmRebootCompleted $prior[0]}};$result=[pscustomobject]@{ItemId=$item.ItemId;Status=$priorStatus;CreatedByTool=[bool]$prior[0].CreatedByTool;AppliedManifestHash=$ManifestHash;AppliedGeneration=[long]$Package.Manifest.Generation;ActualHash=$actual;Target=(Get-WsmAdapterObjectIdentity $spec);Backup='';Error='';NativeCode=0;PriorManifestHash=[string]$prior[0].AppliedManifestHash;AuxiliaryOwnership=@($ownedReceipts);BootBefore=$priorBoot;InstallerBaselinePath=$priorBaselinePath;InstallerBaselineHash=$priorBaselineHash;InstallerSafety=$priorSafety;InstallerResult=$priorInstallerResult}}
+                    if($before.Exists){$ownedReceipts=@();$allReceipts=@();if($spec.Adapter -ceq 'ScheduledTask'){$ifOwned=$prior[0].PSObject.Properties['AuxiliaryOwnership'];if($ifOwned){$ownedReceipts=@($prior[0].AuxiliaryOwnership)};$allReceipts=Get-WsmTaskSecurityReceiptsForSpec $spec (Get-WsmTaskSecurityOwnershipReceipts $state)};$check=Test-WsmAdapterConfiguration $spec Staged $allReceipts;if(-not $check.Passed){throw ('Prior owned object has drifted: '+($check.Problems -join '; '))};$actual=Get-WsmHashText ($check.Actual | ConvertTo-Json -Depth 30 -Compress);$priorStatus='Succeeded';$priorBoot='';$priorBaselinePath='';$priorBaselineHash='';$priorSafety=$null;$priorInstallerResult=$null;if($prior[0].PSObject.Properties['BootBefore']){$priorBoot=[string]$prior[0].BootBefore};if($prior[0].PSObject.Properties['InstallerBaselinePath']){$priorBaselinePath=[string]$prior[0].InstallerBaselinePath};if($prior[0].PSObject.Properties['InstallerBaselineHash']){$priorBaselineHash=[string]$prior[0].InstallerBaselineHash};if($prior[0].PSObject.Properties['InstallerSafety']){$priorSafety=$prior[0].InstallerSafety};if($prior[0].PSObject.Properties['InstallerResult']){$priorInstallerResult=$prior[0].InstallerResult};if($spec.Adapter -eq 'WindowsFeature'){$baselineOperation=[pscustomobject]@{ItemId=$item.ItemId;InstallerBaselinePath=$priorBaselinePath;InstallerBaselineHash=$priorBaselineHash};$baseline=Read-WsmInstallerBaseline $baselineOperation $paths $item.ItemId;$priorSafety=Protect-WsmInstallerSideEffects $spec.Desired $baseline $StateDirectory ([string]$Package.Manifest.Target.Fingerprint);[void](Test-WsmInstallerConsumers $spec.Desired $priorSafety Staged);if($prior[0].Status -eq 'RebootRequired'){Assert-WsmRebootCompleted $prior[0]}};$result=[pscustomobject]@{ItemId=$item.ItemId;Status=$priorStatus;CreatedByTool=[bool]$prior[0].CreatedByTool;AppliedManifestHash=$ManifestHash;AppliedGeneration=[long]$Package.Manifest.Generation;ActualHash=$actual;Target=(Get-WsmAdapterObjectIdentity $spec);Backup='';Error='';NativeCode=0;PriorManifestHash=[string]$prior[0].AppliedManifestHash;AuxiliaryOwnership=@($ownedReceipts);BootBefore=$priorBoot;InstallerBaselinePath=$priorBaselinePath;InstallerBaselineHash=$priorBaselineHash;InstallerSafety=$priorSafety;InstallerResult=$priorInstallerResult}}
                     else{
                         $bootBefore='';$installerBaseline=$null;$installerBaselinePath='';$installerBaselineHash='';if($spec.Adapter -eq 'WindowsFeature'){$bootBefore=Get-WsmBootStamp;$installerBaseline=Get-WsmInstallerSnapshot;$installerBaselinePath=Join-Path $paths.Root ($item.ItemId+'.installer-baseline.json');Write-WsmJson $installerBaselinePath $installerBaseline;$installerBaselineHash=(Get-FileHash -LiteralPath $installerBaselinePath -Algorithm SHA256).Hash.ToLowerInvariant()}
                         $pending=[pscustomobject]@{ItemId=$item.ItemId;Phase='AssistiveAdapterCreating';Adapter=$spec.Adapter;ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;Before=$before;BeforeHash=(Get-WsmHashText ($before | ConvertTo-Json -Depth 30 -Compress));DesiredHash=(Get-WsmHashText ($spec.Desired | ConvertTo-Json -Depth 40 -Compress));AbsentBefore=$true;BootBefore=$bootBefore;InstallerBaselinePath=$installerBaselinePath;InstallerBaselineHash=$installerBaselineHash;FolderCreateIntents=@();AuxiliaryOwnership=@()}
@@ -522,7 +645,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
                         $beforeFolderCreate={param($intent)$current=@($state.PendingOperations | Where-Object ItemId -CEQ $item.ItemId)[0];$current.FolderCreateIntents+=@($intent);$detail=[pscustomobject]@{ItemId=$item.ItemId;Adapter='ScheduledTask';ManifestHash=$ManifestHash;Phase='TaskFolderCreateIntent';Intent=$intent};Add-WsmJournal $paths $state 'TaskFolderCreateIntent' $item.ItemId $detail}
                         $afterFolderCreate={param($receipt)$current=@($state.PendingOperations | Where-Object ItemId -CEQ $item.ItemId)[0];$current.FolderCreateIntents=@($current.FolderCreateIntents | Where-Object OperationId -CNE $receipt.OperationId);$current.AuxiliaryOwnership+=@($receipt);$detail=[pscustomobject]@{ItemId=$item.ItemId;Adapter='ScheduledTask';ManifestHash=$ManifestHash;Phase='TaskFolderOwned';Receipt=$receipt};Add-WsmJournal $paths $state 'TaskFolderOwned' $item.ItemId $detail}
                         $ownedReceipts=@();$sharedReceipts=@();if($spec.Adapter -ceq 'ScheduledTask'){$allReceipts=Get-WsmTaskSecurityReceiptsForSpec $spec (Get-WsmTaskSecurityOwnershipReceipts $state);$ownedReceipts=@($pending.AuxiliaryOwnership);$sharedReceipts=@($allReceipts | Where-Object {$_.OperationId -notin @($ownedReceipts | ForEach-Object {$_.OperationId})})}
-                        $nativeResult=Invoke-WsmAdapterRestore $spec $Secrets $Package $installerBaseline $beforeFolderCreate $afterFolderCreate $ownedReceipts $sharedReceipts
+                        $nativeResult=Invoke-WsmAdapterRestore $spec $Secrets $Package $installerBaseline $beforeFolderCreate $afterFolderCreate $ownedReceipts $sharedReceipts $StateDirectory $ParentOperationId
                         $auxiliaryOwnership=@();if($nativeResult.PSObject.Properties['AuxiliaryOwnership']){$auxiliaryOwnership=@($nativeResult.AuxiliaryOwnership)}
                         $installerSafety=$null;$installerResult=$null;$reboot=[bool]$nativeResult.RebootRequired;if($spec.Adapter -eq 'WindowsFeature'){$installerSafety=$nativeResult.InstallerSafety;$installerResult=[pscustomobject]@{NativeTool='Install-WindowsFeature';NativeResult=$nativeResult.NativeResult;RestartNeeded=$nativeResult.RestartNeeded};[void](Test-WsmInstallerConsumers $spec.Desired $installerSafety Staged)}
                         $allReceipts=@();if($spec.Adapter -ceq 'ScheduledTask'){$allReceipts=Get-WsmTaskSecurityReceiptsForSpec $spec (Get-WsmTaskSecurityOwnershipReceipts $state)}
@@ -558,6 +681,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
         $cancel=[ordered]@{Status='Cancelled';ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;OperationId='';Boundary='';PendingOperationCount=[int]@($state.PendingOperations).Count}
         if($_.Exception.Data['OperationId']){$cancel.OperationId=[string]$_.Exception.Data['OperationId']}
         if($_.Exception.Data['CancellationBoundary']){$cancel.Boundary=[string]$_.Exception.Data['CancellationBoundary']}
+        if($challenge){$challenge.State='Cancelled';$challenge.UpdatedUtc=Get-WsmUtc;foreach($reservation in @($serviceReservations.ToArray())){Set-WsmAssistiveServiceReservationOperation -Workspace $StateDirectory -ResourceKey $reservation.ResourceKey -PairId $Package.Manifest.PairId -ItemId $reservation.ItemId -OperationId $ParentOperationId -State Released | Out-Null}}
         Add-WsmJournal $paths $state 'AssistiveRestoreCancelled' '' ([pscustomobject]$cancel)
         Complete-WsmAssistivePackageJob $Package $job $StateDirectory
         return [pscustomobject]@{PairId=$Package.Manifest.PairId;ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;Stage='Cancelled';Items=$state.Items;Results=$itemResults.ToArray();Deferred=@($Preview.Rows | Where-Object Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired'));PendingOperations=@($state.PendingOperations);JournalHash=$state.JournalHash;BusinessValidationRequired=$true;ProductionVerified=$false}
@@ -567,7 +691,9 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     $remaining=@($Preview.Rows | Where-Object {$_.Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired')})
     $failedCount=@($itemResults | Where-Object Status -in @('Failed','BlockedConflict','Blocked','ManualEvidenceRequired')).Count
     $state.Stage='Succeeded';if($remaining.Count -or $failedCount -or @($state.PendingOperations).Count){$state.Stage='Partial'};if(@($itemResults | Where-Object Status -EQ RebootRequired).Count){$state.Stage='RebootRequired'}
+    if($challenge){$challenge.State='Completed';$challenge.UpdatedUtc=Get-WsmUtc}
     Add-WsmJournal $paths $state 'AssistiveRestoreCompleted' '' ([pscustomobject]@{Status=$state.Stage;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;DecisionReceiptHash=$decision.ReceiptHash;ItemResults=$itemResults.ToArray();DeferredRows=$remaining})
+    if($state.Stage -in @('Succeeded','Partial','RebootRequired') -and -not @($state.PendingOperations).Count){foreach($reservation in @($serviceReservations.ToArray())){Set-WsmAssistiveServiceReservationOperation -Workspace $StateDirectory -ResourceKey $reservation.ResourceKey -PairId $Package.Manifest.PairId -ItemId $reservation.ItemId -OperationId $ParentOperationId -State Released | Out-Null}}
     Complete-WsmAssistivePackageJob $Package $job $StateDirectory
     [pscustomobject]@{PairId=$Package.Manifest.PairId;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;Stage=$state.Stage;Items=$state.Items;Results=$itemResults.ToArray();Deferred=$remaining;JournalHash=$state.JournalHash;BusinessValidationRequired=$true;ProductionVerified=$false}
 }

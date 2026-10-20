@@ -18,7 +18,9 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
     function script:Set-Service {param($Name,$StartupType,$ErrorAction)$object=@($script:installerObjects | Where-Object Name -EQ $Name)[0];$object.Mode=$StartupType;if($StartupType -ceq 'Automatic'){$object.Mode='Auto'}}
     function script:Start-Service {param($Name,$ErrorAction)@($script:installerObjects | Where-Object Name -EQ $Name)[0].Running=$true}
     function script:Stop-Service {param($Name,$ErrorAction)@($script:installerObjects | Where-Object Name -EQ $Name)[0].Running=$false}
-    Invoke-WsmInstallerConsumerActivation $desired $result $true
+    $activationRejected=$false;try{Invoke-WsmInstallerConsumerActivation $desired $result $true}catch{$activationRejected=$_.Exception.Message -like '*trusted reservation workspace*'};if(-not $activationRejected -or $script:installerObjects[1].Running){throw 'Installer service activation ran without its trusted reservation workspace.'}
+    $activationWorkspace=Join-Path ([IO.Path]::GetTempPath()) ('wsm-installer-activation-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($activationWorkspace)
+    try{Invoke-WsmInstallerConsumerActivation $desired $result $true $activationWorkspace ('c'*64)}finally{Remove-Item -LiteralPath $activationWorkspace -Recurse -Force}
     [void](Test-WsmInstallerConsumers $desired $result Final)
     $script:installerObjects[1].ConfigHash='d'*64;$blocked=$false;try{Test-WsmInstallerConsumers $desired $result Final | Out-Null}catch{$blocked=$true};if(-not $blocked){throw 'Installer consumer configuration drift accepted'}
     $script:installerObjects[1].ConfigHash='b'*64
@@ -27,6 +29,6 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
     $desired.IsolationEvidence='';$blocked=$false;try{Assert-WsmInstallerPolicy $desired}catch{$blocked=$true};if(-not $blocked){throw 'Installer started without explicit isolation review'}
     $desired.IsolationEvidence='fixture';$desired.SideEffects=@([pscustomobject]@{Kind='Service';Name='Created';FinalMode='Auto';FinalRunning=$true})
     function script:Install-WindowsFeature {param($Name,$ErrorAction)$script:installerObjects=@($baseline.Items[0],[pscustomobject]@{Kind='Service';ConfigHash=('b'*64);Name='Created';Mode='Auto';Running=$true});throw (New-Object TimeoutException('fixture installer failed after creating consumer'))}
-    $spec=[pscustomobject]@{Adapter='WindowsFeature';Owner='fixture';Evidence='reviewed';Desired=$desired};$blocked=$false;try{Invoke-WsmAdapterRestore $spec @{} $null $baseline | Out-Null}catch [TimeoutException]{$blocked=$true};if(-not $blocked -or $script:installerObjects[1].Running){throw 'Failed installer bypassed quarantine or lost failure'}
+    $spec=[pscustomobject]@{Adapter='WindowsFeature';Owner='fixture';Evidence='reviewed';Desired=$desired};$blocked=$false;$featureWorkspace=Join-Path ([IO.Path]::GetTempPath()) ('wsm-installer-feature-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($featureWorkspace);try{Invoke-WsmAdapterRestore $spec @{} ([pscustomobject]@{Manifest=[pscustomobject]@{Target=[pscustomobject]@{Fingerprint=('c'*64)}}}) $baseline $null $null @() @() $featureWorkspace | Out-Null}catch [TimeoutException]{$blocked=$true}finally{Remove-Item -LiteralPath $featureWorkspace -Recurse -Force};if(-not $blocked -or $script:installerObjects[1].Running){throw 'Failed installer bypassed quarantine or lost failure'}
 }
 Write-Host 'PASS: installer policy, reviewed/unreviewed new consumer quarantine, existing-object drift and failed native installer cleanup. OS APIs are fixtures.'
