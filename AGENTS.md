@@ -1,6 +1,6 @@
 # Windows Server Migration 專案入口
 
-- **目前第七輪實作中**：使用者於 2026-10-19 授權依 [MIGRATION-7-PLAN.md](docs/plans/MIGRATION-7-PLAN.md) 完整實作及逐段驗證／commit／push。從第六輪 6a2329c 建立 `codex/migration-7`，不從尚缺第六輪的 dev 開工、不自行 merge 或刪第六輪分支。委派使用者指定 `gpt-6-luna high／medium`，主代理逐段核對使用端及獨立驗收；第六輪未結簽核保留。第七輪新增 C 主動探索、C／非 C 獨立離線備份、HTML 清單／勾選原位置還原及帳密等待續作；以下第六輪能力是基線，新能力是否已完成以第七輪執行紀錄為準。第七輪對新格式取代 C-only／NonC 僅直傳限制，但舊工作仍以原可信版本接續，不放寬核准／檔案／資格防護。
+- **目前第七輪實作中**：使用者於 2026-10-19 授權依 [MIGRATION-7-PLAN.md](docs/plans/MIGRATION-7-PLAN.md) 完整實作及逐段驗證／commit／push。從第六輪 6a2329c 建立 `codex/migration-7`，不從尚缺第六輪的 dev 開工、不自行 merge 或刪第六輪分支。委派使用者指定 `gpt-6-luna high／medium`，主代理逐段核對使用端及獨立驗收；第六輪未結簽核保留。第七輪新增 C 主動探索、C／非 C 獨立離線備份、HTML 清單／勾選原位置還原及帳密等待續作；以下第六輪能力是基線，新能力是否已完成以第七輪執行紀錄為準。2026-10-20 第五次定案（PLAN 第 18 節）改為備份端優先，補備份目前項目、已備份／未備份／安裝軟體三分頁（工作台與離線報告共用資料）及還原預設全選；未提交 F4a 須先修 Test-AssistiveRestore 回歸。第七輪對新格式取代 C-only／NonC 僅直傳限制，但舊工作仍以原可信版本接續，不放寬核准／檔案／資格防護。
 
 - 流程：完整。2026-10-13 使用者改為先收尾第五輪已完成範圍，未完成實作／整合驗收移至 [MIGRATION-6-PLAN.md](docs/plans/MIGRATION-6-PLAN.md)，2026-10-14 使用者已授權依第六輪 PLAN 完整實作，逐段驗證／commit／push codex/migration-6，未完成項持續補齊。第五輪原始規格、全部 Phase 盤點及證據見 [MIGRATION-5-PLAN.md](docs/plans/MIGRATION-5-PLAN.md)。第六輪保留工具先處理、白話逐步操作、目標綁定核准、不做整機／OS／安裝軟體備份，保留業務 DLL／EXE。第五輪收尾後整合至 dev；第六輪已定案實作、逐項程式與 TODO 補漏核對、代理可執行驗收與最新發行包核驗完成，待不同模型體檢（精確證據見第六輪 PLAN 第 11／12 節）；收尾不代表原 A–H 全數完成。
 - 現況：0.4。A–E 現行能力、既有核心 Phase 與外部待驗收以 [IMPLEMENTATION-0.1.md](docs/IMPLEMENTATION-0.1.md) 為準，不在入口重複各次測試時間／checkpoint。本機原生傳輸 NotPassed 依使用者保留 AdGuard 設定的決策保留；獨立 Windows CI 已有雙引擎原生讀寫、Source 備份、Target 還原及 Probe 證據，精確範圍以當輪 PLAN 為準；外部 Server／Oracle／企業 PKI／業務／規模驗收仍 NotTested，ProductionVerified=false、ProductionExecutionEnabled=false。
@@ -16,4 +16,4 @@
 - 實際來源／目標主機須另有指派；隔離主機可用角色6／CLI LabReport回傳JSON與TXT。fixture、命令成功或報告摘要不能代替原生readback及業務接受。
 - 現況文件及當期 PLAN 留在 docs；修改 Markdown 後用正式產生器同步 HTML，不手改投影。本輪略過 docs/archive，不搜尋、讀取、搬移、產生或打包封存內容。新包保留既有頂層 Markdown 契約，排除 PLAN HTML／docs/plans；文件變更仍需核驗發行 bytes 並重新簽署。公開 repo 不納入真實盤點、秘密、私鑰；個人未追蹤 `Get-ServerMigrationInventory.ps1` 不讀、不改、不 stage，也不進測試快照或發行包。
 - GitHub 每段完整相依驗證後 commit／push 當輪分支並核對遠端 SHA。2026-10-13 使用者明確授權第五輪再檢查無阻擋後整合、推送 dev，確認已整合再刪除本機及遠端 codex/migration-5；不動 main、不 force push，保留 stash 與私人未追蹤檔。此授權不延伸到下一輪或其他 repository。
-- 本輪委派僅 gpt-6-luna low／medium／high，由主代理按複雜度選擇；此次審查與窄修用 high。主代理獨立核對實際diff／consumer及測試，不把代理摘要當完成證明。當前主代理確切版本無可信可區分身分，不宣稱與全部實作者不同模型的獨立簽核；第四輪模型／體檢歷史保留於其 PLAN。
+- 2026-10-20 使用者指定：第五次定案後的 subagent 實作一律委派 agy（依 gemini-delegate skill 切段與驗收）；先前 gpt-6-luna 委派紀錄保留為歷史。主代理獨立核對實際diff／consumer及測試，不把代理摘要當完成證明。當前主代理確切版本無可信可區分身分，不宣稱與全部實作者不同模型的獨立簽核；第四輪模型／體檢歷史保留於其 PLAN。

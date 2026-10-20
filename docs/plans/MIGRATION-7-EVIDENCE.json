@@ -1038,7 +1038,8 @@
       "requirement": {
         "path": "docs/plans/MIGRATION-7-PLAN.md",
         "headings": [
-          "16.3 E3a：離線新機起步與比較材料閉合"
+          "16.3 E3a：離線新機起步與比較材料閉合",
+          "18.6 E3a-S：還原項目選擇，預設全選"
         ]
       },
       "implementationStatus": "not-started",
@@ -1088,7 +1089,8 @@
       "requirement": {
         "path": "docs/plans/MIGRATION-7-PLAN.md",
         "headings": [
-          "F1：一份清單帶到可恢復的下一步"
+          "F1：一份清單帶到可恢復的下一步",
+          "18.3 F1-P：備份時顯示目前項目"
         ]
       },
       "implementationStatus": "not-started",
@@ -1174,7 +1176,9 @@
       "requirement": {
         "path": "docs/plans/MIGRATION-7-PLAN.md",
         "headings": [
-          "15.6 F3：備份後完整 HTML 清單與新機操作頁"
+          "15.6 F3：備份後完整 HTML 清單與新機操作頁",
+          "18.4 F3-T：備份結果三分頁（工作台與離線報告共用資料）",
+          "18.5 F3-S：安裝軟體分頁與新機安裝檢查表"
         ]
       },
       "implementationStatus": "not-started",
