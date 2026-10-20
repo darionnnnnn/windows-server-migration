@@ -133,6 +133,39 @@ function Export-WsmWizardTargetComparison {
     [pscustomobject][ordered]@{Status='Succeeded';PairId=$PairId;Path=[IO.Path]::GetFullPath($path);SHA256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();ComparisonRevision=[int]$comparison.Revision;PlanHash=[string]$approved.SHA256;SourceSnapshotHash=[string]$comparison.SourceSnapshotHash;TargetSnapshotHash=[string]$comparison.TargetSnapshotHash;SelectionRevision=[int]$comparison.SelectionRevision;InformationalOnly=$true;AuthoritativeApproval=$false;ProductionVerified=$false}
 }
 
+function Save-WsmWizardTargetComparisonMaterial {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)]$Ctx,[Parameter(Mandatory)]$Snapshot,[Parameter(Mandatory)]$Comparison,[Parameter(Mandatory)][int]$SelectionRevision,[Parameter(Mandatory)][int]$ComparisonRevision,[Parameter(Mandatory)][string]$SourceSnapshotHash,[Parameter(Mandatory)][ValidateSet('ManagerImport','TargetLocal')][string]$Provenance,[Parameter(Mandatory)][AllowEmptyString()][string]$ImportedFromHash)
+    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;[void](New-WsmOutputOwnedDirectory $root);$contentHash=Get-WsmHashText ($Comparison | ConvertTo-Json -Depth 100 -Compress);$stored=[pscustomobject][ordered]@{SchemaVersion=1;Kind='WizardTargetComparisonMaterial';PairId=$PairId;PlanHash=[string]$Ctx.Received.SHA256;SourceSnapshotHash=[string]$SourceSnapshotHash;TargetSnapshotHash=[string]$Snapshot.SHA256;SelectionRevision=$SelectionRevision;ComparisonRevision=$ComparisonRevision;Comparison=$Comparison;ComparisonContentHash=$contentHash;ImportedFromHash=$ImportedFromHash;Provenance=$Provenance;CreatedUtc=(Get-WsmUtc)}
+    $storedPath=Join-Path $root ('comparison-'+$contentHash+'.json');if([IO.File]::Exists($storedPath)){Assert-WsmNoReparse $storedPath;$existing=Read-WsmTrustedJson $storedPath (Get-FileHash -LiteralPath $storedPath -Algorithm SHA256).Hash;if((Get-WsmHashText ($existing.Comparison | ConvertTo-Json -Depth 100 -Compress)) -ine $contentHash){throw 'Existing owned Target comparison content-addressed path conflicts; preserve it for inspection.'}}else{Write-WsmJson $storedPath $stored}
+    [pscustomobject][ordered]@{Status='Succeeded';PairId=$PairId;Path=[IO.Path]::GetFullPath($storedPath);SHA256=(Get-FileHash -LiteralPath $storedPath -Algorithm SHA256).Hash.ToLowerInvariant();ComparisonRevision=$ComparisonRevision;PlanHash=[string]$Ctx.Received.SHA256;TargetSnapshotHash=[string]$Snapshot.SHA256;SourceSnapshotHash=$SourceSnapshotHash;SelectionRevision=$SelectionRevision;AuthoritativeApproval=$false;InformationalOnly=$true;ProductionVerified=$false;Provenance=$Provenance}
+}
+
+function New-WsmWizardTargetLocalComparison {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[object[]]$Jobs=@())
+    $ctx=Assert-WsmWizardTargetRole $Workspace $PairId
+    if([int]$ctx.Plan.SchemaVersion -ne 3 -or -not $ctx.Plan.PSObject.Properties['Assistive']){throw 'A schema-3 Assistive approved plan is required for a local Target comparison.'}
+    $packageRecord=Get-WsmWizardTargetPackage $Workspace $PairId $ctx $Jobs
+    if(-not $packageRecord){throw 'Import and verify the backup package on this Target before creating a local comparison.'}
+    if([string]$packageRecord.Package.Manifest.PlanHash -ine [string]$ctx.Received.SHA256){throw 'Verified package is not bound to the received Target plan.'}
+    $sourceCatalog=$null
+    if([int]$ctx.Plan.Assistive.ContractVersion -eq 2){
+        $inventoryPath=Join-Path (Split-Path -Parent ([string]$packageRecord.ManifestPath)) 'controls/source-inventory.json'
+        if([IO.File]::Exists($inventoryPath)){
+            Assert-WsmNoReparse $inventoryPath;$inventoryHash=(Get-FileHash -LiteralPath $inventoryPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($inventoryHash -ine [string]$ctx.Plan.Assistive.SourceSnapshotHash){throw 'Package source inventory does not match the sealed source snapshot hash.'}
+            $packageInventory=Read-WsmTrustedJson $inventoryPath $inventoryHash;if($packageInventory.PSObject.Properties['SoftwareCatalog']){$sourceCatalog=$packageInventory.SoftwareCatalog}
+        }
+    }
+    if(-not $sourceCatalog -and $ctx.Plan.PSObject.Properties['GeneralHost'] -and $ctx.Plan.GeneralHost -and $ctx.Plan.GeneralHost.PSObject.Properties['SoftwareCatalog']){$sourceCatalog=$ctx.Plan.GeneralHost.SoftwareCatalog}
+    if(-not $sourceCatalog){throw 'No trusted source software catalog is available in the approved plan or the verified package.'}
+    $snapshot=Get-WsmWizardTargetSnapshot $Workspace $ctx $Jobs;$targetCatalog=$snapshot.Inventory.SoftwareCatalog
+    $compared=New-WsmAssistiveSoftwareRows $sourceCatalog $targetCatalog $null @() (Get-WsmAssistiveCoverageComplete $targetCatalog)
+    Add-WsmAssistiveSourceCoverageGaps $compared $sourceCatalog
+    $comparison=[pscustomobject][ordered]@{Revision=1;SourceSnapshotHash=[string]$ctx.Plan.Assistive.SourceSnapshotHash;TargetSnapshotHash=[string]$snapshot.SHA256;TargetBaselineHash='';SelectionRevision=[int]$ctx.Plan.Assistive.SourceSelectionsVersion;Rows=[object[]]@($compared.Rows);ManualPreparation=[object[]]@($compared.ManualPreparation);VersionDisclaimer=('Source versions, chosen versions and observed target versions are separate evidence. A chosen version or matching version numbers are not compatibility evidence for product behavior, licensing, provider, account scope or workload readiness.'+' Generated locally on the Target from the verified backup set without Manager software-version choices or a first-observed baseline.');CreatedUtc=(Get-WsmUtc)}
+    Assert-WsmAssistiveComparisonSnapshotVersions $comparison $snapshot.Inventory $sourceCatalog | Out-Null
+    Save-WsmWizardTargetComparisonMaterial -Workspace $Workspace -PairId $PairId -Ctx $ctx -Snapshot $snapshot -Comparison $comparison -SelectionRevision ([int]$comparison.SelectionRevision) -ComparisonRevision 1 -SourceSnapshotHash ([string]$comparison.SourceSnapshotHash) -Provenance TargetLocal -ImportedFromHash ''
+}
+
 function Import-WsmWizardTargetComparison {
     [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$ExpectedHash,[object[]]$Jobs=@())
     $ctx=Assert-WsmWizardTargetRole $Workspace $PairId
@@ -145,9 +178,7 @@ function Import-WsmWizardTargetComparison {
     if($doc.TargetSnapshotHash -ine $snapshot.SHA256 -or $doc.Comparison.TargetSnapshotHash -ine $snapshot.SHA256 -or $doc.SourceSnapshotHash -ine $ctx.Plan.Assistive.SourceSnapshotHash -or $doc.Comparison.SourceSnapshotHash -ine $ctx.Plan.Assistive.SourceSnapshotHash -or [int]$doc.Comparison.Revision -ne [int]$doc.ComparisonRevision -or [int]$doc.Comparison.SelectionRevision -ne [int]$doc.SelectionRevision){throw 'Comparison is stale or bound to another Target inventory, sealed Source snapshot, or selection revision.'}
     $sourceCatalog=$null;if($ctx.Plan.PSObject.Properties['GeneralHost'] -and $ctx.Plan.GeneralHost -and $ctx.Plan.GeneralHost.PSObject.Properties['SoftwareCatalog']){$sourceCatalog=$ctx.Plan.GeneralHost.SoftwareCatalog}
     Assert-WsmAssistiveComparisonSnapshotVersions $doc.Comparison $snapshot.Inventory $sourceCatalog | Out-Null
-    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;[void](New-WsmOutputOwnedDirectory $root);$contentHash=Get-WsmHashText ($doc.Comparison | ConvertTo-Json -Depth 100 -Compress);$stored=[pscustomobject][ordered]@{SchemaVersion=1;Kind='WizardTargetComparisonMaterial';PairId=$PairId;PlanHash=[string]$ctx.Received.SHA256;SourceSnapshotHash=[string]$doc.SourceSnapshotHash;TargetSnapshotHash=[string]$snapshot.SHA256;SelectionRevision=[int]$doc.SelectionRevision;ComparisonRevision=[int]$doc.ComparisonRevision;Comparison=$doc.Comparison;ComparisonContentHash=$contentHash;ImportedFromHash=$ExpectedHash.ToLowerInvariant();CreatedUtc=(Get-WsmUtc)}
-    $storedPath=Join-Path $root ('comparison-'+$contentHash+'.json');if([IO.File]::Exists($storedPath)){Assert-WsmNoReparse $storedPath;$existing=Read-WsmTrustedJson $storedPath (Get-FileHash -LiteralPath $storedPath -Algorithm SHA256).Hash;if((Get-WsmHashText ($existing.Comparison | ConvertTo-Json -Depth 100 -Compress)) -ine $contentHash){throw 'Existing owned Target comparison content-addressed path conflicts; preserve it for inspection.'}}else{Write-WsmJson $storedPath $stored}
-    [pscustomobject][ordered]@{Status='Succeeded';PairId=$PairId;Path=[IO.Path]::GetFullPath($storedPath);SHA256=(Get-FileHash -LiteralPath $storedPath -Algorithm SHA256).Hash.ToLowerInvariant();ComparisonRevision=[int]$doc.ComparisonRevision;PlanHash=[string]$ctx.Received.SHA256;TargetSnapshotHash=[string]$snapshot.SHA256;SourceSnapshotHash=[string]$doc.SourceSnapshotHash;SelectionRevision=[int]$doc.SelectionRevision;AuthoritativeApproval=$false;InformationalOnly=$true;ProductionVerified=$false}
+    Save-WsmWizardTargetComparisonMaterial -Workspace $Workspace -PairId $PairId -Ctx $ctx -Snapshot $snapshot -Comparison $doc.Comparison -SelectionRevision ([int]$doc.SelectionRevision) -ComparisonRevision ([int]$doc.ComparisonRevision) -SourceSnapshotHash ([string]$doc.SourceSnapshotHash) -Provenance ManagerImport -ImportedFromHash $ExpectedHash.ToLowerInvariant()
 }
 
 function Create-WsmWizardTargetDecisionReceipt {

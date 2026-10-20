@@ -16,6 +16,7 @@ function ConvertTo-WsmWizardHtmlValue($Value,[int]$Depth=0) {
     $allowed+=@('CutoverPlanHash','CutoverStage')
     $allowed+=@('manualReviewRequired','manualReviewReason','sourceResumed','resumeAvailable')
     $allowed+=@('IndependentCopy','offlineReadiness','OfflineReadiness','Availability','MediaClass','CopyRoot','ReceiptSHA256','VerifiedUtc','BackupOperationId','DestinationRoot')
+    $allowed+=@('TargetLocalComparison','Provenance')
     $safe=[ordered]@{}
     if($Value -is [Collections.IDictionary]){$properties=@(foreach($key in $Value.Keys){[pscustomobject]@{Name=[string]$key;Value=$Value[$key]}})}else{$properties=@($Value.PSObject.Properties)}
     foreach($property in $properties){

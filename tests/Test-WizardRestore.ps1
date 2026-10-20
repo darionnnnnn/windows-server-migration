@@ -77,6 +77,7 @@ try {
         Check ($receivedComparison.Status -ceq 'Succeeded' -and $receivedComparison.TargetSnapshotHash -ceq $inventoryHash -and -not $receivedComparison.AuthoritativeApproval) 'Target comparison import lost current snapshot/hash bindings or claimed authority.'
         $stored=Get-WsmWizardTargetComparisonRecord $work $pair $planHash
         Check ($stored -and $stored.Comparison.Revision -eq 9 -and $stored.Document.SelectionRevision -eq $selectionRevision) 'Target did not retain the exact typed comparison in owned materials.'
+        Check ([string]$stored.Document.Provenance -ceq 'ManagerImport' -and [string]$receivedComparison.Provenance -ceq 'ManagerImport' -and [string]$stored.Document.ImportedFromHash -ceq $handoffHash) 'Imported Manager comparison did not record ManagerImport provenance.'
         $jobs+=@([pscustomobject]@{action='ImportTargetComparison';status='Succeeded';role='Target';pairId=$pair;workspace=$work;jobId=[Guid]::NewGuid().ToString();CompletedUtc=(Get-WsmUtc);outputs=@($receivedComparison)})
         $badHashRejected=$false;try{Import-WsmWizardTargetComparison -Workspace $work -PairId $pair -Path $handoffPath -ExpectedHash ('0'*64) -Jobs $jobs|Out-Null}catch{$badHashRejected=$true}
         Check $badHashRejected 'Comparison import accepted a mismatched independent SHA-256.'
@@ -214,6 +215,22 @@ try {
         $allJobs=@($jobs)+@($packageJobs)+@($zipPackageJob)
         $samePackage=Get-WsmWizardTargetPackage $work $pair (Assert-WsmWizardTargetRole $work $pair) $allJobs
         Check ($samePackage.ManifestHash -ceq $manifestHash -and $samePackage.Package.Manifest.Generation -eq 1) 'Repeated exact package delivery was not deduplicated by sealed manifest identity.'
+        # Offline local comparison: informational material generated on the Target from the verified package and its own inventory.
+        Reject {New-WsmWizardTargetLocalComparison -Workspace $work -PairId $pair -Jobs $jobs} 'Local comparison was created before any verified package was imported on this Target.'
+        $localManagerWork=Join-Path $Root 'local-comparison-manager';[void](Initialize-WsmOutputWorkspace -WorkRoot $localManagerWork -Role Manager)
+        $localRoleRejected=$false;try{New-WsmWizardTargetLocalComparison -Workspace $localManagerWork -PairId $pair -Jobs $allJobs|Out-Null}catch{$localRoleRejected=($_.Exception.Message -match 'enrolled Target workspace')}
+        Check $localRoleRejected 'Local comparison was not rejected in a non-Target workspace.'
+        $script:localOriginalRole=(Get-Command Assert-WsmWizardTargetRole -CommandType Function).ScriptBlock;$script:localSourceCatalog=$software
+        function script:Assert-WsmWizardTargetRole([string]$Workspace,[string]$PairId){$c=& $script:localOriginalRole $Workspace $PairId;$c.Plan|Add-Member NoteProperty GeneralHost ([pscustomobject]@{SoftwareCatalog=$script:localSourceCatalog}) -Force;$c}
+        try{
+            $localComparison=New-WsmWizardTargetLocalComparison -Workspace $work -PairId $pair -Jobs $allJobs
+            $localStored=Read-WsmTrustedJson $localComparison.Path $localComparison.SHA256
+            Check ($localComparison.Status -ceq 'Succeeded' -and $localComparison.Provenance -ceq 'TargetLocal' -and -not $localComparison.AuthoritativeApproval -and $localComparison.InformationalOnly) 'Local comparison result claimed authority or lost its TargetLocal provenance.'
+            Check ([string]$localStored.Provenance -ceq 'TargetLocal' -and [int]$localStored.ComparisonRevision -eq 1 -and $localStored.ImportedFromHash -ceq '' -and $localStored.TargetSnapshotHash -ceq $inventoryHash -and $localStored.Comparison.TargetSnapshotHash -ceq $inventoryHash -and $localStored.Comparison.TargetBaselineHash -ceq '' -and $localStored.Comparison.VersionDisclaimer -match 'Generated locally on the Target') 'Stored local comparison lacks TargetLocal provenance, revision 1 or the current Target snapshot binding.'
+            $localReceipt=Create-WsmWizardTargetDecisionReceipt -Workspace $work -PairId $pair -Decision WaitForInstall -Owner 'Target operator' -Reason 'Local offline comparison receipt' -SelectedItemIds @($item.ItemId) -Jobs $allJobs
+            Check ($localReceipt.Status -ceq 'Succeeded' -and $localReceipt.ComparisonRevision -eq 1 -and -not $localReceipt.AuthoritativeApproval) 'A decision receipt could not be created from the local comparison.'
+            [IO.File]::Delete($localReceipt.ReceiptPath);[IO.File]::Delete($localComparison.Path)
+        }finally{Set-Item -Path Function:\script:Assert-WsmWizardTargetRole -Value $script:localOriginalRole;Remove-Variable localOriginalRole,localSourceCatalog -Scope Script -ErrorAction SilentlyContinue}
         Reject {Create-WsmWizardTargetDecisionReceipt -Workspace $work -PairId $pair -Decision RestoreNow -Owner 'Target operator' -Reason 'Attempt to select an item outside this sealed plan' -SelectedItemIds @([Guid]::NewGuid().ToString()) -Jobs $allJobs} 'Target decision receipt accepted an item outside the exact sealed-plan include set.'
         $restoreReceipt=Create-WsmWizardTargetDecisionReceipt -Workspace $work -PairId $pair -Decision WaitForInstall -Owner 'Target operator' -Reason 'Wait for owner-managed workload preparation' -SelectedItemIds @($item.ItemId) -Jobs $allJobs
         Check (@($restoreReceipt.SelectedItemIds).Count -eq 1 -and [string]$restoreReceipt.SelectedItemIds[0] -ceq [string]$item.ItemId) 'Target decision receipt did not preserve the exact allowed subset chosen by the Target owner.'

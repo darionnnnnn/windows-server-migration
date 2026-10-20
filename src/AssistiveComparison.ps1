@@ -240,6 +240,11 @@ function New-WsmAssistiveSoftwareRows($Source,$Target,$Baseline,$Choices,$Target
     [pscustomobject]@{Rows=@($rows.ToArray());ManualPreparation=@($manual.ToArray())}
 }
 
+function Add-WsmAssistiveSourceCoverageGaps($Compared,$SourceCatalog) {
+    $sourceCoverage=@($SourceCatalog.Coverage | Where-Object {$_.Status -notin @('Success','NotInstalled')})
+    foreach($gap in $sourceCoverage){$Compared.ManualPreparation=@($Compared.ManualPreparation)+@([pscustomobject]@{SoftwareId='';Name=[string]$gap.Probe;Status='SourceCoverageIncomplete';Owner='';Action=('Resolve source inventory gap: '+[string]$gap.Status+'/'+[string]$gap.ErrorKind);CompatibilityDisclaimer='Incomplete source inventory cannot support absence or compatibility conclusions.'})}
+}
+
 function Get-WsmAssistiveComparison {
     [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId)
     $observed=Get-WsmCatalog $Workspace $PairId
@@ -252,8 +257,7 @@ function Get-WsmAssistiveComparison {
     if($observed.Assistive.Comparison -and $observed.Assistive.Comparison.SourceSnapshotHash -ieq $observed.Assistive.SourceSnapshot.SHA256 -and $observed.Assistive.Comparison.TargetSnapshotHash -ieq $observed.Assistive.TargetCurrent.SHA256 -and $observed.Assistive.Comparison.SelectionRevision -eq $observed.Assistive.Selections.Revision){return $observed.Assistive.Comparison}
     $coverageComplete=Get-WsmAssistiveCoverageComplete $targetInventory.SoftwareCatalog
     $compared=New-WsmAssistiveSoftwareRows $sourceInventory.SoftwareCatalog $targetInventory.SoftwareCatalog $(if($baselineInventory){$baselineInventory.SoftwareCatalog}else{$null}) @($observed.Assistive.SoftwareChoices) $coverageComplete
-    $sourceCoverage=@($sourceInventory.SoftwareCatalog.Coverage | Where-Object {$_.Status -notin @('Success','NotInstalled')})
-    foreach($gap in $sourceCoverage){$compared.ManualPreparation=@($compared.ManualPreparation)+@([pscustomobject]@{SoftwareId='';Name=[string]$gap.Probe;Status='SourceCoverageIncomplete';Owner='';Action=('Resolve source inventory gap: '+[string]$gap.Status+'/'+[string]$gap.ErrorKind);CompatibilityDisclaimer='Incomplete source inventory cannot support absence or compatibility conclusions.'})}
+    Add-WsmAssistiveSourceCoverageGaps $compared $sourceInventory.SoftwareCatalog
     $priorRevision=0;if($observed.Assistive.PSObject.Properties['ComparisonRevisionCounter']){$priorRevision=[int]$observed.Assistive.ComparisonRevisionCounter}elseif($observed.Assistive.Comparison){$priorRevision=[int]$observed.Assistive.Comparison.Revision}
     [pscustomobject][ordered]@{Revision=($priorRevision+1);SourceSnapshotHash=[string]$observed.Assistive.SourceSnapshot.SHA256;TargetSnapshotHash=[string]$observed.Assistive.TargetCurrent.SHA256;TargetBaselineHash=$(if($observed.Assistive.TargetBaseline){[string]$observed.Assistive.TargetBaseline.SHA256}else{''});SelectionRevision=[int]$observed.Assistive.Selections.Revision;Rows=[object[]]@($compared.Rows);ManualPreparation=[object[]]@($compared.ManualPreparation);VersionDisclaimer='Source versions, chosen versions and observed target versions are separate evidence. A chosen version or matching version numbers are not compatibility evidence for product behavior, licensing, provider, account scope or workload readiness.';CreatedUtc=(Get-WsmUtc)}
 }

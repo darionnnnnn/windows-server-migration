@@ -718,6 +718,12 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：OfflineFullSet 60（原 50）、AssistiveRestore 137（原 135）、AssistiveFiles 35、WizardRestore 79、ServiceCredentialChallenge 15、RecoveryContracts、AssistiveDirectoryReadback 10 通過；突變（缺磁碟檢查失效）會轉紅。
 - 限制：容量是逐項檢查，同一磁碟上多個項目的總量還沒有加總比較；寫入端只在 package 帶有 Plan 時才檢查原位置（正式封裝一律帶 Plan）；沒有權限可寫入性的預檢；完整的離線端到端旅程屬 G。
 
+### 17.37 E3a-1 新機本機產生比較材料（部分完成）
+
+- Sonnet 5.5 subagent 實作，主代理審查並獨立驗證。新增 `New-WsmWizardTargetLocalComparison`（action `TargetLocalComparison`）：在沒有舊 Manager 的情況下，新機用已驗證的封裝（CV2 優先使用封裝內 `controls/source-inventory.json` 的軟體清單，否則用計畫 GeneralHost 的清單）與本機最新盤點，以既有的 `New-WsmAssistiveSoftwareRows` 產生比較。產生時沒有 Manager 端選定的軟體版本與首次基準，說明文字會標明。儲存流程抽成 `Save-WsmWizardTargetComparisonMaterial`，與 Manager 匯入共用，並記錄 `Provenance`（ManagerImport／TargetLocal）；來源盤點缺口的加入邏輯抽成 `Add-WsmAssistiveSourceCoverageGaps`，與 Manager 端共用。執行時期投影沿用與 ComparisonImport 相同的「需要比較」條件來決定這個 action 是否可用。決策收據、預覽與還原的所有檢查都不變。
+- 驗證（WinPS 5.1）：WizardRestore 85（原 79；本機比較成功、可建立決策收據、非 Target 被拒、未匯入封裝被拒、匯入材料標為 ManagerImport）、WizardRuntime、OperationRequests、AssistiveComparison 42、WizardHtmlRuntimeProjection、HtmlConsole 112 通過；突變（本機比較不綁定目前目標盤點）會轉紅。
+- 已知限制：CV2 從封裝 controls 讀取來源軟體清單的路徑沒有自動化測試（fixture 不是 CV2，測試以替身提供計畫的軟體清單）；兩份比較材料若在同一秒建立，既有的 `Get-WsmWizardTargetComparisonRecord` 會判為模稜兩可（既有行為）；畫面按鈕在 E3a-S 加入。
+
 ## 18. 第五次定案：使用者目標對照與備份端優先
 
 > 2026-10-20 使用者盤點後定案；介面規格經 ui-ux-pro-max（HTML／CSS 指引、WCAG 2.2 AA 檢查目標）檢視。本節只補規格與調整順序，不改第 1 節目標，也不改核准、秘密、production gate 的邊界。與前文順序衝突時以本節為準，其餘契約不變。本節是規劃，不是完成證據。
