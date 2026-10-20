@@ -98,7 +98,7 @@
     return endpoint(`/api/view?${query.toString()}`).then(data => {
       const c = data && data.viewContext;
       const current = state.session;
-      const activeView = String(location.hash || '').slice(1), isActive = !activeView || (activeView === 'operations' ? name === 'actions' : activeView === name);
+      const activeView = String(location.hash || '').slice(1), isActive = !activeView || (activeView === 'operations' ? name === 'actions' : name === 'backup-items' ? activeView.split('?')[0] === 'jobs' : activeView === name);
       const same = c && typeof c.readUtc === 'string' && c.readUtc.length > 0 && String(c.sessionId || '') === String(expected.sessionId || '') && String(c.contextId || '') === String(expected.contextId || '') && String(c.pairId || '') === String(expected.pairId || '') && String(c.role || '') === String(expected.role || '') && String(c.revision == null ? '' : c.revision) === String(expected.revision == null ? '' : expected.revision) && String(c.decisionRevision == null ? '' : c.decisionRevision) === String(expected.decisionRevision == null ? '' : expected.decisionRevision) && String(c.selectionRevision == null ? '' : c.selectionRevision) === String(expected.selectionRevision == null ? '' : expected.selectionRevision) && String(c.sourceSelectionRevision == null ? '' : c.sourceSelectionRevision) === String(expected.sourceSelectionRevision == null ? '' : expected.sourceSelectionRevision) && String(c.dataVersion == null ? '' : c.dataVersion) === String(expected.dataVersion == null ? '' : expected.dataVersion) && viewIdentity(current) === identity && state.viewEpoch === epoch && state.viewRequests.get(key) === request && (isActive || (name === 'actions' && activeView === 'inventory'));
       if (!same) { const error = new Error('讀取結果已過期或上下文識別不一致，請重新整理目前頁面。'); error.code = 'stale-view'; throw error; }
       state.views[key] = data || {}; const readTime = c.readUtc ? `頁面資料讀取時間：${c.readUtc}（不代表目標主機盤點時間）` : '頁面讀取時間未知；不代表目標主機盤點時間。'; if (name === 'overview' && $('overview-read')) $('overview-read').textContent = readTime; if (name === 'software' && $('software-read')) $('software-read').textContent = readTime; return data || {};
@@ -1079,7 +1079,138 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     cancel.addEventListener('click',async()=>{if(!window.confirm('取消此持久憑證挑戰？既有 TargetRestore 作業會標記取消，且不會自動重試。'))return;submit.disabled=true;cancel.disabled=true;try{const result=await endpoint(`/api/jobs/${encodeURIComponent(id)}/service-credentials/cancel`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const record=result&&(result.job||result);if(!record||record.jobId!==id||record.status!=='Cancelled')throw new Error('本機服務未回傳可核對的取消狀態。');state.jobs.set(id,record);renderJobs();announce('已取消服務憑證挑戰；同一 TargetRestore 作業不會自動重試。');}catch(error){if(error.message!=='session expired')fail(`取消憑證挑戰未完成：${error.message}`);}finally{submit.disabled=false;cancel.disabled=false;}});
     actions.append(submit,cancel);panel.appendChild(actions);main.appendChild(panel);
   }
+  function formatBytes(value) { const n = Number(value); if (value == null || value === '' || !Number.isFinite(n) || n < 0) return '—'; const units = ['B', 'KiB', 'MiB', 'GiB']; let v = n, i = 0; while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; } return i === 0 ? `${v} B` : `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`; }
+  function downloadCsv(filename, headers, rows) {
+    const cell = value => { let text = value == null ? '' : String(value); if (/^[=+\-@\t\r]/.test(text)) text = "'" + text; return '"' + text.replace(/"/g, '""') + '"'; };
+    const lines = [headers, ...rows].map(row => row.map(cell).join(','));
+    const blob = new Blob(['\ufeff' + lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob), link = document.createElement('a');
+    link.href = url; link.download = filename; link.hidden = true; document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+  function backupChannelText(value) { const map = { C: 'C 槽', NonC: '非 C 槽', Configuration: '設定', Certificate: '憑證' }; return Object.prototype.hasOwnProperty.call(map, value) ? map[value] : safeText(value); }
+  function currentBackupPair() { return String(state.session && (state.session.pairId || state.session.waveId) || ''); }
+  function ensureBackupResultsPanel() {
+    let section = $('backup-item-results'); if (section) return section;
+    const list = $('job-list'); section = el('section', 'panel backup-results'); section.id = 'backup-item-results'; section.setAttribute('aria-labelledby', 'backup-results-title');
+    list.parentNode.insertBefore(section, list); return section;
+  }
+  function syncBackupResultsPanel() {
+    if (state.jobResultFilter === 'backup') {
+      const section = ensureBackupResultsPanel(); section.hidden = false;
+      if (state.backupResultsLoadedFor !== currentBackupPair()) loadBackupResults(false);
+    } else {
+      const section = $('backup-item-results'); if (section) section.hidden = true;
+      state.backupResultsLoadedFor = null;
+    }
+  }
+  function backupResultsHeading(section) { const h = el('h2', '', '備份明細'); h.id = 'backup-results-title'; section.appendChild(h); return h; }
+  async function loadBackupResults(force) {
+    const section = ensureBackupResultsPanel(), pair = currentBackupPair(), token = (state.backupResultsRequest || 0) + 1;
+    state.backupResultsRequest = token; state.backupResultsLoadedFor = pair;
+    section.replaceChildren(); backupResultsHeading(section); wizardMessage(section, '正在讀取備份明細…', 'wizard-loading');
+    let data;
+    try { try { data = await getView('backup-items', force === true); } catch (first) { if (!first || first.code !== 'stale-view' || token !== state.backupResultsRequest) throw first; data = await getView('backup-items', true); } }
+    catch (error) {
+      if (token !== state.backupResultsRequest) return;
+      section.replaceChildren(); backupResultsHeading(section); wizardMessage(section, `無法讀取備份明細：${error && error.message ? error.message : error}`, 'callout');
+      const retry = el('button', 'secondary-button', '重試'); retry.type = 'button'; retry.addEventListener('click', () => loadBackupResults(true)); section.appendChild(retry); return;
+    }
+    if (token !== state.backupResultsRequest) return;
+    renderBackupResults(section, data, force === true);
+  }
+  function renderBackupResults(section, data, refocus) {
+    section.replaceChildren(); backupResultsHeading(section);
+    if (!data || data.available !== true) {
+      wizardMessage(section, data && data.reason ? data.reason : '目前無法顯示備份明細。', data && data.integrity === 'Failed' ? 'callout' : 'inline-note');
+      const again = el('button', 'secondary-button', '重新整理明細'); again.type = 'button'; again.addEventListener('click', () => loadBackupResults(true)); section.appendChild(again); return;
+    }
+    const sources = { PackageControls: '封裝內的來源盤點', TrustedInventory: '已核驗的來源盤點', Unavailable: '無法取得來源盤點' }, counts = data.counts || {};
+    appendSummaryRows(section, [['產生時間', formatEvidenceTime(data.generatedUtc)], ['離線還原就緒', offlineReadinessText(data.offlineReadiness)], ['來源盤點', Object.prototype.hasOwnProperty.call(sources, data.inventorySource) ? sources[data.inventorySource] : safeText(data.inventorySource)]]);
+    if (data.inventorySource === 'Unavailable') wizardMessage(section, '無法取得來源盤點，未備份清單只包含核准計畫內的項目，未選入的已發現項目沒有列出。', 'callout');
+    const refresh = el('button', 'secondary-button', '重新整理明細'); refresh.type = 'button'; refresh.addEventListener('click', () => loadBackupResults(true)); section.appendChild(refresh);
+    const defs = [
+      { key: 'backed', label: `已備份（${counts.BackedUp == null ? 0 : counts.BackedUp}）`, render: panel => renderBackupRowsPanel(panel, (data.rows || []).filter(r => r.Status === 'BackedUp'), 'backed') },
+      { key: 'pending', label: `未備份（${counts.NotBackedUp == null ? 0 : counts.NotBackedUp}）`, render: panel => renderBackupRowsPanel(panel, (data.rows || []).filter(r => r.Status === 'NotBackedUp'), 'pending') },
+      { key: 'software', label: `安裝軟體（${counts.Software == null ? 0 : counts.Software}）`, render: panel => renderSoftwarePanel(panel, data.software || {}) }
+    ];
+    const urlTab = new URLSearchParams(String(location.hash || '').split('?')[1] || '').get('tab');
+    let current = defs.some(d => d.key === state.backupResultsTab) ? state.backupResultsTab : defs.some(d => d.key === urlTab) ? urlTab : 'backed';
+    if (defs.some(d => d.key === urlTab) && !defs.some(d => d.key === state.backupResultsTab)) current = urlTab;
+    state.backupResultsTab = current;
+    const tablist = el('div', 'backup-tablist'); tablist.setAttribute('role', 'tablist'); tablist.setAttribute('aria-label', '備份明細分頁'); section.appendChild(tablist);
+    const tabs = [], panels = [];
+    const select = (key, focus) => {
+      state.backupResultsTab = key;
+      defs.forEach((d, i) => { const on = d.key === key; tabs[i].setAttribute('aria-selected', on ? 'true' : 'false'); tabs[i].tabIndex = on ? 0 : -1; panels[i].hidden = !on; if (on && focus) tabs[i].focus(); });
+      const fragment = `#jobs?filter=backup&tab=${key}`; if (location.hash !== fragment) history.replaceState(null, '', fragment);
+    };
+    defs.forEach(d => {
+      const tab = el('button', 'backup-tab', d.label); tab.type = 'button'; tab.id = `backup-tab-${d.key}`; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-controls', `backup-panel-${d.key}`);
+      const panel = el('div', 'backup-tabpanel'); panel.id = `backup-panel-${d.key}`; panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', tab.id); panel.tabIndex = 0;
+      tab.addEventListener('click', () => select(d.key, false));
+      tablist.appendChild(tab); tabs.push(tab); panels.push(panel); section.appendChild(panel); d.render(panel);
+    });
+    tablist.addEventListener('keydown', event => {
+      const index = tabs.indexOf(document.activeElement); if (index < 0) return; let next = -1;
+      if (event.key === 'ArrowRight') next = (index + 1) % tabs.length; else if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length; else if (event.key === 'Home') next = 0; else if (event.key === 'End') next = tabs.length - 1;
+      if (next < 0) return; event.preventDefault(); select(defs[next].key, true);
+    });
+    select(current, refocus);
+  }
+  function renderBackupRowsPanel(panel, rows, kind) {
+    const backed = kind === 'backed';
+    const columns = backed
+      ? [{ h: '名稱', text: r => safeText(r.Name) }, { h: '類型', text: r => safeText(r.Kind) }, { h: '原位置', text: r => safeText(r.Location) }, { h: '通道', text: r => backupChannelText(r.Channel) }, { h: '檔案數', text: r => r.Files == null ? '—' : r.Files }, { h: '大小', text: r => formatBytes(r.Bytes) }]
+      : [{ h: '名稱', text: r => safeText(r.Name) }, { h: '類型', text: r => safeText(r.Kind) }, { h: '原位置', text: r => safeText(r.Location) }, { h: '原因', text: r => safeText(r.Reason) }, { h: '下一步', text: r => safeText(r.NextStep) }, { h: '盤點狀態', text: r => safeText(r.DiscoveryStatus) }];
+    renderBackupPagedTable(panel, { id: `backup-${kind}`, name: backed ? '已備份' : '未備份', caption: backed ? '已備份項目' : '未備份項目', columns, rows, search: r => [r.Name, r.Location], reasonFilter: !backed, csvName: backed ? 'backup-backed-up.csv' : 'backup-not-backed-up.csv' });
+  }
+  function renderSoftwarePanel(panel, software) {
+    const softwareRows = Array.isArray(software.SoftwareRows) ? software.SoftwareRows : [], featureRows = Array.isArray(software.FeatureRows) ? software.FeatureRows : [], gaps = Array.isArray(software.CoverageGaps) ? software.CoverageGaps : [];
+    wizardMessage(panel, '這是舊機上發現的軟體清單，供您在新機自行安裝。工具不會自動安裝，也不保證新版相容。');
+    if (gaps.length) wizardMessage(panel, `軟體盤點有 ${gaps.length} 個範圍未完整取得，清單可能不完整。`, 'callout');
+    panel.appendChild(el('h3', '', '安裝軟體清單'));
+    renderBackupPagedTable(panel, { id: 'backup-software', name: '安裝軟體', caption: '安裝軟體', rows: softwareRows, search: r => [r.Name, r.Publisher, r.Location], csvName: 'installed-software.csv',
+      columns: [{ h: '名稱', text: r => safeText(r.Name) }, { h: '版本', text: r => safeText(r.Version) }, { h: '發行者', text: r => safeText(r.Publisher) }, { h: '架構', text: r => safeText(r.Architecture) }, { h: '範圍', text: r => safeText(r.Scope) }, { h: '安裝位置', text: r => safeText(r.Location) }, { h: '新機決策', text: r => safeText(r.DispositionText) }] });
+    panel.appendChild(el('h3', '', 'Windows 角色與功能'));
+    if (!featureRows.length) { wizardMessage(panel, '沒有發現已安裝的 Windows 角色或功能'); return; }
+    renderBackupPagedTable(panel, { id: 'backup-features', name: 'Windows 角色與功能', caption: 'Windows 角色與功能', rows: featureRows, search: r => [r.Name, r.FeatureName], csvName: 'windows-features.csv',
+      columns: [{ h: '顯示名稱', text: r => safeText(r.Name) }, { h: 'Install-WindowsFeature 名稱', text: r => safeText(r.FeatureName), code: true }] });
+  }
+  function renderBackupPagedTable(panel, cfg) {
+    const pageSize = 100, view = { query: '', reason: '', page: 0 }, rows = cfg.rows;
+    const bar = el('div', 'backup-toolbar'), searchId = `${cfg.id}-search`, label = el('label', '', '搜尋名稱或位置'); label.htmlFor = searchId;
+    const input = el('input'); input.type = 'search'; input.id = searchId; input.autocomplete = 'off'; bar.append(label, input);
+    let reasonSelect = null;
+    if (cfg.reasonFilter) {
+      const reasonId = `${cfg.id}-reason`, reasonLabel = el('label', '', '原因'); reasonLabel.htmlFor = reasonId; reasonSelect = el('select'); reasonSelect.id = reasonId; reasonSelect.appendChild(new Option('全部', ''));
+      const seen = new Set(); rows.forEach(r => { const code = String(r.ReasonCode == null ? '' : r.ReasonCode); if (code && !seen.has(code)) { seen.add(code); reasonSelect.appendChild(new Option(String(r.Reason || code), code)); } });
+      bar.append(reasonLabel, reasonSelect);
+    }
+    const exportButton = el('button', 'secondary-button', '匯出 CSV'); exportButton.type = 'button'; bar.appendChild(exportButton);
+    const out = el('div', 'backup-table-area'); panel.append(bar, out);
+    const filtered = () => { const q = view.query.toLocaleLowerCase(); return rows.filter(r => (!view.reason || String(r.ReasonCode == null ? '' : r.ReasonCode) === view.reason) && (!q || cfg.search(r).some(v => String(v == null ? '' : v).toLocaleLowerCase().includes(q)))); };
+    const draw = () => {
+      const list = filtered(), pages = Math.max(1, Math.ceil(list.length / pageSize)); if (view.page >= pages) view.page = pages - 1; if (view.page < 0) view.page = 0;
+      out.replaceChildren();
+      if (!list.length) { wizardMessage(out, rows.length ? '沒有符合搜尋條件的項目' : '沒有項目'); return; }
+      const wrap = el('div', 'table-wrap'); wrap.tabIndex = 0; wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', `${cfg.name}表格`);
+      const table = el('table'), head = el('tr'); table.appendChild(el('caption', '', `${cfg.caption}，共 ${list.length} 筆`));
+      cfg.columns.forEach(c => { const th = el('th', '', c.h); th.scope = 'col'; head.appendChild(th); }); table.appendChild(el('thead')).appendChild(head);
+      const body = el('tbody'); list.slice(view.page * pageSize, (view.page + 1) * pageSize).forEach(r => { const tr = el('tr'); cfg.columns.forEach(c => { const td = el('td'); if (c.code) td.appendChild(el('code', '', c.text(r))); else td.textContent = String(c.text(r)); tr.appendChild(td); }); body.appendChild(tr); });
+      table.appendChild(body); wrap.appendChild(table); out.appendChild(wrap);
+      const pager = el('div', 'backup-pager'), prev = el('button', 'secondary-button', '上一頁'), next = el('button', 'secondary-button', '下一頁'), status = el('span', '', `第 ${view.page + 1}／${pages} 頁，共 ${list.length} 筆`);
+      prev.type = 'button'; next.type = 'button'; prev.disabled = view.page <= 0; next.disabled = view.page >= pages - 1; status.setAttribute('aria-live', 'polite');
+      prev.addEventListener('click', () => { view.page--; draw(); }); next.addEventListener('click', () => { view.page++; draw(); });
+      pager.append(prev, status, next); out.appendChild(pager);
+    };
+    input.addEventListener('input', () => { view.query = input.value.trim(); view.page = 0; draw(); });
+    if (reasonSelect) reasonSelect.addEventListener('change', () => { view.reason = reasonSelect.value; view.page = 0; draw(); });
+    exportButton.addEventListener('click', () => downloadCsv(cfg.csvName, cfg.columns.map(c => c.h), filtered().map(r => cfg.columns.map(c => c.text(r)))));
+    draw();
+  }
   function renderJobs() {
+    syncBackupResultsPanel();
     const box = $('job-list'), active = document.activeElement, preserveFocus = active && box.contains(active) && active.dataset.focusKey ? active.dataset.focusKey : '', title=$('jobs-title'), lede=document.querySelector('#view-jobs .lede'); box.replaceChildren(); const restoreFocus = () => { if (!preserveFocus) return; const target = [...box.querySelectorAll('[data-focus-key]')].find(node => node.dataset.focusKey === preserveFocus); if (target) target.focus({ preventScroll:true }); }; const resetFilter=el('button','secondary-button','查看完整作業歷史');resetFilter.type='button';resetFilter.dataset.focusKey='jobs-filter-reset';resetFilter.hidden=!state.jobResultFilter;resetFilter.addEventListener('click',()=>navigate('jobs',{force:true}));box.appendChild(resetFilter); const toggle = el('button', 'secondary-button', state.showAllJobs ? '只看目前配對' : '查看工作區全部歷史'); toggle.type = 'button'; toggle.dataset.focusKey = 'jobs-filter'; toggle.hidden=!!state.jobResultFilter; toggle.addEventListener('click', () => { state.showAllJobs = !state.showAllJobs; renderJobs(); }); box.appendChild(toggle);
     if(title)title.textContent=state.jobResultFilter==='backup'?'備份結果':state.jobResultFilter==='restore'?'還原結果':'作業與交接';if(lede)lede.textContent=state.jobResultFilter==='backup'?'只顯示本次搬移的備份封裝與交付結果。':state.jobResultFilter==='restore'?'只顯示本次搬移的還原作業與結果。':'關閉頁面不會取消工作。可用工作識別碼重新連線並查看一致的進度快照。';
     if (state.pendingOperation && state.pendingOperation.operationId) { const pending = el('article', 'job-card'), query = el('button', 'secondary-button', '查詢這次操作'); query.type = 'button'; query.dataset.focusKey = 'pending-query'; query.addEventListener('click', async () => { query.disabled = true; const record = await recoverPendingOperation(); if (!record) fail('仍無法確認這次操作的結果。請稍後查詢；不要重新提交。'); else announce(`已確認這次操作：${statusName(record.status)}。${record.nextStep || record.error && record.error.nextStep || '請依作業卡片的狀態與安全錯誤提示決定下一步。'}`); }); const details = el('details', 'technical-details'); details.append(el('summary', '', '技術詳細資料（進階）'), el('div', 'job-meta', `操作識別碼：${state.pendingOperation.operationId}`), el('div', 'job-meta', `原配對 ${safeText(state.pendingOperation.pairId)} · 原 context ${safeText(state.pendingOperation.contextId)} · 預期 revision ${safeText(state.pendingOperation.expectedRevision)}`)); pending.append(el('h2', '', '這次操作的結果待確認'), el('p', 'job-meta', '本機只會查詢這次操作，不會自動重新提交。'), query, details); box.appendChild(pending); }

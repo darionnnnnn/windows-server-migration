@@ -158,6 +158,23 @@ assert.equal(crypto.createHash('sha256').update(fs.readFileSync(fixture.ProfileP
    const independentQuery=await direct(`/api/jobs/${encodeURIComponent(independentJob.jobId)}`);
    assert.equal(independentQuery.data.status,'Failed','a local fixed disk destination must be refused: '+JSON.stringify(independentQuery.data));
    assert.deepEqual(fs.readdirSync(independentDestination).filter(name=>name.startsWith('wsm-offline-')),[],'refused independent copy must leave no wsm-offline-* folder');
+   await page.goto(`${bridge}/#jobs?filter=backup`);
+   await page.waitForSelector('#backup-item-results [role=tablist]',{timeout:60000});
+   const resultTabs=page.locator('#backup-item-results [role=tab]');
+   assert.equal(await resultTabs.count(),3,'backup results must show three tabs');
+   assert.equal(await resultTabs.nth(0).getAttribute('aria-selected'),'true');
+   assert.ok((await resultTabs.nth(0).innerText()).includes('已備份（'),'first tab must be the backed-up tab');
+   await resultTabs.nth(0).focus();await page.keyboard.press('ArrowRight');
+   assert.equal(await resultTabs.nth(1).getAttribute('aria-selected'),'true','ArrowRight must select the second tab');
+   const secondPanelId=await resultTabs.nth(1).getAttribute('aria-controls');
+   assert.equal(await page.locator('#'+secondPanelId).isVisible(),true,'second tab panel must be visible');
+   await page.keyboard.press('ArrowLeft');
+   assert.equal(await resultTabs.nth(0).getAttribute('aria-selected'),'true','ArrowLeft must return to the first tab');
+   const backedPanel=page.locator('#backup-panel-backed');
+   assert.ok(await backedPanel.locator('tbody tr').count()>=1,'backed-up tab must list at least one item');
+   await backedPanel.locator('input[type=search]').fill('zz-no-such-item-zz');
+   assert.ok((await backedPanel.innerText()).includes('沒有符合搜尋條件的項目'),'search without matches must say so');
+   assert.equal(await backedPanel.getByRole('button',{name:'匯出 CSV'}).count(),1,'export CSV button must exist');
    await page.close();
    return {role,mode:output.DeliveryMode,manifestPath,manifestHash,attemptId:output.AttemptId};
   }

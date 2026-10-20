@@ -699,6 +699,12 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 主代理驗收補正：規格原本指定使用 `Get-WsmWizardBackupRoot`，但它在目錄不存在時會建立目錄，違反唯讀原則，已改為直接組出路徑。
 - 驗證（WinPS 5.1）：WizardBackup（可用、竄改、Target 角色拒絕）、HtmlConsole 112、WizardHtmlRuntimeProjection 185 通過；突變（不檢查結果檔雜湊）會轉紅。
 
+### 17.34 F3-T3 「備份結果」頁三分頁（部分完成）
+
+- Sonnet 5.5 subagent 實作，主代理審查並獨立驗證。「備份結果」頁（`#jobs?filter=backup`）上方新增「備份明細」面板，只在進入頁面或按「重新整理明細」時讀取 `backup-items`，不跟著作業清單的 3 秒輪詢重抓或重建。面板包含：產生時間、離線就緒、來源盤點來源；WAI-ARIA 三分頁（已備份、未備份、安裝軟體，標籤含筆數，支援左右鍵與 Home／End，分頁記在網址）。每個分頁有搜尋、每頁 100 列翻頁、`.table-wrap` 可捲動表格（含 caption），並區分「沒有項目」與「沒有符合搜尋條件的項目」。CSV 匯出目前篩選後的全部列，以 UTF-8 BOM 加 CRLF 輸出，並防止試算表公式注入。安裝軟體分頁另列 Windows 角色與功能（附 Install-WindowsFeature 名稱）和盤點缺口提示。
+- 主代理驗收補正：subagent 為了讓 `backup-items` 不被判為過期，在前端放寬了 revision 比對。查出真正原因是後端 `Get-WsmHtmlViewSnapshot` 少了 `/api/context` 已有的「沒有 catalog 的來源／目標端改用精靈狀態 revision」分支（既有缺陷，也會影響其他來源端檢視）。已在後端補上，並撤回前端的放寬，只保留網址帶查詢參數時的 `isActive` 判斷修正。CSV 的 BOM 改用 `﻿` 跳脫寫法，不再直接寫入不可見字元。
+- 驗證：HtmlConsole 112；真實 Edge 測試連跑兩輪都通過（分頁、鍵盤切換、資料列、搜尋無結果、CSV 按鈕）；突變（不建立 tablist）會逾時失敗。subagent 在修正前曾遇到一次既有步驟逾時、重跑即通過，主代理修正後的兩輪都沒有再發生。
+
 ## 18. 第五次定案：使用者目標對照與備份端優先
 
 > 2026-10-20 使用者盤點後定案；介面規格經 ui-ux-pro-max（HTML／CSS 指引、WCAG 2.2 AA 檢查目標）檢視。本節只補規格與調整順序，不改第 1 節目標，也不改核准、秘密、production gate 的邊界。與前文順序衝突時以本節為準，其餘契約不變。本節是規劃，不是完成證據。
