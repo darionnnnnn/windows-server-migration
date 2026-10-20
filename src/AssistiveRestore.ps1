@@ -536,11 +536,80 @@ function Assert-WsmAssistiveCredentialAvailable($Spec,[hashtable]$Secrets) {
     $secretRef=[string]$requirement.SecretRef
     if(-not $secretRef -or -not $Secrets -or -not $Secrets.ContainsKey($secretRef) -or $Secrets[$secretRef] -isnot [Management.Automation.PSCredential]){throw 'Required in-memory credential is unavailable; no intent or native write may begin without it.'}
 }
-function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$StateDirectory,[hashtable]$Secrets,[hashtable]$SidMap,$CancellationToken,[object[]]$GeneralHostEvidence,[string]$ReceiptPath,[string]$ReceiptHash,[string]$TargetSnapshotPath,$Preview,[string]$ParentOperationId='', [object]$ChallengeContext=$null) {
+function Get-WsmAssistivePreviewRowHashes($Rows) {
+    # Per-row digests let a continuation tell which preview rows drifted. A very large plan keeps the strict whole-preview comparison only.
+    $list=New-Object 'System.Collections.Generic.List[object]'
+    if(@($Rows).Count -gt 2000){return @()}
+    foreach($row in @($Rows)){if($row){$list.Add([pscustomobject][ordered]@{ItemId=[string]$row.ItemId;Hash=(Get-WsmHashText ($row | ConvertTo-Json -Depth 20 -Compress))})}}
+    $list.ToArray()
+}
+
+function Merge-WsmAssistiveItemResults($Prior,$New) {
+    # Item results merge by ItemId: a new result replaces the same item, earlier results of other items stay.
+    $merged=New-Object 'System.Collections.Generic.List[object]';$index=@{}
+    foreach($result in @(@($Prior)+@($New))){
+        if(-not $result){continue}
+        $key=[string]$result.ItemId
+        if($key -and $index.ContainsKey($key)){$merged[[int]$index[$key]]=$result}else{if($key){$index[$key]=$merged.Count};$merged.Add($result)}
+    }
+    $merged.ToArray()
+}
+
+function Invoke-WsmAssistiveContinuationReconcile($Package,$Paths,$State,[hashtable]$SidMap,[string]$ManifestHash) {
+    # Reuses the existing per-item repair logic (Complete-WsmAssistiveOperationRepair) under the workspace lock.
+    # Success adopts the proven native result or abandons a proven-unapplied intent. A throw keeps the pending intent
+    # untouched and marks the item as unknown; nothing is re-applied or deleted for it.
+    $unknown=@{}
+    $itemsById=@{};foreach($planItem in @($Package.Plan.Items)){$itemsById[[string]$planItem.ItemId]=$planItem}
+    foreach($op in @($State.PendingOperations)){
+        $itemId=[string]$op.ItemId
+        try{
+            $item=$itemsById[$itemId]
+            if(-not $item -or [string]$item.Decision -cne 'Include' -or [string]$op.Phase -cnotin @('AssistiveAdapterCreating','AssistiveFileReplace') -or [string]$op.ManifestHash -ine $ManifestHash){throw 'Pending intent is not an exact current Assistive item intent that can be reconciled automatically.'}
+            Invoke-WsmLocked $Paths.Root {[void](Complete-WsmAssistiveOperationRepair $item $op $Package $Paths $State $SidMap)}
+        }catch [OperationCanceledException]{throw}catch{
+            $message=[string]$_.Exception.Message;if($message.Length -gt 300){$message=$message.Substring(0,300)}
+            $unknown[$itemId]=('Native result could not be proven by readback; pending intent retained for manual reconciliation: '+$message)
+        }
+    }
+    $unknown
+}
+
+function Get-WsmAssistiveUnknownDependencyBlocks([object[]]$Items,[hashtable]$UnknownItems) {
+    # 相依判斷只涵蓋兩種明確關聯：
+    # 1. IISSite 的 application 其 applicationPool 指向「未知」的 IISPool 名稱。
+    # 2. Service 的 Desired.Dependencies 含「未知」的 Service 名稱。
+    # 其他類型（FileScope、ScheduledTask、IISSection 等）一律視為獨立項，不連帶阻擋。
+    # 被阻擋的 Service 會再被當成未知項，讓依賴它的 Service 一併阻擋（僅限 Service 對 Service）。
+    $blocked=@{}
+    if(-not $UnknownItems -or -not $UnknownItems.Count){return $blocked}
+    $byId=@{};foreach($item in @($Items)){$byId[[string]$item.ItemId]=$item}
+    $unknownNames=@{}
+    $registerName={param($Item,[string]$ItemId)if($Item -and $Item.MigrationSpec -and [string]$Item.MigrationSpec.Adapter -cin @('IISPool','Service') -and $Item.MigrationSpec.PSObject.Properties['Desired'] -and $Item.MigrationSpec.Desired -and $Item.MigrationSpec.Desired.PSObject.Properties['Name']){$unknownNames[[string]$Item.MigrationSpec.Adapter+'|'+([string]$Item.MigrationSpec.Desired.Name).ToLowerInvariant()]=$ItemId}}
+    foreach($unknownId in @($UnknownItems.Keys)){& $registerName $byId[[string]$unknownId] ([string]$unknownId)}
+    do{
+        $changed=$false
+        foreach($item in @($Items)){
+            $id=[string]$item.ItemId
+            if($UnknownItems.ContainsKey($id) -or $blocked.ContainsKey($id) -or [string]$item.Decision -cne 'Include' -or -not $item.MigrationSpec){continue}
+            $spec=$item.MigrationSpec;$cause=''
+            if([string]$spec.Adapter -ceq 'IISSite'){
+                try{$doc=Read-WsmXml ([string]$spec.Desired.Xml);foreach($app in @($doc.SelectNodes("//*[local-name()='application'][@applicationPool]"))){$poolName=[string]$app.GetAttribute('applicationPool');$key='IISPool|'+$poolName.ToLowerInvariant();if($unknownNames.ContainsKey($key)){$cause=('IIS application pool '+$poolName+' (item '+$unknownNames[$key]+')');break}}}catch{}
+            }elseif([string]$spec.Adapter -ceq 'Service' -and $spec.PSObject.Properties['Desired'] -and $spec.Desired -and $spec.Desired.PSObject.Properties['Dependencies']){
+                foreach($dependency in @($spec.Desired.Dependencies)){$key='Service|'+([string]$dependency).ToLowerInvariant();if($unknownNames.ContainsKey($key)){$cause=('Service dependency '+[string]$dependency+' (item '+$unknownNames[$key]+')');break}}
+            }
+            if($cause){$blocked[$id]=('Not written because '+$cause+' has an unknown native result that still needs reconciliation.');if([string]$spec.Adapter -ceq 'Service'){& $registerName $item $id};$changed=$true}
+        }
+    }while($changed)
+    $blocked
+}
+
+function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$StateDirectory,[hashtable]$Secrets,[hashtable]$SidMap,$CancellationToken,[object[]]$GeneralHostEvidence,[string]$ReceiptPath,[string]$ReceiptHash,[string]$TargetSnapshotPath,$Preview,[string]$ParentOperationId='', [object]$ChallengeContext=$null, [switch]$Continuation) {
     $paths=Get-WsmOperationPaths $StateDirectory $Package.Manifest.PairId
     $state=Get-WsmOperationState $paths $Package
     if($state.Cutover){throw 'Restore after cutover requires reviewed data reconciliation; no automatic reverse synchronization.'}
-    if(@($state.PendingOperations).Count){throw 'Interrupted Assistive item operation needs Repair-WsmOperation before retry.'}
+    # A new parent never inherits another parent's unresolved native intent. Only an explicit continuation of the original parent reconciles it item by item.
+    if(@($state.PendingOperations).Count -and -not $Continuation){throw 'Interrupted Assistive item operation blocks a new parent operation; continue the original parent through Resume-WsmWizardTargetRestore or run Repair-WsmOperation before retry.'}
     $decision=Get-WsmAssistiveRestoreDecision $Package $ManifestHash $ReceiptPath $ReceiptHash $TargetSnapshotPath
     if($decision.Receipt.Decision -eq 'WaitForInstall'){return $Preview}
     Assert-WsmAssistiveReceiptFresh $Package $decision | Out-Null
@@ -552,10 +621,21 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     $contextRole='Target';$contextActor=[string](Get-WsmExecutionActor);$contextSession='';$contextId='';$contextRevision=-1
     if($ChallengeContext){if($ChallengeContext.PSObject.Properties['Role']){$contextRole=[string]$ChallengeContext.Role};if($ChallengeContext.PSObject.Properties['Actor']){$contextActor=[string]$ChallengeContext.Actor};if($ChallengeContext.PSObject.Properties['SessionId']){$contextSession=[string]$ChallengeContext.SessionId};if($ChallengeContext.PSObject.Properties['ContextId']){$contextId=[string]$ChallengeContext.ContextId};if($ChallengeContext.PSObject.Properties['Revision']){$contextRevision=[int]$ChallengeContext.Revision}}
     if($contextRole -cne 'Target' -or -not $contextActor -or $contextSession.Length -gt 256 -or $contextId.Length -gt 256 -or ($ChallengeContext -and $ChallengeContext.PSObject.Properties['OperationId'] -and [string]$ChallengeContext.OperationId -cne $ParentOperationId)){throw 'Service credential challenge must bind a valid Target actor/session context and parent operation id.'}
-    $challenge=$null;if($state.PSObject.Properties['AssistiveServiceChallenge']){$challenge=$state.AssistiveServiceChallenge;if([string]$challenge.ParentOperationId -cne $ParentOperationId){throw 'A prior Service credential challenge requires explicit owner takeover before another parent can resume it.'};if([string]$challenge.PairId -cne [string]$Package.Manifest.PairId -or [string]$challenge.ManifestHash -ine $ManifestHash -or [long]$challenge.Generation -ne [long]$Package.Manifest.Generation -or [string]$challenge.PreviewHash -ine [string]$Preview.WizardPreviewHash){throw 'Service credential challenge binding changed; refresh preview and establish a new reviewed operation.'};if([string]$challenge.Actor -cne $contextActor -or [string]$challenge.Role -cne $contextRole -or [string]$challenge.SessionId -cne $contextSession -or [string]$challenge.ContextId -cne $contextId -or [int]$challenge.Revision -ne $contextRevision){throw 'Service credential challenge actor/session/revision changed; explicit takeover is required.'};if([string]$challenge.State -cne 'WaitingForInput'){throw 'Service credential challenge is not waiting for input and cannot be replayed.'}}
+    $challenge=$null;$challengeCrossed=$false;if($state.PSObject.Properties['AssistiveServiceChallenge']){$challenge=$state.AssistiveServiceChallenge;if([string]$challenge.ParentOperationId -cne $ParentOperationId -and [string]$challenge.State -ceq 'Revoked'){$challenge=$null}}
+    if($challenge){
+        if([string]$challenge.ParentOperationId -cne $ParentOperationId){throw 'A prior Service credential challenge requires explicit owner takeover before another parent can resume it.'}
+        if([string]$challenge.PairId -cne [string]$Package.Manifest.PairId -or [string]$challenge.ManifestHash -ine $ManifestHash -or [long]$challenge.Generation -ne [long]$Package.Manifest.Generation -or [string]$challenge.PreviewHash -ine [string]$Preview.WizardPreviewHash){throw 'Service credential challenge binding changed; refresh preview and establish a new reviewed operation.'}
+        if($Continuation -and [string]$challenge.State -cin @('Cancelled','Revoked','Completed')){throw 'A cancelled, revoked or completed Service credential challenge cannot be resumed by a continuation.'}
+        # A challenge still Running here already crossed the pre-write boundary (the caller proved otherwise and rebound it). It never asks for or replays a password; items that need one and are not yet owned fail closed.
+        if($Continuation -and [string]$challenge.State -ceq 'Running'){$challengeCrossed=$true}
+        else{
+            if([string]$challenge.Actor -cne $contextActor -or [string]$challenge.Role -cne $contextRole -or [string]$challenge.SessionId -cne $contextSession -or [string]$challenge.ContextId -cne $contextId -or [int]$challenge.Revision -ne $contextRevision){throw 'Service credential challenge actor/session/revision changed; explicit takeover is required.'}
+            if([string]$challenge.State -cne 'WaitingForInput'){throw 'Service credential challenge is not waiting for input and cannot be replayed.'}
+        }
+    }
     $preflightItemsById=@{};foreach($item in @($Package.Plan.Items)){$preflightItemsById[[string]$item.ItemId]=$item}
     $credentialAccountByRef=New-Object 'System.Collections.Hashtable' ([StringComparer]::Ordinal);foreach($credentialItemId in @($credentialByItem.Keys)){$credentialRequirement=$credentialByItem[$credentialItemId];$credentialRef=[string]$credentialRequirement.SecretRef;if([string]::IsNullOrWhiteSpace($credentialRef)){throw 'A ready item requires a credential but has no reviewed SecretRef; review the item before restore.'};if($credentialAccountByRef.ContainsKey($credentialRef) -and [string]$credentialAccountByRef[$credentialRef] -ine [string]$credentialRequirement.ApprovedAccount){throw 'One SecretRef is shared by items with different reviewed accounts; use a separate SecretRef per account before restore.'};$credentialAccountByRef[$credentialRef]=[string]$credentialRequirement.ApprovedAccount}
-    $expectedReviewedServiceRefs=@($credentialAccountByRef.Keys|ForEach-Object {[string]$_}|Sort-Object -Unique);$inputServiceRefs=@($Secrets.Keys|ForEach-Object {[string]$_}|Sort-Object -Unique);if(@($inputServiceRefs|Where-Object {$_ -cnotin $expectedReviewedServiceRefs}).Count){throw 'In-memory credential map contains a SecretRef outside the reviewed ready credential rows.'};$reservationOperationState='Running';if(@($expectedReviewedServiceRefs|Where-Object {$_ -cnotin $inputServiceRefs}).Count){$reservationOperationState='WaitingForInput'}
+    $expectedReviewedServiceRefs=@($credentialAccountByRef.Keys|ForEach-Object {[string]$_}|Sort-Object -Unique);$inputServiceRefs=@($Secrets.Keys|ForEach-Object {[string]$_}|Sort-Object -Unique);if(@($inputServiceRefs|Where-Object {$_ -cnotin $expectedReviewedServiceRefs}).Count){throw 'In-memory credential map contains a SecretRef outside the reviewed ready credential rows.'};$reservationOperationState='Running';if(-not $challengeCrossed -and @($expectedReviewedServiceRefs|Where-Object {$_ -cnotin $inputServiceRefs}).Count){$reservationOperationState='WaitingForInput'}
     $serviceReservations=New-Object 'System.Collections.Generic.List[object]';$requiredSecretRefs=New-Object 'System.Collections.Generic.List[string]';$serviceSecretRefs=New-Object 'System.Collections.Generic.List[string]'
     try {
         foreach($row in @($Preview.Rows|Where-Object Status -CEQ 'Ready')){
@@ -589,13 +669,13 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     }
     $expectedServiceRefs=@($serviceSecretRefs.ToArray()|Sort-Object -Unique);$providedServiceRefs=@($Secrets.Keys|ForEach-Object {[string]$_}|Sort-Object -Unique)
     if(@($providedServiceRefs|Where-Object {$_ -cnotin $expectedServiceRefs}).Count){throw 'In-memory credential map contains a SecretRef outside the reviewed ready Service rows.'}
-    if($challenge){$challengeRefs=@($challenge.RequiredSecretRefs|Sort-Object -Unique);if(($challengeRefs -join "`n") -cne ($expectedServiceRefs -join "`n")){throw 'Service credential challenge SecretRef set changed; explicit review is required.'};if(-not $requiredSecretRefs.Count -and ($providedServiceRefs -join "`n") -cne ($challengeRefs -join "`n")){throw 'Service credential challenge did not receive its exact reviewed SecretRef set.'}}
+    if($challenge -and -not $challengeCrossed){$challengeRefs=@($challenge.RequiredSecretRefs|Sort-Object -Unique);if(($challengeRefs -join "`n") -cne ($expectedServiceRefs -join "`n")){throw 'Service credential challenge SecretRef set changed; explicit review is required.'};if(-not $requiredSecretRefs.Count -and ($providedServiceRefs -join "`n") -cne ($challengeRefs -join "`n")){throw 'Service credential challenge did not receive its exact reviewed SecretRef set.'}}
     $credentialRequirements=@();foreach($requirementRef in $expectedServiceRefs){$matchedIds=@($credentialByItem.Keys|Where-Object {[string]$credentialByItem[$_].SecretRef -ceq $requirementRef}|Sort-Object);$matchedNames=@(foreach($matchedId in $matchedIds){$matchedName=[string]$matchedId;$matchedItem=$preflightItemsById[[string]$matchedId];if($matchedItem -and $matchedItem.PSObject.Properties['Name'] -and -not [string]::IsNullOrWhiteSpace([string]$matchedItem.Name)){$matchedName=[string]$matchedItem.Name};$matchedName});$credentialRequirements+=[pscustomobject][ordered]@{SecretRef=[string]$requirementRef;Kinds=@($matchedIds|ForEach-Object {[string]$credentialByItem[$_].Kind}|Sort-Object -Unique);ItemIds=@($matchedIds|ForEach-Object {[string]$_});DisplayNames=@($matchedNames);ApprovedAccount=[string]$credentialAccountByRef[[string]$requirementRef]}}
-    if($requiredSecretRefs.Count){
+    if($requiredSecretRefs.Count -and -not $challengeCrossed){
         foreach($reservation in @($serviceReservations.ToArray())){Set-WsmAssistiveServiceReservationOperation -Workspace $StateDirectory -ResourceKey $reservation.ResourceKey -PairId $Package.Manifest.PairId -ItemId $reservation.ItemId -OperationId $ParentOperationId -State WaitingForInput | Out-Null}
         $existingAttempt=$null;if($state.PSObject.Properties['RestoreAttempt']){$existingAttempt=$state.RestoreAttempt}
         if($existingAttempt){if([string]$existingAttempt.OperationId -cne $ParentOperationId -or [string]$existingAttempt.ManifestHash -ine $ManifestHash -or [long]$existingAttempt.Generation -ne [long]$Package.Manifest.Generation -or [string]$existingAttempt.DecisionReceiptHash -ine [string]$decision.ReceiptHash -or [string]$existingAttempt.TargetSnapshotHash -ine [string]$decision.Receipt.TargetSnapshotHash -or [string]$existingAttempt.WizardPreviewHash -ine [string]$Preview.WizardPreviewHash -or (@($existingAttempt.SelectedItemIds|Sort-Object -Unique)-join "`n") -cne (@($decision.SelectedItemIds|Sort-Object -Unique)-join "`n")){throw 'Durable TargetRestore parent changed before entering the Service credential challenge.'}}
-        else{$existingAttempt=[pscustomobject][ordered]@{ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviousManifest=$state.ManifestHash;OperationId=$ParentOperationId;DecisionReceiptPath=[string]$decision.ReceiptPath;DecisionReceiptHash=[string]$decision.ReceiptHash;TargetSnapshotPath=[string]$decision.SnapshotPath;TargetSnapshotHash=[string]$decision.Receipt.TargetSnapshotHash;SelectedItemIds=@($decision.SelectedItemIds);WizardPreviewHash=[string]$Preview.WizardPreviewHash;MaterialJobOperationId='';MaterialIds=@();ItemResults=@();Status='WaitingForInput';CreatedUtc=(Get-WsmUtc)}}
+        else{$existingAttempt=[pscustomobject][ordered]@{ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviousManifest=$state.ManifestHash;OperationId=$ParentOperationId;DecisionReceiptPath=[string]$decision.ReceiptPath;DecisionReceiptHash=[string]$decision.ReceiptHash;TargetSnapshotPath=[string]$decision.SnapshotPath;TargetSnapshotHash=[string]$decision.Receipt.TargetSnapshotHash;SelectedItemIds=@($decision.SelectedItemIds);WizardPreviewHash=[string]$Preview.WizardPreviewHash;MaterialJobOperationId='';MaterialIds=@();ItemResults=@();PreviewRowHashes=@(Get-WsmAssistivePreviewRowHashes $Preview.Rows);Status='WaitingForInput';CreatedUtc=(Get-WsmUtc)}}
         $state.ManifestHash=$ManifestHash;$state.Generation=[long]$Package.Manifest.Generation;$state.Stage='WaitingForInput';$state|Add-Member NoteProperty RestoreAttempt $existingAttempt -Force
         if(-not $challenge){$challenge=[pscustomobject][ordered]@{State='WaitingForInput';ParentOperationId=$ParentOperationId;PairId=[string]$Package.Manifest.PairId;Role=$contextRole;Actor=$contextActor;SessionId=$contextSession;ContextId=$contextId;Revision=[int]$contextRevision;ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviewHash=[string]$Preview.WizardPreviewHash;RequiredSecretRefs=$expectedServiceRefs;Requirements=@($credentialRequirements);ServiceReservations=@($serviceReservations.ToArray());CreatedUtc=Get-WsmUtc;UpdatedUtc=Get-WsmUtc};$state|Add-Member NoteProperty AssistiveServiceChallenge $challenge -Force}else{$challenge.RequiredSecretRefs=$expectedServiceRefs;$challenge|Add-Member NoteProperty Requirements @($credentialRequirements) -Force;$challenge.UpdatedUtc=Get-WsmUtc}
         Add-WsmJournal $paths $state 'AssistiveServiceCredentialChallengeWaiting' '' $challenge
@@ -603,19 +683,31 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     }
     if($challenge){$challenge.State='Running';$challenge.UpdatedUtc=Get-WsmUtc;Add-WsmJournal $paths $state 'AssistiveServiceCredentialChallengeResuming' '' $challenge}
     if($Preview.PSObject.Properties['NonCFileResults'] -and @($Preview.NonCFileResults).Count){$state | Add-Member NoteProperty AssistiveFileResults @($Preview.NonCFileResults) -Force;Add-WsmJournal $paths $state 'AssistiveNonCFileResultsImported' '' ([pscustomobject]@{Generation=[long]$Package.Manifest.Generation;Rows=@($Preview.NonCFileResults)})}
+    # Continuation: reconcile each unresolved native intent on its own. An item whose native result cannot be proven stays pending and blocks only itself and its explicit dependents.
+    $unknownItems=@{};$blockedItems=@{};$pendingItemIds=@{}
+    if($Continuation){
+        foreach($pendingOp in @($state.PendingOperations)){$pendingItemIds[[string]$pendingOp.ItemId]=$true}
+        if($pendingItemIds.Count){$unknownItems=Invoke-WsmAssistiveContinuationReconcile $Package $paths $state $SidMap $ManifestHash}
+        $blockedItems=Get-WsmAssistiveUnknownDependencyBlocks @($Package.Plan.Items) $unknownItems
+    }
     $job=Register-WsmAssistivePackageMaterials $Package $decision $StateDirectory $Preview
     $state.Stage='Running'
     # Only the same durable parent still waiting for input (or taken over before native writes) continues; an earlier finished or cancelled attempt never lends its identity to a new restore.
     $attempt=$null;if($state.PSObject.Properties['RestoreAttempt'] -and [string]$state.RestoreAttempt.OperationId -ceq $ParentOperationId -and [string]$state.RestoreAttempt.Status -cin @('WaitingForInput','Running')){$attempt=$state.RestoreAttempt}
-    if(-not $attempt){$attempt=[pscustomobject]@{ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviousManifest=$state.ManifestHash;OperationId=$ParentOperationId;DecisionReceiptPath=[string]$decision.ReceiptPath;DecisionReceiptHash=[string]$decision.ReceiptHash;TargetSnapshotPath=[string]$decision.SnapshotPath;TargetSnapshotHash=[string]$decision.Receipt.TargetSnapshotHash;SelectedItemIds=@($decision.SelectedItemIds);WizardPreviewHash=$(if($Preview.PSObject.Properties['WizardPreviewHash']){[string]$Preview.WizardPreviewHash}else{''});ItemResults=@()}}
+    if(-not $attempt){$attempt=[pscustomobject]@{ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviousManifest=$state.ManifestHash;OperationId=$ParentOperationId;DecisionReceiptPath=[string]$decision.ReceiptPath;DecisionReceiptHash=[string]$decision.ReceiptHash;TargetSnapshotPath=[string]$decision.SnapshotPath;TargetSnapshotHash=[string]$decision.Receipt.TargetSnapshotHash;SelectedItemIds=@($decision.SelectedItemIds);WizardPreviewHash=$(if($Preview.PSObject.Properties['WizardPreviewHash']){[string]$Preview.WizardPreviewHash}else{''});ItemResults=@();PreviewRowHashes=@(Get-WsmAssistivePreviewRowHashes $Preview.Rows)}}
     $attempt|Add-Member NoteProperty MaterialJobOperationId $job.OperationId -Force;$attempt|Add-Member NoteProperty MaterialIds @($job.MaterialIds) -Force;$attempt|Add-Member NoteProperty Status 'Running' -Force;$attempt|Add-Member NoteProperty StartedUtc (Get-WsmUtc) -Force
     $state | Add-Member NoteProperty RestoreAttempt $attempt -Force
     Add-WsmJournal $paths $state 'AssistiveRestoreStarted' '' $attempt
     Confirm-WsmOutputStateCheckpoint -StateDirectory $StateDirectory -PairId $Package.Manifest.PairId -PlanHash $Package.Manifest.PlanHash
     $itemsById=@{};foreach($item in @($Package.Plan.Items)){$itemsById[[string]$item.ItemId]=$item}
     $itemResults=New-Object 'System.Collections.Generic.List[object]'
+    $priorItemResults=@();if($Continuation -and $attempt.PSObject.Properties['ItemResults']){$priorItemResults=@($attempt.ItemResults)}
     try { foreach($row in @($Preview.Rows)){
-        if($row.Status -ne 'Ready'){if($row.Status -notin @('Deferred','DeferredSoftware')){$itemResults.Add([pscustomobject]@{ItemId=$row.ItemId;Status=$row.Status;CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error=$row.Reason})};continue}
+        if($unknownItems.ContainsKey([string]$row.ItemId)){$unknownResult=[pscustomobject]@{ItemId=$row.ItemId;Status='NeedsReconciliation';CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error=[string]$unknownItems[[string]$row.ItemId];NativeCode=$null};$itemResults.Add($unknownResult);Add-WsmJournal $paths $state 'AssistiveItemNeedsReconciliation' $row.ItemId $unknownResult;continue}
+        if($blockedItems.ContainsKey([string]$row.ItemId)){$blockedResult=[pscustomobject]@{ItemId=$row.ItemId;Status='BlockedByUnknownDependency';CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error=[string]$blockedItems[[string]$row.ItemId];NativeCode=$null};$itemResults.Add($blockedResult);Add-WsmJournal $paths $state 'AssistiveItemBlockedByUnknownDependency' $row.ItemId $blockedResult;continue}
+        # The preview was computed before this item's own pending intent was reconciled; its stale conflict row must not hide the reconciled item.
+        $stalePendingRow=($Continuation -and $pendingItemIds.ContainsKey([string]$row.ItemId) -and [string]$row.Status -cin @('BlockedConflict','Blocked'))
+        if($row.Status -ne 'Ready' -and -not $stalePendingRow){if($row.Status -notin @('Deferred','DeferredSoftware')){$itemResults.Add([pscustomobject]@{ItemId=$row.ItemId;Status=$row.Status;CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error=$row.Reason})};continue}
         Assert-WsmCancellationBoundary $CancellationToken 'AssistiveBeforeItem'
         Assert-WsmAssistiveReceiptFresh $Package $decision | Out-Null
         $item=$itemsById[[string]$row.ItemId];$spec=$item.MigrationSpec
@@ -703,25 +795,27 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
         # Releasing the material lock records that this worker has stopped; it
         # does not repair or discard a pending operation.
         $state.ManifestHash=$ManifestHash;$state.Generation=[long]$Package.Manifest.Generation;$state.Stage='Cancelled'
-        $attempt.ItemResults=@($itemResults.ToArray())
+        $cancelResults=@(Merge-WsmAssistiveItemResults $priorItemResults $itemResults.ToArray());$attempt.ItemResults=$cancelResults
         $cancel=[ordered]@{Status='Cancelled';ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;OperationId='';Boundary='';PendingOperationCount=[int]@($state.PendingOperations).Count}
         if($_.Exception.Data['OperationId']){$cancel.OperationId=[string]$_.Exception.Data['OperationId']}
         if($_.Exception.Data['CancellationBoundary']){$cancel.Boundary=[string]$_.Exception.Data['CancellationBoundary']}
         if($challenge){$challenge.State='Cancelled';$challenge.UpdatedUtc=Get-WsmUtc;foreach($reservation in @($serviceReservations.ToArray())){Set-WsmAssistiveServiceReservationOperation -Workspace $StateDirectory -ResourceKey $reservation.ResourceKey -PairId $Package.Manifest.PairId -ItemId $reservation.ItemId -OperationId $ParentOperationId -State Released | Out-Null}}
         Add-WsmJournal $paths $state 'AssistiveRestoreCancelled' '' ([pscustomobject]$cancel)
         Complete-WsmAssistivePackageJob $Package $job $StateDirectory
-        return [pscustomobject]@{PairId=$Package.Manifest.PairId;ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;Stage='Cancelled';Items=$state.Items;Results=$itemResults.ToArray();Deferred=@($Preview.Rows | Where-Object Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired'));PendingOperations=@($state.PendingOperations);JournalHash=$state.JournalHash;BusinessValidationRequired=$true;ProductionVerified=$false}
+        return [pscustomobject]@{PairId=$Package.Manifest.PairId;ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;Stage='Cancelled';Items=$state.Items;Results=$cancelResults;Deferred=@($Preview.Rows | Where-Object Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired'));PendingOperations=@($state.PendingOperations);JournalHash=$state.JournalHash;BusinessValidationRequired=$true;ProductionVerified=$false}
     }
     $state.ManifestHash=$ManifestHash;$state.Generation=[long]$Package.Manifest.Generation
-    $attempt.ItemResults=@($itemResults.ToArray())
-    $remaining=@($Preview.Rows | Where-Object {$_.Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired')})
-    $failedCount=@($itemResults | Where-Object Status -in @('Failed','BlockedConflict','Blocked','ManualEvidenceRequired')).Count
-    $state.Stage='Succeeded';if($remaining.Count -or $failedCount -or @($state.PendingOperations).Count){$state.Stage='Partial'};if(@($itemResults | Where-Object Status -EQ RebootRequired).Count){$state.Stage='RebootRequired'}
+    $finalResults=@(Merge-WsmAssistiveItemResults $priorItemResults $itemResults.ToArray());$attempt.ItemResults=$finalResults
+    # A stale conflict row of an item whose own pending intent was just reconciled to success is not a remaining deferred row.
+    $resolvedPendingIds=@{};if($Continuation){foreach($finalResult in $finalResults){if($pendingItemIds.ContainsKey([string]$finalResult.ItemId) -and [string]$finalResult.Status -cin @('Succeeded','RebootRequired')){$resolvedPendingIds[[string]$finalResult.ItemId]=$true}}}
+    $remaining=@($Preview.Rows | Where-Object {$_.Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired') -and -not $resolvedPendingIds.ContainsKey([string]$_.ItemId)})
+    $failedCount=@($finalResults | Where-Object Status -in @('Failed','BlockedConflict','Blocked','ManualEvidenceRequired','NeedsReconciliation','BlockedByUnknownDependency')).Count
+    $state.Stage='Succeeded';if($remaining.Count -or $failedCount -or @($state.PendingOperations).Count){$state.Stage='Partial'};if(@($finalResults | Where-Object Status -EQ RebootRequired).Count){$state.Stage='RebootRequired'}
     if($challenge){$challenge.State='Completed';$challenge.UpdatedUtc=Get-WsmUtc}
-    Add-WsmJournal $paths $state 'AssistiveRestoreCompleted' '' ([pscustomobject]@{Status=$state.Stage;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;DecisionReceiptHash=$decision.ReceiptHash;ItemResults=$itemResults.ToArray();DeferredRows=$remaining})
+    Add-WsmJournal $paths $state 'AssistiveRestoreCompleted' '' ([pscustomobject]@{Status=$state.Stage;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;DecisionReceiptHash=$decision.ReceiptHash;ItemResults=$finalResults;DeferredRows=$remaining})
     if($state.Stage -in @('Succeeded','Partial','RebootRequired') -and -not @($state.PendingOperations).Count){foreach($reservation in @($serviceReservations.ToArray())){Set-WsmAssistiveServiceReservationOperation -Workspace $StateDirectory -ResourceKey $reservation.ResourceKey -PairId $Package.Manifest.PairId -ItemId $reservation.ItemId -OperationId $ParentOperationId -State Released | Out-Null}}
     Complete-WsmAssistivePackageJob $Package $job $StateDirectory
-    [pscustomobject]@{PairId=$Package.Manifest.PairId;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;Stage=$state.Stage;Items=$state.Items;Results=$itemResults.ToArray();Deferred=$remaining;JournalHash=$state.JournalHash;BusinessValidationRequired=$true;ProductionVerified=$false}
+    [pscustomobject]@{PairId=$Package.Manifest.PairId;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;Stage=$state.Stage;Items=$state.Items;Results=$finalResults;Deferred=$remaining;JournalHash=$state.JournalHash;BusinessValidationRequired=$true;ProductionVerified=$false}
 }
 
 function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hashtable]$SidMap,$CancellationToken,[string]$Workspace='') {

@@ -262,12 +262,14 @@ function Get-WsmWizardRuntimeSource([string]$Workspace,[string]$PairId,$Profile,
 function Get-WsmWizardTargetItemOptions($Context,$Package,$State) {
     $manifestHash=if($Package){[string]$Package.ManifestHash}else{''}
     $rows=@{};if($Package -and $manifestHash -and $State -and $State.PSObject.Properties['Items']){foreach($row in @($State.Items)){if($row -and $row.PSObject.Properties['ItemId']){$rows[[string]$row.ItemId]=$row}}}
+    # An item with an unresolved native intent or a continuation result of NeedsReconciliation / BlockedByUnknownDependency is never counted as restored.
+    $unproven=@{};if($Package -and $State){if($State.PSObject.Properties['PendingOperations']){foreach($op in @($State.PendingOperations)){if($op -and $op.PSObject.Properties['ItemId']){$unproven[[string]$op.ItemId]=$true}}};if($State.PSObject.Properties['RestoreAttempt'] -and $State.RestoreAttempt -and $State.RestoreAttempt.PSObject.Properties['ItemResults']){foreach($itemResult in @($State.RestoreAttempt.ItemResults)){if($itemResult -and $itemResult.PSObject.Properties['Status'] -and [string]$itemResult.Status -cin @('NeedsReconciliation','BlockedByUnknownDependency')){$unproven[[string]$itemResult.ItemId]=$true}}}}
     @($Context.Plan.Items|Where-Object Decision -CEQ Include|ForEach-Object {
         $spec=$_.MigrationSpec;$adapter=if($spec){[string]$spec.Adapter}else{''}
         $group=if($adapter -cin @('IISSite','IISPool','IISSection','IISLocation')){'Web'}elseif($adapter -ceq 'ScheduledTask'){'Tasks'}elseif($adapter -ceq 'FileScope'){'Data'}else{'Settings'}
         $restorable=$true;$reason=''
         if(-not $spec -or $adapter -ceq 'ManualWorkflow'){$restorable=$false;$reason='需要人工處理，工具不會還原。'}elseif($adapter -ceq 'FileScope' -and $spec.PSObject.Properties['TransferChannel'] -and [string]$spec.TransferChannel -ceq 'External'){$restorable=$false;$reason='標示為外部處理，未包含在備份中。'}
-        $row=$rows[[string]$_.ItemId];$restored=[bool]($row -and [string]$row.Status -ceq 'Succeeded' -and $row.PSObject.Properties['AppliedManifestHash'] -and [string]$row.AppliedManifestHash -ceq $manifestHash)
+        $row=$rows[[string]$_.ItemId];$restored=[bool]($row -and -not $unproven.ContainsKey([string]$_.ItemId) -and [string]$row.Status -ceq 'Succeeded' -and $row.PSObject.Properties['AppliedManifestHash'] -and [string]$row.AppliedManifestHash -ceq $manifestHash)
         [pscustomobject]@{value=[string]$_.ItemId;label=[string]$_.Name;kind=[string]$_.Kind;adapter=$adapter;group=$group;restorable=$restorable;restorableReason=$reason;restored=$restored}
     })
 }

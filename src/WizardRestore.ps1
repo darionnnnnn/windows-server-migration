@@ -266,7 +266,7 @@ function Invoke-WsmWizardTargetRestore {
     $freshHash=Get-WsmWizardTargetPreviewHash $freshPreview $PairId $projection.PlanHash $projection.ManifestHash ([long]$projection.Generation) $projection.ReceiptHash $projection.TargetSnapshotHash $projection.ComparisonHash ([int]$projection.ComparisonRevision) ([int]$projection.SelectionRevision) ([string]$projection.Decision)
     if($freshHash -ine $PreviewHash){throw 'Target preview rows or readiness gates changed before restore; refresh and require a new explicit confirmation.'}
     $freshPreview | Add-Member NoteProperty WizardPreviewHash $PreviewHash -Force
-    if(-not $waitingChallengeResume -and $state.PSObject.Properties['RestoreAttempt'] -and [string]$state.RestoreAttempt.ManifestHash -ieq $projection.ManifestHash -and [string]$state.RestoreAttempt.DecisionReceiptHash -ieq $projection.ReceiptHash -and [long]$state.RestoreAttempt.Generation -eq [long]$projection.Generation){
+    if(-not $waitingChallengeResume -and $state.PSObject.Properties['RestoreAttempt'] -and [string]$state.RestoreAttempt.Status -cne 'Superseded' -and [string]$state.RestoreAttempt.ManifestHash -ieq $projection.ManifestHash -and [string]$state.RestoreAttempt.DecisionReceiptHash -ieq $projection.ReceiptHash -and [long]$state.RestoreAttempt.Generation -eq [long]$projection.Generation){
         if(@($state.PendingOperations).Count){throw 'The exact current restore attempt has an unresolved journal intent; repair it before retrying.'}
         if($state.Stage -in @('Succeeded','Partial','RebootRequired')){if(-not $state.RestoreAttempt.PSObject.Properties['ItemResults']){throw 'The exact current restore attempt has no durable item-result projection; retain the journal for review.'};$result=[pscustomobject]@{Results=@($state.RestoreAttempt.ItemResults);Deferred=@($projection.Rows | Where-Object Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired'))}}
         else{throw 'The exact current restore attempt is not terminal; inspect its journal and resume through core recovery before retrying.'}
@@ -277,6 +277,133 @@ function Invoke-WsmWizardTargetRestore {
     $attempt=$null;if($state.PSObject.Properties['RestoreAttempt']){$attempt=$state.RestoreAttempt}
     $itemResults=@($result.Results)
     [pscustomobject][ordered]@{Status=[string]$state.Stage;PairId=$PairId;PlanHash=[string]$projection.PlanHash;ManifestHash=[string]$projection.ManifestHash;Generation=[long]$projection.Generation;Decision=[string]$projection.Decision;TargetSnapshotHash=[string]$projection.TargetSnapshotHash;DecisionReceiptHash=[string]$projection.ReceiptHash;SelectedItemIds=@($projection.SelectedItemIds);Rows=@($projection.Rows);ItemResults=$itemResults;ItemResultsHash=(Get-WsmHashText ($itemResults|ConvertTo-Json -Depth 100 -Compress));Deferred=@($result.Deferred);JournalPath=[string]$journalProof.Path;JournalHash=$journalHash;AttemptOperationId=$(if($attempt){[string]$attempt.OperationId}else{''});Stage=[string]$state.Stage;PendingOperations=@($state.PendingOperations);BusinessValidationRequired=$true;ProductionVerified=$false;AuthoritativeApproval=$false}
+}
+
+function Test-WsmWizardContinuationDriftExplained($Attempt,$State,$Projection) {
+    # A preview hash that differs only because of this same parent's own native work (a pending intent, an item it
+    # already wrote or a recorded item result) is not a changed review. Everything else, including any change of the
+    # package, receipt, snapshot or selection, still means a new preview is required. Without stored per-row digests
+    # the strict whole-preview comparison applies.
+    if(-not $Attempt.PSObject.Properties['PreviewRowHashes'] -or -not @($Attempt.PreviewRowHashes).Count){return $false}
+    if([string]$Attempt.ManifestHash -ine [string]$Projection.ManifestHash -or [long]$Attempt.Generation -ne [long]$Projection.Generation -or [string]$Attempt.DecisionReceiptHash -ine [string]$Projection.ReceiptHash -or [string]$Attempt.TargetSnapshotHash -ine [string]$Projection.TargetSnapshotHash -or (@($Attempt.SelectedItemIds|Sort-Object -Unique)-join "`n") -cne (@($Projection.SelectedItemIds|Sort-Object -Unique)-join "`n")){return $false}
+    $stored=@{};foreach($entry in @($Attempt.PreviewRowHashes)){$stored[[string]$entry.ItemId]=[string]$entry.Hash}
+    $fresh=@{};foreach($entry in @(Get-WsmAssistivePreviewRowHashes $Projection.Rows)){$fresh[[string]$entry.ItemId]=[string]$entry.Hash}
+    $own=@{}
+    foreach($op in @($State.PendingOperations)){$own[[string]$op.ItemId]=$true}
+    foreach($row in @($State.Items)){if($row -and $row.PSObject.Properties['AppliedManifestHash'] -and [string]$row.AppliedManifestHash -ieq [string]$Attempt.ManifestHash){$own[[string]$row.ItemId]=$true}}
+    if($Attempt.PSObject.Properties['ItemResults']){foreach($result in @($Attempt.ItemResults)){$own[[string]$result.ItemId]=$true}}
+    $changed=@();foreach($key in @($stored.Keys)+@($fresh.Keys|Where-Object {-not $stored.ContainsKey($_)})){if(-not $fresh.ContainsKey($key) -or -not $stored.ContainsKey($key) -or $fresh[$key] -cne $stored[$key]){$changed+=@($key)}}
+    if(-not $changed.Count){return $false}
+    foreach($key in $changed){if(-not $own.ContainsKey($key)){return $false}}
+    $true
+}
+
+function Set-WsmWizardContinuationResult($Paths,$Package,[string]$ParentOperationId,[string]$ContinuationId,$Result) {
+    # The durable result carries only statuses and hashes, never credentials. Recorded under the workspace lock with its journal event.
+    Invoke-WsmLocked $Paths.Root {
+        $current=Get-WsmOperationState $Paths $Package;$currentAttempt=$current.RestoreAttempt
+        if(-not $currentAttempt -or [string]$currentAttempt.OperationId -cne $ParentOperationId){throw 'The TargetRestore parent changed while its continuation result was being recorded.'}
+        $records=@($currentAttempt.Continuations);$matched=@($records|Where-Object {[string]$_.ContinuationId -ceq $ContinuationId});if($matched.Count -ne 1){throw 'The continuation record is missing; inspect the durable TargetRestore parent.'}
+        $matched[0]|Add-Member NoteProperty Result $Result -Force;$matched[0]|Add-Member NoteProperty CompletedUtc (Get-WsmUtc) -Force
+        Add-WsmJournal $Paths $current 'AssistiveRestoreContinuation' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;ContinuationId=$ContinuationId;Phase='Completed';Result=$Result})
+    }
+}
+
+function Resume-WsmWizardTargetRestore {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ParentOperationId,[Parameter(Mandatory)][string]$ContinuationId,[object[]]$Jobs=@(),$CancellationToken=$null,[hashtable]$Secrets=@{},[object[]]$GeneralHostEvidence=@(),[object]$ChallengeContext=$null)
+    # Explicit continuation of one interrupted or still-waiting TargetRestore parent. A restart never resumes by itself.
+    Assert-WsmId $PairId;Assert-WsmId $ParentOperationId;Assert-WsmId $ContinuationId
+    $ContinuationId=([Guid]::Parse($ContinuationId)).ToString('D')
+    $ctx=Assert-WsmWizardTargetRole $Workspace $PairId;$packageRecord=Get-WsmWizardTargetPackage $Workspace $PairId $ctx $Jobs
+    $stateDirectory=Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs'
+    $paths=Get-WsmOperationPaths $stateDirectory $PairId;$state=Get-WsmOperationState $paths $packageRecord.Package
+    if(-not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.RestoreAttempt -or [string]$state.RestoreAttempt.OperationId -cne $ParentOperationId){throw 'No durable TargetRestore parent matches the requested ParentOperationId; preview again and start a new restore.'}
+    $attempt=$state.RestoreAttempt
+    $sameContinuation=@();if($attempt.PSObject.Properties['Continuations']){$sameContinuation=@($attempt.Continuations|Where-Object {[string]$_.ContinuationId -ceq $ContinuationId})}
+    if($sameContinuation.Count){
+        if(-not $sameContinuation[0].Result){throw 'This ContinuationId was already started but never recorded a result; use a new ContinuationId.'}
+        $replay=$sameContinuation[0].Result.PSObject.Copy();$replay|Add-Member NoteProperty Replay $true -Force;$replay|Add-Member NoteProperty ContinuationId $ContinuationId -Force
+        return $replay
+    }
+    $challenge=$null;if($state.PSObject.Properties['AssistiveServiceChallenge'] -and $state.AssistiveServiceChallenge){$challenge=$state.AssistiveServiceChallenge}
+    $challengeState=if($challenge){[string]$challenge.State}else{''};$attemptStatus=[string]$attempt.Status
+    if($challengeState -cin @('Cancelled','Revoked') -or $attemptStatus -cin @('Cancelled','Superseded') -or [string]$state.Stage -cin @('Cancelled','Superseded')){throw 'This TargetRestore parent was cancelled or superseded and can never be resumed; preview again to create a new restore.'}
+    if([string]$state.Stage -cnotin @('Running','WaitingForInput') -or $attemptStatus -cnotin @('Running','WaitingForInput')){throw ('This TargetRestore parent already reached a terminal result ('+[string]$state.Stage+'); preview again to create a new restore instead of continuing it.')}
+    $storedHash=[string]$attempt.WizardPreviewHash;if($storedHash -notmatch '^[a-f0-9]{64}$'){throw 'The durable TargetRestore parent has no exact reviewed preview hash; preview again.'}
+    $projection=Get-WsmWizardTargetRestoreProjection -Workspace $Workspace -PairId $PairId -Jobs $Jobs -GeneralHostEvidence $GeneralHostEvidence
+    if($projection.Status -cne 'Previewed'){throw ('Target restore preview is no longer available (current status: '+[string]$projection.Status+'); preview again.')}
+    $package=Test-WsmMigrationPackage $projection.ManifestPath $projection.ManifestHash
+    $contextActor=[string](Get-WsmExecutionActor);$contextSession='';if($ChallengeContext){if($ChallengeContext.PSObject.Properties['Actor']){$contextActor=[string]$ChallengeContext.Actor};if($ChallengeContext.PSObject.Properties['SessionId']){$contextSession=[string]$ChallengeContext.SessionId}}
+    $accepted=([string]$projection.PreviewHash -ieq $storedHash)
+    if(-not $accepted){$accepted=Test-WsmWizardContinuationDriftExplained $attempt $state $projection}
+    if(-not $accepted){
+        # Reviewed context changed: revoke the challenge, supersede the parent and release its Service reservations. No native write happens.
+        $needsNew=[pscustomobject][ordered]@{Status='NeedsNewPreview';PairId=$PairId;ParentOperationId=$ParentOperationId;ContinuationId=$ContinuationId;PreviousPreviewHash=$storedHash;CurrentPreviewHash=[string]$projection.PreviewHash;Reason='PreviewChanged';NoTargetWrites=$true;ProductionVerified=$false}
+        Invoke-WsmLocked $paths.Root {
+            $current=Get-WsmOperationState $paths $package;$currentAttempt=$current.RestoreAttempt
+            if(-not $currentAttempt -or [string]$currentAttempt.OperationId -cne $ParentOperationId){throw 'The TargetRestore parent changed while it was being superseded.'}
+            if($current.PSObject.Properties['AssistiveServiceChallenge'] -and $current.AssistiveServiceChallenge){
+                $currentChallenge=$current.AssistiveServiceChallenge
+                if([string]$currentChallenge.State -cin @('WaitingForInput','Running')){
+                    if(-not @($current.PendingOperations).Count){foreach($reservation in @($currentChallenge.ServiceReservations)){Revoke-WsmAssistiveServiceChallengeReservation -Workspace $stateDirectory -ResourceKey ([string]$reservation.ResourceKey) -PairId $PairId -ItemId ([string]$reservation.ItemId) -OperationId $ParentOperationId -Created ([bool]$reservation.Created) | Out-Null}}
+                    $currentChallenge.State='Revoked';$currentChallenge|Add-Member NoteProperty RevokeReason 'PreviewChanged' -Force;$currentChallenge.UpdatedUtc=Get-WsmUtc
+                }
+            }
+            $currentAttempt|Add-Member NoteProperty Status 'Superseded' -Force;$currentAttempt|Add-Member NoteProperty SupersededUtc (Get-WsmUtc) -Force;$current.Stage='Superseded'
+            $records=@();if($currentAttempt.PSObject.Properties['Continuations']){$records=@($currentAttempt.Continuations)}
+            $currentAttempt|Add-Member NoteProperty Continuations (@($records)+@([pscustomobject][ordered]@{ContinuationId=$ContinuationId;StartedUtc=(Get-WsmUtc);Actor=$contextActor;SessionId=$contextSession;Result=$needsNew})) -Force
+            Add-WsmJournal $paths $current 'AssistiveRestoreContinuation' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;ContinuationId=$ContinuationId;Phase='Superseded';Reason='PreviewChanged'})
+        }
+        return $needsNew
+    }
+    Invoke-WsmLocked $paths.Root {
+        $current=Get-WsmOperationState $paths $package;$currentAttempt=$current.RestoreAttempt
+        if(-not $currentAttempt -or [string]$currentAttempt.OperationId -cne $ParentOperationId){throw 'The TargetRestore parent changed before its continuation was recorded.'}
+        $records=@();if($currentAttempt.PSObject.Properties['Continuations']){$records=@($currentAttempt.Continuations)}
+        if(@($records|Where-Object {[string]$_.ContinuationId -ceq $ContinuationId}).Count){throw 'This ContinuationId is already in progress; use a new ContinuationId.'}
+        $currentAttempt|Add-Member NoteProperty Continuations (@($records)+@([pscustomobject][ordered]@{ContinuationId=$ContinuationId;StartedUtc=(Get-WsmUtc);Actor=$contextActor;SessionId=$contextSession;Result=$null})) -Force
+        Add-WsmJournal $paths $current 'AssistiveRestoreContinuation' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;ContinuationId=$ContinuationId;Actor=$contextActor;SessionId=$contextSession;Phase='Started'})
+    }
+    $state=Get-WsmOperationState $paths $package
+    if($state.PSObject.Properties['AssistiveServiceChallenge'] -and $state.AssistiveServiceChallenge -and [string]$state.AssistiveServiceChallenge.State -ceq 'Running'){
+        # Secrets were accepted but the process died. Only a provable pre-write state asks for fresh input under the current session; an old secret is never replayed.
+        $preWrite=$null;try{$preWrite=Test-WsmAssistiveServiceChallengePreWriteRecovery $stateDirectory $state $ParentOperationId}catch{$preWrite=$null}
+        if($preWrite){
+            $contextRole='Target';$contextId='';$contextRevision=-1
+            if($ChallengeContext){if($ChallengeContext.PSObject.Properties['Role']){$contextRole=[string]$ChallengeContext.Role};if($ChallengeContext.PSObject.Properties['ContextId']){$contextId=[string]$ChallengeContext.ContextId};if($ChallengeContext.PSObject.Properties['Revision']){$contextRevision=[int]$ChallengeContext.Revision}}
+            if($contextRole -cne 'Target' -or -not $contextActor -or $contextSession.Length -gt 256 -or $contextId.Length -gt 256){throw 'Service credential challenge must bind a valid Target actor/session context.'}
+            $waiting=Invoke-WsmLocked $paths.Root {
+                $current=Get-WsmOperationState $paths $package;$currentChallenge=$current.AssistiveServiceChallenge;$currentAttempt=$current.RestoreAttempt
+                foreach($reservation in @($currentChallenge.ServiceReservations)){Set-WsmAssistiveServiceReservationOperation -Workspace $stateDirectory -ResourceKey ([string]$reservation.ResourceKey) -PairId $PairId -ItemId ([string]$reservation.ItemId) -OperationId $ParentOperationId -State WaitingForInput | Out-Null}
+                $currentChallenge.State='WaitingForInput';$currentChallenge.Actor=$contextActor;$currentChallenge.Role=$contextRole;$currentChallenge.SessionId=$contextSession;$currentChallenge.ContextId=$contextId;$currentChallenge.Revision=[int]$contextRevision;$currentChallenge.UpdatedUtc=Get-WsmUtc
+                $currentChallenge|Add-Member NoteProperty LastPreWriteRecovery $preWrite -Force
+                $currentAttempt|Add-Member NoteProperty Status 'WaitingForInput' -Force;$current.Stage='WaitingForInput'
+                $requirements=@();if($currentChallenge.PSObject.Properties['Requirements']){$requirements=@($currentChallenge.Requirements)}
+                $waitingResult=[pscustomobject][ordered]@{Status='WaitingForInput';PairId=$PairId;ParentOperationId=$ParentOperationId;ContinuationId=$ContinuationId;PlanHash=[string]$projection.PlanHash;ManifestHash=[string]$projection.ManifestHash;Generation=[long]$projection.Generation;Decision=[string]$projection.Decision;SelectedItemIds=@($projection.SelectedItemIds);RequiredSecretRefs=@($currentChallenge.RequiredSecretRefs);CredentialRequirements=@($requirements);ServiceReservations=@($currentChallenge.ServiceReservations);PreviewHash=$storedHash;NoTargetWrites=$true;ResumeRequired=$true;ProductionVerified=$false}
+                Add-WsmJournal $paths $current 'AssistiveServiceCredentialChallengeRebound' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;ContinuationId=$ContinuationId;Actor=$contextActor;SessionId=$contextSession;ContextId=$contextId;Revision=[int]$contextRevision;PreWriteRecovery=$preWrite})
+                $waitingResult
+            }
+            Set-WsmWizardContinuationResult $paths $package $ParentOperationId $ContinuationId $waiting
+            return $waiting
+        }
+    }
+    $nonCInputs=Get-WsmWizardSelectedNonCPreviewInputs $Workspace $PairId $ctx.Plan (Get-WsmWizardTargetDecisionRecord $Workspace $PairId $ctx.Received.SHA256).Receipt $Jobs;$nonCArgs=$nonCInputs.Arguments
+    $freshPreview=Get-WsmAssistiveRestorePreview @nonCArgs -ManifestPath $projection.ManifestPath -ExpectedHash $projection.ManifestHash -StateDirectory $stateDirectory -AssistiveDecisionReceiptPath $projection.ReceiptPath -AssistiveDecisionReceiptHash $projection.ReceiptHash -AssistiveTargetSnapshotPath $projection.TargetSnapshotPath -GeneralHostEvidence $GeneralHostEvidence
+    $freshPreview | Add-Member NoteProperty WizardNonCEvidenceIssue ([string]$nonCInputs.Issue) -Force
+    $freshPreview | Add-Member NoteProperty WizardPreviewHash $storedHash -Force
+    $result=Invoke-WsmAssistiveRestore $package $projection.ManifestHash $stateDirectory $Secrets @{} $CancellationToken $GeneralHostEvidence $projection.ReceiptPath $projection.ReceiptHash $projection.TargetSnapshotPath $freshPreview $ParentOperationId $ChallengeContext -Continuation
+    if($result -and $result.PSObject.Properties['Status'] -and [string]$result.Status -ceq 'WaitingForInput'){
+        $waiting=[pscustomobject][ordered]@{Status='WaitingForInput';PairId=$PairId;ParentOperationId=[string]$result.ParentOperationId;ContinuationId=$ContinuationId;PlanHash=[string]$projection.PlanHash;ManifestHash=[string]$projection.ManifestHash;Generation=[long]$projection.Generation;Decision=[string]$projection.Decision;SelectedItemIds=@($projection.SelectedItemIds);RequiredSecretRefs=@($result.RequiredSecretRefs);CredentialRequirements=$(if($result.PSObject.Properties['CredentialRequirements']){@($result.CredentialRequirements)}else{@()});ServiceReservations=@($result.ServiceReservations);PreviewHash=$storedHash;NoTargetWrites=$true;ResumeRequired=$true;ProductionVerified=$false}
+        Set-WsmWizardContinuationResult $paths $package $ParentOperationId $ContinuationId $waiting
+        return $waiting
+    }
+    $state=Get-WsmOperationState $paths $package
+    $itemResults=@($result.Results)
+    $compact=[pscustomobject][ordered]@{Status=[string]$state.Stage;Stage=[string]$state.Stage;PairId=$PairId;ParentOperationId=$ParentOperationId;ContinuationId=$ContinuationId;ItemResultsHash=(Get-WsmHashText ($itemResults|ConvertTo-Json -Depth 100 -Compress));ItemStatuses=@($itemResults|ForEach-Object {[pscustomobject][ordered]@{ItemId=[string]$_.ItemId;Status=[string]$_.Status}});PendingOperationCount=[int]@($state.PendingOperations).Count;ProductionVerified=$false}
+    Set-WsmWizardContinuationResult $paths $package $ParentOperationId $ContinuationId $compact
+    $state=Get-WsmOperationState $paths $package
+    $journalProof=Save-WsmWizardRestoreJournalSnapshot $paths $package ([string]$state.RestoreAttempt.OperationId) ([string]$state.Stage);$journalHash=[string]$journalProof.SHA256
+    [pscustomobject][ordered]@{Status=[string]$state.Stage;PairId=$PairId;PlanHash=[string]$projection.PlanHash;ManifestHash=[string]$projection.ManifestHash;Generation=[long]$projection.Generation;Decision=[string]$projection.Decision;TargetSnapshotHash=[string]$projection.TargetSnapshotHash;DecisionReceiptHash=[string]$projection.ReceiptHash;SelectedItemIds=@($projection.SelectedItemIds);Rows=@($projection.Rows);ItemResults=$itemResults;ItemResultsHash=(Get-WsmHashText ($itemResults|ConvertTo-Json -Depth 100 -Compress));Deferred=@($result.Deferred);JournalPath=[string]$journalProof.Path;JournalHash=$journalHash;AttemptOperationId=[string]$state.RestoreAttempt.OperationId;ContinuationId=$ContinuationId;Stage=[string]$state.Stage;PendingOperations=@($state.PendingOperations);BusinessValidationRequired=$true;ProductionVerified=$false;AuthoritativeApproval=$false}
 }
 
 function Save-WsmWizardRestoreJournalSnapshot($Paths,$Package,[string]$OperationId,[string]$ExpectedStage) {

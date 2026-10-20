@@ -745,6 +745,15 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：ServiceCredentialChallenge 46（原 15）、AssistiveRestore 140、AssistiveResources 34、HtmlConsole 114、WizardRestore 85、IisContracts、Adapters、AssistiveRecoveryBoundaries 6、RecoveryContracts、WizardHtmlRuntimeProjection 185、ScriptEncoding、Node WizardRuntimeTargetUi 通過。突變：拿掉缺帳密防線、IIS 快照保留密碼都以專屬斷言轉紅；challenge 只收 Service 時以 StrictMode 屬性錯誤轉紅（非專屬斷言）。
 - 限制：排程與 pool 的原生 consumer 只以替身驗證；CLI 提示仍附 SecretRef 供對照；HTML 畫面仍是舊的內嵌面板（F4b）。
 
+### 17.42 E3b-1 TargetRestore 明確續作與逐項對帳（核心，部分完成）
+
+- Sonnet 5.5 subagent 實作，主代理審 diff、獨立重跑並突變。新增 `Resume-WsmWizardTargetRestore`：只接受同一父作業的非終態 attempt；同一 ContinuationId 重送回傳第一次的精簡結果、不重做；終態、已取消、已撤銷一律拒絕；續作紀錄寫入 attempt 的 `Continuations` 與 journal `AssistiveRestoreContinuation`，再以同一 ParentOperationId 進入 `Invoke-WsmAssistiveRestore -Continuation`。
+- 續作模式下，每筆 PendingOperations 在 lock 內重用既有的 `Complete-WsmAssistiveOperationRepair` 對帳；能證明就回填或放棄後重試，無法證明就標 `NeedsReconciliation`、保留 pending 與目標物件不動。相依只涵蓋 IISSite→IISPool（applicationPool 名稱）與 Service→Service（Dependencies），這些項標 `BlockedByUnknownDependency`；父作業為 Partial，Target 選項的 `restored` 不把它們算成已還原。非續作的新父作業仍整體阻擋，訊息改為提示續作或 Repair。
+- 秘密已接受但未原生寫入就中斷：challenge 改回 WaitingForInput 並綁新 session，不重放舊秘密；已越過原生邊界則走逐項對帳。續作後 ItemResults 依 ItemId 合併，不再被新 attempt 清空。
+- subagent 自加、主代理接受的設計：續作時預覽 hash 會因本父作業自己的寫入改變（已寫入項目在預覽中變成衝突或合併），所以 attempt 另存逐列摘要 `PreviewRowHashes`；只有套件、收據、快照、選取都不變，且變動的列全屬本父作業（pending、已寫入或已有結果）時才不視為漂移，其他情況回 `NeedsNewPreview`（撤銷 challenge、attempt 與 Stage 標 `Superseded`、釋放 Service reservation）。已擁有項目被外部改動仍由續作時的 readback 偵測。超過 2000 列時不存逐列摘要，維持嚴格比對。
+- 驗證（WinPS 5.1）：新增 TargetRestoreContinuation 43（四個中斷斷點、相依阻擋、已擁有不重寫、預覽漂移、重送、終態與取消拒絕、pre-write 重新詢問、ItemResults 合併、秘密哨兵），AssistiveRestore 140、WizardRestore 85、ServiceCredentialChallenge 46、AssistiveRecoveryBoundaries 6、RecoveryContracts、AssistiveRollback 16、TaskFolderJournal、HtmlConsole 114、WizardRuntime 161、WizardHtmlRuntimeProjection 185、ScriptEncoding、Node WizardRuntimeTargetUi 通過。突變：續作改回整體阻擋、不標 NeedsReconciliation、拿掉相依阻擋（subagent 做）、漂移容忍不檢查列歸屬（主代理做）都轉紅。
+- 限制：`Resume-WsmWizardTargetRestore` 以替身 projection／package 測試，真實封裝的續作由 G 旅程驗證；Partial（含未知項）為終態，需人工 Repair 或重新預覽；中途丟例外的 ContinuationId 不能重用。HTML／CLI 入口在 E3b-2。
+
 ### 17.41 證據帳本未結
 
 - `tools/Test-PlanEvidence.ps1` 在乾淨的 580e7f8 副本（LF 與 CRLF 兩種 checkout）都失敗：A1 證據檔雜湊與帳本不符，c95b8d6 重綁 E0 時記錄的 `src/MigrationWizard.ps1` 雜湊也與已提交內容的兩種換行版本都不符。本段沒有重綁 E0，帳本修復另案處理，不在本段宣稱證據通過。
