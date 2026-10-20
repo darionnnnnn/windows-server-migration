@@ -36,6 +36,8 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
         [pscustomobject]@{Status='FixtureCaptured';DecisionRevision=$ExpectedRevision}
     }
     $fixtureHash='a'*64;$fixtureWorkspace=Join-Path ([IO.Path]::GetTempPath()) ('wsm-text-menu-'+[Guid]::NewGuid().ToString('N'))
+    # 文字選單只在 workspace 已有 fleet.json 時才列出 Manager 配對（讀取時不建立 fleet），因此 fixture 先放一個佔位檔，配對內容仍由上面的 Get-WsmFleet 替身提供。
+    [void][IO.Directory]::CreateDirectory($fixtureWorkspace);[IO.File]::WriteAllText((Join-Path $fixtureWorkspace 'fleet.json'),'{}')
     $acceptAnswers=Reader @('3','1','RequirementDecisionSubmit','',$fixtureHash,'yes','1','req-1','Required','fixture owner','review reason','review evidence','APPLY')
     $applied=Invoke-WsmTypedTextOperation -Workspace $fixtureWorkspace -PromptReader $acceptAnswers
     $appliedResult=@($applied | Where-Object {$_.PSObject.Properties['Executed']})|Select-Object -Last 1
@@ -48,5 +50,6 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
     $cancelled=Invoke-WsmTypedTextOperation -Workspace $fixtureWorkspace -PromptReader $cancelAnswers
     $cancelledResult=@($cancelled | Where-Object {$_.PSObject.Properties['Executed']})|Select-Object -Last 1
     Check (-not $cancelledResult.Executed -and $cancelledResult.Status -ceq 'Cancelled' -and $null -eq $script:receivedRequirementArgs) 'Typed Core menu invoked the operation without exact APPLY.'
+    $tempRoot=[IO.Path]::GetFullPath([IO.Path]::GetTempPath());$fixtureFull=[IO.Path]::GetFullPath($fixtureWorkspace);if($fixtureFull.StartsWith($tempRoot,[StringComparison]::OrdinalIgnoreCase) -and (Split-Path $fixtureFull -Leaf) -like 'wsm-text-menu-*' -and [IO.Directory]::Exists($fixtureFull)){Remove-Item -LiteralPath $fixtureFull -Recurse -Force}
     Write-Output ('PASS: Core typed text forms, required/empty arrays, exact APPLY gate, schema converter and safe credential/cancellation wiring ('+$script:checks+' checks).')
 }

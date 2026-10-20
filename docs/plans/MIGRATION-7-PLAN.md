@@ -754,6 +754,11 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：新增 TargetRestoreContinuation 43（四個中斷斷點、相依阻擋、已擁有不重寫、預覽漂移、重送、終態與取消拒絕、pre-write 重新詢問、ItemResults 合併、秘密哨兵），AssistiveRestore 140、WizardRestore 85、ServiceCredentialChallenge 46、AssistiveRecoveryBoundaries 6、RecoveryContracts、AssistiveRollback 16、TaskFolderJournal、HtmlConsole 114、WizardRuntime 161、WizardHtmlRuntimeProjection 185、ScriptEncoding、Node WizardRuntimeTargetUi 通過。突變：續作改回整體阻擋、不標 NeedsReconciliation、拿掉相依阻擋（subagent 做）、漂移容忍不檢查列歸屬（主代理做）都轉紅。
 - 限制：`Resume-WsmWizardTargetRestore` 以替身 projection／package 測試，真實封裝的續作由 G 旅程驗證；Partial（含未知項）為終態，需人工 Repair 或重新預覽；中途丟例外的 ContinuationId 不能重用。HTML／CLI 入口在 E3b-2。
 
+### 17.43 Test-TextConsole 既有失敗修正
+
+- 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
+- 修正只在測試：fixture workspace 先建立佔位 `fleet.json`，配對內容仍由替身提供；測試結束時清除限定在系統暫存、名稱為 `wsm-text-menu-*` 的 fixture 目錄。驗證：Test-TextConsole 18 項通過。
+
 ### 17.41 證據帳本未結
 
 - `tools/Test-PlanEvidence.ps1` 在乾淨的 580e7f8 副本（LF 與 CRLF 兩種 checkout）都失敗：A1 證據檔雜湊與帳本不符，c95b8d6 重綁 E0 時記錄的 `src/MigrationWizard.ps1` 雜湊也與已提交內容的兩種換行版本都不符。本段沒有重綁 E0，帳本修復另案處理，不在本段宣稱證據通過。
