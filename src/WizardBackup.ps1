@@ -62,8 +62,9 @@ function Get-WsmWizardBackupAttemptForOperation([string]$Workspace,[string]$Pair
 function ConvertTo-WsmWizardBackupResult($Attempt,[string]$OperationId) {
     $independentCopy=$(if($Attempt.PSObject.Properties['IndependentCopy']){$Attempt.IndependentCopy}else{$null})
     $itemResults=$(if($Attempt.PSObject.Properties['ItemResults']){$Attempt.ItemResults}else{$null})
+    $offlineReport=$(if($Attempt.PSObject.Properties['OfflineReport']){$Attempt.OfflineReport}else{$null})
     $offlineReadiness=$(if($Attempt.Stage -cne 'Delivered'){'NotDelivered'}elseif($independentCopy -and $independentCopy.PSObject.Properties['Status'] -and $independentCopy.Status -ceq 'Verified'){[string]$independentCopy.Availability}else{'AwaitingIndependentCopy'})
-    [pscustomobject][ordered]@{Kind='WizardBackupResult';Status=[string]$Attempt.Stage;PairId=[string]$Attempt.PairId;AttemptId=[string]$Attempt.AttemptId;OperationId=$OperationId;StartedByOperationId=[string]$Attempt.StartedByOperationId;Stage=[string]$Attempt.Stage;DeliveryMode=$(if($Attempt.PSObject.Properties['DeliveryMode']){[string]$Attempt.DeliveryMode}else{''});VolumeBytes=$(if($Attempt.PSObject.Properties['VolumeBytes']){[long]$Attempt.VolumeBytes}else{0});Freeze=$Attempt.Freeze;CoreExport=$Attempt.CoreExport;PackageTest=$Attempt.PackageTest;Delivery=$Attempt.Delivery;ChannelSummary=$Attempt.ChannelSummary;NonCStatus=$(if($Attempt.ChannelSummary){[string]$Attempt.ChannelSummary.NonC.Status}else{'Pending'});ResumeStage=$(if($Attempt.PSObject.Properties['ResumeStage']){[string]$Attempt.ResumeStage}else{''});CanResumeAfterReview=($Attempt.Stage -in @('Failed','Cancelled') -and $Attempt.ResumeStage -in @('Authorized','CoreExported','PackageVerified'));SourceResumeRequired=([bool]($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired));AuthoritativeApproval=$true;ProductionVerified=$false;ResumeRequired=($Attempt.Stage -in @('Authorized','CoreExported','PackageVerified') -or ($Attempt.Stage -in @('Failed','Cancelled') -and $Attempt.ResumeStage -in @('Authorized','CoreExported','PackageVerified')) -or [bool](($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired) -or ($Attempt.PSObject.Properties['SourceResumeFreshFreezePending'] -and $Attempt.SourceResumeFreshFreezePending)));IndependentCopy=$independentCopy;OfflineReadiness=$offlineReadiness;ItemResults=$itemResults}
+    [pscustomobject][ordered]@{Kind='WizardBackupResult';Status=[string]$Attempt.Stage;PairId=[string]$Attempt.PairId;AttemptId=[string]$Attempt.AttemptId;OperationId=$OperationId;StartedByOperationId=[string]$Attempt.StartedByOperationId;Stage=[string]$Attempt.Stage;DeliveryMode=$(if($Attempt.PSObject.Properties['DeliveryMode']){[string]$Attempt.DeliveryMode}else{''});VolumeBytes=$(if($Attempt.PSObject.Properties['VolumeBytes']){[long]$Attempt.VolumeBytes}else{0});Freeze=$Attempt.Freeze;CoreExport=$Attempt.CoreExport;PackageTest=$Attempt.PackageTest;Delivery=$Attempt.Delivery;ChannelSummary=$Attempt.ChannelSummary;NonCStatus=$(if($Attempt.ChannelSummary){[string]$Attempt.ChannelSummary.NonC.Status}else{'Pending'});ResumeStage=$(if($Attempt.PSObject.Properties['ResumeStage']){[string]$Attempt.ResumeStage}else{''});CanResumeAfterReview=($Attempt.Stage -in @('Failed','Cancelled') -and $Attempt.ResumeStage -in @('Authorized','CoreExported','PackageVerified'));SourceResumeRequired=([bool]($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired));AuthoritativeApproval=$true;ProductionVerified=$false;ResumeRequired=($Attempt.Stage -in @('Authorized','CoreExported','PackageVerified') -or ($Attempt.Stage -in @('Failed','Cancelled') -and $Attempt.ResumeStage -in @('Authorized','CoreExported','PackageVerified')) -or [bool](($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired) -or ($Attempt.PSObject.Properties['SourceResumeFreshFreezePending'] -and $Attempt.SourceResumeFreshFreezePending)));IndependentCopy=$independentCopy;OfflineReadiness=$offlineReadiness;ItemResults=$itemResults;OfflineReport=$offlineReport}
 }
 
 function Get-WsmWizardBackupDeliverySettings([string]$Workspace,[string]$PairId,$Profile,$Existing,[bool]$ModeSpecified,[string]$RequestedMode,[bool]$VolumeSpecified,$RequestedVolume) {
@@ -295,6 +296,17 @@ function Invoke-WsmWizardStartBackup {
                 $resultsError=[string]$_.Exception.Message;if($resultsError.Length -gt 300){$resultsError=$resultsError.Substring(0,300)}
                 $record | Add-Member NoteProperty ItemResults ([pscustomobject]@{Status='Failed';Error=$resultsError}) -Force
             }
+            if($record.ItemResults.Status -ceq 'Generated'){
+                try{
+                    $reportExport=Export-WsmBackupOfflineReport ([string]$record.ItemResults.Path) ([string]$record.ItemResults.SHA256) (Join-Path (Split-Path -Parent ([string]$record.Delivery.Path)) 'backup-report.html')
+                    $record | Add-Member NoteProperty OfflineReport ([pscustomobject]@{Status='Generated';Path=[string]$reportExport.Path;SHA256=[string]$reportExport.SHA256}) -Force
+                }catch{
+                    $reportError=[string]$_.Exception.Message;if($reportError.Length -gt 300){$reportError=$reportError.Substring(0,300)}
+                    $record | Add-Member NoteProperty OfflineReport ([pscustomobject]@{Status='Failed';Error=$reportError}) -Force
+                }
+            }else{
+                $record | Add-Member NoteProperty OfflineReport ([pscustomobject]@{Status='Skipped'}) -Force
+            }
             $record.Stage=if($record.ChannelSummary.OverallStatus -eq 'ReviewRequired'){'ReviewRequired'}else{'Delivered'};$record.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $path $record $Workspace
         }catch{$resumeStage='PackageVerified';$record.ResumeStage=$resumeStage;$record.Stage=if($_.Exception.Data['CancellationRequested']){'Cancelled'}else{'Failed'};if($freezeRequired -and $record.Freeze){$record.SourceResumeRequired=$true};$record.Error=[pscustomobject]@{Code=$(if($record.Stage -eq 'Cancelled'){'cancelled'}else{'delivery_failed'});Message='搬移封裝已核驗，但交接材料未完整產生；可從同一作業嘗試續作。'};$record.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $path $record $Workspace;throw}
     }
@@ -324,13 +336,14 @@ function Get-WsmIndependentCopyMediaClass([string]$DestinationRoot) {
     }
 }
 
-function Test-WsmIndependentCopyFiles([string]$CopyRoot,$Delivery,[string]$ItemResultsSHA256,$CancellationToken=$null) {
+function Test-WsmIndependentCopyFiles([string]$CopyRoot,$Delivery,[string]$ItemResultsSHA256,[string]$OfflineReportSHA256,$CancellationToken=$null) {
     $mode=[string]$Delivery.Mode
-    if($ItemResultsSHA256){
-        $destItemResultsPath=Join-Path $CopyRoot 'transport\backup-item-results.json'
-        Assert-WsmNoReparse $destItemResultsPath
-        if(-not [IO.File]::Exists($destItemResultsPath)){throw ('Missing independent copy item results file: '+$destItemResultsPath)}
-        if((Get-FileHash -LiteralPath $destItemResultsPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $ItemResultsSHA256.ToLowerInvariant()){throw ('Independent copy item results file hash mismatch: '+$destItemResultsPath)}
+    foreach($sidecar in @(@{Name='backup-item-results.json';Label='item results';Hash=$ItemResultsSHA256},@{Name='backup-report.html';Label='offline report';Hash=$OfflineReportSHA256})){
+        if(-not $sidecar.Hash){continue}
+        $destSidecarPath=Join-Path $CopyRoot ('transport\'+$sidecar.Name)
+        Assert-WsmNoReparse $destSidecarPath
+        if(-not [IO.File]::Exists($destSidecarPath)){throw ('Missing independent copy '+$sidecar.Label+' file: '+$destSidecarPath)}
+        if((Get-FileHash -LiteralPath $destSidecarPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sidecar.Hash.ToLowerInvariant()){throw ('Independent copy '+$sidecar.Label+' file hash mismatch: '+$destSidecarPath)}
     }
     if($mode -ceq 'Directory'){
         $summaryName=[IO.Path]::GetFileName([string]$Delivery.Path)
@@ -476,6 +489,12 @@ function Invoke-WsmWizardIndependentCopy {
         $itemResultsSource=Join-Path (Split-Path -Parent $deliveryPath) 'backup-item-results.json'
         $filesToCopy+=@([pscustomobject]@{Source=$itemResultsSource;Dest=(Join-Path $copyRoot 'transport\backup-item-results.json');Bytes=((New-Object IO.FileInfo($itemResultsSource)).Length);SHA256=$itemResultsExpectedHash})
     }
+    $offlineReportExpectedHash=''
+    if($attempt.PSObject.Properties['OfflineReport'] -and $attempt.OfflineReport -and $attempt.OfflineReport.PSObject.Properties['Status'] -and $attempt.OfflineReport.Status -ceq 'Generated'){
+        $offlineReportExpectedHash=[string]$attempt.OfflineReport.SHA256
+        $offlineReportSource=Join-Path (Split-Path -Parent $deliveryPath) 'backup-report.html'
+        $filesToCopy+=@([pscustomobject]@{Source=$offlineReportSource;Dest=(Join-Path $copyRoot 'transport\backup-report.html');Bytes=((New-Object IO.FileInfo($offlineReportSource)).Length);SHA256=$offlineReportExpectedHash})
+    }
     try {
         if($Mode -ceq 'Copy'){
             foreach($file in $filesToCopy){
@@ -499,7 +518,7 @@ function Invoke-WsmWizardIndependentCopy {
                 }
             }
         }
-        $verified=Test-WsmIndependentCopyFiles $copyRoot $attempt.Delivery $itemResultsExpectedHash $CancellationToken
+        $verified=Test-WsmIndependentCopyFiles $copyRoot $attempt.Delivery $itemResultsExpectedHash $offlineReportExpectedHash $CancellationToken
         $availability=if($mediaClass -ceq 'Removable'){'Verified'}else{'VerifiedNetworkAvailabilityUnconfirmed'}
         $backupRoot=Get-WsmWizardBackupRoot $Workspace $PairId
         $receiptDir=Join-Path $backupRoot 'independent-copies'

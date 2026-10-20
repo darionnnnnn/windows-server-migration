@@ -175,6 +175,16 @@ assert.equal(crypto.createHash('sha256').update(fs.readFileSync(fixture.ProfileP
    await backedPanel.locator('input[type=search]').fill('zz-no-such-item-zz');
    assert.ok((await backedPanel.innerText()).includes('沒有符合搜尋條件的項目'),'search without matches must say so');
    assert.equal(await backedPanel.getByRole('button',{name:'匯出 CSV'}).count(),1,'export CSV button must exist');
+   const offlineReportPath=path.join(path.dirname(String(output.Delivery.Path)),'backup-report.html');assert.ok(fs.existsSync(offlineReportPath),'StartBackup must leave backup-report.html next to the delivery descriptor');
+   const reportPage=await browser.newPage({viewport:{width:390,height:844}}),reportErrors=[];reportPage.on('pageerror',error=>reportErrors.push(error.message));reportPage.on('console',message=>{if(message.type()==='error')reportErrors.push(message.text());});
+   await reportPage.goto('file:///'+offlineReportPath.replace(/\\/g,'/'));
+   await reportPage.waitForSelector('[role=tablist]',{timeout:30000});
+   assert.equal(await reportPage.locator('[role=tablist] [role=tab]').count(),3,'offline report must show three tabs');
+   assert.equal(await reportPage.locator('[role=tablist] [role=tab]').nth(0).getAttribute('aria-selected'),'true','offline report must select the first tab by default');
+   assert.ok((await reportPage.locator('[role=note]').first().innerText()).includes('不代表目前備份媒體仍然完整'),'offline report must carry the media-state note');
+   assert.ok(await reportPage.evaluate(()=>document.querySelectorAll('section').length>=3),'offline report must contain three sections');
+   assert.deepEqual(reportErrors,[],'offline report must not raise console errors');
+   await reportPage.close();
    await page.close();
    return {role,mode:output.DeliveryMode,manifestPath,manifestHash,attemptId:output.AttemptId};
   }

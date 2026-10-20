@@ -109,6 +109,13 @@ try {
             $fixtureRows=@($itemResultsDocument.Rows | Where-Object ItemId -CEQ $item.ItemId)
             if($fixtureRows.Count -ne 1 -or $fixtureRows[0].Status -cne 'BackedUp' -or $fixtureRows[0].ReasonCode -cne 'PayloadCaptured' -or [int]$fixtureRows[0].Files -ne 2){throw ($Label+': the fixture FileScope item was not reported as a backed-up payload with two files.')}
             if($itemResultsDocument.Kind -cne 'BackupItemResults' -or $itemResultsDocument.Counts.Total -ne $itemResults.Counts.Total -or -not $itemResultsDocument.Software.PSObject.Properties['SoftwareRows']){throw ($Label+': backup item results document shape is wrong.')}
+            $offlineReport=$BackupResult.OfflineReport
+            if(-not $offlineReport -or $offlineReport.Status -cne 'Generated'){throw ($Label+': the offline backup report was not generated.')}
+            if(-not [IO.File]::Exists($offlineReport.Path) -or (Get-FileHash -LiteralPath $offlineReport.Path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $offlineReport.SHA256){throw ($Label+': the offline backup report is missing or its SHA256 differs from the attempt record.')}
+            if([IO.Path]::GetDirectoryName($offlineReport.Path) -cne [IO.Path]::GetDirectoryName([string]$BackupResult.Delivery.Path)){throw ($Label+': the offline backup report was not written next to the delivery descriptor.')}
+            $offlineReportHtml=[IO.File]::ReadAllText($offlineReport.Path,[Text.Encoding]::UTF8)
+            if($offlineReportHtml.IndexOf('Fixture settings folder',[StringComparison]::Ordinal) -lt 0){throw ($Label+': the offline backup report does not contain the fixture FileScope item name.')}
+            foreach($forbidden in @('http://','https://','fetch(','XMLHttpRequest')){if($offlineReportHtml.IndexOf($forbidden,[StringComparison]::Ordinal) -ge 0){throw ($Label+': the offline backup report must not contain '+$forbidden)}}
         }
         & $assertItemResults $result 'Directory'
         $package=Test-WsmMigrationPackage $result.CoreExport.ManifestPath $result.CoreExport.SHA256
@@ -227,6 +234,20 @@ try {
             }
             [IO.File]::WriteAllBytes($copiedItemResultsA, $itemResultsOriginalBytes)
             if(-not $itemResultsTamperRejected){throw 'Case a: a one-byte change to the copied backup-item-results.json was not rejected by VerifyExisting.'}
+            $copiedReportA = Join-Path $copyRootA 'transport\backup-report.html'
+            if(-not [IO.File]::Exists($copiedReportA)){throw 'Case a: backup-report.html was not copied into the independent copy.'}
+            $reportOriginalBytes = [IO.File]::ReadAllBytes($copiedReportA)
+            $reportTamperBytes = [byte[]]$reportOriginalBytes.Clone()
+            $reportTamperBytes[0] = [byte]($reportTamperBytes[0] -bxor 0x01)
+            [IO.File]::WriteAllBytes($copiedReportA, $reportTamperBytes)
+            $reportTamperRejected = $false
+            try {
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destA -Mode VerifyExisting | Out-Null
+            } catch {
+                $reportTamperRejected = $_.Exception.Message -like '*backup-report.html*'
+            }
+            [IO.File]::WriteAllBytes($copiedReportA, $reportOriginalBytes)
+            if(-not $reportTamperRejected){throw 'Case a: a one-byte change to the copied backup-report.html was not rejected by VerifyExisting.'}
 
             # Case b: ZIP / Copy / Network
             $destB = Join-Path $Root 'copy-dest-b'; [void][IO.Directory]::CreateDirectory($destB)
@@ -275,6 +296,7 @@ try {
             Copy-Item -LiteralPath $result.Delivery.Path -Destination $transportE -Force
             Copy-Item -LiteralPath $result.Delivery.Directory -Destination $transportE -Recurse -Force
             Copy-Item -LiteralPath $result.ItemResults.Path -Destination $transportE -Force
+            Copy-Item -LiteralPath $result.OfflineReport.Path -Destination $transportE -Force
             $script:fixtureMediaClass = 'Removable'
             $resE = Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destE -Mode VerifyExisting
             if($resE.OfflineReadiness -cne 'Verified' -or $resE.IndependentCopy.Status -cne 'Verified'){throw 'Case e: Manual copy VerifyExisting not verified.'}
@@ -494,6 +516,39 @@ try {
         $targetRejected=$false;try{[void](Get-WsmHtmlView $targetRoot $catalog.PairId 'backup-items' 'Target')}catch{$targetRejected=($_.Exception.Message -like '*only available to the Source role*')}
         if(-not $targetRejected){throw 'The backup-items view must be rejected for the Target role.'}
         Write-Host 'PASS: backup item results view.'
+        $synthRowTemplate={param([string]$Name,[string]$Status)[pscustomobject][ordered]@{ItemId=[Guid]::NewGuid().ToString('D');Name=$Name;Kind='DataRoot';Category='Storage';Location='C:\synthetic\'+$Name;Channel='C';Status=$Status;ReasonCode='PayloadCaptured';Reason='synthetic reason';NextStep='synthetic next step';Files=1;Bytes=[long]2048;Decision='Include';DiscoveryStatus='Present'}}
+        $synthWrite={
+            param([string]$FileName,[object[]]$Rows,[string]$InventorySource)
+            $synthPath=Join-Path $Root $FileName
+            Write-WsmJson $synthPath ([pscustomobject][ordered]@{SchemaVersion=1;Kind='BackupItemResults';PairId='synthetic-pair';AttemptId='synthetic-attempt';PlanHash=('c'*64);ManifestHash=('d'*64);InventorySource=$InventorySource;GeneratedUtc='2026-10-20T00:00:00Z';Counts=[pscustomobject]@{Total=@($Rows).Count};Software=[pscustomobject][ordered]@{SoftwareRows=@();FeatureRows=@();CoverageGaps=@()};Rows=@($Rows)})
+            $synthPath
+        }
+        $bigRows=@(1..2500|ForEach-Object {& $synthRowTemplate ('synthetic-item-{0:D4}' -f $_) 'BackedUp'})
+        $bigPath=& $synthWrite 'synthetic-big.json' $bigRows 'TrustedInventory'
+        $bigReport=Export-WsmBackupOfflineReport $bigPath (Get-FileHash -LiteralPath $bigPath -Algorithm SHA256).Hash (Join-Path $Root 'synthetic-big.html')
+        $bigBytes=[IO.File]::ReadAllBytes($bigReport.Path)
+        if($bigBytes.Length -ge 3 -and $bigBytes[0] -eq 0xEF -and $bigBytes[1] -eq 0xBB -and $bigBytes[2] -eq 0xBF){throw 'The offline report must be UTF-8 without a BOM.'}
+        if($bigReport.SHA256 -cne (Get-FileHash -LiteralPath $bigReport.Path -Algorithm SHA256).Hash.ToLowerInvariant()){throw 'The offline report export must return the lowercase SHA256 of the written file.'}
+        $bigHtml=[Text.Encoding]::UTF8.GetString($bigBytes)
+        if($bigHtml.IndexOf('synthetic-item-2500',[StringComparison]::Ordinal) -lt 0 -or $bigHtml.IndexOf('synthetic-item-0001',[StringComparison]::Ordinal) -lt 0){throw 'The offline report must list every row without truncation.'}
+        $xssName='</script><img src=x onerror=alert(1)>'
+        $xssPath=& $synthWrite 'synthetic-xss.json' @((& $synthRowTemplate $xssName 'BackedUp'),(& $synthRowTemplate $xssName 'NotBackedUp')) 'Unavailable'
+        $xssReport=Export-WsmBackupOfflineReport $xssPath (Get-FileHash -LiteralPath $xssPath -Algorithm SHA256).Hash (Join-Path $Root 'synthetic-xss.html')
+        $xssHtml=[IO.File]::ReadAllText($xssReport.Path,[Text.Encoding]::UTF8)
+        if($xssHtml.IndexOf('<img src=x',[StringComparison]::Ordinal) -ge 0 -or $xssHtml.IndexOf('&lt;img src=x',[StringComparison]::Ordinal) -lt 0){throw 'Data values in the offline report must be HTML-encoded.'}
+        $emptyPath=& $synthWrite 'synthetic-empty.json' @() 'PackageControls'
+        $emptyReport=Export-WsmBackupOfflineReport $emptyPath (Get-FileHash -LiteralPath $emptyPath -Algorithm SHA256).Hash (Join-Path $Root 'synthetic-empty.html')
+        $emptyHtml=[IO.File]::ReadAllText($emptyReport.Path,[Text.Encoding]::UTF8)
+        foreach($sectionId in @('backed','pending','software')){
+            $sectionStart=$emptyHtml.IndexOf('<section id="'+$sectionId+'"',[StringComparison]::Ordinal)
+            if($sectionStart -lt 0){throw ('The empty offline report must still contain section '+$sectionId+'.')}
+            $sectionEnd=$emptyHtml.IndexOf('</section>',$sectionStart,[StringComparison]::Ordinal)
+            if($emptyHtml.Substring($sectionStart,$sectionEnd-$sectionStart).IndexOf('沒有項目',[StringComparison]::Ordinal) -lt 0){throw ('The empty offline report section '+$sectionId+' must say there are no items.')}
+        }
+        $wrongHashRejected=$false
+        try{[void](Export-WsmBackupOfflineReport $bigPath ('0'*64) (Join-Path $Root 'synthetic-wrong.html'))}catch{$wrongHashRejected=$true}
+        if(-not $wrongHashRejected -or [IO.File]::Exists((Join-Path $Root 'synthetic-wrong.html'))){throw 'A wrong expected SHA256 must be rejected before any report is written.'}
+        Write-Host 'PASS: offline backup report.'
         # Separate mutable FileScope approval proves the cancellation boundary is
         # reached before the producer-freeze provider could be invoked.
         . (Join-Path $PSScriptRoot 'ExternalReadinessEvidenceFixtures.ps1')

@@ -226,6 +226,166 @@ function Export-WsmBackupItemResults([string]$Path,[object[]]$Rows,$Meta) {
     [pscustomobject]@{Path=[IO.Path]::GetFullPath($Path);SHA256=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant();Counts=[pscustomobject]$counts;InventorySource=[string]$Meta.InventorySource}
 }
 
+function ConvertTo-WsmHtmlText($Value) {
+    if($null -eq $Value){return ''}
+    [Net.WebUtility]::HtmlEncode([string]$Value)
+}
+
+function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha256,[string]$OutputPath) {
+    Assert-WsmNoReparse $ResultsPath
+    Assert-WsmNoReparse $OutputPath
+    if(-not $ExpectedSha256 -or (Get-FileHash -LiteralPath $ResultsPath -Algorithm SHA256).Hash -ine $ExpectedSha256){throw ('Backup item results hash mismatch: '+$ResultsPath)}
+    $document=Read-WsmJson $ResultsPath
+    if([string]$document.Kind -cne 'BackupItemResults'){throw 'The file is not a backup item results document.'}
+    $encode={param($Value)ConvertTo-WsmHtmlText $Value}
+    $channelText=@{C='C 槽';NonC='非 C 槽';Configuration='設定';Certificate='憑證'}
+    $sizeText={param($Value)$n=[double]$Value;if($n -lt 0){return '—'};$units=@('B','KiB','MiB','GiB');$i=0;while($n -ge 1024 -and $i -lt 3){$n=$n/1024;$i++};if($i -eq 0){([string][long]$n)+' B'}else{($n.ToString($(if($n -ge 100){'0'}else{'0.0'}),[Globalization.CultureInfo]::InvariantCulture))+' '+$units[$i]}}
+    $buildTable={
+        param([string]$Id,[string]$Caption,[string]$SearchColumns,[string[]]$Headers,[object[]]$RowCells)
+        if(@($RowCells).Count -eq 0){return '<p class="empty">沒有項目</p>'}
+        $sb=New-Object Text.StringBuilder
+        [void]$sb.Append('<div class="table-wrap" tabindex="0" role="region" aria-label="'+(& $encode $Caption)+'表格"><table id="'+$Id+'" data-search="'+$SearchColumns+'"><caption>'+(& $encode $Caption)+'，共 '+@($RowCells).Count+' 筆</caption><thead><tr>')
+        foreach($header in $Headers){[void]$sb.Append('<th scope="col">'+(& $encode $header)+'</th>')}
+        [void]$sb.Append('</tr></thead><tbody>')
+        foreach($cells in $RowCells){
+            [void]$sb.Append('<tr>')
+            foreach($cell in $cells){[void]$sb.Append('<td>'+(& $encode $cell)+'</td>')}
+            [void]$sb.Append('</tr>')
+        }
+        [void]$sb.Append('</tbody></table></div>')
+        $sb.ToString()
+    }
+    $allRows=@($document.Rows | Where-Object {$null -ne $_})
+    $backedRows=@($allRows | Where-Object {[string]$_.Status -ceq 'BackedUp'})
+    $pendingRows=@($allRows | Where-Object {[string]$_.Status -ceq 'NotBackedUp'})
+    $softwareRows=@($document.Software.SoftwareRows | Where-Object {$null -ne $_})
+    $featureRows=@($document.Software.FeatureRows | Where-Object {$null -ne $_})
+    $gapCount=@($document.Software.CoverageGaps | Where-Object {$null -ne $_}).Count
+    $backedCells=@(foreach($row in $backedRows){,@([string]$row.Name,[string]$row.Kind,[string]$row.Location,$(if($channelText.ContainsKey([string]$row.Channel)){$channelText[[string]$row.Channel]}else{[string]$row.Channel}),[string]$row.Files,(& $sizeText $row.Bytes))})
+    $pendingCells=@(foreach($row in $pendingRows){,@([string]$row.Name,[string]$row.Kind,[string]$row.Location,[string]$row.Reason,[string]$row.NextStep,[string]$row.DiscoveryStatus)})
+    $softwareCells=@(foreach($row in $softwareRows){,@([string]$row.Name,[string]$row.Version,[string]$row.Publisher,[string]$row.Architecture,[string]$row.Scope,[string]$row.Location,[string]$row.DispositionText)})
+    $featureCells=@(foreach($row in $featureRows){,@([string]$row.Name,[string]$row.FeatureName)})
+    $sourceTexts=@{PackageControls='封裝內的來源盤點';TrustedInventory='已核驗的來源盤點';Unavailable='無法取得來源盤點'}
+    $inventorySource=[string]$document.InventorySource
+    $sourceText=$(if($sourceTexts.ContainsKey($inventorySource)){$sourceTexts[$inventorySource]}else{$inventorySource})
+    $page=New-Object Text.StringBuilder
+    [void]$page.Append(@'
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>搬移備份報告</title>
+<style>
+body{margin:0;font:16px/1.6 system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif;color:#172033;background:#fff}
+main{max-width:72rem;margin:0 auto;padding:1rem}
+h1{font-size:1.5rem;margin:.5rem 0}
+h2{font-size:1.25rem;margin:1.5rem 0 .5rem}
+h3{font-size:1.1rem;margin:1.25rem 0 .5rem}
+dl.meta{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem;margin:.5rem 0}
+dl.meta dt{font-weight:700}
+dl.meta dd{margin:0;overflow-wrap:anywhere}
+.note{border:2px solid #7a5a00;background:#fff6d6;padding:.75rem 1rem;margin:1rem 0;border-radius:4px}
+.callout{border:2px solid #9b1c1c;background:#fdecec;padding:.75rem 1rem;margin:1rem 0;border-radius:4px}
+.empty{font-style:italic;margin:.5rem 0}
+.table-wrap{overflow-x:auto;max-width:100%;border:1px solid #bbc4ce}
+.table-wrap:focus{outline:3px solid #1b5fc1;outline-offset:2px}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+caption{text-align:left;padding:.5rem;font-weight:700}
+th,td{border:1px solid #bbc4ce;padding:.4rem .5rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+th{background:#eef2f7}
+[hidden]{display:none!important}
+.tabs{display:flex;flex-wrap:wrap;gap:.25rem;border-bottom:2px solid #172033;margin-top:1rem}
+.tabs button{font:inherit;padding:.5rem .9rem;border:1px solid #172033;border-bottom:0;background:#eef2f7;color:#172033;cursor:pointer}
+.tabs button[aria-selected=true]{background:#fff;font-weight:700;border-top:5px solid #172033;text-decoration:underline}
+.tabs button:focus{outline:3px solid #1b5fc1;outline-offset:2px}
+.toolbar,.pager{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.5rem 0}
+.toolbar input{font:inherit;padding:.3rem .5rem;min-width:12rem;max-width:100%}
+.pager button{font:inherit;padding:.3rem .8rem}
+@media (max-width:480px){main{padding:.5rem}dl.meta{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main>
+<h1>搬移備份報告</h1>
+'@)
+    [void]$page.Append("`n"+'<dl class="meta"><dt>配對 ID</dt><dd>'+(& $encode $document.PairId)+'</dd><dt>Attempt ID</dt><dd>'+(& $encode $document.AttemptId)+'</dd><dt>產生時間</dt><dd>'+(& $encode $document.GeneratedUtc)+'</dd><dt>來源盤點</dt><dd>'+(& $encode $sourceText)+'</dd></dl>'+"`n")
+    [void]$page.Append('<p class="note" role="note">這份報告顯示擷取與封存當時的狀態，不代表目前備份媒體仍然完整，也不代表新機的還原結果。新機匯入時會重新驗證所有檔案。</p>'+"`n")
+    if($inventorySource -ceq 'Unavailable'){[void]$page.Append('<p class="callout">無法取得來源盤點，未備份清單只包含核准計畫內的項目，未選入的已發現項目沒有列出。</p>'+"`n")}
+    [void]$page.Append('<section id="backed" data-tab="已備份（'+$backedRows.Count+'）"><h2>已備份（'+$backedRows.Count+'）</h2>'+"`n"+(& $buildTable 'tbl-backed' '已備份項目' '0,2' @('名稱','類型','原位置','通道','檔案數','大小') $backedCells)+"`n</section>`n")
+    [void]$page.Append('<section id="pending" data-tab="未備份（'+$pendingRows.Count+'）"><h2>未備份（'+$pendingRows.Count+'）</h2>'+"`n"+(& $buildTable 'tbl-pending' '未備份項目' '0,2' @('名稱','類型','原位置','原因','下一步','盤點狀態') $pendingCells)+"`n</section>`n")
+    [void]$page.Append('<section id="software" data-tab="安裝軟體（'+$softwareRows.Count+'）"><h2>安裝軟體（'+$softwareRows.Count+'）</h2>'+"`n"+'<p>這是舊機上發現的軟體清單，供您在新機自行安裝。工具不會自動安裝，也不保證新版相容。</p>'+"`n")
+    if($gapCount -gt 0){[void]$page.Append('<p class="callout">軟體盤點有 '+$gapCount+' 個範圍未完整取得，清單可能不完整。</p>'+"`n")}
+    [void]$page.Append('<h3>安裝軟體清單</h3>'+"`n"+(& $buildTable 'tbl-software' '安裝軟體' '0,1,5' @('名稱','版本','發行者','架構','範圍','安裝位置','新機決策') $softwareCells)+"`n"+'<h3>Windows 角色與功能</h3>'+"`n"+(& $buildTable 'tbl-features' 'Windows 角色與功能' '0,1' @('顯示名稱','Install-WindowsFeature 名稱') $featureCells)+"`n</section>`n")
+    [void]$page.Append(@'
+</main>
+<script>
+(function(){
+var doc=document,PAGE=100;
+doc.documentElement.className+=' js';
+function mk(tag,text,cls){var e=doc.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;}
+function enhanceTable(table){
+ var wrap=table.parentNode,body=table.tBodies[0],rows=[].slice.call(body.rows);
+ var cols=(table.getAttribute('data-search')||'0').split(',');
+ var texts=rows.map(function(r){return cols.map(function(c){return r.cells[+c]?r.cells[+c].textContent:'';}).join('\n').toLowerCase();});
+ var bar=mk('div','','toolbar'),label=mk('label','搜尋名稱或位置'),input=doc.createElement('input');
+ input.type='search';input.id=table.id+'-q';input.autocomplete='off';label.htmlFor=input.id;bar.appendChild(label);bar.appendChild(input);
+ var none=mk('p','沒有符合搜尋條件的項目','empty');none.hidden=true;
+ var pager=mk('div','','pager'),prev=mk('button','上一頁'),next=mk('button','下一頁'),status=mk('span');
+ prev.type='button';next.type='button';status.setAttribute('aria-live','polite');
+ pager.appendChild(prev);pager.appendChild(status);pager.appendChild(next);
+ wrap.parentNode.insertBefore(bar,wrap);wrap.parentNode.insertBefore(none,wrap);wrap.parentNode.insertBefore(pager,wrap.nextSibling);
+ var page=0;
+ function draw(){
+  var q=input.value.toLowerCase(),m=[],i;
+  for(i=0;i<rows.length;i++){if(!q||texts[i].indexOf(q)>=0)m.push(i);}
+  var pages=Math.max(1,Math.ceil(m.length/PAGE));
+  if(page>=pages)page=pages-1;if(page<0)page=0;
+  for(i=0;i<rows.length;i++)rows[i].hidden=true;
+  m.slice(page*PAGE,(page+1)*PAGE).forEach(function(k){rows[k].hidden=false;});
+  wrap.hidden=!m.length;none.hidden=m.length>0;pager.hidden=!m.length;
+  status.textContent=m.length?'第 '+(page+1)+'／'+pages+' 頁，共 '+m.length+' 筆':'';
+  prev.hidden=next.hidden=pages<2;prev.disabled=page<=0;next.disabled=page>=pages-1;
+ }
+ input.addEventListener('input',function(){page=0;draw();});
+ prev.addEventListener('click',function(){page--;draw();});
+ next.addEventListener('click',function(){page++;draw();});
+ draw();
+}
+[].slice.call(doc.querySelectorAll('table[data-search]')).forEach(enhanceTable);
+var sections=[].slice.call(doc.querySelectorAll('main > section[data-tab]'));
+if(!sections.length)return;
+var list=mk('div','','tabs'),tabs=[];
+list.setAttribute('role','tablist');list.setAttribute('aria-label','備份明細分頁');
+function select(n,focus){
+ sections.forEach(function(s,i){var on=i===n;tabs[i].setAttribute('aria-selected',on?'true':'false');tabs[i].tabIndex=on?0:-1;s.hidden=!on;});
+ if(focus)tabs[n].focus();
+}
+sections.forEach(function(s,i){
+ var t=mk('button',s.getAttribute('data-tab'));
+ t.type='button';t.id='tab-'+s.id;t.setAttribute('role','tab');t.setAttribute('aria-controls',s.id);
+ s.setAttribute('role','tabpanel');s.setAttribute('aria-labelledby',t.id);
+ t.addEventListener('click',function(){select(i,false);});
+ t.addEventListener('keydown',function(e){
+  var n=-1;
+  if(e.key==='ArrowRight')n=(i+1)%sections.length;else if(e.key==='ArrowLeft')n=(i+sections.length-1)%sections.length;else if(e.key==='Home')n=0;else if(e.key==='End')n=sections.length-1;
+  if(n<0)return;e.preventDefault();select(n,true);
+ });
+ list.appendChild(t);tabs.push(t);
+});
+sections[0].parentNode.insertBefore(list,sections[0]);
+select(0,false);
+})();
+</script>
+</body>
+</html>
+'@)
+    $text=$page.ToString().Replace("`r`n","`n")
+    [IO.File]::WriteAllText($OutputPath,$text,(New-Object Text.UTF8Encoding($false)))
+    [pscustomobject]@{Path=[IO.Path]::GetFullPath($OutputPath);SHA256=(Get-FileHash -LiteralPath $OutputPath -Algorithm SHA256).Hash.ToLowerInvariant()}
+}
+
 function Get-WsmWizardBackupItemResultsView([string]$Workspace,[string]$PairId) {
     Assert-WsmId $PairId
     $profile=Read-WsmOutputProfile $Workspace
