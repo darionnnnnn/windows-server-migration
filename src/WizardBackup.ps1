@@ -362,20 +362,42 @@ function Test-WsmIndependentCopyFiles([string]$CopyRoot,$Delivery,$CancellationT
     }
 }
 
+function Get-WsmWizardIndependentCopyAction($Availability) {
+    $stage='';$hasPackage=$false;$runId=''
+    if($Availability){
+        if($Availability.PSObject.Properties['stage']){$stage=[string]$Availability.stage}
+        if($Availability.PSObject.Properties['hasPackage']){$hasPackage=[bool]$Availability.hasPackage}
+        if($Availability.PSObject.Properties['runId']){$runId=[string]$Availability.runId}
+    }
+    if($stage -ceq 'Delivered' -and $hasPackage){
+        return New-WsmWizardRuntimeAction 'IndependentCopy' $true '把已封存的交付複製到可移除磁碟或網路位置並逐檔驗證；舊機本機固定磁碟不算獨立副本。' @{BackupOperationId=$runId;Mode='Copy'} @('DestinationRoot')
+    }
+    return New-WsmWizardRuntimeAction 'IndependentCopy' $false '需先完成一次已交付的備份，才能建立獨立副本。' @{} @('DestinationRoot')
+}
+
+function Get-WsmWizardOfflineReadiness($Availability) {
+    if(-not $Availability -or -not ($Availability.PSObject.Properties['attempt'] -and $Availability.attempt)){
+        return 'NotDelivered'
+    }
+    $runId=if($Availability.PSObject.Properties['runId']){[string]$Availability.runId}else{''}
+    return (ConvertTo-WsmWizardBackupResult $Availability.attempt $runId).OfflineReadiness
+}
+
 function Invoke-WsmWizardIndependentCopy {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Workspace,
         [Parameter(Mandatory)][string]$PairId,
+        [Parameter(Mandatory)][string]$BackupOperationId,
         [Parameter(Mandatory)][string]$OperationId,
         [Parameter(Mandatory)][string]$DestinationRoot,
         [ValidateSet('Copy','VerifyExisting')][string]$Mode='Copy',
         $CancellationToken=$null
     )
-    Assert-WsmId $PairId;Assert-WsmId $OperationId
+    Assert-WsmId $PairId;Assert-WsmId $OperationId;Assert-WsmId $BackupOperationId
     $profile=Read-WsmOutputProfile $Workspace
     if(-not $profile -or $profile.Role -cne 'Source'){throw 'Independent copy requires this enrolled Source workspace.'}
-    $operationAttempt=Get-WsmWizardBackupAttemptForOperation $Workspace $PairId $profile $OperationId
+    $operationAttempt=Get-WsmWizardBackupAttemptForOperation $Workspace $PairId $profile $BackupOperationId
     if(-not $operationAttempt -or -not $operationAttempt.Attempt){throw 'Independent copy requires a delivered backup attempt for this operation.'}
     $attempt=$operationAttempt.Attempt;$attemptPath=$operationAttempt.Path
     if($attempt.Stage -cne 'Delivered' -or -not ($attempt.PSObject.Properties['Delivery'] -and $attempt.Delivery -and $attempt.Delivery.PSObject.Properties['SHA256'] -and $attempt.Delivery.SHA256)){
@@ -448,7 +470,7 @@ function Invoke-WsmWizardIndependentCopy {
         $receiptDir=Join-Path $backupRoot 'independent-copies'
         if(-not [IO.Directory]::Exists($receiptDir)){[void](New-WsmOutputOwnedDirectory $receiptDir)}
         $receiptId=[Guid]::NewGuid().ToString('D')
-        $receiptPath=Join-Path $receiptDir ($OperationId+'-'+$receiptId+'.json')
+        $receiptPath=Join-Path $receiptDir ($BackupOperationId+'-'+$receiptId+'.json')
         $verifiedUtc=Get-WsmUtc
         $receipt=[pscustomobject][ordered]@{
             SchemaVersion=1
@@ -456,7 +478,8 @@ function Invoke-WsmWizardIndependentCopy {
             Kind='IndependentCopyReceipt'
             PairId=$PairId
             AttemptId=$attemptId
-            OperationId=$OperationId
+            BackupOperationId=$BackupOperationId
+            RequestOperationId=$OperationId
             DeliveryMode=$deliveryMode
             DeliverySHA256=$deliverySHA256
             CopyRoot=[IO.Path]::GetFullPath($copyRoot)
@@ -498,7 +521,7 @@ function Invoke-WsmWizardIndependentCopy {
         try{Write-WsmWizardBackupAttempt $attemptPath $attempt $Workspace}catch{}
         throw
     }
-    ConvertTo-WsmWizardBackupResult $attempt $OperationId
+    ConvertTo-WsmWizardBackupResult $attempt $BackupOperationId
 }
 
 function Assert-WsmWizardBackupPlanSupported($Plan) {

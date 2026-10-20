@@ -45,7 +45,7 @@ try {
         Check (-not [IO.File]::Exists($sourceStatePath) -and -not [IO.File]::Exists($targetStatePath)) 'Read-only runtime projection created WizardState as a side effect.'
         Check ((SaveProfileHash $sourceWork) -ceq $sourceProfileHash -and (SaveProfileHash $targetWork) -ceq $targetProfileHash) 'Runtime defaults mutated the enrolled role profile.'
         $contracts=Get-WsmWizardRuntimeActionContracts
-        foreach($name in @('StartBackup','SourceResume','ImportApprovedPlan','TargetZipImport','TargetDirectoryImport','BackupImpactPreview','ComparisonExport','ComparisonImport','CreateTargetDecisionReceipt','TargetRestorePreview','TargetRestore','TargetValidation','TargetAcceptance','TargetActivation')){
+        foreach($name in @('StartBackup','IndependentCopy','SourceResume','ImportApprovedPlan','TargetZipImport','TargetDirectoryImport','BackupImpactPreview','ComparisonExport','ComparisonImport','CreateTargetDecisionReceipt','TargetRestorePreview','TargetRestore','TargetValidation','TargetAcceptance','TargetActivation')){
             Check ($contracts.Contains($name)) ('Runtime action contract is missing '+$name+'.')
         }
         foreach($name in @('Owner','Evidence','FreezeAuthorization','Acknowledgement','OwnershipEvidence','Reason','CutoverPlanPath','CutoverPlanHash')){

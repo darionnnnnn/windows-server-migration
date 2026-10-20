@@ -668,6 +668,12 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：Test-WizardBackup 以真實的 Directory／ZIP 交付跑完 11 個案例（複製、人工複製、竄改、缺卷、本機固定磁碟、工作區內、未交付、覆寫、不明檔案、分級函式）；OfflineFullSet 50、WizardBackupRecovery、WizardRuntime、HtmlConsole 112、NativeWizardRuntimeHandler 通過。突變：跳過成員雜湊比對、跳過本機固定磁碟拒絕、跳過不明檔案檢查，三者都會轉紅。
 - 尚未完成：HTML 入口（D3b-3）；可移除與網路媒體只以替身分級，沒有實機媒體驗證；新機匯入時重新定位副本的流程屬 E3a。
 
+### 17.29 D3b-3a 獨立副本後端接線（部分完成）
+
+- 委派 agy；它在最後一個驗收測試還沒跑完時就結束，沒有留下完整結果，所以驗收全部由主代理重跑。HTML 與 CLI 都會自動把本次請求的 id 填進 `OperationId`，因此核心參數改名為 `BackupOperationId`，`OperationId` 只記為收據的 `RequestOperationId`。新增 `IndependentCopy` action：註冊在 action 對照表、Source 群組、精靈 action 清單、標籤與說明；加入執行時期契約（`DestinationRoot` 是明確輸入，不放進預設值）；來源執行時期投影提供這個 action 與 `offlineReadiness`；取消權杖和 StartBackup 共用同一個分支；HTML 投影白名單補上新欄位。
+- 驗證（WinPS 5.1）：WizardBackup、WizardRuntime、OperationRequests、HtmlConsole 112、WizardHtmlRuntimeProjection 185、WizardTextRuntime 65、NativeWizardRuntimeHandler 通過。突變（action 不檢查是否已交付）會轉紅。`Test-TextConsole` 在本輪開始前的 a4193aa 就已失敗（`Unknown operation for this installed module.`），屬既有問題，列為待查。
+- 尚未完成：HTML 畫面（D3b-3b）。
+
 ## 18. 第五次定案：使用者目標對照與備份端優先
 
 > 2026-10-20 使用者盤點後定案；介面規格經 ui-ux-pro-max（HTML／CSS 指引、WCAG 2.2 AA 檢查目標）檢視。本節只補規格與調整順序，不改第 1 節目標，也不改核准、秘密、production gate 的邊界。與前文順序衝突時以本節為準，其餘契約不變。本節是規劃，不是完成證據。

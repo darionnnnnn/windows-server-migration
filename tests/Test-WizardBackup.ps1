@@ -160,11 +160,32 @@ try {
             # Case a: Directory / Copy / Removable
             $destA = Join-Path $Root 'copy-dest-a'; [void][IO.Directory]::CreateDirectory($destA)
             $script:fixtureMediaClass = 'Removable'
-            $resA = Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destA -Mode Copy
+            $resA = Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destA -Mode Copy
             if($resA.OfflineReadiness -cne 'Verified' -or $resA.IndependentCopy.Status -cne 'Verified'){throw 'Case a: Directory Copy Removable readiness or status mismatch.'}
             if(-not [IO.File]::Exists($resA.IndependentCopy.ReceiptPath)){throw 'Case a: Receipt file does not exist.'}
             $receiptHashA = (Get-FileHash -LiteralPath $resA.IndependentCopy.ReceiptPath -Algorithm SHA256).Hash.ToLowerInvariant()
             if($receiptHashA -cne $resA.IndependentCopy.ReceiptSHA256){throw 'Case a: Receipt hash mismatch.'}
+            $receiptA = Read-WsmJson $resA.IndependentCopy.ReceiptPath
+            if($receiptA.BackupOperationId -cne $successOperationId){throw 'Case a: Receipt BackupOperationId mismatch.'}
+            if($receiptA.RequestOperationId -ceq $receiptA.BackupOperationId){throw 'Case a: Receipt RequestOperationId must differ from BackupOperationId.'}
+
+
+            $actNull = Get-WsmWizardIndependentCopyAction $null
+            if($actNull.available -ne $false){throw 'Action for null availability must be unavailable.'}
+            if((Get-WsmWizardOfflineReadiness $null) -cne 'NotDelivered'){throw 'OfflineReadiness for null must be NotDelivered.'}
+            $testGuid = [Guid]::NewGuid().ToString('D')
+            $synthDelivered = [pscustomobject]@{stage='Delivered';hasPackage=$true;runId=$testGuid}
+            $actDelivered = Get-WsmWizardIndependentCopyAction $synthDelivered
+            if($actDelivered.available -ne $true){throw 'Action for delivered availability must be available.'}
+            if($actDelivered.defaults.BackupOperationId -cne $testGuid){throw 'Action defaults BackupOperationId mismatch.'}
+            if($actDelivered.defaults.Mode -cne 'Copy'){throw 'Action defaults Mode mismatch.'}
+            if(@($actDelivered.missing) -cnotcontains 'DestinationRoot'){throw 'Action missing must contain DestinationRoot.'}
+            $synthFailed = [pscustomobject]@{stage='Failed';hasPackage=$false}
+            $actFailed = Get-WsmWizardIndependentCopyAction $synthFailed
+            if($actFailed.available -ne $false){throw 'Action for failed availability must be unavailable.'}
+            $attemptA = (Get-WsmWizardBackupAttemptForOperation $sourceRoot $catalog.PairId (Read-WsmOutputProfile $sourceRoot) $successOperationId).Attempt
+            $synthAttemptA = [pscustomobject]@{stage='Delivered';hasPackage=$true;runId=$successOperationId;attempt=$attemptA}
+            if((Get-WsmWizardOfflineReadiness $synthAttemptA) -cne 'Verified'){throw 'OfflineReadiness for verified attempt must be Verified.'}
             $copyRootA = $resA.IndependentCopy.CopyRoot
             $sourcePayloadDir = Join-Path $result.Delivery.Directory 'payload'
             $copiedPayloadDir = Join-Path (Join-Path $copyRootA 'transport\delivery') 'payload'
@@ -181,7 +202,7 @@ try {
             # Case b: ZIP / Copy / Network
             $destB = Join-Path $Root 'copy-dest-b'; [void][IO.Directory]::CreateDirectory($destB)
             $script:fixtureMediaClass = 'Network'
-            $resB = Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $zipOperationId -DestinationRoot $destB -Mode Copy
+            $resB = Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $zipOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destB -Mode Copy
             if($resB.OfflineReadiness -cne 'VerifiedNetworkAvailabilityUnconfirmed'){throw 'Case b: ZIP Copy Network OfflineReadiness mismatch.'}
 
             # Case c: Tamper
@@ -192,7 +213,7 @@ try {
             $script:fixtureMediaClass = 'Removable'
             $tamperFailed = $false
             try {
-                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destA -Mode VerifyExisting | Out-Null
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destA -Mode VerifyExisting | Out-Null
             } catch {
                 $tamperFailed = $true
             }
@@ -210,7 +231,7 @@ try {
             Remove-Item -LiteralPath $zipVolumes[0].FullName -Force
             $missingFailed = $false
             try {
-                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $zipOperationId -DestinationRoot $destB -Mode VerifyExisting | Out-Null
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $zipOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destB -Mode VerifyExisting | Out-Null
             } catch {
                 $missingFailed = $true
             }
@@ -225,12 +246,12 @@ try {
             Copy-Item -LiteralPath $result.Delivery.Path -Destination $transportE -Force
             Copy-Item -LiteralPath $result.Delivery.Directory -Destination $transportE -Recurse -Force
             $script:fixtureMediaClass = 'Removable'
-            $resE = Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destE -Mode VerifyExisting
+            $resE = Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destE -Mode VerifyExisting
             if($resE.OfflineReadiness -cne 'Verified' -or $resE.IndependentCopy.Status -cne 'Verified'){throw 'Case e: Manual copy VerifyExisting not verified.'}
             $receiptE = Read-WsmJson $resE.IndependentCopy.ReceiptPath
             if($receiptE.Mode -cne 'VerifyExisting'){throw 'Case e: Receipt Mode is not VerifyExisting.'}
             # Case k: an unlisted extra file inside the copied delivery directory is rejected.
-            $extraFileE=Join-Path (Join-Path $transportE 'delivery') 'unlisted-extra.txt';[IO.File]::WriteAllText($extraFileE,'not part of the sealed delivery');$extraRejected=$false;try{Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destE -Mode VerifyExisting|Out-Null}catch{$extraRejected=$_.Exception.Message -like '*Unexpected extra file*'};if(-not $extraRejected){throw 'Case k: Unlisted extra file in independent copy delivery was accepted.'};[IO.File]::Delete($extraFileE)
+            $extraFileE=Join-Path (Join-Path $transportE 'delivery') 'unlisted-extra.txt';[IO.File]::WriteAllText($extraFileE,'not part of the sealed delivery');$extraRejected=$false;try{Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destE -Mode VerifyExisting|Out-Null}catch{$extraRejected=$_.Exception.Message -like '*Unexpected extra file*'};if(-not $extraRejected){throw 'Case k: Unlisted extra file in independent copy delivery was accepted.'};[IO.File]::Delete($extraFileE)
 
             # Case f: LocalFixed
             $destF = Join-Path $Root 'copy-dest-f'; [void][IO.Directory]::CreateDirectory($destF)
@@ -239,7 +260,7 @@ try {
             $attemptHashBeforeF = (Get-FileHash -LiteralPath $attemptFileBeforeF -Algorithm SHA256).Hash
             $localFixedThrown = $false; $localFixedMsg = ''
             try {
-                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destF -Mode Copy | Out-Null
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destF -Mode Copy | Out-Null
             } catch {
                 $localFixedThrown = $true
                 $localFixedMsg = $_.Exception.Message
@@ -254,7 +275,7 @@ try {
             $destInside = Join-Path $sourceRoot 'inside-dest'
             $insideThrown = $false; $insideMsg = ''
             try {
-                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destInside -Mode Copy | Out-Null
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destInside -Mode Copy | Out-Null
             } catch {
                 $insideThrown = $true
                 $insideMsg = $_.Exception.Message
@@ -269,7 +290,7 @@ try {
             $script:fixtureMediaClass = 'Removable'
             $hThrown = $false; $hMsg = ''
             try {
-                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $fakeOpId -DestinationRoot $destH -Mode Copy | Out-Null
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $fakeOpId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destH -Mode Copy | Out-Null
             } catch {
                 $hThrown = $true
                 $hMsg = $_.Exception.Message
@@ -290,7 +311,7 @@ try {
             $script:fixtureMediaClass = 'Removable'
             $jThrown = $false; $jMsg = ''
             try {
-                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destJ -Mode Copy | Out-Null
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destJ -Mode Copy | Out-Null
             } catch {
                 $jThrown = $true
                 $jMsg = $_.Exception.Message

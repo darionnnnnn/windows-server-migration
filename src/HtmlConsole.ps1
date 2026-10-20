@@ -449,7 +449,7 @@ function New-WsmHtmlCancellation($Command,$Arguments,[string]$OperationId,[objec
                 $ctx=Assert-WsmWizardTargetRole $workspace $pair;$package=Get-WsmWizardTargetPackage $workspace $pair $ctx $Jobs
                 return New-WsmCancellationToken -StateDirectory (Join-Path $workspace 'pairs') -PairId $pair -PlanHash $ctx.Received.SHA256 -ManifestHash $package.ManifestHash -OperationId $OperationId
             }
-            'Invoke-WsmWizardStartBackup' {
+            {$_ -in @('Invoke-WsmWizardStartBackup','Invoke-WsmWizardIndependentCopy')} {
                 $profile=Read-WsmOutputProfile $workspace;$plan=Get-WsmWizardReceivedApprovedPlan $workspace $pair $profile
                 if(-not $plan){throw 'A verified Source plan is required before creating cancellation context.'}
                 return New-WsmCancellationToken -StateDirectory (Join-Path $workspace 'pairs') -PairId $pair -PlanHash $plan.SHA256 -OperationId $OperationId
