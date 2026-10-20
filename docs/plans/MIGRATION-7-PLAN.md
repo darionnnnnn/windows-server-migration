@@ -737,7 +737,17 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：Adapters、IisContracts、ServiceIdentity、WizardPreparation 30、InventoryFixture、WorkloadDiscovery、ServiceCredentialChallenge 15、AssistiveRestore 137、WizardPreparationBulk 43、ScriptEncoding 通過。突變：pool 判斷失效、不移除密碼屬性、審閱表單不要求 SecretRef、還原正規式修正，都會轉紅。
 - 既有失敗（在乾淨的 580e7f8 副本同樣重現，不歸因本段）：`Test-WizardPreparationAdapters` 與 `Test-AssistiveReviewForms` 都停在 `Complete typed review is required for Task/@TaskPath`。因此 Password 排程的審閱表單送出沒有端對端測試（pool 的送出有）。
 - 尚未完成：還原端 challenge（F4a-3）。盤點的完整 applicationHost 擷取只驗到純函式層。
-- 證據帳本未結：`tools/Test-PlanEvidence.ps1` 在乾淨的 580e7f8 副本（LF 與 CRLF 兩種 checkout）都失敗：A1 證據檔雜湊與帳本不符，c95b8d6 重綁 E0 時記錄的 `src/MigrationWizard.ps1` 雜湊也與已提交內容的兩種換行版本都不符。本段沒有重綁 E0，帳本修復另案處理，不在本段宣稱證據通過。
+- 證據帳本未結（見下）。
+
+### 17.40 F4a-3 還原端帳密 challenge 涵蓋排程與 IIS pool（F4a 後端完成，部分驗證）
+
+- Sonnet 5.5 subagent 實作（最後一輪測試前因 API 連線錯誤中斷），主代理審 diff 並重跑全部驗收。`Invoke-WsmAssistiveRestore` 以 `Get-WsmAdapterCredentialRequirement` 收集所有 Ready 列的帳密需求，Service／排程／pool 缺任何 SecretRef 都在原生寫入前進入同一個 WaitingForInput（沿用 state 欄位 `AssistiveServiceChallenge`）；同一 SecretRef 對應不同已核准帳號時在進入 challenge 前拒絕；提供的帳號必須等於已核准帳號。challenge 新增非秘密的 `Requirements`（SecretRef、用途、項目 id 與名稱、已核准帳號），WaitingForInput 輸出、HTML job record、recovery 與 retry-wait 都帶 `credentialRequirements`，舊 challenge 沒有此欄時退回空清單。預覽列標 `CredentialRequired／CredentialKind`。逐項路徑在建立 pending 與 intent 前先檢查帳密，缺少時以 `AssistiveItemFailed` 結束、不留 PendingOperations。`Get-WsmIisElementSnapshot` 對 `password` 屬性只記 `[withheld]`，readback 不比對 `processModel/@password` 但仍比對 `userName`。CLI 提示改為顯示用途、項目與已核准帳號並預填帳號。
+- 驗證（WinPS 5.1）：ServiceCredentialChallenge 46（原 15）、AssistiveRestore 140、AssistiveResources 34、HtmlConsole 114、WizardRestore 85、IisContracts、Adapters、AssistiveRecoveryBoundaries 6、RecoveryContracts、WizardHtmlRuntimeProjection 185、ScriptEncoding、Node WizardRuntimeTargetUi 通過。突變：拿掉缺帳密防線、IIS 快照保留密碼都以專屬斷言轉紅；challenge 只收 Service 時以 StrictMode 屬性錯誤轉紅（非專屬斷言）。
+- 限制：排程與 pool 的原生 consumer 只以替身驗證；CLI 提示仍附 SecretRef 供對照；HTML 畫面仍是舊的內嵌面板（F4b）。
+
+### 17.41 證據帳本未結
+
+- `tools/Test-PlanEvidence.ps1` 在乾淨的 580e7f8 副本（LF 與 CRLF 兩種 checkout）都失敗：A1 證據檔雜湊與帳本不符，c95b8d6 重綁 E0 時記錄的 `src/MigrationWizard.ps1` 雜湊也與已提交內容的兩種換行版本都不符。本段沒有重綁 E0，帳本修復另案處理，不在本段宣稱證據通過。
 
 ## 18. 第五次定案：使用者目標對照與備份端優先
 

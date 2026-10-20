@@ -36,6 +36,11 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
     $defaultErrors=@(Test-WsmIisXmlElement $pool $doc.DocumentElement -Root)
     if(-not ($defaultErrors -join "`n" | Select-String 'omitted attribute differs from schema default')){$defaultErrors | Write-Host;throw 'Omitted IIS schema default drift was accepted'}
     $process.Attributes['userName'].Value=''
+    $process.Attributes['password'].Value='SYNTHETIC-POOL-PASSWORD'
+    $passwordErrors=@(Test-WsmIisXmlElement $pool $doc.DocumentElement -Root); if($passwordErrors.Count){$passwordErrors | Write-Host; throw 'processModel password was compared against the omitted desired attribute'}
+    $process.Attributes['userName'].Value='unexpected-account'
+    if(-not ((@(Test-WsmIisXmlElement $pool $doc.DocumentElement -Root) -join "`n") -match 'userName')){throw 'userName drift was hidden by the password exemption'}
+    $process.Attributes['userName'].Value='';$process.Attributes['password'].Value=''
     $nestedId=New-TestIisElement 'nested' @{id='drifted'} @{id=''}
     $idRoot=New-TestIisElement 'root' @{} @{} @($nestedId)
     $idXml=Read-WsmXml '<root><nested id="expected" /></root>'

@@ -118,7 +118,7 @@ function Restore-WsmIisConfigPriorXml($Spec,[string]$PriorXml) {
     $readback
 }
 function Get-WsmIisElementSnapshot($Element) {
-    $attributes=[ordered]@{}; foreach($a in $Element.Attributes){$attributes[$a.Name]=[string]$a.Value}
+    $attributes=[ordered]@{}; foreach($a in $Element.Attributes){if($a.Name -ieq 'password'){if(-not [string]::IsNullOrEmpty([string]$a.Value)){$attributes[$a.Name]='[withheld]'};continue};$attributes[$a.Name]=[string]$a.Value}
     $children=@(foreach($e in $Element.ChildElements){Get-WsmIisElementSnapshot $e})
     $members=@(); try{$members=@(foreach($e in $Element.GetCollection()){Get-WsmIisElementSnapshot $e})}catch{}
     [pscustomobject]@{Name=$Element.ElementTagName; Attributes=$attributes; Children=$children; Members=$members}
@@ -223,6 +223,7 @@ function Test-WsmIisXmlElement($Element,$Node,[switch]$Root,[string]$Path='') {
     if($null -eq $Element){return ('IIS target element absent: '+$Path+'/'+$Node.LocalName)}
     $elementPath=$Path+'/'+$Node.LocalName
     $handled=@{xmlns=$true}
+    if($Node.LocalName -ceq 'processModel'){$handled.password=$true}
     if($Root){$handled.id=$true;$handled.serverAutoStart=$true;$handled.autoStart=$true;$handled.startMode=$true}
     foreach($a in $Node.Attributes){
         if($handled.ContainsKey($a.Name)){continue}
