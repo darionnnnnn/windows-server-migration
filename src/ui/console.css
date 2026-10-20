@@ -120,3 +120,5 @@ body{font-size:18px}
 .service-challenge-takeover { display: flex; align-items: flex-start; margin: .8rem 0; font-weight: 400; }
 .wizard-runtime-independent-copy{margin-top:16px}
 .wizard-runtime-independent-copy .wizard-choice+.wizard-choice{margin-top:8px}
+.job-progress-detail{margin:6px 0 0;font-size:13px;color:var(--ink)}
+.job-progress-file{overflow-wrap:anywhere;margin:2px 0 0}

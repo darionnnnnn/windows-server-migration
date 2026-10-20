@@ -105,6 +105,7 @@ function Get-WsmHtmlProgressProjection($Job) {
     $worker=Get-WsmTextMetadataValue $Job 'PowerShell';$jobRecord=Get-WsmTextMetadataValue $Job 'Record'
     if(-not $worker -or -not $worker.Streams -or -not $worker.Streams.Progress.Count){return $null}
     $streamCount=$worker.Streams.Progress.Count;$record=$worker.Streams.Progress[$streamCount-1]
+    for($progressIndex=$streamCount-1;$progressIndex -ge 0;$progressIndex--){$candidateRecord=$worker.Streams.Progress[$progressIndex];if($candidateRecord.ActivityId -eq 32 -and $candidateRecord.RecordType -ne 'Completed'){$record=$candidateRecord;break}}
     $percent=$null;try{$candidate=[int]$record.PercentComplete;if($candidate -ge 0 -and $candidate -le 100){$percent=$candidate}}catch{}
     $processedCount=$null
     foreach($source in @($Job,$jobRecord)){$value=Get-WsmTextMetadataValue $source 'processedCount';if($null -ne $value){try{$count=[long]$value;if($count -ge 0){$processedCount=$count;break}}catch{}}}
