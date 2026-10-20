@@ -661,6 +661,13 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 使用者定案（2026-10-20）：獨立副本依磁碟類型分級（可移除磁碟通過；網路／UNC 通過但標「新機可取用性待確認」；舊機本機固定磁碟拒絕）；工具可複製，人工複製的副本也走同一驗證入口；非 C ExactMembers 延後到 F3 之後。
 - 尚未完成：獨立副本複製與驗證（D3b-2）、HTML 接線（D3b-3）；Manager 端交付摘要對 CV2 仍回 `UnsupportedOfflineFullSet`；額外磁碟仍只有模擬綁定，沒有原生 D:／E: 驗證。
 
+### 17.28 D3b-2 獨立副本複製與驗證（部分完成）
+
+- 委派 agy，主代理審 diff 並獨立驗證。新增 `Invoke-WsmWizardIndependentCopy`：依使用者定案的媒體分級，拒絕本機固定磁碟與無法辨識的媒體；目的地不得位於來源工作區內。`Copy` 模式先寫 `.partial` 再改名，不覆寫內容不同的既有檔；`Copy` 與人工複製的 `VerifyExisting` 共用同一個 `Test-WsmIndependentCopyFiles`。Directory 模式逐檔比對長度與 SHA256，並拒絕清單以外的檔案；ZIP 模式重用 `Test-WsmZipVolume`。收據另存在 `wizard-backups/<PairId>/independent-copies/`，不修改封存材料；attempt 紀錄只增加 `IndependentCopy`，Stage 不變。結果投影新增 `OfflineReadiness`（NotDelivered／AwaitingIndependentCopy／Verified／VerifiedNetworkAvailabilityUnconfirmed）。
+- 主代理驗收補正：補上「交付目錄多出不明檔案必須拒絕」的測試（規格漏列）；移除 agy 加的一個不可能成立的防禦分支。agy 這段改用多行寫法，和專案的長單行慣例不同，但不影響正確性，予以接受。
+- 驗證（WinPS 5.1）：Test-WizardBackup 以真實的 Directory／ZIP 交付跑完 11 個案例（複製、人工複製、竄改、缺卷、本機固定磁碟、工作區內、未交付、覆寫、不明檔案、分級函式）；OfflineFullSet 50、WizardBackupRecovery、WizardRuntime、HtmlConsole 112、NativeWizardRuntimeHandler 通過。突變：跳過成員雜湊比對、跳過本機固定磁碟拒絕、跳過不明檔案檢查，三者都會轉紅。
+- 尚未完成：HTML 入口（D3b-3）；可移除與網路媒體只以替身分級，沒有實機媒體驗證；新機匯入時重新定位副本的流程屬 E3a。
+
 ## 18. 第五次定案：使用者目標對照與備份端優先
 
 > 2026-10-20 使用者盤點後定案；介面規格經 ui-ux-pro-max（HTML／CSS 指引、WCAG 2.2 AA 檢查目標）檢視。本節只補規格與調整順序，不改第 1 節目標，也不改核准、秘密、production gate 的邊界。與前文順序衝突時以本節為準，其餘契約不變。本節是規劃，不是完成證據。

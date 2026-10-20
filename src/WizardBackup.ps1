@@ -60,7 +60,9 @@ function Get-WsmWizardBackupAttemptForOperation([string]$Workspace,[string]$Pair
 }
 
 function ConvertTo-WsmWizardBackupResult($Attempt,[string]$OperationId) {
-    [pscustomobject][ordered]@{Kind='WizardBackupResult';Status=[string]$Attempt.Stage;PairId=[string]$Attempt.PairId;AttemptId=[string]$Attempt.AttemptId;OperationId=$OperationId;StartedByOperationId=[string]$Attempt.StartedByOperationId;Stage=[string]$Attempt.Stage;DeliveryMode=$(if($Attempt.PSObject.Properties['DeliveryMode']){[string]$Attempt.DeliveryMode}else{''});VolumeBytes=$(if($Attempt.PSObject.Properties['VolumeBytes']){[long]$Attempt.VolumeBytes}else{0});Freeze=$Attempt.Freeze;CoreExport=$Attempt.CoreExport;PackageTest=$Attempt.PackageTest;Delivery=$Attempt.Delivery;ChannelSummary=$Attempt.ChannelSummary;NonCStatus=$(if($Attempt.ChannelSummary){[string]$Attempt.ChannelSummary.NonC.Status}else{'Pending'});ResumeStage=$(if($Attempt.PSObject.Properties['ResumeStage']){[string]$Attempt.ResumeStage}else{''});CanResumeAfterReview=($Attempt.Stage -in @('Failed','Cancelled') -and $Attempt.ResumeStage -in @('Authorized','CoreExported','PackageVerified'));SourceResumeRequired=([bool]($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired));AuthoritativeApproval=$true;ProductionVerified=$false;ResumeRequired=($Attempt.Stage -in @('Authorized','CoreExported','PackageVerified') -or ($Attempt.Stage -in @('Failed','Cancelled') -and $Attempt.ResumeStage -in @('Authorized','CoreExported','PackageVerified')) -or [bool](($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired) -or ($Attempt.PSObject.Properties['SourceResumeFreshFreezePending'] -and $Attempt.SourceResumeFreshFreezePending)))}
+    $independentCopy=$(if($Attempt.PSObject.Properties['IndependentCopy']){$Attempt.IndependentCopy}else{$null})
+    $offlineReadiness=$(if($Attempt.Stage -cne 'Delivered'){'NotDelivered'}elseif($independentCopy -and $independentCopy.PSObject.Properties['Status'] -and $independentCopy.Status -ceq 'Verified'){[string]$independentCopy.Availability}else{'AwaitingIndependentCopy'})
+    [pscustomobject][ordered]@{Kind='WizardBackupResult';Status=[string]$Attempt.Stage;PairId=[string]$Attempt.PairId;AttemptId=[string]$Attempt.AttemptId;OperationId=$OperationId;StartedByOperationId=[string]$Attempt.StartedByOperationId;Stage=[string]$Attempt.Stage;DeliveryMode=$(if($Attempt.PSObject.Properties['DeliveryMode']){[string]$Attempt.DeliveryMode}else{''});VolumeBytes=$(if($Attempt.PSObject.Properties['VolumeBytes']){[long]$Attempt.VolumeBytes}else{0});Freeze=$Attempt.Freeze;CoreExport=$Attempt.CoreExport;PackageTest=$Attempt.PackageTest;Delivery=$Attempt.Delivery;ChannelSummary=$Attempt.ChannelSummary;NonCStatus=$(if($Attempt.ChannelSummary){[string]$Attempt.ChannelSummary.NonC.Status}else{'Pending'});ResumeStage=$(if($Attempt.PSObject.Properties['ResumeStage']){[string]$Attempt.ResumeStage}else{''});CanResumeAfterReview=($Attempt.Stage -in @('Failed','Cancelled') -and $Attempt.ResumeStage -in @('Authorized','CoreExported','PackageVerified'));SourceResumeRequired=([bool]($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired));AuthoritativeApproval=$true;ProductionVerified=$false;ResumeRequired=($Attempt.Stage -in @('Authorized','CoreExported','PackageVerified') -or ($Attempt.Stage -in @('Failed','Cancelled') -and $Attempt.ResumeStage -in @('Authorized','CoreExported','PackageVerified')) -or [bool](($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired) -or ($Attempt.PSObject.Properties['SourceResumeFreshFreezePending'] -and $Attempt.SourceResumeFreshFreezePending)));IndependentCopy=$independentCopy;OfflineReadiness=$offlineReadiness}
 }
 
 function Get-WsmWizardBackupDeliverySettings([string]$Workspace,[string]$PairId,$Profile,$Existing,[bool]$ModeSpecified,[string]$RequestedMode,[bool]$VolumeSpecified,$RequestedVolume) {
@@ -278,6 +280,225 @@ function Invoke-WsmWizardStartBackup {
 
 function Test-WsmWizardOfflineFullSetPlan($Plan) {
     [bool]($Plan.PSObject.Properties['Assistive'] -and $Plan.Assistive -and $Plan.Assistive.ContractVersion -eq 2)
+}
+
+function Get-WsmIndependentCopyMediaClass([string]$DestinationRoot) {
+    if([string]::IsNullOrWhiteSpace($DestinationRoot)){return 'Unknown'}
+    if($DestinationRoot.StartsWith('\\')){return 'Network'}
+    try {
+        $full=[IO.Path]::GetFullPath($DestinationRoot)
+        if($full.StartsWith('\\')){return 'Network'}
+        $root=[IO.Path]::GetPathRoot($full)
+        if([string]::IsNullOrWhiteSpace($root)){return 'Unknown'}
+        $drive=New-Object IO.DriveInfo($root)
+        $dt=[string]$drive.DriveType
+        if($dt -ceq 'Removable'){return 'Removable'}
+        if($dt -ceq 'Network'){return 'Network'}
+        if($dt -ceq 'Fixed'){return 'LocalFixed'}
+        return 'Unknown'
+    }catch{
+        return 'Unknown'
+    }
+}
+
+function Test-WsmIndependentCopyFiles([string]$CopyRoot,$Delivery,$CancellationToken=$null) {
+    $mode=[string]$Delivery.Mode
+    if($mode -ceq 'Directory'){
+        $summaryName=[IO.Path]::GetFileName([string]$Delivery.Path)
+        $destSummaryPath=Join-Path $CopyRoot ('transport\'+$summaryName)
+        Assert-WsmNoReparse $destSummaryPath
+        if(-not [IO.File]::Exists($destSummaryPath)){throw ('Missing independent copy summary file: '+$destSummaryPath)}
+        $summary=Read-WsmTrustedJson $destSummaryPath ([string]$Delivery.SHA256)
+        Assert-WsmEnvelope $summary 'DirectoryDelivery'
+        $summaryLen=(New-Object IO.FileInfo($destSummaryPath)).Length
+        $totalBytes=[long]$summaryLen;$fileCount=1
+        $deliveryDir=Join-Path $CopyRoot 'transport\delivery'
+        Assert-WsmNoReparse $deliveryDir
+        if(-not [IO.Directory]::Exists($deliveryDir)){throw ('Missing independent copy delivery directory: '+$deliveryDir)}
+        $expectedMembers=@{}
+        foreach($m in @($summary.Members)){
+            $rel=[string]$m.Name.Replace('/','\')
+            $expectedMembers[$rel]=$m
+            $memberPath=Join-Path $deliveryDir $rel
+            Assert-WsmNoReparse $memberPath
+            if(-not [IO.File]::Exists($memberPath)){throw ('Missing independent copy member file: '+$memberPath)}
+            $fi=New-Object IO.FileInfo($memberPath)
+            if($fi.Length -ne [long]$m.Bytes){throw ('Independent copy member file size mismatch: '+$memberPath)}
+            $h=(Get-FileHash -LiteralPath $memberPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($h -cne ([string]$m.SHA256).ToLowerInvariant()){throw ('Independent copy member file hash mismatch: '+$memberPath)}
+            $fileCount++;$totalBytes+=[long]$m.Bytes
+        }
+        $delivFull=([IO.Path]::GetFullPath($deliveryDir)).TrimEnd('\')+'\'
+        $actualFiles=@(Get-ChildItem -LiteralPath $deliveryDir -Recurse -File)
+        foreach($f in $actualFiles){
+            Assert-WsmNoReparse $f.FullName
+            $relPath=([IO.Path]::GetFullPath($f.FullName)).Substring($delivFull.Length)
+            if(-not $expectedMembers.ContainsKey($relPath)){throw ('Unexpected extra file in independent copy delivery: '+$f.FullName)}
+        }
+        return [pscustomobject]@{FileCount=[int]$fileCount;TotalBytes=[long]$totalBytes}
+    }elseif($mode -ceq 'Zip'){
+        $destTransportPath=Join-Path $CopyRoot 'transport\transport.json'
+        Assert-WsmNoReparse $destTransportPath
+        if(-not [IO.File]::Exists($destTransportPath)){throw ('Missing independent copy transport file: '+$destTransportPath)}
+        $transport=Read-WsmTrustedJson $destTransportPath ([string]$Delivery.SHA256)
+        Assert-WsmEnvelope $transport 'PackageTransport'
+        $transLen=(New-Object IO.FileInfo($destTransportPath)).Length
+        $totalBytes=[long]$transLen;$fileCount=1
+        $transDir=Join-Path $CopyRoot 'transport'
+        $volNum=0
+        foreach($v in @($transport.Volumes)){
+            $volNum++
+            $volumePath=Join-Path $transDir ([string]$v.Name)
+            Assert-WsmNoReparse $volumePath
+            if(-not [IO.File]::Exists($volumePath)){throw ('Missing independent copy ZIP volume file: '+$volumePath)}
+            $expected=@($transport.Entries | Where-Object Volume -EQ $volNum)
+            try{$check=Test-WsmZipVolume $volumePath $expected ([string]$v.Hash) $CancellationToken}catch{throw ('Independent copy ZIP volume verification failed for '+$volumePath+': '+$_.Exception.Message)}
+            if($check.Bytes -ne [long]$v.Bytes){throw ('Independent copy ZIP volume length mismatch: '+$volumePath)}
+            $fileCount++;$totalBytes+=[long]$v.Bytes
+        }
+        return [pscustomobject]@{FileCount=[int]$fileCount;TotalBytes=[long]$totalBytes}
+    }else{
+        throw 'Unknown delivery mode for independent copy.'
+    }
+}
+
+function Invoke-WsmWizardIndependentCopy {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Workspace,
+        [Parameter(Mandatory)][string]$PairId,
+        [Parameter(Mandatory)][string]$OperationId,
+        [Parameter(Mandatory)][string]$DestinationRoot,
+        [ValidateSet('Copy','VerifyExisting')][string]$Mode='Copy',
+        $CancellationToken=$null
+    )
+    Assert-WsmId $PairId;Assert-WsmId $OperationId
+    $profile=Read-WsmOutputProfile $Workspace
+    if(-not $profile -or $profile.Role -cne 'Source'){throw 'Independent copy requires this enrolled Source workspace.'}
+    $operationAttempt=Get-WsmWizardBackupAttemptForOperation $Workspace $PairId $profile $OperationId
+    if(-not $operationAttempt -or -not $operationAttempt.Attempt){throw 'Independent copy requires a delivered backup attempt for this operation.'}
+    $attempt=$operationAttempt.Attempt;$attemptPath=$operationAttempt.Path
+    if($attempt.Stage -cne 'Delivered' -or -not ($attempt.PSObject.Properties['Delivery'] -and $attempt.Delivery -and $attempt.Delivery.PSObject.Properties['SHA256'] -and $attempt.Delivery.SHA256)){
+        throw 'Independent copy requires a delivered backup attempt for this operation.'
+    }
+    $destination=[IO.Path]::GetFullPath($DestinationRoot)
+    $workspaceFull=[IO.Path]::GetFullPath($Workspace)
+    $workspacePrefix=$workspaceFull.TrimEnd('\')+'\'
+    if($destination.TrimEnd('\') -ieq $workspaceFull.TrimEnd('\') -or $destination.TrimEnd('\').StartsWith($workspacePrefix,[StringComparison]::OrdinalIgnoreCase)){
+        throw 'Independent copy destination must be outside the source workspace.'
+    }
+    $mediaClass=Get-WsmIndependentCopyMediaClass $destination
+    if($mediaClass -ceq 'LocalFixed'){throw 'Independent copy destination is a local fixed disk of the source host and is not independent.'}
+    if($mediaClass -ceq 'Unknown'){throw 'Independent copy destination media type cannot be classified.'}
+    $attemptId=[string]$attempt.AttemptId
+    $copyRoot=Join-Path $destination ('wsm-offline-'+$PairId+'-'+$attemptId)
+    $deliveryMode=[string]$attempt.Delivery.Mode
+    $deliveryPath=[string]$attempt.Delivery.Path
+    $deliverySHA256=[string]$attempt.Delivery.SHA256
+    $sourceDescriptor=Read-WsmTrustedJson $deliveryPath $deliverySHA256
+    if($deliveryMode -ceq 'Directory'){
+        Assert-WsmEnvelope $sourceDescriptor 'DirectoryDelivery'
+    }elseif($deliveryMode -ceq 'Zip'){
+        Assert-WsmEnvelope $sourceDescriptor 'PackageTransport'
+    }else{
+        throw 'Unknown delivery mode for independent copy.'
+    }
+    $filesToCopy=@()
+    if($deliveryMode -ceq 'Directory'){
+        $summaryName=[IO.Path]::GetFileName($deliveryPath)
+        $filesToCopy+=@([pscustomobject]@{Source=$deliveryPath;Dest=(Join-Path $copyRoot ('transport\'+$summaryName));Bytes=((New-Object IO.FileInfo($deliveryPath)).Length);SHA256=$deliverySHA256})
+        $sourceDeliveryDir=if($attempt.Delivery.PSObject.Properties['Directory'] -and $attempt.Delivery.Directory){[string]$attempt.Delivery.Directory}else{Join-Path (Split-Path -Parent $deliveryPath) 'delivery'}
+        foreach($m in @($sourceDescriptor.Members)){
+            $rel=[string]$m.Name.Replace('/','\')
+            $filesToCopy+=@([pscustomobject]@{Source=(Join-Path $sourceDeliveryDir $rel);Dest=(Join-Path $copyRoot ('transport\delivery\'+$rel));Bytes=[long]$m.Bytes;SHA256=[string]$m.SHA256})
+        }
+    }else{
+        $filesToCopy+=@([pscustomobject]@{Source=$deliveryPath;Dest=(Join-Path $copyRoot 'transport\transport.json');Bytes=((New-Object IO.FileInfo($deliveryPath)).Length);SHA256=$deliverySHA256})
+        $sourceZipDir=Split-Path -Parent $deliveryPath
+        foreach($v in @($sourceDescriptor.Volumes)){
+            $filesToCopy+=@([pscustomobject]@{Source=(Join-Path $sourceZipDir ([string]$v.Name));Dest=(Join-Path $copyRoot ('transport\'+[string]$v.Name));Bytes=[long]$v.Bytes;SHA256=[string]$v.Hash})
+        }
+    }
+    try {
+        if($Mode -ceq 'Copy'){
+            foreach($file in $filesToCopy){
+                Assert-WsmCancellationBoundary $CancellationToken 'IndependentCopyFile'
+                if([IO.File]::Exists($file.Dest)){
+                    $existingLen=(New-Object IO.FileInfo($file.Dest)).Length
+                    $existingHash=(Get-FileHash -LiteralPath $file.Dest -Algorithm SHA256).Hash
+                    if($existingLen -eq [long]$file.Bytes -and $existingHash -ieq [string]$file.SHA256){continue}
+                    throw 'Independent copy destination already holds different content; choose an empty location.'
+                }
+                $destDir=[IO.Path]::GetDirectoryName($file.Dest)
+                if(-not [IO.Directory]::Exists($destDir)){[void][IO.Directory]::CreateDirectory($destDir)}
+                $partial=$file.Dest+'.partial'
+                if([IO.File]::Exists($partial)){[IO.File]::Delete($partial)}
+                try {
+                    [IO.File]::Copy($file.Source,$partial,$true)
+                    [IO.File]::Move($partial,$file.Dest)
+                } catch {
+                    if([IO.File]::Exists($partial)){try{[IO.File]::Delete($partial)}catch{}}
+                    throw
+                }
+            }
+        }
+        $verified=Test-WsmIndependentCopyFiles $copyRoot $attempt.Delivery $CancellationToken
+        $availability=if($mediaClass -ceq 'Removable'){'Verified'}else{'VerifiedNetworkAvailabilityUnconfirmed'}
+        $backupRoot=Get-WsmWizardBackupRoot $Workspace $PairId
+        $receiptDir=Join-Path $backupRoot 'independent-copies'
+        if(-not [IO.Directory]::Exists($receiptDir)){[void](New-WsmOutputOwnedDirectory $receiptDir)}
+        $receiptId=[Guid]::NewGuid().ToString('D')
+        $receiptPath=Join-Path $receiptDir ($OperationId+'-'+$receiptId+'.json')
+        $verifiedUtc=Get-WsmUtc
+        $receipt=[pscustomobject][ordered]@{
+            SchemaVersion=1
+            ToolVersion=$script:ToolVersion
+            Kind='IndependentCopyReceipt'
+            PairId=$PairId
+            AttemptId=$attemptId
+            OperationId=$OperationId
+            DeliveryMode=$deliveryMode
+            DeliverySHA256=$deliverySHA256
+            CopyRoot=[IO.Path]::GetFullPath($copyRoot)
+            MediaClass=$mediaClass
+            Availability=$availability
+            Mode=$Mode
+            FileCount=[int]$verified.FileCount
+            TotalBytes=[long]$verified.TotalBytes
+            VerifiedUtc=$verifiedUtc
+            ProductionVerified=$false
+        }
+        Write-WsmJson $receiptPath $receipt
+        $receiptHash=(Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $indObj=[pscustomobject]@{
+            Status='Verified'
+            Availability=$availability
+            MediaClass=$mediaClass
+            CopyRoot=[IO.Path]::GetFullPath($copyRoot)
+            ReceiptPath=[IO.Path]::GetFullPath($receiptPath)
+            ReceiptSHA256=$receiptHash
+            VerifiedUtc=$verifiedUtc
+        }
+        if($attempt.PSObject.Properties['IndependentCopy']){$attempt.IndependentCopy=$indObj}else{Add-Member -InputObject $attempt -NotePropertyName IndependentCopy -NotePropertyValue $indObj}
+        $attempt.UpdatedUtc=Get-WsmUtc
+        Write-WsmWizardBackupAttempt $attemptPath $attempt $Workspace
+    } catch {
+        $errText=[string]$_.Exception.Message
+        if($errText.Length -gt 300){$errText=$errText.Substring(0,300)}
+        $failedObj=[pscustomobject]@{
+            Status='Failed'
+            Availability='NotVerified'
+            MediaClass=$mediaClass
+            CopyRoot=[IO.Path]::GetFullPath($copyRoot)
+            Error=$errText
+            UpdatedUtc=Get-WsmUtc
+        }
+        if($attempt.PSObject.Properties['IndependentCopy']){$attempt.IndependentCopy=$failedObj}else{Add-Member -InputObject $attempt -NotePropertyName IndependentCopy -NotePropertyValue $failedObj}
+        $attempt.UpdatedUtc=Get-WsmUtc
+        try{Write-WsmWizardBackupAttempt $attemptPath $attempt $Workspace}catch{}
+        throw
+    }
+    ConvertTo-WsmWizardBackupResult $attempt $OperationId
 }
 
 function Assert-WsmWizardBackupPlanSupported($Plan) {

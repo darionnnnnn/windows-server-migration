@@ -147,6 +147,165 @@ try {
         if((Get-FileHash -LiteralPath $outputProfilePath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $outputProfileHash -or (Get-FileHash -LiteralPath $targetProfilePath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $targetProfileHash){throw 'Per-attempt transport selection mutated an enrolled output profile.'}
         # Return from Target import observation to the enrolled Source host.
         $script:backupFixtureFingerprint=('a'*64)
+        # Independent copy and verification tests (Task 02)
+        $uncClassDirect = Get-WsmIndependentCopyMediaClass '\\fixture-server\share\x'
+        if($uncClassDirect -cne 'Network'){throw ('Case i: UNC classification failed: ' + $uncClassDirect)}
+        $sysClassDirect = Get-WsmIndependentCopyMediaClass $env:SystemRoot
+        if($sysClassDirect -cne 'LocalFixed'){throw ('Case i: SystemRoot classification failed: ' + $sysClassDirect)}
+
+        $backupOriginalMediaClass = (Get-Command Get-WsmIndependentCopyMediaClass -CommandType Function).ScriptBlock
+        function script:Get-WsmIndependentCopyMediaClass {param($DestinationRoot)$script:fixtureMediaClass}
+        function Get-WsmIndependentCopyMediaClass {param($DestinationRoot)$script:fixtureMediaClass}
+        try {
+            # Case a: Directory / Copy / Removable
+            $destA = Join-Path $Root 'copy-dest-a'; [void][IO.Directory]::CreateDirectory($destA)
+            $script:fixtureMediaClass = 'Removable'
+            $resA = Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destA -Mode Copy
+            if($resA.OfflineReadiness -cne 'Verified' -or $resA.IndependentCopy.Status -cne 'Verified'){throw 'Case a: Directory Copy Removable readiness or status mismatch.'}
+            if(-not [IO.File]::Exists($resA.IndependentCopy.ReceiptPath)){throw 'Case a: Receipt file does not exist.'}
+            $receiptHashA = (Get-FileHash -LiteralPath $resA.IndependentCopy.ReceiptPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($receiptHashA -cne $resA.IndependentCopy.ReceiptSHA256){throw 'Case a: Receipt hash mismatch.'}
+            $copyRootA = $resA.IndependentCopy.CopyRoot
+            $sourcePayloadDir = Join-Path $result.Delivery.Directory 'payload'
+            $copiedPayloadDir = Join-Path (Join-Path $copyRootA 'transport\delivery') 'payload'
+            $sourceBlobs = @(Get-ChildItem -LiteralPath $sourcePayloadDir -Filter '*.blob' -File)
+            if($sourceBlobs.Count -eq 0){throw 'Case a: No payload blobs found in source.'}
+            foreach($blob in $sourceBlobs){
+                $copiedBlobPath = Join-Path $copiedPayloadDir $blob.Name
+                if(-not [IO.File]::Exists($copiedBlobPath)){throw ('Case a: Missing copied blob ' + $blob.Name)}
+                $copiedHash = (Get-FileHash -LiteralPath $copiedBlobPath -Algorithm SHA256).Hash
+                $srcHash = (Get-FileHash -LiteralPath $blob.FullName -Algorithm SHA256).Hash
+                if($copiedHash -ine $srcHash){throw ('Case a: Copied blob hash mismatch for ' + $blob.Name)}
+            }
+
+            # Case b: ZIP / Copy / Network
+            $destB = Join-Path $Root 'copy-dest-b'; [void][IO.Directory]::CreateDirectory($destB)
+            $script:fixtureMediaClass = 'Network'
+            $resB = Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $zipOperationId -DestinationRoot $destB -Mode Copy
+            if($resB.OfflineReadiness -cne 'VerifiedNetworkAvailabilityUnconfirmed'){throw 'Case b: ZIP Copy Network OfflineReadiness mismatch.'}
+
+            # Case c: Tamper
+            $blobToTamper = @(Get-ChildItem -LiteralPath $copiedPayloadDir -Filter '*.blob' -File)[0]
+            $tamperBytes = [IO.File]::ReadAllBytes($blobToTamper.FullName)
+            $tamperBytes[0] = [byte]($tamperBytes[0] -bxor 0xFF)
+            [IO.File]::WriteAllBytes($blobToTamper.FullName, $tamperBytes)
+            $script:fixtureMediaClass = 'Removable'
+            $tamperFailed = $false
+            try {
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destA -Mode VerifyExisting | Out-Null
+            } catch {
+                $tamperFailed = $true
+            }
+            if(-not $tamperFailed){throw 'Case c: Tampered payload blob was not rejected.'}
+            $attemptAfterTamper = (Get-WsmWizardBackupAttemptForOperation $sourceRoot $catalog.PairId (Read-WsmOutputProfile $sourceRoot) $successOperationId).Attempt
+            $tamperResult = ConvertTo-WsmWizardBackupResult $attemptAfterTamper $successOperationId
+            if($attemptAfterTamper.IndependentCopy.Status -cne 'Failed' -or $tamperResult.OfflineReadiness -cne 'AwaitingIndependentCopy'){
+                throw 'Case c: Attempt status or OfflineReadiness after tamper did not record failure.'
+            }
+
+            # Case d: Missing file
+            $copyRootB = $resB.IndependentCopy.CopyRoot
+            $zipVolumes = @(Get-ChildItem -LiteralPath (Join-Path $copyRootB 'transport') -Filter '*.zip' -File)
+            if($zipVolumes.Count -eq 0){throw 'Case d: No zip volumes found.'}
+            Remove-Item -LiteralPath $zipVolumes[0].FullName -Force
+            $missingFailed = $false
+            try {
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $zipOperationId -DestinationRoot $destB -Mode VerifyExisting | Out-Null
+            } catch {
+                $missingFailed = $true
+            }
+            if(-not $missingFailed){throw 'Case d: Missing volume was not rejected.'}
+
+            # Case e: Manual copy
+            $destE = Join-Path $Root 'copy-dest-e'; [void][IO.Directory]::CreateDirectory($destE)
+            $attemptA = (Get-WsmWizardBackupAttemptForOperation $sourceRoot $catalog.PairId (Read-WsmOutputProfile $sourceRoot) $successOperationId).Attempt
+            $offlineSubDirE = Join-Path $destE ('wsm-offline-' + $catalog.PairId + '-' + [string]$attemptA.AttemptId)
+            $transportE = Join-Path $offlineSubDirE 'transport'
+            [void][IO.Directory]::CreateDirectory($transportE)
+            Copy-Item -LiteralPath $result.Delivery.Path -Destination $transportE -Force
+            Copy-Item -LiteralPath $result.Delivery.Directory -Destination $transportE -Recurse -Force
+            $script:fixtureMediaClass = 'Removable'
+            $resE = Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destE -Mode VerifyExisting
+            if($resE.OfflineReadiness -cne 'Verified' -or $resE.IndependentCopy.Status -cne 'Verified'){throw 'Case e: Manual copy VerifyExisting not verified.'}
+            $receiptE = Read-WsmJson $resE.IndependentCopy.ReceiptPath
+            if($receiptE.Mode -cne 'VerifyExisting'){throw 'Case e: Receipt Mode is not VerifyExisting.'}
+            # Case k: an unlisted extra file inside the copied delivery directory is rejected.
+            $extraFileE=Join-Path (Join-Path $transportE 'delivery') 'unlisted-extra.txt';[IO.File]::WriteAllText($extraFileE,'not part of the sealed delivery');$extraRejected=$false;try{Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destE -Mode VerifyExisting|Out-Null}catch{$extraRejected=$_.Exception.Message -like '*Unexpected extra file*'};if(-not $extraRejected){throw 'Case k: Unlisted extra file in independent copy delivery was accepted.'};[IO.File]::Delete($extraFileE)
+
+            # Case f: LocalFixed
+            $destF = Join-Path $Root 'copy-dest-f'; [void][IO.Directory]::CreateDirectory($destF)
+            $script:fixtureMediaClass = 'LocalFixed'
+            $attemptFileBeforeF = (Get-WsmWizardBackupAttemptForOperation $sourceRoot $catalog.PairId (Read-WsmOutputProfile $sourceRoot) $successOperationId).Path
+            $attemptHashBeforeF = (Get-FileHash -LiteralPath $attemptFileBeforeF -Algorithm SHA256).Hash
+            $localFixedThrown = $false; $localFixedMsg = ''
+            try {
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destF -Mode Copy | Out-Null
+            } catch {
+                $localFixedThrown = $true
+                $localFixedMsg = $_.Exception.Message
+            }
+            $attemptHashAfterF = (Get-FileHash -LiteralPath $attemptFileBeforeF -Algorithm SHA256).Hash
+            $copyRootF = Join-Path $destF ('wsm-offline-' + $catalog.PairId + '-' + [string]$attemptA.AttemptId)
+            if(-not $localFixedThrown -or $localFixedMsg -notlike '*not independent*' -or [IO.Directory]::Exists($copyRootF) -or $attemptHashBeforeF -cne $attemptHashAfterF){
+                throw 'Case f: LocalFixed did not reject with not independent or mutated attempt/destination.'
+            }
+
+            # Case g: Destination inside source workspace
+            $destInside = Join-Path $sourceRoot 'inside-dest'
+            $insideThrown = $false; $insideMsg = ''
+            try {
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destInside -Mode Copy | Out-Null
+            } catch {
+                $insideThrown = $true
+                $insideMsg = $_.Exception.Message
+            }
+            if(-not $insideThrown -or $insideMsg -notlike '*outside the source workspace*'){
+                throw 'Case g: Destination inside source workspace did not throw outside the source workspace.'
+            }
+
+            # Case h: Not Delivered operation
+            $fakeOpId = [Guid]::NewGuid().ToString('D')
+            $destH = Join-Path $Root 'copy-dest-h'; [void][IO.Directory]::CreateDirectory($destH)
+            $script:fixtureMediaClass = 'Removable'
+            $hThrown = $false; $hMsg = ''
+            try {
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $fakeOpId -DestinationRoot $destH -Mode Copy | Out-Null
+            } catch {
+                $hThrown = $true
+                $hMsg = $_.Exception.Message
+            }
+            if(-not $hThrown -or $hMsg -notlike '*delivered backup attempt*'){
+                throw 'Case h: Non-delivered OperationId did not throw delivered backup attempt.'
+            }
+
+            # Case j: Copy mode destination already has different content
+            $destJ = Join-Path $Root 'copy-dest-j'; [void][IO.Directory]::CreateDirectory($destJ)
+            $offlineSubDirJ = Join-Path $destJ ('wsm-offline-' + $catalog.PairId + '-' + [string]$attemptA.AttemptId)
+            $transportJ = Join-Path $offlineSubDirJ 'transport'
+            [void][IO.Directory]::CreateDirectory($transportJ)
+            $summaryNameJ = [IO.Path]::GetFileName($result.Delivery.Path)
+            $conflictFileJ = Join-Path $transportJ $summaryNameJ
+            [IO.File]::WriteAllText($conflictFileJ, 'DIFFERENT CONTENT PRIOR TO COPY')
+            $conflictHashBefore = (Get-FileHash -LiteralPath $conflictFileJ -Algorithm SHA256).Hash
+            $script:fixtureMediaClass = 'Removable'
+            $jThrown = $false; $jMsg = ''
+            try {
+                Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $successOperationId -DestinationRoot $destJ -Mode Copy | Out-Null
+            } catch {
+                $jThrown = $true
+                $jMsg = $_.Exception.Message
+            }
+            $conflictHashAfter = (Get-FileHash -LiteralPath $conflictFileJ -Algorithm SHA256).Hash
+            if(-not $jThrown -or $jMsg -notlike '*different content*' -or $conflictHashBefore -cne $conflictHashAfter){
+                throw 'Case j: Destination with different content was overwritten or did not throw different content.'
+            }
+
+            Write-Host 'PASS: independent copy Directory/ZIP copy, manual-copy verification, tamper/missing/local-fixed/inside-workspace/not-delivered/overwrite rejections.'
+        } finally {
+            Set-Item -Path Function:\script:Get-WsmIndependentCopyMediaClass -Value $backupOriginalMediaClass
+            Set-Item -Path Function:\Get-WsmIndependentCopyMediaClass -Value $backupOriginalMediaClass
+            Remove-Variable backupOriginalMediaClass,fixtureMediaClass -Scope Script -ErrorAction SilentlyContinue
+        }
         $stageCases=@(
             [pscustomobject]@{Name='running-authorized';Stage='Authorized';JobStatus='Running';PackageTest=$null;HasResult=$false},
             [pscustomobject]@{Name='running-core-exported';Stage='CoreExported';JobStatus='Running';PackageTest=$null;HasResult=$false},
