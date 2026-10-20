@@ -724,6 +724,12 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：WizardRestore 85（原 79；本機比較成功、可建立決策收據、非 Target 被拒、未匯入封裝被拒、匯入材料標為 ManagerImport）、WizardRuntime、OperationRequests、AssistiveComparison 42、WizardHtmlRuntimeProjection、HtmlConsole 112 通過；突變（本機比較不綁定目前目標盤點）會轉紅。
 - 已知限制：CV2 從封裝 controls 讀取來源軟體清單的路徑沒有自動化測試（fixture 不是 CV2，測試以替身提供計畫的軟體清單）；兩份比較材料若在同一秒建立，既有的 `Get-WsmWizardTargetComparisonRecord` 會判為模稜兩可（既有行為）；畫面按鈕在 E3a-S 加入。
 
+### 17.38 E3a-S 還原項目選擇預設全選（部分完成）
+
+- 第一位 Sonnet 5.5 subagent 做到一半時，使用者喊暫停而中止；由第二位 Sonnet subagent 審查保留的部分改動並完成，主代理審查並獨立驗證。Target 投影的 `itemOptions` 改由 `Get-WsmWizardTargetItemOptions` 產生，每個選項帶有 `group`（網站／排程／資料範圍／設定）、`restorable` 與原因（人工或外部處理不可還原），以及 `restored`（目前封裝世代已成功套用過）。前端的 `renderRestoreItemPicker` 預設勾選「可還原且尚未還原」的項目，依群組顯示並提供父項三態（含「部分」文字）、全選與全不選、不可還原項停用並顯示原因、已還原項標示「（已還原）」，已選數量以 `aria-live` 摘要。前端只做預填，後端收據驗證不變。Target 卡片新增「在本機產生比較」按鈕（E3a-1 的 action）。
+- 驗證：WizardRuntimeTargetUi（預設全選、停用項、全選／全不選、空選取不可送出、群組 indeterminate、最後只送出所選項、本機比較按鈕）、WizardRuntime、WizardHtmlRuntimeProjection、WizardRestore 85、真實 Edge 原生測試通過；突變（預設不勾）會轉紅。
+- 說明：摘要「可還原 y」包含已還原項（它們仍可被明確勾選再次還原）。
+
 ## 18. 第五次定案：使用者目標對照與備份端優先
 
 > 2026-10-20 使用者盤點後定案；介面規格經 ui-ux-pro-max（HTML／CSS 指引、WCAG 2.2 AA 檢查目標）檢視。本節只補規格與調整順序，不改第 1 節目標，也不改核准、秘密、production gate 的邊界。與前文順序衝突時以本節為準，其餘契約不變。本節是規劃，不是完成證據。

@@ -259,6 +259,19 @@ function Get-WsmWizardRuntimeSource([string]$Workspace,[string]$PairId,$Profile,
     [pscustomobject][ordered]@{status=$status;plan=[pscustomobject]@{path=[string]$planRef.Path;hash=[string]$planRef.SHA256;inventoryHash=[string]$planRef.Plan.InventoryHash;inventoryRevision=[int]$planRef.Plan.InventoryRevision;AuthoritativeApproval=$false};backupPreview=$preview;backupResult=$availability;delivery=[pscustomobject]@{mode=$selectedMode;volumeBytes=$volume;frozen=$frozen;attemptId=$(if($attempt){[string]$attempt.AttemptId}else{''})};sourceFreeze=[pscustomobject]@{required=$freezeRequired;missingEvidence=@($missingEvidence);resumeRequired=$sourceResumeRequired;resumeAvailable=$sourceResumeAvailable;resumeRoute=$resumeRoute;impact=$preview;sourceResumed=$sourceResumed;manualReviewRequired=[bool]($resumeRoute -and $resumeRoute.manualReviewRequired);manualReviewReason=$(if($resumeRoute){[string]$resumeRoute.manualReviewReason}else{''})};actions=$actions;canStartBackup=$canStartBackupReady;offlineReadiness=(Get-WsmWizardOfflineReadiness $availability)}
 }
 
+function Get-WsmWizardTargetItemOptions($Context,$Package,$State) {
+    $manifestHash=if($Package){[string]$Package.ManifestHash}else{''}
+    $rows=@{};if($Package -and $manifestHash -and $State -and $State.PSObject.Properties['Items']){foreach($row in @($State.Items)){if($row -and $row.PSObject.Properties['ItemId']){$rows[[string]$row.ItemId]=$row}}}
+    @($Context.Plan.Items|Where-Object Decision -CEQ Include|ForEach-Object {
+        $spec=$_.MigrationSpec;$adapter=if($spec){[string]$spec.Adapter}else{''}
+        $group=if($adapter -cin @('IISSite','IISPool','IISSection','IISLocation')){'Web'}elseif($adapter -ceq 'ScheduledTask'){'Tasks'}elseif($adapter -ceq 'FileScope'){'Data'}else{'Settings'}
+        $restorable=$true;$reason=''
+        if(-not $spec -or $adapter -ceq 'ManualWorkflow'){$restorable=$false;$reason='需要人工處理，工具不會還原。'}elseif($adapter -ceq 'FileScope' -and $spec.PSObject.Properties['TransferChannel'] -and [string]$spec.TransferChannel -ceq 'External'){$restorable=$false;$reason='標示為外部處理，未包含在備份中。'}
+        $row=$rows[[string]$_.ItemId];$restored=[bool]($row -and [string]$row.Status -ceq 'Succeeded' -and $row.PSObject.Properties['AppliedManifestHash'] -and [string]$row.AppliedManifestHash -ceq $manifestHash)
+        [pscustomobject]@{value=[string]$_.ItemId;label=[string]$_.Name;kind=[string]$_.Kind;adapter=$adapter;group=$group;restorable=$restorable;restorableReason=$reason;restored=$restored}
+    })
+}
+
 function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,[object[]]$Jobs) {
     $actions=New-Object 'System.Collections.Generic.List[object]'
     $defaults=@{Workspace=[IO.Path]::GetFullPath($Workspace);PairId=$PairId}
@@ -268,7 +281,7 @@ function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,
     if([int]$received.Plan.SchemaVersion -ne 3){$result.status='UseExistingWorkflow';$result.issues=@('此核准計畫使用原核心格式，請由既有流程檢查材料與續作；不將原格式重新解讀為 schema-3 還原授權。');$result.actions=@();return [pscustomobject]$result}
     $context=Assert-WsmWizardTargetRole $Workspace $PairId
     $result.plan=[pscustomobject]@{path=$received.Path;hash=$received.SHA256;generation=$null;AuthoritativeApproval=$false}
-    $result.itemOptions=@($context.Plan.Items|Where-Object Decision -CEQ Include|ForEach-Object {[pscustomobject]@{value=[string]$_.ItemId;label=[string]$_.Name;kind=[string]$_.Kind;adapter=[string]$_.MigrationSpec.Adapter}})
+    $result.itemOptions=@(Get-WsmWizardTargetItemOptions $context $null $null)
     $actions.Add((New-WsmWizardRuntimeAction 'TargetZipImport' $true '接收 ZIP；內容 hash 與獨立可信管道的預期值分開核對。' $defaults @('TransportPath','ExpectedHash')))
     $actions.Add((New-WsmWizardRuntimeAction 'TargetDirectoryImport' $true '接收資料夾交接摘要及內容；不改全域格式設定。' $defaults @('SummaryPath','ExpectedSummaryHash','SourceDirectory')))
     $candidateJobs=@($Jobs|Where-Object {$_ -and [string](Get-WsmWizardTargetJobField $_ action Action) -in @('TargetZipImport','TargetDirectoryImport','ImportPackageZip','DirectoryImport') -and [string](Get-WsmWizardTargetJobField $_ role Role) -ceq 'Target' -and [string](Get-WsmWizardTargetJobField $_ pairId PairId) -ceq $PairId -and [string](Get-WsmWizardTargetJobField $_ status Status) -ceq 'Succeeded'})
@@ -276,6 +289,8 @@ function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,
     if($candidateJobs.Count){try{$package=Get-WsmWizardTargetPackage $Workspace $PairId $context $Jobs}catch{$result.status='MaterialUnavailable';$result.issues=@('已登錄的交接材料無法核驗；保留紀錄並重新取得目前材料，不使用舊世代代替。');$result.actions=@($actions.ToArray());return [pscustomobject]$result}}
     if(-not $package){$result.status='NeedsPackage';$result.actions=@($actions.ToArray());return [pscustomobject]$result}
     $result.package=$package;$result.plan.generation=[long]$package.Package.Manifest.Generation
+    $itemState=$null;try{$itemPaths=Get-WsmOperationPaths (Join-Path $Profile.WorkRoot 'pairs') $PairId;if([IO.File]::Exists($itemPaths.State)){$itemState=Get-WsmOperationState $itemPaths $package.Package}}catch{$itemState=$null}
+    $result.itemOptions=@(Get-WsmWizardTargetItemOptions $context $package $itemState)
     $inventoryDefaults=@{Workspace=$Workspace;OutputDirectory=(Join-Path $Workspace ('hosts\'+$Profile.Fingerprint+'\inventory'));DeepDiscovery=$true;IncludeSoftwareCatalog=$true}
     $actions.Add((New-WsmWizardRuntimeAction 'Inventory' $true '重新觀測本機 Target 現況，不更新封存的來源事實。' $inventoryDefaults @()))
     $snapshot=$null

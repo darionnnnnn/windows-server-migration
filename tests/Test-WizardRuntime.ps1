@@ -30,6 +30,22 @@ try {
         $script:runtimeChecks=0
         function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:runtimeChecks++}
         function SaveProfileHash([string]$Work){(Get-FileHash -LiteralPath (Join-Path (Join-Path $Work 'workspace-control') 'output-profile.json') -Algorithm SHA256).Hash.ToLowerInvariant()}
+        $optSpec={param($Id,$Adapter,$Channel) $spec=[ordered]@{Adapter=$Adapter};if($Channel){$spec.TransferChannel=$Channel};[pscustomobject]@{ItemId=$Id;Name=('name-'+$Id);Kind='K';Decision='Include';MigrationSpec=[pscustomobject]$spec}}
+        $optContext=[pscustomobject]@{Plan=[pscustomobject]@{Items=@((& $optSpec 'file-c' 'FileScope' 'C'),(& $optSpec 'file-ext' 'FileScope' 'External'),(& $optSpec 'manual' 'ManualWorkflow' ''),(& $optSpec 'site' 'IISSite' ''),(& $optSpec 'task' 'ScheduledTask' ''),[pscustomobject]@{ItemId='nospec';Name='nospec';Kind='K';Decision='Include';MigrationSpec=$null},[pscustomobject]@{ItemId='skipped';Name='skipped';Kind='K';Decision='Exclude';MigrationSpec=$null})}}
+        $optPackage=[pscustomobject]@{ManifestHash=('c'*64)}
+        $optState=[pscustomobject]@{Items=@([pscustomobject]@{ItemId='site';Status='Succeeded';AppliedManifestHash=('c'*64)},[pscustomobject]@{ItemId='task';Status='Succeeded';AppliedManifestHash=('d'*64)},[pscustomobject]@{ItemId='file-c';Status='Failed';AppliedManifestHash=('c'*64)})}
+        $opts=@(Get-WsmWizardTargetItemOptions $optContext $optPackage $optState);$optBy=@{};foreach($o in $opts){$optBy[$o.value]=$o}
+        Check ($opts.Count -eq 6 -and -not $optBy.ContainsKey('skipped')) 'Item options list only included items.'
+        Check ($optBy['file-c'].group -ceq 'Data' -and $optBy['file-c'].restorable -and $optBy['file-c'].restorableReason -ceq '' -and -not $optBy['file-c'].restored) 'FileScope C option must be restorable, grouped as Data, and not restored when its row failed.'
+        Check ($optBy['file-ext'].group -ceq 'Data' -and -not $optBy['file-ext'].restorable -and $optBy['file-ext'].restorableReason -ceq '標示為外部處理，未包含在備份中。') 'External FileScope option must be non-restorable with its reason.'
+        Check ($optBy['manual'].group -ceq 'Settings' -and -not $optBy['manual'].restorable -and $optBy['manual'].restorableReason -ceq '需要人工處理，工具不會還原。') 'ManualWorkflow option must be non-restorable with its reason.'
+        Check ($optBy['nospec'].group -ceq 'Settings' -and -not $optBy['nospec'].restorable -and $optBy['nospec'].restorableReason -ceq '需要人工處理，工具不會還原。') 'An option without MigrationSpec must be Settings and non-restorable.'
+        Check ($optBy['site'].group -ceq 'Web' -and $optBy['site'].restorable -and $optBy['site'].restored) 'IISSite succeeded with the same manifest hash must be Web, restorable and restored.'
+        Check ($optBy['task'].group -ceq 'Tasks' -and $optBy['task'].restorable -and -not $optBy['task'].restored) 'A task applied under a different manifest hash must not be restored.'
+        $noPackage=@(Get-WsmWizardTargetItemOptions $optContext $null $optState)
+        Check (@($noPackage|Where-Object restored).Count -eq 0 -and $noPackage.Count -eq 6) 'Without a package no option may be restored.'
+        Check (@(Get-WsmWizardTargetItemOptions $optContext $optPackage $null|Where-Object restored).Count -eq 0) 'Without state no option may be restored.'
+
         $sourceWork=Join-Path $Root 'source';$targetWork=Join-Path $Root 'target'
         Initialize-WsmOutputWorkspace -WorkRoot $sourceWork -Role Source|Out-Null
         Initialize-WsmOutputWorkspace -WorkRoot $targetWork -Role Target|Out-Null
