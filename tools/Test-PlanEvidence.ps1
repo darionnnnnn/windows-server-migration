@@ -1,6 +1,7 @@
 [CmdletBinding(DefaultParameterSetName = 'Stage')]
 param(
-    [Parameter(Mandatory = $true, ParameterSetName = 'Stage')]
+    # Not Mandatory: a missing -Stage must fail fast instead of PowerShell waiting forever at an interactive parameter prompt.
+    [Parameter(ParameterSetName = 'Stage')]
     [ValidatePattern('^(A1|B1|B2|C1|C2|D1|D2|D3a|D3b|E0|E1|E2|E3a|E3b|F1|F2|F3|F4a|F4b|G)$')]
     [string] $Stage,
 
@@ -58,6 +59,7 @@ function Assert-Sha256([string] $Value, [string] $Label) {
     if ($Value -notmatch '^[0-9a-fA-F]{64}$') { Fail "$Label must be a 64-character SHA256 value." }
 }
 
+if ($PSCmdlet.ParameterSetName -eq 'Stage' -and [string]::IsNullOrWhiteSpace($Stage)) { Fail 'specify -Stage <id> or -WholeRound.' }
 if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) { $RepositoryRoot = Split-Path -Parent $PSScriptRoot }
 $root = [IO.Path]::GetFullPath($RepositoryRoot)
 $ledgerFullPath = if ([IO.Path]::IsPathRooted($LedgerPath)) { $LedgerPath } else { Join-Path $root $LedgerPath }

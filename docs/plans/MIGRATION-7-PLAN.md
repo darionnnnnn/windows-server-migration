@@ -759,6 +759,13 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
 - 修正只在測試：fixture workspace 先建立佔位 `fleet.json`，配對內容仍由替身提供；測試結束時清除限定在系統暫存、名稱為 `wsm-text-menu-*` 的 fixture 目錄。驗證：Test-TextConsole 18 項通過。
 
+### 17.44 Test-PlanEvidence「主工作區卡住」根因
+
+- 主代理親自查。腳本本身沒有遞迴列舉，`work/` 與它無關：在主工作區帶 `-Stage A1／B1／E0／B2` 或 `-WholeRound` 都在 1～3 秒內結束（目前因帳本雜湊過期而失敗）；把帳本雜湊改為目前檔案值的副本（只放 scratchpad、不改 repo）後，A1／B1／E0 在主工作區 2 秒內 PASS，`tests/Test-PlanEvidence.ps1` 19 個 fixture 案例 18 秒 PASS。
+- 真正會「無限期卡住」的情況是不帶參數執行：`-Stage` 為 Mandatory，PowerShell 會改成互動式詢問參數並一直等待（stdin 導向 null 也一樣）。修正為 `-Stage` 不再 Mandatory，沒有 `-Stage` 也沒有 `-WholeRound` 時立即以「specify -Stage <id> or -WholeRound.」失敗；`-Stage` 的格式驗證不變。
+- 驗證：無參數 0 秒失敗並顯示用法；帶參數行為不變（E0 以修正雜湊的帳本副本 PASS、`-WholeRound` 依然在未實作階段失敗）；fixture 測試 19 案例 PASS。
+- 這個檔是 A1 的輸入，修改後 A1 輸入雜湊會變；帳本重綁屬第 17.41 節的另案。
+
 ### 17.41 證據帳本未結
 
 - `tools/Test-PlanEvidence.ps1` 在乾淨的 580e7f8 副本（LF 與 CRLF 兩種 checkout）都失敗：A1 證據檔雜湊與帳本不符，c95b8d6 重綁 E0 時記錄的 `src/MigrationWizard.ps1` 雜湊也與已提交內容的兩種換行版本都不符。本段沒有重綁 E0，帳本修復另案處理，不在本段宣稱證據通過。
