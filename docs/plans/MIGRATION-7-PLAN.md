@@ -653,6 +653,14 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - F4a 仍未完成：排程／IIS 帳密旅程、HTML 對話視窗（F4b）及完整離線旅程驗收仍待做。
 - 另發現：`tools/Test-PlanEvidence.ps1` 在主工作區會無限期卡住（行程跑超過 1.5 小時仍未結束），但在只含追蹤檔案的 worktree 副本中 2 秒內完成，研判與未追蹤的龐大 `work/` 目錄有關。本段的證據檢查改在含目前全部追蹤內容的 worktree 副本執行，待查根因。
 
+### 17.27 D3b-1 一鍵備份接受 CV2 離線完整集合（部分完成）
+
+- 2026-10-20 第五次定案後第一段委派 agy（gemini-3.8-flash-high），主代理逐行審 diff 並獨立驗證。`Assert-WsmWizardBackupPlanSupported` 不再拒絕 CV2；CV2 只接受 `SourcePolicy=ApprovedLocalVolumes`。新增共用判斷 `Test-WsmWizardOfflineFullSetPlan`，供通道摘要與預覽共用。CV2 計畫的非 C 狀態改用與 C 相同的封裝／交付判準，不再固定標成「需另外直傳」；舊格式輸出不變。
+- 主代理驗收補正：原本 `-ge 2` 一律拒絕，改寫後 CV3 以上會被靜默放行，已補上明確拒絕與反例；另把 agy 混入的少數 CRLF 行統一回 LF。
+- 驗證（WinPS 5.1）：OfflineFullSet 由 39 增至 50 項；WizardBackup、WizardBackupRecovery（21 項）、WizardNonCOperations 通過。突變：把 CV2 非 C 改回一律未解決、拿掉 SourcePolicy 檢查，都會轉紅。
+- 使用者定案（2026-10-20）：獨立副本依磁碟類型分級（可移除磁碟通過；網路／UNC 通過但標「新機可取用性待確認」；舊機本機固定磁碟拒絕）；工具可複製，人工複製的副本也走同一驗證入口；非 C ExactMembers 延後到 F3 之後。
+- 尚未完成：獨立副本複製與驗證（D3b-2）、HTML 接線（D3b-3）；Manager 端交付摘要對 CV2 仍回 `UnsupportedOfflineFullSet`；額外磁碟仍只有模擬綁定，沒有原生 D:／E: 驗證。
+
 ## 18. 第五次定案：使用者目標對照與備份端優先
 
 > 2026-10-20 使用者盤點後定案；介面規格經 ui-ux-pro-max（HTML／CSS 指引、WCAG 2.2 AA 檢查目標）檢視。本節只補規格與調整順序，不改第 1 節目標，也不改核准、秘密、production gate 的邊界。與前文順序衝突時以本節為準，其餘契約不變。本節是規劃，不是完成證據。

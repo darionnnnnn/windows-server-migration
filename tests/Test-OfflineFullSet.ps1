@@ -95,11 +95,25 @@ try {
     Check (@($bindings|Where-Object SourcePath -CEQ $members).Count -eq 2) 'Two disjoint reviewed ExactMembers selections sharing one source root were not both bound.'
     Check ($plan.Assistive.ApprovedRootCoverage.Count -eq 4 -and @($plan.Assistive.ApprovedRootCoverage|Where-Object {$_.SourceInventoryHash -ceq $inventoryHash}).Count -eq 4) 'Public approval did not preserve source snapshot installed-root coverage.'
     $oldProfileReader=(Get-Command Read-WsmOutputProfile).ScriptBlock;$oldPlanResolver=(Get-Command Get-WsmWizardCurrentApprovedPlan).ScriptBlock;$oldPlanReader=(Get-Command Read-WsmMigrationPlan).ScriptBlock
-    function Read-WsmOutputProfile([string]$Workspace){[pscustomobject]@{Role='Source';HostId=$script:sourceIdentity.HostId;Fingerprint=$script:sourceIdentity.Fingerprint;WorkRoot=$Workspace}}
+    function Read-WsmOutputProfile([string]$Workspace){[pscustomobject]@{Role='Source';HostId=$script:sourceIdentity.HostId;Fingerprint=$script:sourceIdentity.Fingerprint;WorkRoot=$Workspace;Mode='Zip';VolumeBytes=[long]536870912}}
     function Get-WsmWizardCurrentApprovedPlan {param($Workspace,$PairId,$Profile,$Unused,[object[]]$Jobs);[pscustomobject]@{Path=$script:planPath;SHA256=$script:planHash}}
     function Read-WsmMigrationPlan([string]$Path,[string]$ExpectedHash){$script:plan}
     $script:planPath=$planPath;$script:planHash=$planHash;$script:plan=$plan
-    try{$previewRejected=$false;$previewError='';try{Get-WsmWizardBackupImpactPreview -Workspace $state -PairId $pairId|Out-Null}catch{$previewError=$_.Exception.Message;$previewRejected=$previewError -like '*does not yet support Assistive ContractVersion 2*'};Check $previewRejected ('Wizard backup preview did not explicitly reject CV2: '+$previewError)}
+    try{
+        $previewResult=$null;$previewError=''
+        try{$previewResult=Get-WsmWizardBackupImpactPreview -Workspace $state -PairId $pairId}catch{$previewError=$_.Exception.Message}
+        Check (-not $previewError -and $previewResult -and $previewResult.Status -ceq 'Previewed' -and $previewResult.PlanHash -ceq $script:planHash) ('Wizard backup preview did not accept CV2 plan: '+$previewError)
+        $cPreviewItem=[pscustomobject]@{ItemId='item-c';NaturalKey='c-scope';Kind='FileScope';Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='FileScope';SourcePath=$whole;TargetPath=$whole;TransferChannel='C';Consistency='Immutable'}}
+        $nonCPreviewItem=[pscustomobject]@{ItemId='item-non-c';NaturalKey='non-c-scope';Kind='FileScope';Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='FileScope';SourcePath=$members;TargetPath=$members;TransferChannel='NonC';Consistency='Immutable'}}
+        $script:plan=[pscustomobject][ordered]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='MigrationPlan';PairId=$pairId;Source=$sourceIdentity;Target=$targetIdentity;InventoryHash=$plan.InventoryHash;InventoryRevision=$plan.InventoryRevision;Items=@($cPreviewItem,$nonCPreviewItem);Assistive=[pscustomobject]@{ContractVersion=2;SourcePolicy='ApprovedLocalVolumes'}}
+        $nonCPreview=Get-WsmWizardBackupImpactPreview -Workspace $state -PairId $pairId
+        Check ($nonCPreview.EvidenceRequirements -contains 'Non-C scopes are captured into the same offline full-set package as C scopes and verified with it.') 'CV2 preview with NonC did not include offline full-set package evidence statement.'
+        Check (-not ($nonCPreview.EvidenceRequirements -like '*excluded from the C package*')) 'CV2 preview with NonC unexpectedly included excluded statement.'
+        $script:plan=[pscustomobject][ordered]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='MigrationPlan';PairId=$pairId;Source=$sourceIdentity;Target=$targetIdentity;InventoryHash=$plan.InventoryHash;InventoryRevision=$plan.InventoryRevision;Items=@($cPreviewItem,$nonCPreviewItem)}
+        $legacyPreview=Get-WsmWizardBackupImpactPreview -Workspace $state -PairId $pairId
+        Check ($legacyPreview.EvidenceRequirements -contains 'Non-C scopes are excluded from the C package and require the separate target transfer and manager result import before they are reported complete.') 'Legacy preview with NonC did not include excluded statement.'
+        $script:plan=$plan
+    }
     finally{Set-Item Function:\Read-WsmOutputProfile $oldProfileReader;Set-Item Function:\Get-WsmWizardCurrentApprovedPlan $oldPlanResolver;Set-Item Function:\Read-WsmMigrationPlan $oldPlanReader}
     $script:approvalRole='Source'
     $script:freshInventory=[pscustomobject]@{Path=(Join-Path $state ('assistive\snapshots\'+$inventoryHash+'.json'));SHA256=$inventoryHash}
@@ -144,6 +158,29 @@ try {
     Check ($package.Valid -and $package.Manifest.SchemaVersion -eq 2 -and $package.Manifest.OfflineFullSet.FullSet) 'CV2 package producer/reader did not round-trip a full OfflineFullSet envelope.'
     $labOutput=Join-Path $root 'lab-cv2-reject';$labRejected=$false;$labReason='';$oldMachineIdentity=(Get-Command Get-WsmMachineIdentity).ScriptBlock;function Get-WsmMachineIdentity {[pscustomobject]@{Fingerprint=$script:sourceIdentity.Fingerprint;Name=$script:sourceIdentity.Name;OS=$script:sourceIdentity.OS;Version=$script:sourceIdentity.Version;IsServer=$script:sourceIdentity.IsServer;Administrator=$script:sourceIdentity.Administrator;Is64Bit=$script:sourceIdentity.Is64Bit}};try{try{Export-WsmLabValidationReport -OutputDirectory $labOutput -Role Source -ManifestPath $export.ManifestPath -ExpectedHash $export.SHA256|Out-Null}catch{$labReason=$_.Exception.Message;$labRejected=($labReason -ceq 'LabValidation does not support OfflineFullSet CV2; no report was written.')}}finally{Set-Item Function:\Get-WsmMachineIdentity $oldMachineIdentity};Check ($labRejected -and -not [IO.Directory]::Exists($labOutput)) ('LabValidation did not reject CV2 before writing a report for the expected reason: '+$labReason)
     $fleetSummary=Get-WsmFleetDeliverySummary ([pscustomobject]@{Approval=[pscustomobject]@{AssistiveContractVersion=2}});Check ($fleetSummary.Status -ceq 'UnsupportedOfflineFullSet' -and -not $fleetSummary.ReadinessProof -and -not $fleetSummary.ProductionVerified) 'Fleet delivery summary did not explicitly label CV2 delivery capability as unsupported/report-only.'
+    $synthCItem=[pscustomobject]@{ItemId='item-c';Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='FileScope';TransferChannel='C'}}
+    $synthNonCItem=[pscustomobject]@{ItemId='item-non-c';Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='FileScope';TransferChannel='NonC'}}
+    $cv2SynthPlan=[pscustomobject]@{Items=@($synthCItem,$synthNonCItem);Assistive=[pscustomobject]@{ContractVersion=2;SourcePolicy='ApprovedLocalVolumes'}}
+    $synthPackageTest=[pscustomobject]@{Valid=$true;Final=$true}
+    $synthDelivery=[pscustomobject]@{SHA256=('a'*64)}
+    $channelSummaryA=Get-WsmWizardChannelSummary $cv2SynthPlan $synthPackageTest $synthDelivery
+    Check ($channelSummaryA.NonC.Status -ceq 'VerifiedDelivered' -and $channelSummaryA.OverallStatus -ceq 'Succeeded') 'CV2 channel summary with valid package and delivery did not mark NonC as VerifiedDelivered or OverallStatus as Succeeded.'
+    $channelSummaryB=Get-WsmWizardChannelSummary $cv2SynthPlan $synthPackageTest $null
+    Check ($channelSummaryB.NonC.Status -ceq 'VerifiedNotDelivered' -and $channelSummaryB.OverallStatus -ceq 'ReviewRequired') 'CV2 channel summary without delivery did not mark NonC as VerifiedNotDelivered or OverallStatus as ReviewRequired.'
+    $legacySynthPlan=[pscustomobject]@{Items=@($synthCItem,$synthNonCItem)}
+    $channelSummaryC=Get-WsmWizardChannelSummary $legacySynthPlan $synthPackageTest $synthDelivery
+    Check ($channelSummaryC.NonC.Status -ceq 'RequiresTargetTransferAndManagerResultImport' -and $channelSummaryC.OverallStatus -ceq 'ReviewRequired') 'Legacy plan channel summary did not mark NonC as RequiresTargetTransferAndManagerResultImport or OverallStatus as ReviewRequired.'
+    $sourceCOnlyPlan=[pscustomobject]@{Assistive=[pscustomobject]@{ContractVersion=2;SourcePolicy='SourceCOnly'}}
+    RejectExpected {Assert-WsmWizardBackupPlanSupported $sourceCOnlyPlan} 'Wizard backup supports Assistive ContractVersion 2 only with SourcePolicy ApprovedLocalVolumes.' 'Wizard backup accepted CV2 plan with SourceCOnly policy.'
+    RejectExpected {Assert-WsmWizardBackupPlanSupported ([pscustomobject]@{Assistive=[pscustomobject]@{ContractVersion=3;SourcePolicy='ApprovedLocalVolumes'}})} 'Wizard backup does not support Assistive contract versions newer than 2.' 'Wizard backup accepted an unknown newer Assistive contract version.'
+    $validPolicyPlan=[pscustomobject]@{Assistive=[pscustomobject]@{ContractVersion=2;SourcePolicy='ApprovedLocalVolumes'}}
+    $supportedPassed=$false;try{Assert-WsmWizardBackupPlanSupported $validPolicyPlan;$supportedPassed=$true}catch{}
+    Check $supportedPassed 'Assert-WsmWizardBackupPlanSupported rejected valid CV2 ApprovedLocalVolumes plan.'
+    $failedPackageTest=[pscustomobject]@{Valid=$false}
+    $summaryFailed=Get-WsmWizardChannelSummary $cv2SynthPlan $failedPackageTest $synthDelivery
+    Check ($summaryFailed.NonC.Status -ceq 'Failed' -and $summaryFailed.OverallStatus -ceq 'ReviewRequired') 'CV2 channel summary with invalid package test did not mark NonC as Failed.'
+    $summaryPending=Get-WsmWizardChannelSummary $cv2SynthPlan $null $null
+    Check ($summaryPending.NonC.Status -ceq 'Pending' -and $summaryPending.OverallStatus -ceq 'ReviewRequired') 'CV2 channel summary without package test did not mark NonC as Pending.'
     Check ($package.Manifest.OfflineFullSet.CaptureCoverage.Count -eq 4 -and @($package.Manifest.OfflineFullSet.CaptureCoverage|Where-Object {$_.Status -in @('Partial','Unavailable','NotApplicable')}).Count -ge 1) 'Capture-time installed-root coverage diagnostics were lost or incorrectly promoted to complete.'
     $captureRows=@($package.Manifest.OfflineFullSet.CaptureCoverage);$duplicatedCapture=@($captureRows)+@($captureRows[0]);Reject {Assert-WsmOfflineFullSetCoverage $sealedPlan @($sealedPlan.Assistive.ApprovedRootCoverage) $duplicatedCapture} 'Reader accepted duplicate capture-time coverage or omitted-scope ambiguity.'
     $artifacts=@(Read-WsmArtifactLines (Join-Path $package.Root 'artifacts.jsonl') $package.Manifest.ArtifactsHash)

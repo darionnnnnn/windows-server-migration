@@ -106,15 +106,17 @@ function Get-WsmWizardChannelSummary($Plan,$PackageTest,$Delivery) {
     $items=@($Plan.Items|Where-Object Decision -CEQ 'Include');$cItems=New-Object 'System.Collections.Generic.List[string]';$nonCItems=New-Object 'System.Collections.Generic.List[string]';$manualItems=New-Object 'System.Collections.Generic.List[string]';$unknownItems=New-Object 'System.Collections.Generic.List[string]';$configItems=New-Object 'System.Collections.Generic.List[string]';$certificateItems=New-Object 'System.Collections.Generic.List[string]'
     $matrix=@{};foreach($adapter in @(Get-WsmAdapterMatrix)){$matrix[[string]$adapter.Adapter]=$adapter}
     foreach($item in $items){$spec=$item.MigrationSpec;if(-not $spec){$unknownItems.Add([string]$item.ItemId);continue};if($spec.Adapter -ceq 'ManualWorkflow'){$manualItems.Add([string]$item.ItemId);continue};if($spec.Adapter -ceq 'FileScope'){$channel='C';if($spec.PSObject.Properties['TransferChannel']){$channel=[string]$spec.TransferChannel};if($channel -ceq 'C'){$cItems.Add([string]$item.ItemId)}elseif($channel -ceq 'NonC'){$nonCItems.Add([string]$item.ItemId)}else{$unknownItems.Add([string]$item.ItemId)};continue};if($spec.Adapter -ceq 'Certificate'){$certificateItems.Add([string]$item.ItemId);continue};if($matrix.ContainsKey([string]$spec.Adapter) -and [bool]$matrix[[string]$spec.Adapter].ExportImplemented){$configItems.Add([string]$item.ItemId)}else{$unknownItems.Add([string]$item.ItemId)}}
+    $isOfflineFullSet=Test-WsmWizardOfflineFullSetPlan $Plan
     $packageValid=[bool]($PackageTest -and $PackageTest.Valid);$deliveryValid=[bool]($Delivery -and [string]$Delivery.SHA256 -match '^[a-fA-F0-9]{64}$')
     $cStatus=if($cItems.Count){if($packageValid -and $deliveryValid){'VerifiedDelivered'}elseif($packageValid){'VerifiedNotDelivered'}elseif($PackageTest){'Failed'}else{'Pending'}}elseif($PackageTest -and $packageValid){'NoIncludedCFileScope'}elseif($PackageTest){'Failed'}else{'NoIncludedCFileScope'}
-    $nonCStatus=if(-not $nonCItems.Count){'NoIncludedNonCFileScope'}elseif($PackageTest -and $PackageTest.Final){'RequiresTargetTransferAndManagerResultImport'}else{'RequiresFinalSourceFreeze'}
+    $nonCStatus=if(-not $nonCItems.Count){'NoIncludedNonCFileScope'}elseif($isOfflineFullSet){if($packageValid -and $deliveryValid){'VerifiedDelivered'}elseif($packageValid){'VerifiedNotDelivered'}elseif($PackageTest){'Failed'}else{'Pending'}}elseif($PackageTest -and $PackageTest.Final){'RequiresTargetTransferAndManagerResultImport'}else{'RequiresFinalSourceFreeze'}
     $configStatus=if(-not $configItems.Count){'NoIncludedSupportedConfiguration'}elseif($packageValid -and $deliveryValid){'VerifiedInSealedPlanAndDelivered'}elseif($packageValid){'VerifiedInSealedPlanNotDelivered'}elseif($PackageTest){'Failed'}else{'Pending'}
     # A valid Test-WsmMigrationPackage result has already checked every selected
     # Certificate artifact row and every blob hash. Keep this projection cheap:
     # it runs during result reads, so it must not re-run the deep package scan.
     $certificateStatus=if(-not $certificateItems.Count){'NoIncludedCertificate'}elseif($packageValid -and $deliveryValid){'VerifiedPayloadDelivered'}elseif($packageValid){'VerifiedPayloadNotDelivered'}elseif($PackageTest){'Failed'}else{'Pending'}
-    $unresolved=$nonCItems.Count -or $manualItems.Count -or $unknownItems.Count -or ($cItems.Count -and -not ($packageValid -and $deliveryValid)) -or ($configItems.Count -and -not ($packageValid -and $deliveryValid)) -or ($certificateItems.Count -and -not ($packageValid -and $deliveryValid))
+    $nonCUnresolved=if($isOfflineFullSet){$nonCItems.Count -and -not ($packageValid -and $deliveryValid)}else{$nonCItems.Count}
+    $unresolved=$nonCUnresolved -or $manualItems.Count -or $unknownItems.Count -or ($cItems.Count -and -not ($packageValid -and $deliveryValid)) -or ($configItems.Count -and -not ($packageValid -and $deliveryValid)) -or ($certificateItems.Count -and -not ($packageValid -and $deliveryValid))
     $overall=if($unresolved){'ReviewRequired'}elseif(-not ($cItems.Count -or $nonCItems.Count -or $configItems.Count -or $certificateItems.Count)){'NoSupportedSelectedEvidence'}else{'Succeeded'}
     [pscustomobject][ordered]@{C=[pscustomobject]@{IncludedItemIds=@($cItems.ToArray());Status=$cStatus};NonC=[pscustomobject]@{IncludedItemIds=@($nonCItems.ToArray());Status=$nonCStatus};ConfigurationEvidence=[pscustomobject]@{IncludedItemIds=@($configItems.ToArray());Status=$configStatus};Certificate=[pscustomobject]@{IncludedItemIds=@($certificateItems.ToArray());Status=$certificateStatus};ManualArtifactsNotSupported=[pscustomobject]@{IncludedItemIds=@($manualItems.ToArray());Status=$(if($manualItems.Count){'ManualArtifactsNotSupported'}else{'NoIncludedManualWorkflow'})};UnsupportedIncludedItemIds=@($unknownItems.ToArray());OverallStatus=$overall;ProductionVerified=$false}
 }
@@ -169,7 +171,7 @@ function Get-WsmWizardBackupImpactPreview {
     }
     $freezeRequired=($mutable -or $nonC)
     $evidence=@();if($freezeRequired){$evidence+=@('Independent hash-trusted ExternalReadinessEvidence with Phase=SourceFreezeReady, matching this approved plan, selected producers, current host, owner, and non-empty FreezeEpoch.','Named responsible owner and explicit quiescence evidence for each selected producer.','Separate explicit freeze authorization; the ordinary StartBackup confirmation does not authorize source changes.','After quiescence, inspect the durable source attempt and retain the exact prior runtime/ACL state for the existing SourceResume/recovery path.')}
-    if($nonC){$evidence+=@('Non-C scopes are excluded from the C package and require the separate target transfer and manager result import before they are reported complete.')}
+    if($nonC){if(Test-WsmWizardOfflineFullSetPlan $plan){$evidence+=@('Non-C scopes are captured into the same offline full-set package as C scopes and verified with it.')}else{$evidence+=@('Non-C scopes are excluded from the C package and require the separate target transfer and manager result import before they are reported complete.')}}
     $readinessStatus='NotProvided';if($FreezeExternalEvidencePath -or $FreezeExternalEvidenceHash){$readinessStatus='Invalid';$reason='';try{if(-not $FreezeExternalEvidencePath -or $FreezeExternalEvidenceHash -notmatch '^[a-fA-F0-9]{64}$'){throw 'Both readiness evidence path and hash are required.'};$external=Read-WsmTrustedJson $FreezeExternalEvidencePath $FreezeExternalEvidenceHash;[void](Assert-WsmSourceFreezeEvidence $FreezeExternalEvidencePath $FreezeExternalEvidenceHash $plan $planRef.SHA256 ([string]$external.FreezeEpoch));$readinessStatus='Verified'}catch{$reason=$_.Exception.Message};if($readinessStatus -ne 'Verified'){$evidence+=@('Current SourceFreezeReady evidence is invalid: '+$reason)}}
     $backupAttemptRoot=Join-Path (Join-Path (Join-Path $Workspace 'workspace-control') 'wizard-backups') $PairId
     $quiescenceDisclosure=if($freezeRequired){'If the separately authorized source freeze runs, every selected producer listed here is in its quiescence scope; no automatic SourceResume is performed.'}else{'No source freeze is required for this selected set; configuration-only selections do not cause producer shutdown.'}
@@ -274,6 +276,11 @@ function Invoke-WsmWizardStartBackup {
     ConvertTo-WsmWizardBackupResult $record $OperationId
 }
 
+function Test-WsmWizardOfflineFullSetPlan($Plan) {
+    [bool]($Plan.PSObject.Properties['Assistive'] -and $Plan.Assistive -and $Plan.Assistive.ContractVersion -eq 2)
+}
+
 function Assert-WsmWizardBackupPlanSupported($Plan) {
-    if($Plan.PSObject.Properties['Assistive'] -and $Plan.Assistive.ContractVersion -ge 2){throw 'Wizard backup does not yet support Assistive ContractVersion 2 OfflineFullSet plans; use the CV2 package workflow directly.'}
+    if($Plan.PSObject.Properties['Assistive'] -and $Plan.Assistive -and $Plan.Assistive.ContractVersion -gt 2){throw 'Wizard backup does not support Assistive contract versions newer than 2.'}
+    if(Test-WsmWizardOfflineFullSetPlan $Plan){if($Plan.Assistive.SourcePolicy -cne 'ApprovedLocalVolumes'){throw 'Wizard backup supports Assistive ContractVersion 2 only with SourcePolicy ApprovedLocalVolumes.'}}
 }
