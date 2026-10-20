@@ -1,7 +1,6 @@
 ﻿function Get-WsmAssistiveRestoreDecision {
     param([Parameter(Mandatory)]$Package,[Parameter(Mandatory)][string]$ManifestHash,[Parameter(Mandatory)][string]$DecisionReceiptPath,[Parameter(Mandatory)][string]$DecisionReceiptHash,[string]$TargetSnapshotPath='')
     if($Package.Plan.SchemaVersion -ne 3){throw 'Assistive decision receipts are required only for schema 3 plans.'}
-    if($Package.Plan.Assistive -and $Package.Plan.Assistive.PSObject.Properties['ContractVersion'] -and [int]$Package.Plan.Assistive.ContractVersion -eq 2){throw 'OfflineFullSet CV2 restore execution is not supported in this stage; the package is verified, but no target write can begin before E3 target comparison and preview are implemented.'}
     Assert-WsmAssistiveContract $Package.Plan MigrationPlan | Out-Null
     if([string]$Package.Manifest.PairId -cne [string]$Package.Plan.PairId -or [string]$Package.Manifest.PlanHash -ine [string]$Package.PlanHash -or [string]$Package.SHA256 -ine $ManifestHash){throw 'Assistive package plan, pair, or manifest binding mismatch.'}
     Assert-WsmTrustedFile $DecisionReceiptPath $DecisionReceiptHash
@@ -336,18 +335,21 @@ function Get-WsmAssistiveRestorePreview {
     foreach($item in @($package.Plan.Items)){
         Assert-WsmCancellationBoundary $CancellationToken 'AssistiveRestorePreviewItem'
         if(-not $selected.ContainsKey([string]$item.ItemId)){$rows.Add([pscustomobject]@{ItemId=$item.ItemId;Adapter=$item.MigrationSpec.Adapter;Action='DeferredBySelection';Status='Deferred';Reason='This approved item was not selected in the current target decision receipt.'});continue}
-        $spec=$item.MigrationSpec;$action='RestoreNow';$status='Ready';$reason='';$readiness=Get-WsmAssistiveWorkloadReadiness $item
+        $spec=$item.MigrationSpec;$action='RestoreNow';$status='Ready';$reason='';$cv2=[bool]($package.Plan.PSObject.Properties['Assistive'] -and $package.Plan.Assistive -and $package.Plan.Assistive.PSObject.Properties['ContractVersion'] -and [int]$package.Plan.Assistive.ContractVersion -eq 2);$locationError='';$readiness=Get-WsmAssistiveWorkloadReadiness $item
         if($decision.Receipt.Decision -eq 'WaitForInstall'){$action='WaitForInstall';$status='DeferredSoftware';$reason='Owner chose to wait for target preparation; no target writes will occur.'}
         elseif($readiness.Status -ne 'Ready'){$action=$readiness.Status;$status=$readiness.Status;$reason=$readiness.Reason}
         else{
             $itemIssues=@(Get-WsmAssistiveItemDependencyIssues $issues ([string]$item.ItemId))
             if($itemIssues.Count -and @($decision.Receipt.AcceptedUnpreparedItemIds | Where-Object {$_ -ceq $item.ItemId}).Count -eq 0){$action='DeferredSoftware';$status='DeferredSoftware';$reason=(@($itemIssues | ForEach-Object Issue | Select-Object -Unique) -join '; ')}
             elseif($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'External'){$action='ExternalManual';$status='ManualEvidenceRequired';$reason='This selected workload depends on an external/non-C location; retain the source reference and complete the reviewed owner-managed transfer/readback procedure.'}
-            elseif($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'NonC'){$action='DeferredNonC';$status='Deferred';$reason='Required non-C content must have a current trusted D result and live readback before G can mark the workload complete.';if($nonCError){$reason='D evidence validation/readback remains incomplete: '+$nonCError};if($nonCRows.ContainsKey([string]$item.ItemId)){$nonc=$nonCRows[[string]$item.ItemId];$status=[string]$nonc.Status;$reason=[string]$nonc.Reason;if($status -ceq 'Ready'){$action='AcceptVerifiedNonC';$reason='D result is bound to the final package and every required native target file/directory has verified live readback.'}else{$action='DeferredNonC'}}}
+            elseif($spec.Adapter -eq 'FileScope' -and $cv2 -and ($locationError=$(try{Assert-WsmOfflineFullSetOriginalLocation $package.Plan $spec;''}catch{$_.Exception.Message}))){$action='BlockedLocation';$status='Blocked';$reason=$locationError}
+            elseif($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'NonC' -and -not $cv2){$action='DeferredNonC';$status='Deferred';$reason='Required non-C content must have a current trusted D result and live readback before G can mark the workload complete.';if($nonCError){$reason='D evidence validation/readback remains incomplete: '+$nonCError};if($nonCRows.ContainsKey([string]$item.ItemId)){$nonc=$nonCRows[[string]$item.ItemId];$status=[string]$nonc.Status;$reason=[string]$nonc.Reason;if($status -ceq 'Ready'){$action='AcceptVerifiedNonC';$reason='D result is bound to the final package and every required native target file/directory has verified live readback.'}else{$action='DeferredNonC'}}}
             elseif($spec.Adapter -eq 'FileScope'){
                 $target=ConvertTo-WsmCanonicalPath $spec.TargetPath
                 try{
-                    Assert-WsmNoReparse $target;$artifactRows=@(Read-WsmArtifactLines (Join-Path $package.Root 'artifacts.jsonl') $package.Manifest.ArtifactsHash $CancellationToken | Where-Object ItemId -CEQ $item.ItemId);$singleFileScope=($artifactRows.Count -eq 1 -and -not $artifactRows[0].Directory -and [string]::IsNullOrEmpty([string]$artifactRows[0].RelativePath))
+                    $artifactRows=@(Read-WsmArtifactLines (Join-Path $package.Root 'artifacts.jsonl') $package.Manifest.ArtifactsHash $CancellationToken | Where-Object ItemId -CEQ $item.ItemId);$singleFileScope=($artifactRows.Count -eq 1 -and -not $artifactRows[0].Directory -and [string]::IsNullOrEmpty([string]$artifactRows[0].RelativePath));$requiredBytes=[long]0;foreach($row in @($artifactRows | Where-Object {-not $_.Directory})){if($row.PSObject.Properties['Data'] -and $row.Data -and $row.Data.PSObject.Properties['Bytes']){$requiredBytes+=[long]$row.Data.Bytes}};$gap=Get-WsmAssistiveTargetLocationGap $target $requiredBytes
+                    if($gap){$action=$gap.Action;$status=$gap.Status;$reason=$gap.Reason}else{
+                    Assert-WsmNoReparse $target
                     Assert-WsmAssistiveTargetScopeTopology -Path $target -Spec $spec -TargetRoot $target -Kind Root
                     foreach($artifact in $artifactRows){$artifactTarget=$target;if(-not $singleFileScope -and $artifact.RelativePath){$artifactTarget=Join-Path $target ([string]$artifact.RelativePath)};if([IO.File]::Exists($artifactTarget) -or [IO.Directory]::Exists($artifactTarget)){if($artifact.Directory){Assert-WsmAssistiveTargetScopeTopology -Path $artifactTarget -Spec $spec -TargetRoot $target -Artifact $artifact -Kind Directory -Destination $artifactTarget}else{$trustedExistingHash='';$priorItems=@($state.Items|Where-Object ItemId -CEQ $item.ItemId);if($priorItems.Count -eq 1 -and $priorItems[0].PSObject.Properties['OwnedFiles']){$priorOwners=@($priorItems[0].OwnedFiles|Where-Object {$_.RelativePath -ceq [string]$artifact.RelativePath -and $_.TargetPath -ieq $artifactTarget});if($priorOwners.Count -eq 1){$trustedExistingHash=[string]$priorOwners[0].SHA256}};Assert-WsmAssistiveTargetScopeTopology -Path $artifactTarget -Spec $spec -TargetRoot $target -Artifact $artifact -Kind File -Destination $artifactTarget -TrustedExistingHash $trustedExistingHash}}}
                     if($singleFileScope){
@@ -356,6 +358,7 @@ function Get-WsmAssistiveRestorePreview {
                         else{$parent=[IO.Path]::GetDirectoryName($target);Assert-WsmNoReparse $parent;$action='CreateSingleFile';$status='Ready';$reason='Approved single-file target is absent; its parent directory will be retained or created without applying source-directory metadata.'}
                     }elseif([IO.File]::Exists($target)){$action='BlockedConflict';$status='BlockedConflict';$reason='A file occupies the approved directory target.'}
                     elseif([IO.Directory]::Exists($target)){$action='MergeIntoExistingDirectory';$status='Ready';$reason='Existing directories are retained; only new files and verified tool-owned unchanged files may be written.'}
+                    }
                 }
                 catch{$action='Blocked';$status='Blocked';$reason='Target path could not be verified safely.'}
             }elseif($spec.Adapter -in @('IISSection','IISLocation')){
@@ -381,6 +384,12 @@ function Get-WsmAssistiveRestorePreview {
     [pscustomobject]@{PairId=$package.Manifest.PairId;ManifestHash=$ExpectedHash;Generation=$package.Manifest.Generation;PlanHash=$package.Manifest.PlanHash;Mode='AssistivePerItem';ScopeMode='Assistive';Decision=$decision.Receipt.Decision;DecisionReceiptHash=$decision.ReceiptHash;SelectedItemIds=@($decision.SelectedItemIds);Rows=$rows.ToArray();NonCFileResults=$nonCFileResults;Problems=$problems.ToArray();GeneralHostIssues=$issues;NonCTransferPlanPath=$NonCTransferPlanPath;NonCTransferPlanHash=$NonCTransferPlanHash;NonCResultPath=$NonCResultPath;NonCResultHash=$NonCResultHash;NonCEvidenceIssue=$nonCError;Blocked=($decisionBlocked -or @($rows | Where-Object Status -EQ 'Blocked').Count -gt 0);CanRestoreIndependentItems=(@($rows | Where-Object Status -EQ 'Ready').Count -gt 0);NoOp=($rows.Count -eq 0);BusinessValidationRequired=$true;ProductionVerified=$false}
 }
 
+function Get-WsmAssistiveTargetLocationGap([string]$TargetPath,[long]$RequiredBytes) {
+    $root=[IO.Path]::GetPathRoot($TargetPath)
+    if(-not [IO.Directory]::Exists($root)){return [pscustomobject]@{Action='PrepareSameLocation';Status='Deferred';Reason=('目標主機缺少 '+$root+' 磁碟或掛載點；請準備相同位置後重新檢查。工具不會改寫到其他磁碟。')}}
+    if((Get-WsmAvailableBytes $root) -lt ($RequiredBytes + 256MB)){return [pscustomobject]@{Action='AddTargetCapacity';Status='Deferred';Reason=('目標磁碟 '+$root+' 可用空間不足（需要約 '+[math]::Ceiling($RequiredBytes/1MB)+' MiB）；請釋出空間後重新檢查。')}}
+    return $null
+}
 function Get-WsmAssistiveFileOwnershipHash($Rows) {
     $body=@($Rows | Sort-Object RelativePath | Select-Object RelativePath,TargetPath,SHA256,Generation)
     Get-WsmHashText ($body | ConvertTo-Json -Depth 12 -Compress)
@@ -699,7 +708,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
 }
 
 function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hashtable]$SidMap,$CancellationToken,[string]$Workspace='') {
-    $spec=$Item.MigrationSpec;$target=ConvertTo-WsmCanonicalPath $spec.TargetPath;Assert-WsmNoReparse $target;Assert-WsmAssistiveTargetScopeTopology -Path $target -Spec $spec -TargetRoot $target -Kind Root
+    $spec=$Item.MigrationSpec;$target=ConvertTo-WsmCanonicalPath $spec.TargetPath;if($Package.PSObject.Properties['Plan']){Assert-WsmOfflineFullSetOriginalLocation $Package.Plan $spec};if(-not [IO.Directory]::Exists([IO.Path]::GetPathRoot($target))){throw 'Target volume for the original location is not available; prepare the same location and recheck.'};Assert-WsmNoReparse $target;Assert-WsmAssistiveTargetScopeTopology -Path $target -Spec $spec -TargetRoot $target -Kind Root
     $index=Join-Path $Package.Root 'artifacts.jsonl';$entries=@(Read-WsmArtifactLines $index $Package.Manifest.ArtifactsHash $CancellationToken | Where-Object {$_.ItemId -ceq $Item.ItemId});if(-not $entries.Count){throw 'Approved FileScope has no package artifacts.'}
     $singleFileScope=($entries.Count -eq 1 -and -not $entries[0].Directory -and [string]::IsNullOrEmpty([string]$entries[0].RelativePath));$restoreRoot=$target;$createdDirs=New-Object 'System.Collections.Generic.List[string]'
     if($singleFileScope){if([IO.Directory]::Exists($target)){throw 'A directory occupies the approved single-file target.'};$restoreRoot=[IO.Path]::GetDirectoryName($target);Assert-WsmNoReparse $restoreRoot;if(-not [IO.Directory]::Exists($restoreRoot)){[void][IO.Directory]::CreateDirectory($restoreRoot)}}

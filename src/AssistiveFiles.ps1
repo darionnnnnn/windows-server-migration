@@ -252,3 +252,11 @@ function Get-WsmFilePlacementPreview {
     })
     [pscustomobject]@{Kind='FilePlacementPreview';PairId=$plan.PairId;ManifestHash=$ExpectedHash;Rows=$rows;Total=$rows.Count;Blocked=@($rows|Where-Object PlacementStatus -in @('BlockedConflict','OwnedFileDrift','UnknownPermission')).Count;ReadOnly=$true;ProductionVerified=$false}
 }
+
+function Assert-WsmOfflineFullSetOriginalLocation($Plan,$Spec) {
+    if(-not ($Plan.PSObject.Properties['Assistive'] -and $Plan.Assistive -and $Plan.Assistive.PSObject.Properties['ContractVersion'] -and [int]$Plan.Assistive.ContractVersion -eq 2 -and [string]$Spec.Adapter -ceq 'FileScope')){return}
+    $source=ConvertTo-WsmCanonicalPath ([string]$Spec.SourcePath)
+    $target=ConvertTo-WsmCanonicalPath ([string]$Spec.TargetPath)
+    if($source -ine $target){throw 'OfflineFullSet restore requires the approved original location; the target path differs from the captured source path.'}
+    if($target -notmatch '^[A-Za-z]:\\'){throw 'OfflineFullSet restore requires a drive-rooted original location.'}
+}

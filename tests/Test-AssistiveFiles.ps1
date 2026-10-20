@@ -25,7 +25,7 @@ try{
         Check (@($entries | Where-Object RelativePath -EQ 'settings\appsettings.json').Count -eq 1) 'Approved nested file was not captured.'
         Check ((Assert-WsmAssistiveSourceScope $spec -Native).Channel -ceq 'C') 'Physical C source was not accepted.'
         $item=[pscustomobject]@{Decision='Include';MigrationSpec=$spec}
-        Check (Test-WsmAssistivePackageScope ([pscustomobject]@{Assistive=[pscustomobject]@{SourcePolicy='SourceCOnly'}}) $item) 'Approved C scope was not routed to package.'
+        Check (Test-WsmAssistivePackageScope ([pscustomobject]@{Assistive=[pscustomobject]@{ContractVersion=1;SourcePolicy='SourceCOnly'}}) $item) 'Approved C scope was not routed to package.'
         $spec.TransferChannel='NonC';Reject {Assert-WsmAssistiveSourceScope $spec} 'A physical C scope claimed NonC.';$spec.TransferChannel='C'
         $spec.ConfigFiles[0].RelativePath='..\outside.json';Reject {Get-WsmScopeEntries $spec $output} 'Traversal whitelist accepted.';$spec.ConfigFiles[0].RelativePath='settings\appsettings.json'
         $spec.ExcludedRelativePaths=@('settings');Reject {Get-WsmScopeEntries $spec $output} 'Excluded exact file silently disappeared.';$spec.ExcludedRelativePaths=@()
@@ -36,7 +36,7 @@ try{
         # A forged NonC proof must not smuggle a physical C scope into the D channel.
         $proofId=('c'*64);$proofSource=(Get-WsmMachineIdentity).Fingerprint
         $proofItem=[pscustomobject]@{ItemId=$proofId;Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='FileScope';TransferChannel='NonC'}}
-        $proofPlan=[pscustomobject]@{Assistive=[pscustomobject]@{};Source=[pscustomobject]@{Fingerprint=$proofSource};Items=@($proofItem)}
+        $proofPlan=[pscustomobject]@{Assistive=[pscustomobject]@{ContractVersion=1;SourcePolicy='SourceCOnly'};Source=[pscustomobject]@{Fingerprint=$proofSource};Items=@($proofItem)}
         $cNative=Get-WsmPhysicalPath 'C:\';$sourceNative=Get-WsmPhysicalPath $source
         $proofManifest=[pscustomobject]@{SourceCollectionProofs=@([pscustomobject]@{ItemId=$proofId;Channel='NonC';PhysicalPath=$sourceNative;SourceCPhysicalRoot=$cNative;SourceFingerprint=$proofSource;NativeVerified=$true})}
         Reject {Assert-WsmAssistiveCollectionProofs $proofManifest $proofPlan} 'Physical C evidence was accepted as a NonC source collection proof.'

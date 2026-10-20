@@ -711,6 +711,13 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證：WizardBackup（真實 Directory／ZIP 報告、2500 列不截斷、注入字串被編碼、空集合、錯誤雜湊、獨立副本竄改）、OfflineFullSet 50、真實 Edge 以 `file://` 開啟報告（三個分頁、提示文字、沒有 console 錯誤）通過；突變（拿掉 HTML 編碼）會轉紅。
 - 已知限制：作業輸出的 HTML 白名單沒有 `OfflineReport`／`ItemResults` 欄位，所以 Edge 測試是由交付路徑推導報告位置；瀏覽器中超過 100 列的翻頁與搜尋輸入沒有自動化操作驗證。
 
+### 17.36 E1/E2 CV2 原位置還原與目標缺口預檢（部分完成）
+
+- Sonnet 5.5 subagent 實作，主代理審查並獨立驗證。Assistive 還原流程不再拒絕 CV2；舊流程 `Get-WsmRestorePreview`／`Invoke-WsmRestore` 仍然拒絕 CV2。新增 `Assert-WsmOfflineFullSetOriginalLocation`：CV2 的 FileScope 來源與目標必須是同一個磁碟代號開頭的原位置，預覽與寫入端都會檢查，預覽中不符的項目標為 BlockedLocation。新增 `Get-WsmAssistiveTargetLocationGap`：目標磁碟或掛載點不存在時標為 `Deferred／PrepareSameLocation`（「請準備相同位置後重新檢查，工具不會改寫到其他磁碟」），容量不足時標為 `Deferred／AddTargetCapacity`；兩者都不算 problem，也不會寫入。CV2 的非 C 項目改為由封裝寫回，不再等待直傳結果；非 CV2 的行為不變。寫入端在目標根目錄不存在時拋出例外作為保護。
+- 主代理另修正既有缺陷：`Test-AssistiveFiles.ps1` 自 5664727（D3a）起就失敗，原因是 fixture 手工組出缺少 `ContractVersion` 的 `Assistive`，而合約要求一定要有這個欄位。已補齊 fixture；正式碼不加只防一半的防護。
+- 驗證（WinPS 5.1）：OfflineFullSet 60（原 50）、AssistiveRestore 137（原 135）、AssistiveFiles 35、WizardRestore 79、ServiceCredentialChallenge 15、RecoveryContracts、AssistiveDirectoryReadback 10 通過；突變（缺磁碟檢查失效）會轉紅。
+- 限制：容量是逐項檢查，同一磁碟上多個項目的總量還沒有加總比較；寫入端只在 package 帶有 Plan 時才檢查原位置（正式封裝一律帶 Plan）；沒有權限可寫入性的預檢；完整的離線端到端旅程屬 G。
+
 ## 18. 第五次定案：使用者目標對照與備份端優先
 
 > 2026-10-20 使用者盤點後定案；介面規格經 ui-ux-pro-max（HTML／CSS 指引、WCAG 2.2 AA 檢查目標）檢視。本節只補規格與調整順序，不改第 1 節目標，也不改核准、秘密、production gate 的邊界。與前文順序衝突時以本節為準，其餘契約不變。本節是規劃，不是完成證據。
