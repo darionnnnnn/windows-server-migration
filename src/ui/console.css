@@ -118,3 +118,5 @@ body{font-size:18px}
 .service-credential-fields label, .service-challenge-takeover { display: grid; gap: .35rem; font-weight: 600; }
 .service-credential-fields input { box-sizing: border-box; width: 100%; padding: .55rem; }
 .service-challenge-takeover { display: flex; align-items: flex-start; margin: .8rem 0; font-weight: 400; }
+.wizard-runtime-independent-copy{margin-top:16px}
+.wizard-runtime-independent-copy .wizard-choice+.wizard-choice{margin-top:8px}

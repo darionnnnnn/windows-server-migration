@@ -674,6 +674,13 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：WizardBackup、WizardRuntime、OperationRequests、HtmlConsole 112、WizardHtmlRuntimeProjection 185、WizardTextRuntime 65、NativeWizardRuntimeHandler 通過。突變（action 不檢查是否已交付）會轉紅。`Test-TextConsole` 在本輪開始前的 a4193aa 就已失敗（`Unknown operation for this installed module.`），屬既有問題，列為待查。
 - 尚未完成：HTML 畫面（D3b-3b）。
 
+### 17.30 D3b-3b 獨立副本 HTML 畫面（D3b 備份端完成，部分驗證）
+
+- 2026-10-20 agy 在本段以結束碼 1 收場，沒有任何輸出或改動；同日使用者指定之後的 subagent 改用 Sonnet 5.5、不再使用 agy。本段改由 Sonnet subagent 依同一份規格實作，主代理審 diff 並獨立驗證。
+- 來源備份卡片新增「離線還原就緒」摘要，以及「建立獨立備份副本」表單：用 `fieldset`＋`legend`；目的地欄位以 `aria-describedby` 連到媒體規則說明；模式用兩個單選鈕（工具複製／只驗證人工複製的副本）；欄位不完整時送出鈕停用；只用 `textContent`。就緒狀態另用 `offlineReadinessText` 對照，不沿用 `statusName`（它的 `Verified` 已有別的意思）。「備份結果」頁會列出 IndependentCopy 作業。
+- 驗證：真實 Edge 測試 `Test-NativeWizardRuntimeHandler.js` 在實際來源備份後開啟表單、確認目的地空白時無法送出、送出本機固定磁碟目的地後作業為 Failed，且沒有產生副本資料夾。突變（表單永遠不顯示）會逾時失敗。subagent 把既有一行結尾的 `page.close()` 移到新段落結尾，以免頁面提早關閉，行為不變。
+- D3b 備份端（CV2 一鍵備份、獨立副本複製與驗證、action 與畫面）至此串起來。仍未驗證：可移除磁碟與網路媒體的實機複製；畫面上的成功路徑只能在有獨立媒體的環境走完。
+
 ## 18. 第五次定案：使用者目標對照與備份端優先
 
 > 2026-10-20 使用者盤點後定案；介面規格經 ui-ux-pro-max（HTML／CSS 指引、WCAG 2.2 AA 檢查目標）檢視。本節只補規格與調整順序，不改第 1 節目標，也不改核准、秘密、production gate 的邊界。與前文順序衝突時以本節為準，其餘契約不變。本節是規劃，不是完成證據。
@@ -692,7 +699,7 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 
 - 2026-10-20 核對：工作樹有 20 檔未提交的 F4a 改動。`Test-ServiceCredentialChallenge` 14 項、`Test-HtmlConsole` 112 項通過；`Test-AssistiveRestore` 失敗（WindowsFeature Assistive consumer failed to persist restart result and RebootRequired）。同一測試在乾淨的 a4193aa worktree 120 項通過，所以回歸是未提交改動造成的。
 - 定案：先修此回歸，再以雙引擎跑 F4a 相關及受影響的回歸（AssistiveRestore、Adapters、HtmlConsole、NativeWizardRuntimeHandler、ServiceCredentialChallenge）。全部通過後才以「F4a 部分完成」commit／push，不宣稱 F4a 完成。殘留的 `work/r7/f4a-service-990650f2` worktree 在確認沒有未保存內容後移除。
-- 委派：2026-10-20 使用者指定第五次定案後的 subagent 實作一律委派 agy，依 gemini-delegate skill 每段切到 1～2 檔一個機制並附逐條驗收；主代理逐段獨立驗證 diff、使用端與雙引擎測試，不採信委派摘要。第 17 節的 gpt-6-luna 紀錄保留為歷史。
+- 委派（2026-10-20 更新）：D3b-3b 起使用者改指定 Sonnet 5.5 subagent，不再使用 agy；原文：第五次定案後的 subagent 實作一律委派 agy，依 gemini-delegate skill 每段切到 1～2 檔一個機制並附逐條驗收；主代理逐段獨立驗證 diff、使用端與雙引擎測試，不採信委派摘要。第 17 節的 gpt-6-luna 紀錄保留為歷史。
 - 新順序：F4a 回歸修正 → D3b → F1-P → F3-T／F3-S → E1/E2 → E3a（含 E3a-S）→ F4a 其餘 → E3b → F4b → F1/F2 其餘 → G。理由：使用者目標集中在備份端看得見的結果。E3a-S 規格先定案，實作仍依相依排在 E1/E2 之後。
 
 ### 18.3 F1-P：備份時顯示目前項目
