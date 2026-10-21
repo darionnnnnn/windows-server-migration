@@ -15,6 +15,12 @@ foreach($request in @(
     [IO.File]::WriteAllText($path,($request | ConvertTo-Json -Depth 12));$blocked=$false;try{Invoke-WsmOperationRequest $path (Get-FileHash $path).Hash | Out-Null}catch{if($_.Exception -isnot [IO.InvalidDataException]){throw};$blocked=$true};if(-not $blocked){throw 'Untrusted/interactive request accepted'}
 }
 if((Get-WsmOperationStatusCode ([pscustomobject]@{Stage='RebootRequired'})) -ne 2 -or (Get-WsmOperationStatusCode ([pscustomobject]@{Stage='Failed'})) -ne 1 -or (Get-WsmOperationStatusCode ([pscustomobject]@{Blocked=$true})) -ne 2){throw 'Operation exit classification mismatch'}
+foreach($waitingState in @('WaitingForInput','Interrupted','NeedsNewPreview','Superseded')){
+    foreach($field in @('Status','Stage')){$waitingCode=Get-WsmOperationStatusCode ([pscustomobject]@{$field=$waitingState});if($waitingCode -ne 2){throw ('Waiting-class state '+$waitingState+' via '+$field+' must return 2 (not success, failure or cancel), got '+$waitingCode)}}
+    $wrappedCode=Get-WsmOperationStatusCode ([pscustomobject]@{Result=[pscustomobject]@{Kind='StageResult';Status=$waitingState}});if($wrappedCode -ne 2){throw ('Wrapped StageResult '+$waitingState+' must return 2, got '+$wrappedCode)}
+}
+if((Get-WsmOperationStatusCode ([pscustomobject]@{Status='WaitingForInput';ParentOperationId='p'})) -eq 0 -or (Get-WsmOperationStatusCode ([pscustomobject]@{Status='Interrupted'})) -eq 3 -or (Get-WsmOperationStatusCode ([pscustomobject]@{Status='WaitingForInput'})) -eq 1){throw 'WaitingForInput/Interrupted must be neither success, cancel nor failure.'}
+Write-Output 'PASS: WaitingForInput, Interrupted, NeedsNewPreview and Superseded return exit code 2.'
 foreach($case in @(@{Status='Failed';Code=1},@{Status='Succeeded';Code=0},@{Status='Blocked';Code=2},@{Status='Partial';Code=2},@{Status='RetryPending';Code=2},@{Status='Cancelled';Code=3},@{Status='Running';Code=2},@{Status='ManualEvidenceRequired';Code=2})){
     foreach($stage in @('Export','Restore','Cutover','Retirement')){if((Get-WsmOperationStatusCode ([pscustomobject]@{Kind='StageResult';Stage=$stage;Status=$case.Status})) -ne $case.Code){throw ('StageResult Status exit-code mismatch: '+$stage+'/'+$case.Status)}}
 }

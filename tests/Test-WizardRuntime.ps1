@@ -111,6 +111,19 @@ try {
         $runtimeCancelled=Get-WsmWizardRuntimeProjection -Workspace $work -PairId $pair -Role Target -Jobs (@($allJobs)+@($cancelResultJob))
         if($runtimeCancelled.runtime.restoreResult.stage -cne 'Cancelled' -or -not $runtimeCancelled.runtime.noAutoResume -or -not $runtimeCancelled.runtime.noAutoActivation -or @($runtimeCancelled.actions|Where-Object id -ceq 'CreateTargetDecisionReceipt'|Where-Object available).Count -ne 1 -or @($runtimeCancelled.actions|Where-Object {$_.id -in @('TargetRestore','TargetValidation','TargetAcceptance','TargetActivation') -and $_.available}).Count){throw 'Runtime did not preserve cancellation as a terminal result with an explicit new-decision route and closed restore/validation/acceptance/activation gates.'}
         Write-Host 'PASS: runtime projection consumed the real durable cancelled Target restore result.'
+        foreach($pendingCase in @(@{Status='WaitingForInput';Summary='等待帳密輸入';Forbidden=@('可開始還原','已完成')},@{Status='Interrupted';Summary='還原中斷，可檢視恢復預覽後續作';Forbidden=@('已完成')})){
+            $pendingJob=[pscustomobject]@{action='TargetRestore';status=$pendingCase.Status;role='Target';pairId=$pair;workspace=$work;jobId=[Guid]::NewGuid().ToString();startedUtc='2999-01-01T00:00:00Z';completedUtc=$null;outputs=@()}
+            $pendingProjection=Get-WsmWizardRuntimeProjection -Workspace $work -PairId $pair -Role Target -Jobs (@($allJobs)+@($pendingJob))
+            if($pendingProjection.status -cne $pendingCase.Status -or $pendingProjection.runtime.status -cne $pendingCase.Status){throw ('Target projection did not show a '+$pendingCase.Status+' TargetRestore parent as its status; got '+$pendingProjection.status)}
+            if(-not ([string]$pendingProjection.runtime.statusSummary).Contains($pendingCase.Summary)){throw ('Target status summary for '+$pendingCase.Status+' is missing the required text: '+$pendingProjection.runtime.statusSummary)}
+            foreach($forbidden in $pendingCase.Forbidden){if(([string]$pendingProjection.runtime.statusSummary).Contains($forbidden)){throw ('Target status summary for '+$pendingCase.Status+' must not claim: '+$forbidden)}}
+            if(@($pendingProjection.actions|Where-Object {$_.id -ceq 'TargetRestore' -and $_.available}).Count){throw ('A '+$pendingCase.Status+' parent must not offer a fresh TargetRestore start.')}
+        }
+        $olderPending=[pscustomobject]@{action='TargetRestore';status='WaitingForInput';role='Target';pairId=$pair;workspace=$work;jobId=[Guid]::NewGuid().ToString();startedUtc='2000-01-01T00:00:00Z';completedUtc=$null;outputs=@()}
+        $newerDone=[pscustomobject]@{action='TargetRestore';status='Failed';role='Target';pairId=$pair;workspace=$work;jobId=[Guid]::NewGuid().ToString();startedUtc='2000-01-02T00:00:00Z';completedUtc='2000-01-02T00:01:00Z';outputs=@()}
+        $supersededProjection=Get-WsmWizardRuntimeProjection -Workspace $work -PairId $pair -Role Target -Jobs (@($allJobs)+@($olderPending,$newerDone))
+        if($supersededProjection.status -ceq 'WaitingForInput'){throw 'An older WaitingForInput parent must not override a newer TargetRestore job.'}
+        Write-Host 'PASS: Target projection shows WaitingForInput/Interrupted TargetRestore parents with explicit summary text and no fresh restore start.'
 '@
         $restoreSource=$restoreSource.Replace($cancelNeedle,$cancelProbe+[Environment]::NewLine+$cancelNeedle)
         if($BackendOnly){

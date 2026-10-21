@@ -810,6 +810,16 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 既有失敗（換回 HEAD 的 console.js／css 同樣重現，不歸因本段）：`Test-AssistiveUi.js`（`reconnect.addEventListener is not a function` 等 2 項）、`Test-WizardPendingUi.js`（401 應清除 pending）。列入本輪待修（M5）。
 - 限制：Tab 走查只斷言至少 9 個控制項在對話框內循環，未逐一核對；送出後若密碼被拒，對話框已關閉，需由作業卡按鈕再開。
 
+### 17.52 R3 WaitingForInput 不是終點：返回碼、投影、畫面與 CLI 一致
+
+- Sonnet 5.5 subagent 實作，主代理審查、補畫面渲染並重跑。
+- 返回碼：`Get-WsmOperationStatusCode` 對 `WaitingForInput`、`Interrupted`、`NeedsNewPreview`、`Superseded` 皆回 2（後兩者原本靠「不在已知清單」才回 2，改為明列），並加測試鎖定。
+- 前端：Source／NonC 精靈送出函式 `submitNonCWizardAction` 把 `WaitingForInput` 視為已知回應並停止該函式的輪詢（否則 120 秒後誤報為未知寫入）；全域作業輪詢仍持續。作業卡在等待／中斷時顯示「狀態：等待中（尚未結束）」，執行中顯示「進行中（尚未結束）」，只有終態才顯示結束時間（原本顯示「結束時間：時間未知」）。
+- 投影：Target 執行投影新增 `statusSummary`：最新 TargetRestore 為 WaitingForInput 時為「等待帳密輸入……目前不可重新開始還原」，Interrupted 時為「還原中斷，可檢視恢復預覽後續作」，此時不提供新的 TargetRestore 起始動作；HTML 白名單同步。主代理補上 Target 卡片顯示這段文字（subagent 受白名單限制未渲染），並在 `Test-WizardRuntimeTargetUi.js` 加斷言。
+- CLI：互動帳密輸入時輸入串流結束，改回報 `Status=WaitingForInput ParentOperationId=…` 並 `exit 2`，不撤銷耐久 challenge（可續作）；明確取消仍 `exit 3`；非互動 `-Action Operation` 本來就回 2。結果報告沒有獨立列出 TargetRestore 狀態的地方，現有結果投影只在終態採信輸出。
+- 驗證（WinPS 5.1）：OperationRequests、WizardRuntime 161、CredentialDeferral 68、HtmlConsole 165、WizardRestore 85、TargetRestoreContinuation 72、WizardHtmlRuntimeProjection 185、WizardTextRuntime 65、TextConsole 18、ScriptEncoding；Node 新增 WaitingConsistencyUi、WizardRuntimeTargetUi、CredentialDialogUi、真實 Edge NativeWizardRuntimeHandler 通過。突變：返回碼回 0、前端 known 拿掉 WaitingForInput、等待卡片顯示結束時間、投影覆寫失效、CLI 等待改 exit 3（subagent）、Target 卡片不顯示摘要（主代理）皆轉紅。
+- 限制：CLI 輸入結束後的續作只有單元與退出碼層證據；`Test-AssistiveUi.js`、`Test-WizardPendingUi.js` 的既有失敗仍在（M5）。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

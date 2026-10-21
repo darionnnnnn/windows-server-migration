@@ -24,7 +24,7 @@ function Get-WsmOperationStatusCode($Result) {
         if($r.PSObject.Properties['Result'] -and $r.Result -and $r.Result.PSObject.Properties['Kind'] -and $r.Result.Kind -ceq 'StageResult' -and $r.Result.PSObject.Properties['Status']){$states+=@([string]$r.Result.Status)}
         if($states -ccontains 'Failed' -or $states -ccontains 'FAIL'){return 1}
         if($states -ccontains 'Cancelled'){$code=3;continue}
-        $blocked=@($states | Where-Object {$_ -cin @('NotStarted','Ready','Running','WaitingForInput','Blocked','BlockedByOpenHandles','BlockedConflict','Partial','RetryPending','ManualEvidenceRequired','RebootRequired','PostCutoverValidationRequired','ReviewRequired','DeferredSoftware','WaitForInstall','NotInstalled','PermissionDenied','Unsupported','NotTested','NeedsOwnerReview','Interrupted','Unmapped','Manual') -or ($_.Length -gt 0 -and $_ -cnotin $knownStates)}).Count -gt 0
+        $blocked=@($states | Where-Object {$_ -cin @('NotStarted','Ready','Running','WaitingForInput','Blocked','BlockedByOpenHandles','BlockedConflict','Partial','RetryPending','ManualEvidenceRequired','RebootRequired','PostCutoverValidationRequired','ReviewRequired','DeferredSoftware','WaitForInstall','NotInstalled','PermissionDenied','Unsupported','NotTested','NeedsOwnerReview','Interrupted','NeedsNewPreview','Superseded','Unmapped','Manual') -or ($_.Length -gt 0 -and $_ -cnotin $knownStates)}).Count -gt 0
         if($r.PSObject.Properties['Qualified'] -and -not $r.Qualified){$blocked=$true}
         if($r.PSObject.Properties['Blocked'] -and $r.Blocked){$blocked=$true}
         if($r.PSObject.Properties['Passed'] -and -not $r.Passed){$blocked=$true}

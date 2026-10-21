@@ -274,10 +274,25 @@ function Get-WsmWizardTargetItemOptions($Context,$Package,$State) {
     })
 }
 
+function Get-WsmWizardRuntimeTargetPendingRestore([string]$Workspace,[string]$PairId,[object[]]$Jobs) {
+    # The newest TargetRestore parent of this pair decides: WaitingForInput / Interrupted are not a finished or startable restore.
+    $latest=$null;$latestTime=''
+    foreach($job in @($Jobs)){
+        if(-not $job -or [string](Get-WsmWizardTargetJobField $job action Action) -cne 'TargetRestore' -or [string](Get-WsmWizardTargetJobField $job role Role) -cne 'Target' -or [string](Get-WsmWizardTargetJobField $job pairId PairId) -cne $PairId){continue}
+        try{if([IO.Path]::GetFullPath([string](Get-WsmWizardTargetJobField $job workspace Workspace)) -ine [IO.Path]::GetFullPath($Workspace)){continue}}catch{continue}
+        $time=[string](Get-WsmWizardTargetJobField $job startedUtc StartedUtc);if(-not $time){$time=[string](Get-WsmWizardTargetJobField $job createdUtc CreatedUtc)}
+        if($null -eq $latest -or [string]::CompareOrdinal($time,$latestTime) -ge 0){$latest=$job;$latestTime=$time}
+    }
+    if(-not $latest){return $null}
+    $status=[string](Get-WsmWizardTargetJobField $latest status Status)
+    if($status -ceq 'WaitingForInput'){return [pscustomobject]@{Status='WaitingForInput';Summary='等待帳密輸入：還原尚未完成，請在還原畫面輸入或延後帳密後續作；目前不可重新開始還原。';ParentOperationId=[string](Get-WsmWizardTargetJobField $latest jobId JobId)}}
+    if($status -ceq 'Interrupted'){return [pscustomobject]@{Status='Interrupted';Summary='還原中斷，可檢視恢復預覽後續作。';ParentOperationId=[string](Get-WsmWizardTargetJobField $latest jobId JobId)}}
+    $null
+}
 function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,[object[]]$Jobs) {
     $actions=New-Object 'System.Collections.Generic.List[object]'
     $defaults=@{Workspace=[IO.Path]::GetFullPath($Workspace);PairId=$PairId}
-    $result=[ordered]@{status='NeedsApprovedPlan';plan=$null;package=$null;inventory=$null;comparison=$null;decision=$null;restorePreview=$null;restoreResult=$null;itemOptions=@();mechanicalValidation=[pscustomobject]@{available=$false;status='Locked';result=$null};businessAcceptance=[pscustomobject]@{available=$false;status='NotAccepted';gates=$null};activation=[pscustomobject]@{available=$false;status='Locked';acknowledgementRequired=$true};actions=@();noAutoResume=$true;noAutoActivation=$true;issues=@()}
+    $result=[ordered]@{status='NeedsApprovedPlan';plan=$null;package=$null;inventory=$null;comparison=$null;decision=$null;restorePreview=$null;restoreResult=$null;statusSummary='';itemOptions=@();mechanicalValidation=[pscustomobject]@{available=$false;status='Locked';result=$null};businessAcceptance=[pscustomobject]@{available=$false;status='NotAccepted';gates=$null};activation=[pscustomobject]@{available=$false;status='Locked';acknowledgementRequired=$true};actions=@();noAutoResume=$true;noAutoActivation=$true;issues=@()}
     $received=Get-WsmWizardReceivedApprovedPlan $Workspace $PairId $Profile
     if(-not $received){$actions.Add((New-WsmWizardRuntimeAction 'ImportApprovedPlan' $true '先取得與目前 Target 身分綁定的核准計畫及獨立預期 hash。' @{Workspace=$Workspace;Role='Target'} @('Path','ExpectedHash')));$result.actions=@($actions.ToArray());return [pscustomobject]$result}
     if([int]$received.Plan.SchemaVersion -ne 3){$result.status='UseExistingWorkflow';$result.issues=@('此核准計畫使用原核心格式，請由既有流程檢查材料與續作；不將原格式重新解讀為 schema-3 還原授權。');$result.actions=@();return [pscustomobject]$result}
@@ -317,8 +332,10 @@ function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,
     $postActivation=$false
     if($result.restoreResult){$postPaths=Get-WsmOperationPaths (Join-Path $Profile.WorkRoot 'pairs') $PairId;$postState=Get-WsmOperationState $postPaths $package.Package;$postActivation=Test-WsmWizardRuntimeActivatedBinding $Workspace $PairId $received $package $postState $Jobs}
     $validationPhase=if($postActivation){'Final'}else{'Staged'}
+    $pendingRestore=$null;if(-not $stage){$pendingRestore=Get-WsmWizardRuntimeTargetPendingRestore $Workspace $PairId $Jobs}
     $result.status=if($stage){$stage}elseif($decisionRecord.Receipt.Decision -ceq 'WaitForInstall'){'WaitingForInstall'}elseif($result.restorePreview -and ([bool]$result.restorePreview.CanRestoreIndependentItems)){'ReadyForRestore'}elseif($result.restorePreview){'ReviewRequired'}else{'ReadyForRestorePreview'}
-    if(-not $stage -and $result.restorePreview -and $decisionRecord.Receipt.Decision -ceq 'RestoreNow' -and ([bool]$result.restorePreview.CanRestoreIndependentItems)){$actions.Add((New-WsmWizardRuntimeAction 'TargetRestore' $true '確認此明確預覽後還原；寫入時會重新核對目前 Target 軟體與全部綁定。' @{Workspace=$Workspace;PairId=$PairId;PreviewHash=[string]$result.restorePreview.PreviewHash} @()))}
+    if($pendingRestore){$result.status=$pendingRestore.Status;$result.statusSummary=$pendingRestore.Summary}
+    if(-not $stage -and -not $pendingRestore -and $result.restorePreview -and $decisionRecord.Receipt.Decision -ceq 'RestoreNow' -and ([bool]$result.restorePreview.CanRestoreIndependentItems)){$actions.Add((New-WsmWizardRuntimeAction 'TargetRestore' $true '確認此明確預覽後還原；寫入時會重新核對目前 Target 軟體與全部綁定。' @{Workspace=$Workspace;PairId=$PairId;PreviewHash=[string]$result.restorePreview.PreviewHash} @()))}
     if($postActivation){$result.status='PostCutoverValidationRequired';$result.activation.status='Activated'}
     if($stage -in @('Succeeded','Partial','RebootRequired')){
         $result.mechanicalValidation=[pscustomobject]@{available=$true;status='NotRun';result=$null}

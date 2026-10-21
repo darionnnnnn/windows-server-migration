@@ -209,6 +209,38 @@ try {
                 if(Test-Path Function:\Get-Credential){Remove-Item Function:\Get-Credential -ErrorAction SilentlyContinue}
             }
 
+            # ---- 6b. CLI: console input ending while a restore waits for credentials is "waiting" (exit 2); an explicit cancel stays 3.
+            foreach($eofCase in @('Eof','Cancel')){
+                Reset-Fixture
+                $s=New-DefScenario @(@{Name='EofSvc';Spec=(New-DefServiceSpec 'EofSvc' 'EofSvcSecret' 'CONTOSO\svc-eof')})
+                $eofWaiting=Invoke-DefScenario $s @{}
+                $originalReadValue=(Get-Command Read-WsmWizardValue -CommandType Function).ScriptBlock;$originalRevoke=(Get-Command Revoke-WsmWizardServiceChallenge -CommandType Function).ScriptBlock
+                $script:eofCase=$eofCase;$eofError=$null;$script:revokeCalls=0
+                try{
+                    Set-Item Function:\Revoke-WsmWizardServiceChallenge -Value {param($Challenge,[string]$StateDirectory,[string]$PairId)$script:revokeCalls++}
+                    Set-Item Function:\Read-WsmWizardValue -Value {param([string]$Label,[switch]$Optional)if($script:eofCase -ceq 'Eof'){throw (New-Object IO.EndOfStreamException('Console input ended.'))}else{throw (New-Object OperationCanceledException('cancelled'))}}
+                    try{Resolve-WsmWizardServiceChallenge -WaitingResult $eofWaiting -WorkRoot $root -StateDirectory $root -PairId $s.Pair -OperationId $s.Op -CancellationToken $s.Token -GeneralHostEvidence @() -ChallengeContext $s.Context|Out-Null}catch{$eofError=$_.Exception}
+                }finally{Set-Item Function:\Read-WsmWizardValue -Value $originalReadValue;Set-Item Function:\Revoke-WsmWizardServiceChallenge -Value $originalRevoke}
+                if($eofCase -ceq 'Eof'){Check ($script:revokeCalls -eq 0) 'Input ending must not cancel the durable challenge: the restore is still waiting.';Check ($eofError -is [IO.EndOfStreamException] -and $eofError.Data.Contains('WsmWaitingForInput') -and [string]$eofError.Data['ParentOperationId'] -ceq [string]$s.Op) 'Input ending during the credential wait did not produce the identifiable waiting result carrying the parent id.'}
+                else{Check ($script:revokeCalls -eq 1) 'An explicit cancel must revoke the challenge.';Check ($eofError -is [OperationCanceledException] -and -not $eofError.Data.Contains('WsmWaitingForInput')) 'An explicit cancel must stay a plain cancellation, never the waiting result.'}
+            }
+            # The real entry script's top-level catch decides the exit code: run its own catch body in a child process.
+            $entryPath=[IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $ExecutionContext.SessionState.Module.ModuleBase) 'Start-ServerMigration.ps1'))
+            $entryAst=[Management.Automation.Language.Parser]::ParseFile($entryPath,[ref]$null,[ref]$null)
+            $entryCatch=@($entryAst.FindAll({param($n)$n -is [Management.Automation.Language.TryStatementAst] -and $n.CatchClauses.Count -eq 1 -and $n.CatchClauses[0].Body.Extent.Text -match 'exit 4'},$true))
+            Check ($entryCatch.Count -eq 1) 'Could not locate the entry script top-level catch that maps exceptions to exit codes.'
+            $childScript=Join-Path $root 'entry-exit-child.ps1'
+            [IO.File]::WriteAllText($childScript,("param([string]`$Kind)`r`ntry{`r`nif(`$Kind -ceq 'waiting'){`$e=New-Object IO.EndOfStreamException('ended');`$e.Data['WsmWaitingForInput']=`$true;`$e.Data['ParentOperationId']='parent-r3';throw `$e}`r`nelseif(`$Kind -ceq 'eof'){throw (New-Object IO.EndOfStreamException('ended'))}`r`nelse{throw (New-Object OperationCanceledException('cancelled'))}`r`n} catch "+$entryCatch[0].CatchClauses[0].Body.Extent.Text+"`r`n"),(New-Object Text.UTF8Encoding($false)))
+            $engine=Join-Path $PSHOME 'powershell.exe';if(-not (Test-Path -LiteralPath $engine)){$engine=Join-Path $PSHOME 'pwsh.exe'}
+            $expectedExit=@{waiting=2;eof=3;cancel=3}
+            foreach($kind in @('waiting','eof','cancel')){
+                $previousPreference=$ErrorActionPreference;$ErrorActionPreference='Continue'
+                $childOutput=(& $engine -NoProfile -NonInteractive -File $childScript $kind 2>&1|Out-String);$childExit=$LASTEXITCODE
+                $ErrorActionPreference=$previousPreference
+                Check ($childExit -eq $expectedExit[$kind]) ('Entry exit code for '+$kind+' must be '+$expectedExit[$kind]+', got '+$childExit)
+                if($kind -ceq 'waiting'){Check ($childOutput -match 'Status=WaitingForInput' -and $childOutput -match 'ParentOperationId=parent-r3') 'The waiting exit must print Status=WaitingForInput and the ParentOperationId.'}
+            }
+
             # ---- 7. no password sentinel in any durable file.
             $leaks=@(Get-ChildItem -LiteralPath $root -Recurse -File -Force|Where-Object {[IO.File]::ReadAllText($_.FullName) -match 'SYNTHETIC'})
             Check ($leaks.Count -eq 0) ('Synthetic secret sentinel found in durable test output: '+(@($leaks|ForEach-Object Name) -join ', '))

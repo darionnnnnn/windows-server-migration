@@ -167,6 +167,7 @@ try {
 } catch {
     [Console]::Error.WriteLine($_.Exception.Message)
     if ($_.Exception -is [IO.InvalidDataException] -or $_.Exception -is [Management.Automation.ParameterBindingException]) { exit 4 }
+    if ($_.Exception -is [IO.EndOfStreamException] -and $_.Exception.Data.Contains('WsmWaitingForInput')) { Write-Host ('Status=WaitingForInput ParentOperationId='+[string]$_.Exception.Data['ParentOperationId']); exit 2 }
     if ($_.Exception -is [IO.EndOfStreamException] -or $_.Exception -is [OperationCanceledException]) { exit 3 }
     exit 1
 }
