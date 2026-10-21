@@ -770,6 +770,12 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 能跑到契約後暴露真正的產品回歸（c95b8d6 F4a 第一切片引入）：舊版 `Invoke-WsmRestore`（schema 1/2）還原 Service 時經 `Invoke-WsmAdapterRestore` 建立以還原作業為 `ActiveOperationId` 的 reservation，但舊流程完成時沒有像 Assistive 路徑那樣釋放，之後 `Invoke-WsmCutover` 啟用同一服務時被「Target service is reserved by a waiting or active restore operation」擋下。修正：新增 `Clear-WsmAssistiveServiceReservationsForOperation`（只釋放該 Pair 中由這個作業持有的 Service reservation，保留 ownership 記錄），舊還原完成且沒有 PendingOperations 時呼叫。
 - 驗證（WinPS 5.1，非系統管理員）：CutoverActivationWorkflow PASS（原本環境性失敗）、AssistiveResources 34、Adapters、InstallerSafety、RecoveryContracts、ActivationRecovery、ServiceCredentialChallenge 46、AssistiveRestore 140、ScriptEncoding 通過。突變：拿掉完成時的釋放，CutoverActivationWorkflow 重現原失敗。
 
+### 17.47 M4 決策紀錄：逐項結果集與離線報告的存放位置偏離 18.4
+
+- 18.4 原寫「結果集是封存成員之一，16.5 的 hash 規則不變」。F3-T1／F3-T4（17.32、17.35）實作為：`backup-item-results.json` 與 `backup-report.html` 放在交付描述檔旁，不進封裝本體；attempt 記錄兩者的雜湊與筆數；工作台讀取時以 attempt 的雜湊驗證（不符回 `integrity='Failed'`、不回內容）；獨立副本一併複製並以同一驗證迴圈核對。
+- 理由：(1) 結果集要等封裝封存與交付驗證後才能完整判定「已備份」，若放進封裝本體就得先封存再改寫，違反 16.5「封存後不可改、不能循環引用自身 hash」；(2) 舊格式封裝讀取端與 CV2 封裝成員清單不必為此改版；(3) 篡改仍可偵測：結果集與報告的雜湊記在 attempt（Source workspace 內），獨立副本由同一驗證入口逐檔比對。
+- 代價與未做：新機只拿到獨立副本、沒有 Source attempt 時，結果集與報告的雜湊只能由獨立副本收據佐證，沒有封裝本體層級的綁定。本輪不新增外層交付索引；若之後要讓新機在完全離線下驗證結果集，另案在交付描述檔外層加入成員雜湊索引（索引本身由獨立副本收據引用，避免循環）。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
