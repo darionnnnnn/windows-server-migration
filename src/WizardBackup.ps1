@@ -254,7 +254,7 @@ function Invoke-WsmWizardStartBackup {
         }
         catch{
             if($freezeRequired -and -not $record.Freeze -and $record.FreezeAttemptStarted){$record.ResumeStage='';$record.SourceResumeRequired=$true;$record.Stage='ReviewRequired';$record.Error=[pscustomobject]@{Code='source_freeze_interrupted';Message='來源停止寫入流程可能已部分執行；請先檢查來源恢復紀錄，勿直接重送。'}}
-            else{$record.ResumeStage='Authorized';$record.Stage=if($_.Exception.Data['CancellationRequested']){'Cancelled'}else{'Failed'};if($freezeRequired -and $record.Freeze){$record.SourceResumeRequired=$true};$record.Error=[pscustomobject]@{Code=$(if($record.Stage -eq 'Cancelled'){'cancelled'}else{'core_export_failed'});Message='封裝未完成；已保留目前可核對的資料，請查看作業紀錄後再續作。'}}
+            else{$record.ResumeStage='Authorized';$record.Stage=if($_.Exception.Data['CancellationRequested']){'Cancelled'}else{'Failed'};if($freezeRequired -and $record.Freeze){$record.SourceResumeRequired=$true};$record.Error=[pscustomobject]@{Code=$(if($record.Stage -eq 'Cancelled'){'cancelled'}else{'core_export_failed'});Message=('封裝未完成；已保留目前可核對的資料，請查看作業紀錄後再續作。'+$(if([string]$_.Exception.Message -like 'OfflineFullSet source snapshot is missing*'){' 缺少核准時的來源盤點快照：請把 Manager 交付的 <計畫檔名>.source-snapshot.json 附件放在計畫檔旁，重新匯入核准計畫後再試。'}else{''}))}}
             $record.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $path $record $Workspace;throw
         }
     }

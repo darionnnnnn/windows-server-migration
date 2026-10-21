@@ -283,7 +283,7 @@ function Get-WsmWizardFileDetailIndex([string]$Workspace,[string]$PairId,[string
 }
 
 function Import-WsmWizardApprovedPlan {
-    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][ValidateSet('Source','Target')][string]$Role,[Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$ExpectedHash,[Parameter(DontShow)][string]$OperationId='')
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][ValidateSet('Source','Target')][string]$Role,[Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$ExpectedHash,[Parameter(DontShow)][string]$OperationId='',[string]$SourceSnapshotPath='')
     if($ExpectedHash -notmatch '^[a-fA-F0-9]{64}$'){throw 'A separately verified plan SHA256 is required.'}
     if($OperationId){Assert-WsmId $OperationId}
     $profile=Read-WsmOutputProfile $Workspace;if(-not $profile -or $profile.Role -cne $Role){throw 'Received-plan role must match the enrolled workspace.'}
@@ -291,9 +291,35 @@ function Import-WsmWizardApprovedPlan {
     $plan=Read-WsmMigrationPlan $sourcePath $ExpectedHash;$local=if($Role -ceq 'Source'){$plan.Source}else{$plan.Target};$machine=Get-WsmMachineIdentity
     if($local.HostId -cne $profile.HostId -or $local.Fingerprint -ine $profile.Fingerprint -or $machine.Fingerprint -ine $local.Fingerprint){throw 'Received approved plan is bound to a different local host identity.'}
     $root=[IO.Path]::GetFullPath((Get-WsmWizardReceivedPlanRoot $Workspace));$hash=$ExpectedHash.ToLowerInvariant();$planPath=Join-Path $root ($plan.PairId+'-'+$hash+'.plan.json');$receiptPath=Join-Path $root ($plan.PairId+'-'+$hash+'.json')
+    $snapshotStatus='NotRequired';$snapshotNextStep='';$snapshotAttachment='';$snapshotDestination=''
+    if($plan.PSObject.Properties['Assistive'] -and $plan.Assistive.PSObject.Properties['ContractVersion'] -and $plan.Assistive.ContractVersion -eq 2){
+        $attachmentName=[IO.Path]::GetFileName($sourcePath)+'.source-snapshot.json'
+        $candidate=if($SourceSnapshotPath){[IO.Path]::GetFullPath($SourceSnapshotPath)}else{[IO.Path]::GetFullPath($sourcePath+'.source-snapshot.json')}
+        if($SourceSnapshotPath -and -not [IO.File]::Exists($candidate)){throw 'The supplied source snapshot attachment does not exist.'}
+        if([IO.File]::Exists($candidate)){
+            Assert-WsmNoReparse $candidate
+            if((New-Object IO.FileInfo($candidate)).Length -gt 128MB){throw 'Source snapshot attachment exceeds 128 MiB.'}
+            if((Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash -ine [string]$plan.Assistive.SourceSnapshotHash){throw 'Source snapshot attachment does not match the approved source snapshot hash.'}
+            $snapshotRef=$plan.Assistive.DiscoveryAuthority.SourceSnapshotReference;Assert-WsmAssistiveReference $snapshotRef 'Approved source snapshot'
+            $pairsRoot=[IO.Path]::GetFullPath((Join-Path $Workspace 'pairs')).TrimEnd('\')+'\'
+            $snapshotDestination=[IO.Path]::GetFullPath((Join-Path (Join-Path $Workspace 'pairs') ([string]$snapshotRef.Reference).Replace('/','\')))
+            if(-not $snapshotDestination.StartsWith($pairsRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'Approved source snapshot reference escapes the Source pairs directory.'}
+            $snapshotAttachment=$candidate;$snapshotStatus='Imported'
+        }else{$snapshotStatus='Missing';$snapshotNextStep=('請把 Manager 交付的 '+$attachmentName+' 放在計畫檔旁後重新匯入。')}
+    }
     if($planPath.Length -gt 239 -or $receiptPath.Length -gt 239){throw 'This WorkRoot is too long to safely store the received plan and its verification record. Choose a shorter fixed WorkRoot and enroll that existing profile explicitly; the wizard will not move workspace data.'}
     if(-not [IO.Directory]::Exists($root)){[void][IO.Directory]::CreateDirectory($root);Protect-WsmDirectory $root};Assert-WsmNoReparse $root
     Invoke-WsmLocked $Workspace {
+        if($snapshotAttachment){
+            $destinationDirectory=[IO.Path]::GetDirectoryName($snapshotDestination);$pairsDirectory=[IO.Path]::GetFullPath((Join-Path $Workspace 'pairs')).TrimEnd('\')
+            if([IO.File]::Exists($snapshotDestination)){Assert-WsmNoReparse $snapshotDestination;if((Get-FileHash -LiteralPath $snapshotDestination -Algorithm SHA256).Hash -ine [string]$plan.Assistive.SourceSnapshotHash){throw 'A different source snapshot already exists at the approved reference; preserve it for reconciliation.'}}
+            else{
+                $levels=New-Object 'System.Collections.Generic.List[string]';$cursor=$destinationDirectory.TrimEnd('\');while($cursor.Length -gt $pairsDirectory.Length -and $cursor.StartsWith($pairsDirectory,[StringComparison]::OrdinalIgnoreCase)){$levels.Insert(0,$cursor);$cursor=[IO.Path]::GetDirectoryName($cursor)}
+                [void](New-WsmOutputOwnedDirectory $pairsDirectory);foreach($level in $levels){[void](New-WsmOutputOwnedDirectory $level)}
+                $temporary=$snapshotDestination+'.'+[Guid]::NewGuid().ToString('N')+'.tmp'
+                try{[IO.File]::Copy($snapshotAttachment,$temporary,$false);if((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash -ine [string]$plan.Assistive.SourceSnapshotHash){throw 'Source snapshot changed while it was being registered.'};[IO.File]::Move($temporary,$snapshotDestination)}finally{if([IO.File]::Exists($temporary)){try{[IO.File]::Delete($temporary)}catch{}}}
+            }
+        }
         if([IO.File]::Exists($planPath)){Assert-WsmNoReparse $planPath;if((Get-FileHash -LiteralPath $planPath -Algorithm SHA256).Hash -ine $hash){throw 'A received plan with this identity was changed; preserve it for reconciliation.'}}
         else{[IO.File]::Copy($sourcePath,$planPath,$false);if((Get-FileHash -LiteralPath $planPath -Algorithm SHA256).Hash -ine $hash){throw 'Received plan changed while it was being registered.'}}
         if([IO.File]::Exists($receiptPath)){$receipt=Read-WsmJson $receiptPath;if($receipt.Kind -cne 'WizardReceivedMigrationPlan' -or $receipt.PlanHash -ine $hash -or $receipt.PairId -cne $plan.PairId -or $receipt.Role -cne $Role){throw 'A conflicting received-plan reference already exists.'}}
@@ -313,7 +339,7 @@ function Import-WsmWizardApprovedPlan {
             Assert-WsmWizardState $pairWizard $profile ([string]$plan.PairId)|Out-Null
             Write-WsmJson $pairWizardPath $pairWizard
         }
-        [pscustomobject][ordered]@{Status='ImportedVerified';PairId=$plan.PairId;Path=[IO.Path]::GetFullPath($planPath);PlanPath=[IO.Path]::GetFullPath($planPath);SHA256=$hash;ApprovalId=$plan.ApprovalId;InventoryHash=$plan.InventoryHash;InventoryRevision=[int]$plan.InventoryRevision;DecisionRevision=[int]$plan.DecisionRevision;SourceFingerprint=[string]$plan.Source.Fingerprint;TargetFingerprint=[string]$plan.Target.Fingerprint;ImportOperationId=$OperationId;ProductionVerified=$false}
+        [pscustomobject][ordered]@{Status='ImportedVerified';PairId=$plan.PairId;Path=[IO.Path]::GetFullPath($planPath);PlanPath=[IO.Path]::GetFullPath($planPath);SHA256=$hash;ApprovalId=$plan.ApprovalId;InventoryHash=$plan.InventoryHash;InventoryRevision=[int]$plan.InventoryRevision;DecisionRevision=[int]$plan.DecisionRevision;SourceFingerprint=[string]$plan.Source.Fingerprint;TargetFingerprint=[string]$plan.Target.Fingerprint;ImportOperationId=$OperationId;ProductionVerified=$false;SourceSnapshotStatus=$snapshotStatus;SourceSnapshotNextStep=$snapshotNextStep}
     }
 }
 

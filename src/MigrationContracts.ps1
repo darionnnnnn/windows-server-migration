@@ -343,9 +343,27 @@ function Approve-WsmMigrationPlan {
         if (Get-Command Assert-WsmOraclePlanConfigOwnership -ErrorAction SilentlyContinue) { Assert-WsmOraclePlanConfigOwnership $plan | Out-Null }
         elseif (@($plan.Items | Where-Object { $_.Decision -eq 'Include' -and $_.MigrationSpec.Adapter -eq 'FileScope' -and $_.MigrationSpec.PSObject.Properties['ConfigFiles'] -and @($_.MigrationSpec.ConfigFiles | Where-Object { $_.PSObject.Properties['OracleClient'] }).Count }).Count) { throw 'Oracle plan ownership validator is unavailable.' }
         Write-WsmJson $Path $plan
+        $attachmentPath='';$attachmentHash=''
+        if($OfflineFullSet){
+            try{
+                $snapshotRef=$plan.Assistive.DiscoveryAuthority.SourceSnapshotReference;$workspaceRoot=[IO.Path]::GetFullPath($Workspace).TrimEnd('\')+'\'
+                $snapshotSource=[IO.Path]::GetFullPath((Join-Path $Workspace ([string]$snapshotRef.Reference).Replace('/','\')))
+                if(-not $snapshotSource.StartsWith($workspaceRoot,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.File]::Exists($snapshotSource)){throw 'OfflineFullSet approved source snapshot is missing or outside the Manager workspace.'}
+                Assert-WsmNoReparse $snapshotSource
+                if((Get-FileHash -LiteralPath $snapshotSource -Algorithm SHA256).Hash -ine [string]$plan.Assistive.SourceSnapshotHash){throw 'OfflineFullSet approved source snapshot does not match the sealed hash.'}
+                $attachmentPath=[IO.Path]::GetFullPath($Path)+'.source-snapshot.json'
+                [IO.File]::Copy($snapshotSource,$attachmentPath,$true)
+                $attachmentHash=(Get-FileHash -LiteralPath $attachmentPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                if($attachmentHash -ine [string]$plan.Assistive.SourceSnapshotHash){throw 'OfflineFullSet source snapshot attachment failed hash readback.'}
+            }catch{
+                $attachmentFailure=$_
+                foreach($partial in @($attachmentPath,$Path)){if($partial -and [IO.File]::Exists($partial)){try{[IO.File]::Delete($partial)}catch{}}}
+                throw $attachmentFailure
+            }
+        }
         $hash=(Get-FileHash -LiteralPath $Path).Hash
         $c.Approval=[pscustomobject]@{ ApprovalId=$plan.ApprovalId; Hash=$hash; Utc=$plan.ApprovedUtc; Kind='MigrationPlan'; Mode='IsolatedPilot'; ScopeMode=$(if($c.PSObject.Properties['GeneralHost']){'GeneralHost'}else{'Legacy'}); TargetHostId=$target.HostId; TargetFingerprint=$target.Fingerprint; AssistiveContractVersion=$(if($plan.PSObject.Properties['Assistive']){$plan.Assistive.ContractVersion}else{0}); SourcePolicy=$(if($plan.PSObject.Properties['Assistive']){$plan.Assistive.SourcePolicy}else{''}) }; Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c
-        [pscustomobject]@{ Path=[IO.Path]::GetFullPath($Path); SHA256=$hash; Mode='IsolatedPilot'; ProductionVerified=$false }
+        [pscustomobject]@{ Path=[IO.Path]::GetFullPath($Path); SHA256=$hash; Mode='IsolatedPilot'; ProductionVerified=$false; SourceSnapshotAttachmentPath=$attachmentPath; SourceSnapshotAttachmentSHA256=$attachmentHash }
     }
 }
 function Read-WsmMigrationPlan([string]$Path,[string]$ExpectedHash) {

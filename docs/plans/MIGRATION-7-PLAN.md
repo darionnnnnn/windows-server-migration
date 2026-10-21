@@ -833,6 +833,13 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - D3：Target 執行投影的 `Inventory` 預設值帶 `Workspace`，但 `Export-WsmInventory` 沒有這個參數，原樣送出會被 `ConvertTo-WsmHtmlArguments` 以 400 拒絕。修正：移除；`Test-ActionExports` 另以靜態解析檢查 `WizardRuntime.ps1` 內每個 runtime action 的預設值鍵都是對應指令的參數（突變加回 `Workspace` 即轉紅）。
 - 驗證（WinPS 5.1）：ActionExports（194 個 action 指令）、WizardRuntime 161、HtmlConsole 165、WizardRestore 85、WizardBackup、OperationRequests、ScriptEncoding、真實 Edge NativeWizardRuntimeHandler 通過。
 
+### 17.55 G-D2 核准計畫隨附來源盤點快照（Source 與 Manager 分開時 CV2 一鍵備份可進行）
+
+- G 旅程發現：CV2 封裝要求 Source workspace 內存在核准時綁定的來源盤點快照（`pairs\assistive\snapshots\<hash>.json`），但只有 Manager 匯入盤點時才會建立；Source 與 Manager 分開（真實情境）時一鍵備份必定失敗。現有 `Test-OfflineFullSet` 讓兩者共用 state 所以沒踩到。主代理原本想在 Source 自有盤點中以雜湊搜尋替代，被自動模式判定為削弱安全而擋下；改請使用者定案（2026-10-21）：核准計畫隨附快照。
+- Sonnet 5.5 subagent 實作，主代理審查並補 HTML 投影。`Approve-WsmMigrationPlan -OfflineFullSet` 寫出計畫後，逐位元組輸出 `<計畫檔名>.source-snapshot.json`（複製前後都以 `SourceSnapshotHash` 核對，失敗時刪除計畫與附件）。`Import-WsmWizardApprovedPlan` 新增可選 `SourceSnapshotPath`：CV2 計畫沒給就找計畫檔旁的附件，雜湊、大小、reparse 檢查都在碰 Source 狀態前完成，不符整個拒絕；在鎖內以暫存檔驗證後放進 `pairs` 下的原參照位置，已有不同內容則拒絕；找不到附件時匯入照常成功但回 `SourceSnapshotStatus='Missing'` 與下一步。`Write-WsmOfflineFullSetControls` 的檢查沒有放寬。Source 投影與一鍵備份失敗紀錄提示需要附件；`docs/OPERATIONS.md` 補交付說明並以正式產生器同步 HTML。主代理另把 `SourceSnapshotStatus`／`SourceSnapshotNextStep` 加入 HTML 結果投影白名單與匯入結果物件（原本畫面看不到缺附件）。
+- 驗證（WinPS 5.1）：新增 OfflineFullSetSeparateSource 20（Manager 與 Source 各自獨立 workspace，附件輸出、自動匯入、一鍵備份 Delivered 且封裝 controls 雜湊等於核准雜湊；竄改、缺附件、目的地衝突反例；HTML 投影保留缺附件狀態）、OfflineFullSet 60、WizardBackup、WizardBackupRecovery 21、WizardManagerApprovalJourney 23、WizardReceivedPlan、WizardRuntime 161、HtmlConsole 165、ActionExports、HtmlDocumentation 24、ScriptEncoding、真實 Edge NativeWizardRuntimeHandler 通過。突變：匯入不驗附件雜湊、Manager 不輸出附件（subagent）、投影白名單拿掉欄位（主代理，以 StrictMode 錯誤轉紅）皆轉紅。
+- 限制：HTML 匯入表單沒有 `SourceSnapshotPath` 欄位，畫面流程靠「附件放在計畫檔旁」自動找；新測試的 CV2 計畫只含 Service 設定項，FileScope 的 CV2 路徑由既有 Test-OfflineFullSet 與 G 旅程涵蓋。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
