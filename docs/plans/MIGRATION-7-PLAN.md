@@ -820,6 +820,12 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：OperationRequests、WizardRuntime 161、CredentialDeferral 68、HtmlConsole 165、WizardRestore 85、TargetRestoreContinuation 72、WizardHtmlRuntimeProjection 185、WizardTextRuntime 65、TextConsole 18、ScriptEncoding；Node 新增 WaitingConsistencyUi、WizardRuntimeTargetUi、CredentialDialogUi、真實 Edge NativeWizardRuntimeHandler 通過。突變：返回碼回 0、前端 known 拿掉 WaitingForInput、等待卡片顯示結束時間、投影覆寫失效、CLI 等待改 exit 3（subagent）、Target 卡片不顯示摘要（主代理）皆轉紅。
 - 限制：CLI 輸入結束後的續作只有單元與退出碼層證據；`Test-AssistiveUi.js`、`Test-WizardPendingUi.js` 的既有失敗仍在（M5）。
 
+### 17.53 M5 兩個前端既有失敗的根因與修正
+
+- 主代理親自除錯。`Test-WizardPendingUi.js` 要求 401 `invalid_token` 的寫入被視為「確定拒絕」並清除 pending；但 6a8e6bf（2026-10-15「session 過期時重新連線並保留未知作業 ID」）刻意把 `invalid_token` 移出確定拒絕清單：401 可能是自動重試的回應、第一次請求可能已執行，所以保留同一作業 ID、要求明確重新連線後查詢，不重送。測試沒有跟著更新。依該既定設計改寫 401 案例：保留同一作業 ID、`sessionReconnectRequired`、只送一次。突變：把 `invalid_token` 放回確定拒絕清單，測試轉紅。
+- `Test-AssistiveUi.js` 兩項：(1) 19 個精靈執行 action（StartBackup、IndependentCopy、TargetLocalComparison、各 NonC 交接等）在前端沒有中文標籤，選單會顯示「其他進階操作（第 n 項）」——產品缺口，在 `actionOverrides` 補上台灣繁中標籤（後端已有標籤者沿用其文字）；突變拿掉一個標籤即轉紅。(2) 6a8e6bf 起錯誤摘要會加「重新連線」按鈕，測試非 DOM 模式的假元素缺 `addEventListener`（測試漂移，補上）；補上後露出第三個問題：`followPreparationReviewSave`（b20f1d5）讀 `job.args`，違反「前端不得讀作業參數」的守門，而公開作業投影本來就不含 args，這段永遠取不到值——移除，行為不變。
+- 驗證：AssistiveUi 47／47、WizardPendingUi、WizardPreparationUi、WizardRuntimeTargetUi、CredentialDialogUi、WaitingConsistencyUi、SessionDraftReconnect 通過。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

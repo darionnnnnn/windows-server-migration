@@ -80,7 +80,7 @@ const server = http.createServer((request, response) => {
     const errorText = () => page.locator('#error-summary').innerText();
     const freshActionPage = async () => { await page.evaluate(()=>sessionStorage.clear()); await page.reload({waitUntil:'networkidle'}); await page.waitForFunction(()=>window.WsmConsole&&window.WsmConsole.state.session); await page.evaluate(()=>window.WsmConsole.navigate('operations')); await page.locator('#action-picker').selectOption('FixtureWrite'); };
 
-    for (const [name, expectedCode] of [['rejected-422-marker','operation_failed'],['rejected-409','stale_revision'],['rejected-401','invalid_token']]) {
+    for (const [name, expectedCode] of [['rejected-422-marker','operation_failed'],['rejected-409','stale_revision']]) {
       scenario=name; postCount=0; recoveryCount=0; lastOperationId=''; postIds.length=0;
       await freshActionPage();
       await submit();
@@ -90,6 +90,16 @@ const server = http.createServer((request, response) => {
       if (expectedCode==='operation_failed') assert.match(await errorText(),/工作執行失敗/);
       if (expectedCode==='stale_revision') assert.match(await errorText(),/重新預覽/);
     }
+
+    // 6a8e6bf: a 401 invalid_token on a write keeps the unknown operation id and requires an explicit reconnect, so the same
+    // operation can be queried afterwards (the 401 may answer a retry of a request that already ran). It is never resent.
+    scenario='rejected-401'; postCount=0; recoveryCount=0; lastOperationId=''; postIds.length=0;
+    await freshActionPage();
+    await submit();
+    assert.equal(postCount,1,'rejected-401 should send once');
+    assert.equal(await page.evaluate(()=>window.WsmConsole.state.pendingOperation&&window.WsmConsole.state.pendingOperation.operationId),postIds[0],'rejected-401 must keep the exact unknown operation id for a later query');
+    assert.equal(await page.evaluate(()=>window.WsmConsole.state.sessionReconnectRequired),true,'rejected-401 must require an explicit reconnect');
+    assert.equal(postCount,1,'rejected-401 must not resend the write');
 
     scenario='unmarked-422'; postCount=0; recoveryCount=0; lastOperationId='';
     await freshActionPage();

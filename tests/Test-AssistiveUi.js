@@ -68,7 +68,7 @@ function makeApp(fetchImpl, useDom = false) {
     getElementById(id) { if (makeNode) { const find = node => { if (node.id === id) return node; for (const child of node.children || []) { const found = find(child); if (found) return found; } return null; }; for (const root of elements.values()) { const found = find(root); if (found) return found; } } if (!elements.has(id)) { const node = makeNode ? makeNode() : { textContent: '', hidden: false, focus() {}, replaceChildren() {}, appendChild() {} }; node.id = id; elements.set(id, node); } return elements.get(id); },
     querySelectorAll() { return []; },
     querySelector(selector) { return selector === '#view-operations .operation-layout' ? { scrollIntoView() {} } : null; },
-    createElement(tagName) { return makeNode ? makeNode(tagName) : { appendChild() {}, setAttribute() {}, replaceChildren() {}, classList: { toggle() {} } }; }
+    createElement(tagName) { return makeNode ? makeNode(tagName) : { appendChild() {}, setAttribute() {}, replaceChildren() {}, addEventListener() {}, classList: { toggle() {} } }; }
   };
   const window = { addEventListener() {} };
   window.__confirmResult = true; window.__confirmMessage = ''; window.confirm = message => { window.__confirmMessage = String(message || ''); return window.__confirmResult; };
