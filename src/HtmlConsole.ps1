@@ -1278,9 +1278,10 @@ function Start-WsmHtmlConsole {
                         $response=Get-WsmHtmlResumePreview $Workspace $job $jobs
                     }
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/resume$' -and $request.Method -ceq 'POST'){
+                        $resumeJobId=$Matches[1];# the header check below runs -notmatch, which overwrites the route captures
                         if(-not $request.Headers.ContainsKey('content-type') -or $request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw 'JSON body required.'}
                         $resumeOut=@{Status=202;Response=$null}
-                        Invoke-WsmHtmlResumeRequest -Workspace $Workspace -PairId $PairId -Role $Role -Jobs $jobs -JobId $Matches[1] -BodyText $request.Body -SessionId $sessionId -ContextId $contextId -ModulePath $modulePath -Out $resumeOut
+                        Invoke-WsmHtmlResumeRequest -Workspace $Workspace -PairId $PairId -Role $Role -Jobs $jobs -JobId $resumeJobId -BodyText $request.Body -SessionId $sessionId -ContextId $contextId -ModulePath $modulePath -Out $resumeOut
                         $status=$resumeOut.Status;$response=$resumeOut.Response
                     }
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})(/cancel)?$'){

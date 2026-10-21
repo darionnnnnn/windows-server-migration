@@ -840,6 +840,12 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：新增 OfflineFullSetSeparateSource 20（Manager 與 Source 各自獨立 workspace，附件輸出、自動匯入、一鍵備份 Delivered 且封裝 controls 雜湊等於核准雜湊；竄改、缺附件、目的地衝突反例；HTML 投影保留缺附件狀態）、OfflineFullSet 60、WizardBackup、WizardBackupRecovery 21、WizardManagerApprovalJourney 23、WizardReceivedPlan、WizardRuntime 161、HtmlConsole 165、ActionExports、HtmlDocumentation 24、ScriptEncoding、真實 Edge NativeWizardRuntimeHandler 通過。突變：匯入不驗附件雜湊、Manager 不輸出附件（subagent）、投影白名單拿掉欄位（主代理，以 StrictMode 錯誤轉紅）皆轉紅。
 - 限制：HTML 匯入表單沒有 `SourceSnapshotPath` 欄位，畫面流程靠「附件放在計畫檔旁」自動找；新測試的 CV2 計畫只含 Service 設定項，FileScope 的 CV2 路徑由既有 Test-OfflineFullSet 與 G 旅程涵蓋。
 
+### 17.56 G-D4 續作路由永遠 404（E3b-2 缺陷）
+
+- G 旅程走到「程序中斷後以 HTTP 明確續作」時發現：`POST /api/jobs/{id}/resume` 路由先以 `-notmatch` 檢查 content-type，這會覆寫 `$Matches`，接著傳入的 `$Matches[1]`（jobId）變成空值，所以續作一律回 404。E3b-2 的測試直接呼叫內部函式 `Invoke-WsmHtmlResumeRequest`，沒有走到路由層，所以沒抓到。主代理親自修：在標頭檢查前先保存 jobId。
+- 新增靜態守門 `tests/Test-HtmlRouteMatches.ps1`：HtmlConsole 每個以 `$route -match` 擷取參數的路由區塊（目前 9 個），都必須在任何其他 `-match／-notmatch` 之前讀取 `$Matches[...]`；在 HEAD 版本會精確指出 resume 路由而轉紅。其餘 8 個路由都已符合。
+- 驗證：HtmlRouteMatches、HtmlConsole 165 通過；完整的 HTTP 續作由 G 旅程驗證。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
