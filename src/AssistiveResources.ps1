@@ -96,6 +96,14 @@ function Reserve-WsmAssistiveResource {
     }
 }
 
+function Clear-WsmAssistiveServiceReservationsForOperation([string]$Workspace,[string]$PairId,[string]$OperationId) {
+    # Releases every Service reservation this exact operation still holds for the pair (legacy restore completion); ownership records stay.
+    Assert-WsmId $PairId;Assert-WsmId $OperationId
+    $registry=Get-WsmAssistiveResourceRegistry $Workspace;$held=@(foreach($record in @($registry.Resources|Where-Object ResourceKind -CEQ 'Service')){foreach($owner in @($record.Owners)){if([string]$owner.PairId -ceq $PairId -and [string]$owner.ActiveOperationId -ceq $OperationId){[pscustomobject]@{ResourceKey=[string]$record.ResourceKey;ItemId=[string]$owner.ItemId}}}})
+    foreach($entry in $held){Set-WsmAssistiveServiceReservationOperation -Workspace $Workspace -ResourceKey $entry.ResourceKey -PairId $PairId -ItemId $entry.ItemId -OperationId $OperationId -State Released | Out-Null}
+    $held.Count
+}
+
 function Set-WsmAssistiveServiceReservationOperation {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$ResourceKey,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ItemId,[Parameter(Mandatory)][string]$OperationId,[Parameter(Mandatory)][ValidateSet('WaitingForInput','Running','Released')][string]$State)

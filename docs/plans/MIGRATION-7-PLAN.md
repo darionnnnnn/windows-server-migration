@@ -764,6 +764,12 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：HtmlConsole 148（原 114）、TargetRestoreContinuation 72（原 43）、WizardRestore 85、ServiceCredentialChallenge 46、OperationRequests、AssistiveRestore 140、WizardRuntime 161、WizardHtmlRuntimeProjection 185、WizardTextRuntime 65、TextConsole 18、ScriptEncoding；Node WizardRuntimeTargetUi 與真實 Edge 的 NativeWizardRuntimeHandler 通過。突變：同 continuationId 重送不短路、秘密回覆跳過漂移檢查、新還原不檢查舊 worker，皆以專屬斷言轉紅。
 - 限制：畫面上的續作按鈕與帳密對話框屬 F4b；程序真正被結束後的續作由 G 旅程驗證。
 
+### 17.46 M1 Test-CutoverActivationWorkflow：非系統管理員可執行，並修正舊還原留下 Service reservation 的回歸
+
+- 主代理親自除錯。測試把 fixture 根目錄建在 `C:\`，非系統管理員無法在其下設定保護 ACL（`SetAccessControl` 失敗），所以這支測試在本機從未跑到契約本身。改為使用者暫存目錄（位於 C 槽時；否則退回 `C:\`），清理守門改為驗證父目錄等於所選根、名稱符合 `wsm-activation-cutover-<32 hex>`。另補 fixture 的 `Export-WsmInventory` 替身參數 `-IncludeSoftwareCatalog`（產品 `Export-WsmMigrationPackageCore` 會帶此參數）。
+- 能跑到契約後暴露真正的產品回歸（c95b8d6 F4a 第一切片引入）：舊版 `Invoke-WsmRestore`（schema 1/2）還原 Service 時經 `Invoke-WsmAdapterRestore` 建立以還原作業為 `ActiveOperationId` 的 reservation，但舊流程完成時沒有像 Assistive 路徑那樣釋放，之後 `Invoke-WsmCutover` 啟用同一服務時被「Target service is reserved by a waiting or active restore operation」擋下。修正：新增 `Clear-WsmAssistiveServiceReservationsForOperation`（只釋放該 Pair 中由這個作業持有的 Service reservation，保留 ownership 記錄），舊還原完成且沒有 PendingOperations 時呼叫。
+- 驗證（WinPS 5.1，非系統管理員）：CutoverActivationWorkflow PASS（原本環境性失敗）、AssistiveResources 34、Adapters、InstallerSafety、RecoveryContracts、ActivationRecovery、ServiceCredentialChallenge 46、AssistiveRestore 140、ScriptEncoding 通過。突變：拿掉完成時的釋放，CutoverActivationWorkflow 重現原失敗。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
