@@ -393,6 +393,48 @@ public class WsmHttpFixtureStream : System.IO.MemoryStream {
         Submit-WsmHtmlServiceCredentials -Workspace $resumeRoot -PairId $resumePair -Role 'Target' -Jobs $resumeJobs -JobId $fxSame.Id -Request ([pscustomobject]@{Headers=@{'content-type'='application/json'};Body=$driftBody}) -SessionId 'fixture-session' -ContextId 'fixture-context' -ModulePath 'M' -Out $sameReply
         Check ($sameReply.Status -eq 202 -and $script:resumeWorkersCreated -eq $workersBeforeDrift+1 -and $resumeJobs[$fxSame.Id].Record.status -ceq 'Running' -and $script:resumeLastCommand -ceq 'Invoke-WsmWizardTargetRestore') 'A secret reply with an unchanged preview no longer started its worker.'
         Clear-WsmHtmlCredentialJobRuntime $resumeJobs[$fxSame.Id]
+        # F4a-4: defer whole credential groups through the HTML endpoint core; new non-secret projection fields.
+        function NewDeferFixture(){
+            $fx=NewResumeFixture 'WaitingForInput' 'WaitingForInput' $true;$st=Read-WsmJson $fx.StatePath
+            $st.AssistiveServiceChallenge.RequiredSecretRefs=@('ServiceSecretA','TaskSecretB')
+            $st.AssistiveServiceChallenge.Requirements=@([pscustomobject]@{SecretRef='ServiceSecretA';Kinds=@('Service');ItemIds=@('fixture-item');DisplayNames=@('Fixture service');ApprovedAccount='CONTOSO\svc-app'},[pscustomobject]@{SecretRef='TaskSecretB';Kinds=@('ScheduledTask');ItemIds=@('fixture-task');DisplayNames=@('Fixture task');ApprovedAccount='CONTOSO\batch'})
+            Write-WsmJson $fx.StatePath $st;ReloadResumeJobs;$fx
+        }
+        function DeferCall([string]$Id,[string]$Body){$out=@{Status=200;Response=$null;SafeError=$null};Submit-WsmHtmlCredentialDeferral -Workspace $resumeRoot -PairId $resumePair -Role 'Target' -Jobs $resumeJobs -JobId $Id -Request ([pscustomobject]@{Headers=@{'content-type'='application/json'};Body=$Body}) -SessionId 'fixture-session' -ContextId 'fixture-context' -ModulePath 'M' -Out $out;$out}
+        $script:resumeProjectionHash=$resumeHash
+        $fxDef=NewDeferFixture;$defId=$fxDef.Id;$workersBeforeDefer=$script:resumeWorkersCreated
+        Reject {DeferCall $defId '{"secretRefs":["NotARequirement"]}'} 'The defer endpoint accepted a SecretRef outside the current challenge.'
+        Reject {DeferCall $defId '{"secretRefs":[]}'} 'The defer endpoint accepted an empty SecretRef list.'
+        Reject {DeferCall $defId '{"secretRefs":["TaskSecretB"],"extra":1}'} 'The defer endpoint accepted an extra field.'
+        Reject {DeferCall $defId '{"secretRefs":"TaskSecretB"}'} 'The defer endpoint accepted a non-array secretRefs.'
+        Reject {DeferCall $defId '{"secretRefs":[7]}'} 'The defer endpoint accepted a non-string SecretRef.'
+        Reject {DeferCall $defId '{}'} 'The defer endpoint accepted a body without secretRefs.'
+        Reject {DeferCall $fxOk.Id '{"secretRefs":["ServiceSecretA"]}'} 'The defer endpoint accepted a job that is not WaitingForInput.'
+        $untouched=Read-WsmJson $fxDef.StatePath
+        Check ($script:resumeWorkersCreated -eq $workersBeforeDefer -and @($untouched.AssistiveServiceChallenge.Requirements|Where-Object {$_.PSObject.Properties['Deferred']}).Count -eq 0 -and @($untouched.AssistiveServiceChallenge.RequiredSecretRefs).Count -eq 2) 'A rejected deferral changed the durable challenge or created a worker.'
+        $deferOne=DeferCall $defId '{"secretRefs":["TaskSecretB"]}'
+        $deferOneJob=$deferOne.Response.job;$taskReq=@($deferOneJob.credentialRequirements|Where-Object SecretRef -CEQ 'TaskSecretB')[0];$svcReq=@($deferOneJob.credentialRequirements|Where-Object SecretRef -CEQ 'ServiceSecretA')[0]
+        Check ($deferOne.Status -eq 200 -and $deferOneJob.status -ceq 'WaitingForInput' -and $deferOneJob.jobId -ceq $defId -and $taskReq.deferred -eq $true -and $svcReq.deferred -eq $false -and $svcReq.attempts -eq 0 -and $svcReq.maxAttempts -eq 3 -and $svcReq.lastFailure -ceq '' -and (@($deferOneJob.requiredSecretRefs) -join ',') -ceq 'ServiceSecretA' -and $script:resumeWorkersCreated -eq $workersBeforeDefer) 'Deferring one group did not keep the job waiting with deferred=true for that group only.'
+        $defPersisted=Read-WsmJson $fxDef.JobPath;Check ($defPersisted.status -ceq 'WaitingForInput' -and @($defPersisted.credentialRequirements|Where-Object deferred).Count -eq 1) 'The deferral was not persisted in the job record.'
+        $defState=Read-WsmJson $fxDef.StatePath;Check ($defState.AssistiveServiceChallenge.State -ceq 'WaitingForInput' -and @($defState.AssistiveServiceChallenge.Requirements|Where-Object {$_.SecretRef -ceq 'TaskSecretB'})[0].Deferred -eq $true) 'The deferral was not recorded durably in the challenge.'
+        $deferAll=DeferCall $defId '{"secretRefs":["ServiceSecretA"]}'
+        Check ($deferAll.Status -eq 202 -and $deferAll.Response.job.status -ceq 'Running' -and $script:resumeWorkersCreated -eq $workersBeforeDefer+1 -and $script:resumeLastWorker.Begin -eq 1 -and $script:resumeLastCommand -ceq 'Invoke-WsmWizardTargetRestore' -and $script:resumeLastArguments.Secrets.Count -eq 0 -and $resumeJobs[$defId].Record.status -ceq 'Running') 'Deferring the last group did not continue the same job with a worker and no credentials.'
+        Clear-WsmHtmlCredentialJobRuntime $resumeJobs[$defId]
+        Check (([IO.File]::ReadAllText($fxDef.StatePath)+[IO.File]::ReadAllText($fxDef.JobPath)) -notmatch 'SYNTHETIC|password') 'The deferral path left a password-like value in the state or job file.'
+        $rejProjection=@(ConvertTo-WsmHtmlCredentialRequirements @([pscustomobject]@{SecretRef='R';Kinds=@('Service');ItemIds=@('i');DisplayNames=@('n');ApprovedAccount='a';Deferred=$false;LastFailure='CredentialRejected';Attempts=2}))[0]
+        Check ($rejProjection.lastFailure -ceq 'CredentialRejected' -and $rejProjection.attempts -eq 2 -and $rejProjection.maxAttempts -eq 3 -and $rejProjection.deferred -eq $false) 'The requirement projection lost lastFailure / attempts / maxAttempts.'
+        $junkProjection=@(ConvertTo-WsmHtmlCredentialRequirements @([pscustomobject]@{SecretRef='R';LastFailure='SYNTHETIC-FREE-TEXT';Attempts='x'}))[0]
+        Check ($junkProjection.lastFailure -ceq '' -and $junkProjection.attempts -eq 0 -and $junkProjection.deferred -eq $false) 'The requirement projection let free text or a malformed count through.'
+        $fxRej=NewResumeFixture;ReloadResumeJobs;$script:resumeNextOutput=@([pscustomobject]@{Status='WaitingForInput';PairId=$resumePair;ParentOperationId=$fxRej.Id;PreviewHash=$resumeHash;RequiredSecretRefs=@('ServiceSecretA');CredentialRequirements=@([pscustomobject]@{SecretRef='ServiceSecretA';Kinds=@('Service');ItemIds=@('fixture-item');DisplayNames=@('Fixture service');ApprovedAccount='CONTOSO\svc-app';Deferred=$false;LastFailure='CredentialRejected';Attempts=1});NoTargetWrites=$false;ResumeRequired=$true;CredentialNotice='';ProductionVerified=$false})
+        [void](ResumeCall $fxRej.Id (ResumeBody ([guid]::NewGuid().ToString('D'))));$resumeJobs[$fxRej.Id].Handle.IsCompleted=$true
+        Complete-WsmHtmlFinishedJob $resumeJobs[$fxRej.Id] $resumeRoot $resumeJobs (Join-Path $resumeRoot 'errors')
+        $rejJob=ConvertTo-WsmHtmlPublicJobRecord $resumeJobs[$fxRej.Id].Record
+        Check ($rejJob.status -ceq 'WaitingForInput' -and $rejJob.credentialRequirements[0].lastFailure -ceq 'CredentialRejected' -and $rejJob.credentialRequirements[0].attempts -eq 1 -and $rejJob.credentialRequirements[0].deferred -eq $false) 'A refused-password wait did not project lastFailure / attempts on the same job.'
+        $fxLim=NewResumeFixture;ReloadResumeJobs;$script:resumeNextOutput=@([pscustomobject]@{Status='Partial';Stage='Partial';PairId=$resumePair;CredentialNotice='LIMIT-NOTICE-TEXT'})
+        [void](ResumeCall $fxLim.Id (ResumeBody ([guid]::NewGuid().ToString('D'))));$resumeJobs[$fxLim.Id].Handle.IsCompleted=$true
+        Complete-WsmHtmlFinishedJob $resumeJobs[$fxLim.Id] $resumeRoot $resumeJobs (Join-Path $resumeRoot 'errors')
+        $limJob=ConvertTo-WsmHtmlPublicJobRecord $resumeJobs[$fxLim.Id].Record
+        Check ($limJob.credentialNotice -ceq 'LIMIT-NOTICE-TEXT' -and $limJob.outputs[0].CredentialNotice -ceq 'LIMIT-NOTICE-TEXT') 'The retry-limit notice did not reach the job projection.'
         # contract 6 (HTML side): a newer restore retires an older parent whose preview is gone; a live older worker refuses it
         $fxOld=NewResumeFixture 'WaitingForInput' 'WaitingForInput' $true;ReloadResumeJobs;$script:resumeProjectionHash=('7'*64)
         $superseded=Invoke-WsmHtmlSupersedeStaleRestore $resumeRoot $resumePair $resumeJobs ('7'*64) ([guid]::NewGuid().ToString('D'))

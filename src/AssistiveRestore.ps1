@@ -463,6 +463,104 @@ function Cancel-WsmAssistiveServiceCredentialChallenge([string]$StateDirectory,[
     }
 }
 
+function Get-WsmAssistiveCredentialMaxAttempts {
+    # The single place for the per-parent retry limit of one SecretRef: this many CredentialRejected verdicts defer the whole group.
+    3
+}
+
+function Get-WsmAssistiveCredentialLimitNotice {
+    # The single wording shown (result, job projection) when a SecretRef group was auto-deferred at the retry limit.
+    '已達重試上限，請確認帳號狀態後在新的還原中處理'
+}
+
+function Test-WsmAssistiveCredentialRejectedError($Failure) {
+    # Classifies a native failure as "the account/password was refused" (Win32 1326 logon failure, 1069 service logon failure and their
+    # 0x8007xxxx HRESULT forms). It walks HResult / NativeErrorCode over the exception chain and every ErrorRecord.Exception. Anything else,
+    # for example 5 access denied or a plain IOException, is not a rejection. It never probes a login; it only reads what was thrown.
+    $rejectedCodes=@(1326,1069)
+    $queue=New-Object 'System.Collections.Generic.Queue[object]';$queue.Enqueue($Failure);$seen=0
+    while($queue.Count -and $seen -lt 64){
+        $current=$queue.Dequeue();$seen++
+        if($null -eq $current){continue}
+        if($current -is [Management.Automation.ErrorRecord]){$queue.Enqueue($current.Exception);continue}
+        if($current -isnot [Exception]){continue}
+        $hresult=[int]$current.HResult
+        if($hresult -in $rejectedCodes){return $true}
+        if(($hresult -band -65536) -eq -2147024896 -and (($hresult -band 65535) -in $rejectedCodes)){return $true}
+        $nativeProperty=$current.PSObject.Properties['NativeErrorCode']
+        if($nativeProperty -and $null -ne $nativeProperty.Value){$nativeCode=0;if([int]::TryParse([string]$nativeProperty.Value,[ref]$nativeCode) -and $nativeCode -in $rejectedCodes){return $true}}
+        $recordProperty=$current.PSObject.Properties['ErrorRecord']
+        if($recordProperty -and $recordProperty.Value -is [Management.Automation.ErrorRecord] -and -not [object]::ReferenceEquals($recordProperty.Value.Exception,$current)){$queue.Enqueue($recordProperty.Value.Exception)}
+        if($current.InnerException){$queue.Enqueue($current.InnerException)}
+        $innerProperty=$current.PSObject.Properties['InnerExceptions']
+        if($innerProperty -and $innerProperty.Value){foreach($inner in @($innerProperty.Value)){$queue.Enqueue($inner)}}
+    }
+    $false
+}
+
+function Get-WsmAssistiveCredentialRejectionVerdict($Failure,$Spec) {
+    # CredentialRejected only when the failure is a refusal AND a fresh readback proves the target object still does not exist
+    # (the item was only written when it was absent, so "absent now" equals "same as before the failure"). Every other case,
+    # including an unreadable target, is Unknown and keeps the pending intent for repair / reconciliation.
+    if(-not (Test-WsmAssistiveCredentialRejectedError $Failure)){return 'Unknown'}
+    try{$after=Get-WsmAdapterState $Spec}catch{return 'Unknown'}
+    if($null -eq $after -or -not $after.PSObject.Properties['Exists'] -or $after.Exists -isnot [bool]){return 'Unknown'}
+    if($after.Exists){return 'Unknown'}
+    'Rejected'
+}
+
+function Get-WsmAssistiveCredentialStateMap($Challenge) {
+    # SecretRef -> durable per-group state (Deferred / DeferReason / LastFailure / Attempts) read from the challenge Requirements.
+    $map=New-Object 'System.Collections.Hashtable' ([StringComparer]::Ordinal)
+    if($Challenge -and $Challenge.PSObject.Properties['Requirements']){foreach($requirement in @($Challenge.Requirements)){
+        if(-not $requirement -or -not $requirement.PSObject.Properties['SecretRef']){continue}
+        $deferred=$false;if($requirement.PSObject.Properties['Deferred'] -and $requirement.Deferred -is [bool]){$deferred=[bool]$requirement.Deferred}
+        $reason='';if($requirement.PSObject.Properties['DeferReason']){$reason=[string]$requirement.DeferReason}
+        $failure='';if($requirement.PSObject.Properties['LastFailure']){$failure=[string]$requirement.LastFailure}
+        $attempts=0;if($requirement.PSObject.Properties['Attempts']){$attempts=[int]$requirement.Attempts}
+        $map[[string]$requirement.SecretRef]=[pscustomobject]@{Deferred=$deferred;DeferReason=$reason;LastFailure=$failure;Attempts=$attempts}
+    }}
+    $map
+}
+
+function New-WsmAssistiveCredentialRequirementList([string[]]$Refs,$CredentialByItem,$ItemsById,$AccountByRef,$StateByRef) {
+    @(foreach($requirementRef in @($Refs)){
+        $matchedIds=@($CredentialByItem.Keys|Where-Object {[string]$CredentialByItem[$_].SecretRef -ceq $requirementRef}|Sort-Object)
+        $matchedNames=@(foreach($matchedId in $matchedIds){$matchedName=[string]$matchedId;$matchedItem=$ItemsById[[string]$matchedId];if($matchedItem -and $matchedItem.PSObject.Properties['Name'] -and -not [string]::IsNullOrWhiteSpace([string]$matchedItem.Name)){$matchedName=[string]$matchedItem.Name};$matchedName})
+        $groupState=$StateByRef[[string]$requirementRef];$deferred=$false;$reason='';$failure='';$attempts=0
+        if($groupState){$deferred=[bool]$groupState.Deferred;$reason=[string]$groupState.DeferReason;$failure=[string]$groupState.LastFailure;$attempts=[int]$groupState.Attempts}
+        [pscustomobject][ordered]@{SecretRef=[string]$requirementRef;Kinds=@($matchedIds|ForEach-Object {[string]$CredentialByItem[$_].Kind}|Sort-Object -Unique);ItemIds=@($matchedIds|ForEach-Object {[string]$_});DisplayNames=@($matchedNames);ApprovedAccount=[string]$AccountByRef[[string]$requirementRef];Deferred=$deferred;DeferReason=$reason;LastFailure=$failure;Attempts=$attempts}
+    })
+}
+
+function Set-WsmAssistiveCredentialDeferral {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$StateDirectory,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ParentOperationId,[Parameter(Mandatory)][string]$PreviewHash,[Parameter(Mandatory)][string[]]$SecretRefs)
+    # Marks whole SecretRef groups of a WaitingForInput challenge as deferred. Durable and secret-free: only the group names are stored.
+    # The next run (credential reply or resume) will not ask for these groups; their items end Deferred / CredentialDeferred without an intent.
+    Assert-WsmId $PairId;Assert-WsmId $ParentOperationId;Assert-WsmAssistiveHash $PreviewHash 'Credential deferral preview hash'
+    $refs=@($SecretRefs|ForEach-Object {[string]$_}|Sort-Object -Unique)
+    if(-not $refs.Count){throw 'At least one SecretRef is required to defer.'}
+    foreach($ref in $refs){if([string]::IsNullOrWhiteSpace($ref) -or $ref.Length -gt 256 -or $ref -match '[\x00-\x1f]'){throw 'A deferred SecretRef is malformed.'}}
+    $paths=Get-WsmOperationPaths $StateDirectory $PairId
+    Invoke-WsmLocked $paths.Root {
+        $state=Read-WsmJson $paths.State
+        if($state.PairId -cne $PairId -or -not $state.PSObject.Properties['AssistiveServiceChallenge'] -or -not $state.PSObject.Properties['RestoreAttempt']){throw 'Durable Service credential challenge was not found.'}
+        $challenge=$state.AssistiveServiceChallenge;$attempt=$state.RestoreAttempt
+        if([string]$challenge.ParentOperationId -cne $ParentOperationId -or [string]$attempt.OperationId -cne $ParentOperationId -or [string]$challenge.PairId -cne $PairId -or [string]$challenge.PreviewHash -ine $PreviewHash -or [string]$attempt.WizardPreviewHash -ine $PreviewHash){throw 'Credential deferral is not bound to this durable TargetRestore parent and preview.'}
+        if([string]$challenge.State -cne 'WaitingForInput' -or [string]$attempt.Status -cne 'WaitingForInput' -or [string]$state.Stage -cne 'WaitingForInput'){throw 'Credentials can only be deferred while the restore is waiting for input.'}
+        if(-not $challenge.PSObject.Properties['Requirements'] -or -not @($challenge.Requirements).Count){throw 'This challenge has no recorded credential requirements; refresh the restore preview.'}
+        $required=@($challenge.RequiredSecretRefs|ForEach-Object {[string]$_})
+        foreach($ref in $refs){if($ref -cnotin $required){throw 'A SecretRef to defer is not a current credential requirement of this challenge.'}}
+        $already=@();if($challenge.PSObject.Properties['DeferredSecretRefs']){$already=@($challenge.DeferredSecretRefs|ForEach-Object {[string]$_})}
+        foreach($requirement in @($challenge.Requirements)){if([string]$requirement.SecretRef -cin $refs){$requirement|Add-Member NoteProperty Deferred $true -Force;$requirement|Add-Member NoteProperty DeferReason 'CredentialDeferred' -Force}}
+        $challenge.RequiredSecretRefs=@($required|Where-Object {$_ -cnotin $refs})
+        $challenge|Add-Member NoteProperty DeferredSecretRefs @(@($already)+@($refs)|Sort-Object -Unique) -Force
+        $challenge.UpdatedUtc=Get-WsmUtc
+        Add-WsmJournal $paths $state 'AssistiveServiceCredentialDeferred' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;PairId=$PairId;PreviewHash=$PreviewHash;SecretRefs=@($refs);Reason='CredentialDeferred';RemainingSecretRefs=@($challenge.RequiredSecretRefs)})
+        [pscustomobject][ordered]@{DeferredSecretRefs=@($refs);RemainingSecretRefs=@($challenge.RequiredSecretRefs);AllDeferred=(@($challenge.RequiredSecretRefs).Count -eq 0);Requirements=@($challenge.Requirements)}
+    }
+}
+
 function Takeover-WsmAssistiveServiceCredentialChallenge([string]$StateDirectory,[string]$PairId,[string]$OperationId,[string]$PreviewHash,[string]$Actor,[string]$SessionId,[string]$ContextId,[int]$Revision,[switch]$ConfirmTakeover) {
     Assert-WsmId $PairId;Assert-WsmId $OperationId;Assert-WsmAssistiveHash $PreviewHash 'Service challenge preview hash'
     if(-not $ConfirmTakeover){throw 'Service credential challenge takeover requires explicit operator confirmation.'}
@@ -616,7 +714,14 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     if(-not $decision.ReceiptPath -or -not $decision.ReceiptHash -or -not $decision.SnapshotPath -or -not $decision.Receipt.TargetSnapshotHash){throw 'Assistive restore decision has no canonical receipt and target snapshot references.'}
     $serviceRows=New-Object 'System.Collections.Generic.List[object]';$serviceItemIds=@{};foreach($serviceItem in @($Package.Plan.Items|Where-Object {$_.MigrationSpec.Adapter -ceq 'Service'})){$serviceItemIds[[string]$serviceItem.ItemId]=$true};foreach($serviceRow in @($Preview.Rows)){if([string]$serviceRow.Status -ceq 'Ready' -and $serviceItemIds.ContainsKey([string]$serviceRow.ItemId)){$serviceRows.Add($serviceRow)}}
     $preflightItemsById=@{};foreach($item in @($Package.Plan.Items)){$preflightItemsById[[string]$item.ItemId]=$item}
-    $credentialByItem=@{};foreach($row in @($Preview.Rows|Where-Object Status -CEQ 'Ready')){$item=$preflightItemsById[[string]$row.ItemId];if(-not $item){continue};$credentialRequirement=$null;if($item.MigrationSpec.Adapter -ceq 'Service'){$policy=Get-WsmServiceAccountPolicy $item.MigrationSpec.Desired $item.MigrationSpec;if($policy.Mode -ceq 'UserPassword'){$credentialRequirement=[pscustomobject][ordered]@{Kind='Service';SecretRef=[string]$policy.SecretRef;ApprovedAccount=[string]$policy.CanonicalAccount}}}elseif($item.MigrationSpec.Adapter -cin @('ScheduledTask','IISPool')){try{$credentialRequirement=Get-WsmAdapterCredentialRequirement $item.MigrationSpec}catch{$credentialRequirement=$null}};if($credentialRequirement){$credentialByItem[[string]$item.ItemId]=$credentialRequirement}}
+    # A parent that went back to WaitingForInput after a rejected password keeps the items it already settled (done, failed, deferred); they are
+    # neither redone nor asked for a credential again. Only items that ended CredentialRejected (or were never attempted) are still open.
+    $settledByParent=@{};$parentWasWaiting=$false
+    if($state.PSObject.Properties['RestoreAttempt'] -and $state.RestoreAttempt -and [string]$state.RestoreAttempt.OperationId -ceq $ParentOperationId -and [string]$state.RestoreAttempt.Status -ceq 'WaitingForInput'){
+        $parentWasWaiting=$true
+        if($state.RestoreAttempt.PSObject.Properties['ItemResults']){foreach($settledResult in @($state.RestoreAttempt.ItemResults)){if($settledResult -and $settledResult.PSObject.Properties['ItemId'] -and [string]$settledResult.Status -cne 'CredentialRejected'){$settledByParent[[string]$settledResult.ItemId]=$true}}}
+    }
+    $credentialByItem=@{};foreach($row in @($Preview.Rows|Where-Object Status -CEQ 'Ready')){$item=$preflightItemsById[[string]$row.ItemId];if(-not $item){continue};if($settledByParent.ContainsKey([string]$item.ItemId)){continue};$credentialRequirement=$null;if($item.MigrationSpec.Adapter -ceq 'Service'){$policy=Get-WsmServiceAccountPolicy $item.MigrationSpec.Desired $item.MigrationSpec;if($policy.Mode -ceq 'UserPassword'){$credentialRequirement=[pscustomobject][ordered]@{Kind='Service';SecretRef=[string]$policy.SecretRef;ApprovedAccount=[string]$policy.CanonicalAccount}}}elseif($item.MigrationSpec.Adapter -cin @('ScheduledTask','IISPool')){try{$credentialRequirement=Get-WsmAdapterCredentialRequirement $item.MigrationSpec}catch{$credentialRequirement=$null}};if($credentialRequirement){$credentialByItem[[string]$item.ItemId]=$credentialRequirement}}
     $ParentOperationId=Resolve-WsmAssistiveRestoreParentOperationId $ParentOperationId $CancellationToken -RequireDurableParent:([bool]($serviceRows.Count -or $credentialByItem.Count))
     $contextRole='Target';$contextActor=[string](Get-WsmExecutionActor);$contextSession='';$contextId='';$contextRevision=-1
     if($ChallengeContext){if($ChallengeContext.PSObject.Properties['Role']){$contextRole=[string]$ChallengeContext.Role};if($ChallengeContext.PSObject.Properties['Actor']){$contextActor=[string]$ChallengeContext.Actor};if($ChallengeContext.PSObject.Properties['SessionId']){$contextSession=[string]$ChallengeContext.SessionId};if($ChallengeContext.PSObject.Properties['ContextId']){$contextId=[string]$ChallengeContext.ContextId};if($ChallengeContext.PSObject.Properties['Revision']){$contextRevision=[int]$ChallengeContext.Revision}}
@@ -635,17 +740,23 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     }
     $preflightItemsById=@{};foreach($item in @($Package.Plan.Items)){$preflightItemsById[[string]$item.ItemId]=$item}
     $credentialAccountByRef=New-Object 'System.Collections.Hashtable' ([StringComparer]::Ordinal);foreach($credentialItemId in @($credentialByItem.Keys)){$credentialRequirement=$credentialByItem[$credentialItemId];$credentialRef=[string]$credentialRequirement.SecretRef;if([string]::IsNullOrWhiteSpace($credentialRef)){throw 'A ready item requires a credential but has no reviewed SecretRef; review the item before restore.'};if($credentialAccountByRef.ContainsKey($credentialRef) -and [string]$credentialAccountByRef[$credentialRef] -ine [string]$credentialRequirement.ApprovedAccount){throw 'One SecretRef is shared by items with different reviewed accounts; use a separate SecretRef per account before restore.'};$credentialAccountByRef[$credentialRef]=[string]$credentialRequirement.ApprovedAccount}
-    $expectedReviewedServiceRefs=@($credentialAccountByRef.Keys|ForEach-Object {[string]$_}|Sort-Object -Unique);$inputServiceRefs=@($Secrets.Keys|ForEach-Object {[string]$_}|Sort-Object -Unique);if(@($inputServiceRefs|Where-Object {$_ -cnotin $expectedReviewedServiceRefs}).Count){throw 'In-memory credential map contains a SecretRef outside the reviewed ready credential rows.'};$reservationOperationState='Running';if(-not $challengeCrossed -and @($expectedReviewedServiceRefs|Where-Object {$_ -cnotin $inputServiceRefs}).Count){$reservationOperationState='WaitingForInput'}
+    $expectedReviewedServiceRefs=@($credentialAccountByRef.Keys|ForEach-Object {[string]$_}|Sort-Object -Unique);$inputServiceRefs=@($Secrets.Keys|ForEach-Object {[string]$_}|Sort-Object -Unique);if(@($inputServiceRefs|Where-Object {$_ -cnotin $expectedReviewedServiceRefs}).Count){throw 'In-memory credential map contains a SecretRef outside the reviewed ready credential rows.'}
+    # Durable per-group state: deferred groups are never asked for; attempts / last failure survive each return to WaitingForInput.
+    $credentialState=Get-WsmAssistiveCredentialStateMap $challenge;$deferredRefs=New-Object 'System.Collections.Hashtable' ([StringComparer]::Ordinal);foreach($stateRef in @($credentialState.Keys)){if($credentialState[$stateRef].Deferred){$deferredRefs[[string]$stateRef]=[string]$credentialState[$stateRef].DeferReason}}
+    if(@($inputServiceRefs|Where-Object {$deferredRefs.ContainsKey($_)}).Count){throw 'A credential was supplied for a deferred SecretRef; deferred groups are not restored in this parent.'}
+    $maxCredentialAttempts=Get-WsmAssistiveCredentialMaxAttempts;$rejectedItemRefs=@{}
+    $reservationOperationState='Running';if(-not $challengeCrossed -and @($expectedReviewedServiceRefs|Where-Object {$_ -cnotin $inputServiceRefs -and -not $deferredRefs.ContainsKey($_)}).Count){$reservationOperationState='WaitingForInput'}
     $serviceReservations=New-Object 'System.Collections.Generic.List[object]';$requiredSecretRefs=New-Object 'System.Collections.Generic.List[string]';$serviceSecretRefs=New-Object 'System.Collections.Generic.List[string]'
     try {
         foreach($row in @($Preview.Rows|Where-Object Status -CEQ 'Ready')){
             $item=$preflightItemsById[[string]$row.ItemId];if(-not $item){continue}
-            if($item.MigrationSpec.Adapter -cne 'Service'){$otherRequirement=$credentialByItem[[string]$item.ItemId];if($otherRequirement){$serviceSecretRefs.Add([string]$otherRequirement.SecretRef);if($Secrets.ContainsKey([string]$otherRequirement.SecretRef)){Assert-WsmAssistiveCredentialAccount $otherRequirement $Secrets}else{$requiredSecretRefs.Add([string]$otherRequirement.SecretRef)}};continue}
+            if($settledByParent.ContainsKey([string]$item.ItemId)){continue}
+            if($item.MigrationSpec.Adapter -cne 'Service'){$otherRequirement=$credentialByItem[[string]$item.ItemId];if($otherRequirement){$serviceSecretRefs.Add([string]$otherRequirement.SecretRef);if($Secrets.ContainsKey([string]$otherRequirement.SecretRef)){Assert-WsmAssistiveCredentialAccount $otherRequirement $Secrets}elseif(-not $deferredRefs.ContainsKey([string]$otherRequirement.SecretRef)){$requiredSecretRefs.Add([string]$otherRequirement.SecretRef)}};continue}
             $spec=$item.MigrationSpec;$policy=Get-WsmServiceAccountPolicy $spec.Desired $spec
             if($policy.Mode -eq 'ManagedServiceAccount'){[void](Test-WsmServiceAccountTargetPreflight $policy)}
             elseif($policy.Mode -ceq 'UserPassword'){
                 $serviceSecretRefs.Add([string]$policy.SecretRef)
-                if($Secrets.ContainsKey([string]$policy.SecretRef)){[void](New-WsmServiceAccountCredential $policy $Secrets)}else{$requiredSecretRefs.Add([string]$policy.SecretRef)}
+                if($Secrets.ContainsKey([string]$policy.SecretRef)){[void](New-WsmServiceAccountCredential $policy $Secrets)}elseif(-not $deferredRefs.ContainsKey([string]$policy.SecretRef)){$requiredSecretRefs.Add([string]$policy.SecretRef)}
             }
             $reservations=@(Get-WsmAssistiveReservations $item $Package $StateDirectory -OperationId $ParentOperationId -OperationState $reservationOperationState)
             foreach($reservation in $reservations){$serviceReservations.Add([pscustomobject]@{ItemId=[string]$item.ItemId;ResourceKey=[string]$reservation.Preview.ResourceKey;Created=($null -ne $reservation.Reservation)})}
@@ -669,15 +780,16 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     }
     $expectedServiceRefs=@($serviceSecretRefs.ToArray()|Sort-Object -Unique);$providedServiceRefs=@($Secrets.Keys|ForEach-Object {[string]$_}|Sort-Object -Unique)
     if(@($providedServiceRefs|Where-Object {$_ -cnotin $expectedServiceRefs}).Count){throw 'In-memory credential map contains a SecretRef outside the reviewed ready Service rows.'}
-    if($challenge -and -not $challengeCrossed){$challengeRefs=@($challenge.RequiredSecretRefs|Sort-Object -Unique);if(($challengeRefs -join "`n") -cne ($expectedServiceRefs -join "`n")){throw 'Service credential challenge SecretRef set changed; explicit review is required.'};if(-not $requiredSecretRefs.Count -and ($providedServiceRefs -join "`n") -cne ($challengeRefs -join "`n")){throw 'Service credential challenge did not receive its exact reviewed SecretRef set.'}}
-    $credentialRequirements=@();foreach($requirementRef in $expectedServiceRefs){$matchedIds=@($credentialByItem.Keys|Where-Object {[string]$credentialByItem[$_].SecretRef -ceq $requirementRef}|Sort-Object);$matchedNames=@(foreach($matchedId in $matchedIds){$matchedName=[string]$matchedId;$matchedItem=$preflightItemsById[[string]$matchedId];if($matchedItem -and $matchedItem.PSObject.Properties['Name'] -and -not [string]::IsNullOrWhiteSpace([string]$matchedItem.Name)){$matchedName=[string]$matchedItem.Name};$matchedName});$credentialRequirements+=[pscustomobject][ordered]@{SecretRef=[string]$requirementRef;Kinds=@($matchedIds|ForEach-Object {[string]$credentialByItem[$_].Kind}|Sort-Object -Unique);ItemIds=@($matchedIds|ForEach-Object {[string]$_});DisplayNames=@($matchedNames);ApprovedAccount=[string]$credentialAccountByRef[[string]$requirementRef]}}
+    $activeServiceRefs=@($expectedServiceRefs|Where-Object {-not $deferredRefs.ContainsKey($_)})
+    if($challenge -and -not $challengeCrossed){$challengeRefs=@($challenge.RequiredSecretRefs|Sort-Object -Unique);if(($challengeRefs -join "`n") -cne ($activeServiceRefs -join "`n")){throw 'Service credential challenge SecretRef set changed; explicit review is required.'};if(-not $requiredSecretRefs.Count -and ($providedServiceRefs -join "`n") -cne ($challengeRefs -join "`n")){throw 'Service credential challenge did not receive its exact reviewed SecretRef set.'}}
+    $credentialRequirements=@(New-WsmAssistiveCredentialRequirementList $expectedServiceRefs $credentialByItem $preflightItemsById $credentialAccountByRef $credentialState)
     if($requiredSecretRefs.Count -and -not $challengeCrossed){
         foreach($reservation in @($serviceReservations.ToArray())){Set-WsmAssistiveServiceReservationOperation -Workspace $StateDirectory -ResourceKey $reservation.ResourceKey -PairId $Package.Manifest.PairId -ItemId $reservation.ItemId -OperationId $ParentOperationId -State WaitingForInput | Out-Null}
         $existingAttempt=$null;if($state.PSObject.Properties['RestoreAttempt']){$existingAttempt=$state.RestoreAttempt}
         if($existingAttempt){if([string]$existingAttempt.OperationId -cne $ParentOperationId -or [string]$existingAttempt.ManifestHash -ine $ManifestHash -or [long]$existingAttempt.Generation -ne [long]$Package.Manifest.Generation -or [string]$existingAttempt.DecisionReceiptHash -ine [string]$decision.ReceiptHash -or [string]$existingAttempt.TargetSnapshotHash -ine [string]$decision.Receipt.TargetSnapshotHash -or [string]$existingAttempt.WizardPreviewHash -ine [string]$Preview.WizardPreviewHash -or (@($existingAttempt.SelectedItemIds|Sort-Object -Unique)-join "`n") -cne (@($decision.SelectedItemIds|Sort-Object -Unique)-join "`n")){throw 'Durable TargetRestore parent changed before entering the Service credential challenge.'}}
         else{$existingAttempt=[pscustomobject][ordered]@{ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviousManifest=$state.ManifestHash;OperationId=$ParentOperationId;DecisionReceiptPath=[string]$decision.ReceiptPath;DecisionReceiptHash=[string]$decision.ReceiptHash;TargetSnapshotPath=[string]$decision.SnapshotPath;TargetSnapshotHash=[string]$decision.Receipt.TargetSnapshotHash;SelectedItemIds=@($decision.SelectedItemIds);WizardPreviewHash=[string]$Preview.WizardPreviewHash;MaterialJobOperationId='';MaterialIds=@();ItemResults=@();PreviewRowHashes=@(Get-WsmAssistivePreviewRowHashes $Preview.Rows);Status='WaitingForInput';CreatedUtc=(Get-WsmUtc)}}
         $state.ManifestHash=$ManifestHash;$state.Generation=[long]$Package.Manifest.Generation;$state.Stage='WaitingForInput';$state|Add-Member NoteProperty RestoreAttempt $existingAttempt -Force
-        if(-not $challenge){$challenge=[pscustomobject][ordered]@{State='WaitingForInput';ParentOperationId=$ParentOperationId;PairId=[string]$Package.Manifest.PairId;Role=$contextRole;Actor=$contextActor;SessionId=$contextSession;ContextId=$contextId;Revision=[int]$contextRevision;ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviewHash=[string]$Preview.WizardPreviewHash;RequiredSecretRefs=$expectedServiceRefs;Requirements=@($credentialRequirements);ServiceReservations=@($serviceReservations.ToArray());CreatedUtc=Get-WsmUtc;UpdatedUtc=Get-WsmUtc};$state|Add-Member NoteProperty AssistiveServiceChallenge $challenge -Force}else{$challenge.RequiredSecretRefs=$expectedServiceRefs;$challenge|Add-Member NoteProperty Requirements @($credentialRequirements) -Force;$challenge.UpdatedUtc=Get-WsmUtc}
+        if(-not $challenge){$challenge=[pscustomobject][ordered]@{State='WaitingForInput';ParentOperationId=$ParentOperationId;PairId=[string]$Package.Manifest.PairId;Role=$contextRole;Actor=$contextActor;SessionId=$contextSession;ContextId=$contextId;Revision=[int]$contextRevision;ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviewHash=[string]$Preview.WizardPreviewHash;RequiredSecretRefs=$activeServiceRefs;Requirements=@($credentialRequirements);ServiceReservations=@($serviceReservations.ToArray());CreatedUtc=Get-WsmUtc;UpdatedUtc=Get-WsmUtc};$state|Add-Member NoteProperty AssistiveServiceChallenge $challenge -Force}else{$challenge.RequiredSecretRefs=$activeServiceRefs;$challenge|Add-Member NoteProperty Requirements @($credentialRequirements) -Force;$challenge.UpdatedUtc=Get-WsmUtc}
         Add-WsmJournal $paths $state 'AssistiveServiceCredentialChallengeWaiting' '' $challenge
         return [pscustomobject][ordered]@{Status='WaitingForInput';PairId=[string]$Package.Manifest.PairId;ParentOperationId=$ParentOperationId;RequiredSecretRefs=@($challenge.RequiredSecretRefs);CredentialRequirements=@($credentialRequirements);ServiceReservations=@($challenge.ServiceReservations);ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviewHash=[string]$Preview.WizardPreviewHash;Role=$contextRole;Actor=$contextActor;SessionId=$contextSession;ContextId=$contextId;Revision=[int]$contextRevision;NoTargetWrites=$true;ResumeRequired=$true;ProductionVerified=$false}
     }
@@ -701,13 +813,21 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     Confirm-WsmOutputStateCheckpoint -StateDirectory $StateDirectory -PairId $Package.Manifest.PairId -PlanHash $Package.Manifest.PlanHash
     $itemsById=@{};foreach($item in @($Package.Plan.Items)){$itemsById[[string]$item.ItemId]=$item}
     $itemResults=New-Object 'System.Collections.Generic.List[object]'
-    $priorItemResults=@();if($Continuation -and $attempt.PSObject.Properties['ItemResults']){$priorItemResults=@($attempt.ItemResults)}
+    $priorItemResults=@();if(($Continuation -or $parentWasWaiting) -and $attempt.PSObject.Properties['ItemResults']){$priorItemResults=@($attempt.ItemResults)}
     try { foreach($row in @($Preview.Rows)){
+        if($settledByParent.ContainsKey([string]$row.ItemId)){continue}
         if($unknownItems.ContainsKey([string]$row.ItemId)){$unknownResult=[pscustomobject]@{ItemId=$row.ItemId;Status='NeedsReconciliation';CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error=[string]$unknownItems[[string]$row.ItemId];NativeCode=$null};$itemResults.Add($unknownResult);Add-WsmJournal $paths $state 'AssistiveItemNeedsReconciliation' $row.ItemId $unknownResult;continue}
         if($blockedItems.ContainsKey([string]$row.ItemId)){$blockedResult=[pscustomobject]@{ItemId=$row.ItemId;Status='BlockedByUnknownDependency';CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error=[string]$blockedItems[[string]$row.ItemId];NativeCode=$null};$itemResults.Add($blockedResult);Add-WsmJournal $paths $state 'AssistiveItemBlockedByUnknownDependency' $row.ItemId $blockedResult;continue}
         # The preview was computed before this item's own pending intent was reconciled; its stale conflict row must not hide the reconciled item.
         $stalePendingRow=($Continuation -and $pendingItemIds.ContainsKey([string]$row.ItemId) -and [string]$row.Status -cin @('BlockedConflict','Blocked'))
         if($row.Status -ne 'Ready' -and -not $stalePendingRow){if($row.Status -notin @('Deferred','DeferredSoftware')){$itemResults.Add([pscustomobject]@{ItemId=$row.ItemId;Status=$row.Status;CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error=$row.Reason})};continue}
+        # A deferred SecretRef group never reaches the adapter: no intent, no native write; the item ends Deferred with the recorded reason.
+        $deferredCredential=$credentialByItem[[string]$row.ItemId]
+        if($deferredCredential -and $deferredRefs.ContainsKey([string]$deferredCredential.SecretRef)){
+            $deferReason=[string]$deferredRefs[[string]$deferredCredential.SecretRef];if(-not $deferReason){$deferReason='CredentialDeferred'}
+            $deferredResult=[pscustomobject]@{ItemId=$row.ItemId;Status='Deferred';CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error=$deferReason;Reason=$deferReason;NativeCode=$null}
+            $itemResults.Add($deferredResult);Add-WsmJournal $paths $state 'AssistiveItemCredentialDeferred' $row.ItemId ([pscustomobject]@{ItemId=$row.ItemId;SecretRef=[string]$deferredCredential.SecretRef;Reason=$deferReason});continue
+        }
         Assert-WsmCancellationBoundary $CancellationToken 'AssistiveBeforeItem'
         Assert-WsmAssistiveReceiptFresh $Package $decision | Out-Null
         $item=$itemsById[[string]$row.ItemId];$spec=$item.MigrationSpec
@@ -784,6 +904,20 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
             $itemResults.Add($result)
             Add-WsmJournal $paths $state 'AssistiveItemCompleted' $item.ItemId $result
         } catch [OperationCanceledException] {throw} catch {
+            $caughtFailure=$_
+            # CredentialRejected only for a credential consumer whose single creating intent is proven side-effect free: a refusal-class error AND a fresh readback that
+            # still finds no target object. Everything else keeps the pending intent below (repair / reconciliation) and never asks for the password again.
+            $rejectedCredential=$credentialByItem[[string]$item.ItemId]
+            if($rejectedCredential){
+                $rejectedPending=@($state.PendingOperations | Where-Object ItemId -CEQ $item.ItemId)
+                if($rejectedPending.Count -eq 1 -and [string]$rejectedPending[0].Phase -ceq 'AssistiveAdapterCreating' -and $rejectedPending[0].AbsentBefore -eq $true -and -not @($rejectedPending[0].FolderCreateIntents).Count -and -not @($rejectedPending[0].AuxiliaryOwnership).Count -and (Get-WsmAssistiveCredentialRejectionVerdict $caughtFailure $spec) -ceq 'Rejected'){
+                    $state.PendingOperations=@($state.PendingOperations | Where-Object ItemId -CNE $item.ItemId)
+                    $rejectedResult=[pscustomobject]@{ItemId=$item.ItemId;Status='CredentialRejected';CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error='CredentialRejected';NativeCode=$null}
+                    $itemResults.Add($rejectedResult);$rejectedItemRefs[[string]$item.ItemId]=[string]$rejectedCredential.SecretRef
+                    Add-WsmJournal $paths $state 'AssistiveItemCredentialRejected' $item.ItemId ([pscustomobject]@{ItemId=$item.ItemId;SecretRef=[string]$rejectedCredential.SecretRef;Adapter=[string]$spec.Adapter})
+                    continue
+                }
+            }
             $failed=[pscustomobject]@{ItemId=$item.ItemId;Status='Failed';CreatedByTool=(@($state.PendingOperations | Where-Object ItemId -CEQ $item.ItemId).Count -gt 0);AppliedManifestHash='';AppliedGeneration=0;Error=$_.Exception.GetType().FullName;NativeCode=$null}
             $state.Items=@($state.Items | Where-Object ItemId -CNE $item.ItemId)+@($failed);$itemResults.Add($failed)
             # Keep an ambiguous intent durable for repair; never erase it just because a native call threw.
@@ -804,18 +938,61 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
         Complete-WsmAssistivePackageJob $Package $job $StateDirectory
         return [pscustomobject]@{PairId=$Package.Manifest.PairId;ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;Stage='Cancelled';Items=$state.Items;Results=$cancelResults;Deferred=@($Preview.Rows | Where-Object Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired'));PendingOperations=@($state.PendingOperations);JournalHash=$state.JournalHash;BusinessValidationRequired=$true;ProductionVerified=$false}
     }
+    $credentialNotice=''
+    if($rejectedItemRefs.Count){
+        # Refused passwords with a proven no-effect failure: count the attempt per SecretRef. Below the limit the parent returns to WaitingForInput
+        # (other settled items stay); at the limit the whole group is deferred and the rest of the restore finishes.
+        $waitingRefs=New-Object 'System.Collections.Generic.List[string]';$limitRefs=New-Object 'System.Collections.Generic.List[string]';$rejectionSummary=@()
+        foreach($rejectedRef in @($rejectedItemRefs.Values|Sort-Object -Unique)){
+            $newAttempts=1;if($credentialState.ContainsKey($rejectedRef)){$newAttempts=[int]$credentialState[$rejectedRef].Attempts+1}
+            $atLimit=($newAttempts -ge $maxCredentialAttempts)
+            $credentialState[$rejectedRef]=[pscustomobject]@{Deferred=$atLimit;DeferReason=$(if($atLimit){'CredentialRejectedLimit'}else{''});LastFailure='CredentialRejected';Attempts=$newAttempts}
+            if($atLimit){$limitRefs.Add($rejectedRef)}else{$waitingRefs.Add($rejectedRef)}
+            $rejectionSummary+=@([pscustomobject]@{SecretRef=$rejectedRef;Attempts=$newAttempts;MaxAttempts=$maxCredentialAttempts;Deferred=$atLimit})
+        }
+        foreach($limitItemId in @($rejectedItemRefs.Keys|Where-Object {$rejectedItemRefs[$_] -cin $limitRefs.ToArray()})){
+            $limitResult=[pscustomobject]@{ItemId=$limitItemId;Status='Deferred';CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error='CredentialRejectedLimit';Reason='CredentialRejectedLimit';NativeCode=$null}
+            for($resultIndex=0;$resultIndex -lt $itemResults.Count;$resultIndex++){if([string]$itemResults[$resultIndex].ItemId -ceq [string]$limitItemId){$itemResults[$resultIndex]=$limitResult}}
+            Add-WsmJournal $paths $state 'AssistiveItemCredentialDeferred' $limitItemId ([pscustomobject]@{ItemId=$limitItemId;SecretRef=[string]$rejectedItemRefs[$limitItemId];Reason='CredentialRejectedLimit'})
+        }
+        if(-not $challenge){$challenge=[pscustomobject][ordered]@{State='Running';ParentOperationId=$ParentOperationId;PairId=[string]$Package.Manifest.PairId;Role=$contextRole;Actor=$contextActor;SessionId=$contextSession;ContextId=$contextId;Revision=[int]$contextRevision;ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviewHash=[string]$Preview.WizardPreviewHash;RequiredSecretRefs=@();Requirements=@();ServiceReservations=@();CreatedUtc=Get-WsmUtc;UpdatedUtc=Get-WsmUtc};$state|Add-Member NoteProperty AssistiveServiceChallenge $challenge -Force}
+        $deferredAll=@($credentialState.Keys|Where-Object {$credentialState[$_].Deferred}|Sort-Object)
+        $requirementRefs=@($expectedServiceRefs|Where-Object {$_ -cin $waitingRefs.ToArray() -or $_ -cin $deferredAll})
+        $credentialRequirements=@(New-WsmAssistiveCredentialRequirementList $requirementRefs $credentialByItem $preflightItemsById $credentialAccountByRef $credentialState)
+        $challenge|Add-Member NoteProperty Requirements @($credentialRequirements) -Force;$challenge|Add-Member NoteProperty DeferredSecretRefs @($deferredAll) -Force;$challenge.UpdatedUtc=Get-WsmUtc
+        if($limitRefs.Count){$credentialNotice=Get-WsmAssistiveCredentialLimitNotice;Add-WsmJournal $paths $state 'AssistiveServiceCredentialRejectedLimit' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;SecretRefs=@($limitRefs.ToArray());MaxAttempts=$maxCredentialAttempts;Reason='CredentialRejectedLimit'})}
+        if($waitingRefs.Count){
+            $waitingItemIds=@($rejectedItemRefs.Keys|Where-Object {$rejectedItemRefs[$_] -cin $waitingRefs.ToArray()})
+            $priorReservations=@();if($challenge.PSObject.Properties['ServiceReservations']){$priorReservations=@($challenge.ServiceReservations)};$keptReservations=@()
+            foreach($reservation in @($serviceReservations.ToArray())){
+                if([string]$reservation.ItemId -cin $waitingItemIds){
+                    Set-WsmAssistiveServiceReservationOperation -Workspace $StateDirectory -ResourceKey $reservation.ResourceKey -PairId $Package.Manifest.PairId -ItemId $reservation.ItemId -OperationId $ParentOperationId -State WaitingForInput | Out-Null
+                    $keep=@($priorReservations|Where-Object {[string]$_.ItemId -ceq [string]$reservation.ItemId -and [string]$_.ResourceKey -ceq [string]$reservation.ResourceKey}|Select-Object -First 1);if($keep.Count){$keptReservations+=@($keep[0])}else{$keptReservations+=@($reservation)}
+                }elseif(-not @($state.PendingOperations|Where-Object ItemId -CEQ $reservation.ItemId).Count){
+                    Set-WsmAssistiveServiceReservationOperation -Workspace $StateDirectory -ResourceKey $reservation.ResourceKey -PairId $Package.Manifest.PairId -ItemId $reservation.ItemId -OperationId $ParentOperationId -State Released | Out-Null
+                }
+            }
+            $challenge|Add-Member NoteProperty ServiceReservations @($keptReservations) -Force;$challenge|Add-Member NoteProperty RequiredSecretRefs @($waitingRefs.ToArray()|Sort-Object) -Force;$challenge.State='WaitingForInput'
+            $waitingResults=@(Merge-WsmAssistiveItemResults $priorItemResults $itemResults.ToArray())
+            $attempt|Add-Member NoteProperty ItemResults @($waitingResults) -Force;$attempt|Add-Member NoteProperty Status 'WaitingForInput' -Force
+            $state.ManifestHash=$ManifestHash;$state.Generation=[long]$Package.Manifest.Generation;$state.Stage='WaitingForInput'
+            Add-WsmJournal $paths $state 'AssistiveServiceCredentialRejected' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;PairId=[string]$Package.Manifest.PairId;PreviewHash=[string]$Preview.WizardPreviewHash;Rejections=@($rejectionSummary);RequiredSecretRefs=@($challenge.RequiredSecretRefs)})
+            Complete-WsmAssistivePackageJob $Package $job $StateDirectory
+            return [pscustomobject][ordered]@{Status='WaitingForInput';PairId=[string]$Package.Manifest.PairId;ParentOperationId=$ParentOperationId;RequiredSecretRefs=@($challenge.RequiredSecretRefs);CredentialRequirements=@($credentialRequirements);ServiceReservations=@($challenge.ServiceReservations);ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviewHash=[string]$Preview.WizardPreviewHash;Role=$contextRole;Actor=$contextActor;SessionId=$contextSession;ContextId=$contextId;Revision=[int]$contextRevision;NoTargetWrites=$false;ResumeRequired=$true;CredentialRejected=$true;CredentialNotice=$credentialNotice;Results=@($waitingResults);ProductionVerified=$false}
+        }
+    }
     $state.ManifestHash=$ManifestHash;$state.Generation=[long]$Package.Manifest.Generation
     $finalResults=@(Merge-WsmAssistiveItemResults $priorItemResults $itemResults.ToArray());$attempt.ItemResults=$finalResults
     # A stale conflict row of an item whose own pending intent was just reconciled to success is not a remaining deferred row.
     $resolvedPendingIds=@{};if($Continuation){foreach($finalResult in $finalResults){if($pendingItemIds.ContainsKey([string]$finalResult.ItemId) -and [string]$finalResult.Status -cin @('Succeeded','RebootRequired')){$resolvedPendingIds[[string]$finalResult.ItemId]=$true}}}
     $remaining=@($Preview.Rows | Where-Object {$_.Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired') -and -not $resolvedPendingIds.ContainsKey([string]$_.ItemId)})
-    $failedCount=@($finalResults | Where-Object Status -in @('Failed','BlockedConflict','Blocked','ManualEvidenceRequired','NeedsReconciliation','BlockedByUnknownDependency')).Count
+    $failedCount=@($finalResults | Where-Object Status -in @('Failed','BlockedConflict','Blocked','ManualEvidenceRequired','NeedsReconciliation','BlockedByUnknownDependency','Deferred')).Count
     $state.Stage='Succeeded';if($remaining.Count -or $failedCount -or @($state.PendingOperations).Count){$state.Stage='Partial'};if(@($finalResults | Where-Object Status -EQ RebootRequired).Count){$state.Stage='RebootRequired'}
     if($challenge){$challenge.State='Completed';$challenge.UpdatedUtc=Get-WsmUtc}
     Add-WsmJournal $paths $state 'AssistiveRestoreCompleted' '' ([pscustomobject]@{Status=$state.Stage;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;DecisionReceiptHash=$decision.ReceiptHash;ItemResults=$finalResults;DeferredRows=$remaining})
     if($state.Stage -in @('Succeeded','Partial','RebootRequired') -and -not @($state.PendingOperations).Count){foreach($reservation in @($serviceReservations.ToArray())){Set-WsmAssistiveServiceReservationOperation -Workspace $StateDirectory -ResourceKey $reservation.ResourceKey -PairId $Package.Manifest.PairId -ItemId $reservation.ItemId -OperationId $ParentOperationId -State Released | Out-Null}}
     Complete-WsmAssistivePackageJob $Package $job $StateDirectory
-    [pscustomobject]@{PairId=$Package.Manifest.PairId;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;Stage=$state.Stage;Items=$state.Items;Results=$finalResults;Deferred=$remaining;JournalHash=$state.JournalHash;BusinessValidationRequired=$true;ProductionVerified=$false}
+    [pscustomobject]@{PairId=$Package.Manifest.PairId;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;Stage=$state.Stage;Items=$state.Items;Results=$finalResults;Deferred=$remaining;JournalHash=$state.JournalHash;CredentialNotice=$credentialNotice;BusinessValidationRequired=$true;ProductionVerified=$false}
 }
 
 function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hashtable]$SidMap,$CancellationToken,[string]$Workspace='') {

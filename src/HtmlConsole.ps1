@@ -400,8 +400,8 @@ function ConvertTo-WsmHtmlPreview($Result,[string]$Action,[int]$Revision,[string
 }
 
 function Get-WsmHtmlResultProjection($Output) {
-    $fields=@('Status','Stage','Path','SHA256','Hash','ReportPath','HtmlPath','ManifestPath','ManifestHash','Archive','ArchiveSHA256','RunId','PairId','CollectorCounts','Generation','Revision','ObservedChecks','PendingChecks','SpecPath','SpecHash','ReceiptPath','ReceiptHash','DecisionRevision','AssistiveRevision','SelectionRevision','TargetPhysicalId','RegistryRevision','ResourceKey','DocumentManifestPath','DocumentManifestHash','DocumentId','BundlePath','MemberCount','Valid','ProbeStatus','IndexPath','Kind','ExpectedRevision','PreviewPath','PreviewFileHash','PreviewHash','ReviewWindowsSettings','RowCount','ItemId','EntryCount','GapCount','ContentRead','BackupVerified','AuthoritativeApproval','SourceInventoryPath','SourceInventoryHash','SourceInventoryRevision','SourceIntentHash','ConfirmedChoiceCount','IncludedChoiceCount','ExcludedChoiceCount','AppliedChoiceCount','HandoffStatus','ImportPath','TargetInventoryPath','TargetInventoryHash','GeneratedDecisionsPath','GeneratedDecisionsHash','GeneratedRequirementsPath','GeneratedRequirementsHash','FailureCode','ReviewHash','Role','HostFingerprint','TaskPath','TaskName','TaskXmlSHA256','TaskSecuritySHA256','CapturedUtc','RawDefinitionReturned','RawDefinitionsReturned','RawDefinitionsIncluded','ProductionVerified','VendorVerified','ReadinessProof','BusinessAcceptance','ProviderId','Owner','SourceOS','TargetOS','TargetFingerprint','TargetSnapshotHash','TargetSnapshotUtc','SourceTaskXmlSHA256','SourceTaskSecuritySHA256','TargetTaskXmlSHA256','TargetTaskSecuritySHA256','SourceProviderProvenanceReference','TargetProviderProvenanceReference','TrustedBaselinePath','TrustedBaselineHash','TrustedBaselineOwner','SourceBaselineMatched','TargetBaselineMatched','DefinitionsDiffer','OSProvidedEligible','ValuesWithheld','EvidencePath','EvidenceHash','Disposition','ItemName','Adapter','Evidence','ArchiveBytes','ProductionQualified','BusinessValidated','SoftwareScopeStatus','SoftwareScopeSourceInventoryHash','SourceSnapshotHash','PreviewId','TargetIdentityPath','TargetIdentityHash','TrustMethod','ProducedUtc','ProducedLocal','ImportedUtc','ImportedLocal','TimeZone','NextOperator','NextMachine','NextAction','Duplicate','ScanId','ScanStatus','CandidateCount','CandidatePath','CandidateHash','ScannedEntryCount','VisitedDirectoryCount','GapCount','ExcludedAreaCount','RemainingDirectoryCount','SegmentNumber','SegmentCount','ExplicitContinuationRequired','ContinuationRequired','ContinuationScanId','ParentOperationId','NoTargetWrites','ResumeRequired','RequiredSecretRefs')
-    @(foreach($row in @($Output)){if($row -and $row.PSObject.Properties['Status'] -and [string]$row.Status -ceq 'WaitingForInput' -and $row.PSObject.Properties['RequiredSecretRefs']){$refs=@($row.RequiredSecretRefs|Where-Object {$_ -is [string] -and $_.Length -le 256});[pscustomobject][ordered]@{Status='WaitingForInput';ParentOperationId=[string]$row.ParentOperationId;PreviewHash=[string]$row.PreviewHash;RequiredSecretRefs=$refs;CredentialRequirements=@(Get-WsmHtmlOutputRequirements $row);NoTargetWrites=[bool]$row.NoTargetWrites;ResumeRequired=[bool]$row.ResumeRequired;ProductionVerified=$false};continue};$safe=[ordered]@{};
+    $fields=@('Status','Stage','CredentialNotice','Path','SHA256','Hash','ReportPath','HtmlPath','ManifestPath','ManifestHash','Archive','ArchiveSHA256','RunId','PairId','CollectorCounts','Generation','Revision','ObservedChecks','PendingChecks','SpecPath','SpecHash','ReceiptPath','ReceiptHash','DecisionRevision','AssistiveRevision','SelectionRevision','TargetPhysicalId','RegistryRevision','ResourceKey','DocumentManifestPath','DocumentManifestHash','DocumentId','BundlePath','MemberCount','Valid','ProbeStatus','IndexPath','Kind','ExpectedRevision','PreviewPath','PreviewFileHash','PreviewHash','ReviewWindowsSettings','RowCount','ItemId','EntryCount','GapCount','ContentRead','BackupVerified','AuthoritativeApproval','SourceInventoryPath','SourceInventoryHash','SourceInventoryRevision','SourceIntentHash','ConfirmedChoiceCount','IncludedChoiceCount','ExcludedChoiceCount','AppliedChoiceCount','HandoffStatus','ImportPath','TargetInventoryPath','TargetInventoryHash','GeneratedDecisionsPath','GeneratedDecisionsHash','GeneratedRequirementsPath','GeneratedRequirementsHash','FailureCode','ReviewHash','Role','HostFingerprint','TaskPath','TaskName','TaskXmlSHA256','TaskSecuritySHA256','CapturedUtc','RawDefinitionReturned','RawDefinitionsReturned','RawDefinitionsIncluded','ProductionVerified','VendorVerified','ReadinessProof','BusinessAcceptance','ProviderId','Owner','SourceOS','TargetOS','TargetFingerprint','TargetSnapshotHash','TargetSnapshotUtc','SourceTaskXmlSHA256','SourceTaskSecuritySHA256','TargetTaskXmlSHA256','TargetTaskSecuritySHA256','SourceProviderProvenanceReference','TargetProviderProvenanceReference','TrustedBaselinePath','TrustedBaselineHash','TrustedBaselineOwner','SourceBaselineMatched','TargetBaselineMatched','DefinitionsDiffer','OSProvidedEligible','ValuesWithheld','EvidencePath','EvidenceHash','Disposition','ItemName','Adapter','Evidence','ArchiveBytes','ProductionQualified','BusinessValidated','SoftwareScopeStatus','SoftwareScopeSourceInventoryHash','SourceSnapshotHash','PreviewId','TargetIdentityPath','TargetIdentityHash','TrustMethod','ProducedUtc','ProducedLocal','ImportedUtc','ImportedLocal','TimeZone','NextOperator','NextMachine','NextAction','Duplicate','ScanId','ScanStatus','CandidateCount','CandidatePath','CandidateHash','ScannedEntryCount','VisitedDirectoryCount','GapCount','ExcludedAreaCount','RemainingDirectoryCount','SegmentNumber','SegmentCount','ExplicitContinuationRequired','ContinuationRequired','ContinuationScanId','ParentOperationId','NoTargetWrites','ResumeRequired','RequiredSecretRefs')
+    @(foreach($row in @($Output)){if($row -and $row.PSObject.Properties['Status'] -and [string]$row.Status -ceq 'WaitingForInput' -and $row.PSObject.Properties['RequiredSecretRefs']){$refs=@($row.RequiredSecretRefs|Where-Object {$_ -is [string] -and $_.Length -le 256});[pscustomobject][ordered]@{Status='WaitingForInput';ParentOperationId=[string]$row.ParentOperationId;PreviewHash=[string]$row.PreviewHash;RequiredSecretRefs=$refs;CredentialRequirements=@(Get-WsmHtmlOutputRequirements $row);NoTargetWrites=[bool]$row.NoTargetWrites;ResumeRequired=[bool]$row.ResumeRequired;CredentialNotice=$(if($row.PSObject.Properties['CredentialNotice'] -and $row.CredentialNotice -is [string]){[string]$row.CredentialNotice}else{''});ProductionVerified=$false};continue};$safe=[ordered]@{};
 if($row){$modern=ConvertTo-WsmWizardHtmlValue $row;foreach($property in $modern.PSObject.Properties){$safe[$property.Name]=$property.Value};if($row.PSObject.Properties['ItemResultsHash'] -and $row.PSObject.Properties['ItemResults']){$safe.SafeProjectedItemResults=$true}}foreach($field in $fields){if($row -and $row.PSObject.Properties[$field]){$value=$row.$field;if($value -is [string] -or $value -is [ValueType]){$safe[$field]=$value}elseif($field -eq 'CollectorCounts'){$counts=[ordered]@{};foreach($countName in @('Completed','Partial','PermissionDenied','NotApplicable','TimedOut','Failed','Cancelled','NotScheduled')){if($value.PSObject.Properties[$countName]){$counts[$countName]=[int]$value.$countName}};$safe.CollectorCounts=[pscustomobject]$counts}}};if($row -and $row.PSObject.Properties['Status'] -and [string]$row.Status -ceq 'WaitingForInput' -and $row.PSObject.Properties['RequiredSecretRefs']){$safe.RequiredSecretRefs=@($row.RequiredSecretRefs|Where-Object {$_ -is [string] -and $_.Length -le 256})};if($row -and $row.PSObject.Properties['Kind'] -and $row.Kind -ceq 'WizardPreparationReview'){
  $safe.FormFields=@(foreach($form in @($row.FormFields)){[pscustomobject][ordered]@{key=[string]$form.key;label=[string]$form.label;type=[string]$form.type;value=$form.value;required=[bool]$form.required;editable=[bool]$form.editable;options=@($form.options);origin=[string]$form.origin;provenance=$form.provenance}})
  foreach($name in @('DefaultPriority','MissingTypedFields','SoftwareScopeDiagnostics','SoftwareExclusionCandidates')){if($row.PSObject.Properties[$name]){$safe[$name]=$row.$name}}
@@ -753,7 +753,7 @@ function Get-WsmHtmlChallengeActor {
 }
 
 function ConvertTo-WsmHtmlCredentialRequirements($Requirements) {
-    @(foreach($requirement in @($Requirements)){if($requirement -and $requirement.PSObject.Properties['SecretRef'] -and $requirement.SecretRef -is [string] -and $requirement.SecretRef.Length -le 256){$account='';if($requirement.PSObject.Properties['ApprovedAccount'] -and $requirement.ApprovedAccount -is [string] -and $requirement.ApprovedAccount.Length -le 256){$account=[string]$requirement.ApprovedAccount};$kinds=@();if($requirement.PSObject.Properties['Kinds']){$kinds=@($requirement.Kinds | Where-Object {$_ -is [string] -and $_.Length -le 64})};$itemIds=@();if($requirement.PSObject.Properties['ItemIds']){$itemIds=@($requirement.ItemIds | Where-Object {$_ -is [string] -and $_.Length -le 128})};$names=@();if($requirement.PSObject.Properties['DisplayNames']){$names=@($requirement.DisplayNames | Where-Object {$_ -is [string] -and $_.Length -le 512})};[pscustomobject][ordered]@{SecretRef=[string]$requirement.SecretRef;Kinds=@($kinds);ItemIds=@($itemIds);DisplayNames=@($names);ApprovedAccount=$account}}})
+    @(foreach($requirement in @($Requirements)){if($requirement -and $requirement.PSObject.Properties['SecretRef'] -and $requirement.SecretRef -is [string] -and $requirement.SecretRef.Length -le 256){$account='';if($requirement.PSObject.Properties['ApprovedAccount'] -and $requirement.ApprovedAccount -is [string] -and $requirement.ApprovedAccount.Length -le 256){$account=[string]$requirement.ApprovedAccount};$kinds=@();if($requirement.PSObject.Properties['Kinds']){$kinds=@($requirement.Kinds | Where-Object {$_ -is [string] -and $_.Length -le 64})};$itemIds=@();if($requirement.PSObject.Properties['ItemIds']){$itemIds=@($requirement.ItemIds | Where-Object {$_ -is [string] -and $_.Length -le 128})};$names=@();if($requirement.PSObject.Properties['DisplayNames']){$names=@($requirement.DisplayNames | Where-Object {$_ -is [string] -and $_.Length -le 512})};$deferredFlag=$false;if($requirement.PSObject.Properties['Deferred'] -and $requirement.Deferred -is [bool]){$deferredFlag=[bool]$requirement.Deferred};$lastFailure='';if($requirement.PSObject.Properties['LastFailure'] -and $requirement.LastFailure -is [string] -and $requirement.LastFailure -ceq 'CredentialRejected'){$lastFailure='CredentialRejected'};$attempts=0;if($requirement.PSObject.Properties['Attempts']){$parsedAttempts=0;if([int]::TryParse([string]$requirement.Attempts,[ref]$parsedAttempts) -and $parsedAttempts -ge 0){$attempts=$parsedAttempts}};[pscustomobject][ordered]@{SecretRef=[string]$requirement.SecretRef;Kinds=@($kinds);ItemIds=@($itemIds);DisplayNames=@($names);ApprovedAccount=$account;deferred=$deferredFlag;lastFailure=$lastFailure;attempts=$attempts;maxAttempts=(Get-WsmAssistiveCredentialMaxAttempts)}}})
 }
 function Get-WsmHtmlChallengeRequirements($Challenge) {
     # Challenges written before the Requirements field existed fall back to an empty list; callers keep using RequiredSecretRefs.
@@ -915,6 +915,7 @@ function Complete-WsmHtmlFinishedJob($Job,[string]$Workspace,[hashtable]$Jobs,[s
         $Job.Record|Add-Member NoteProperty resumable $(if([string]$Job.Record.status -ceq 'ReviewRequired' -and $Job.Record.PSObject.Properties['reason'] -and [string]$Job.Record.reason -ceq 'PreviewChanged'){$false}else{[bool](Get-WsmHtmlTargetRestoreResumable $Job.Record)}) -Force
         if($Job.Record.PSObject.Properties['continuations']){$open=@($Job.Record.continuations|Where-Object {[string]$_.status -ceq 'Running'});foreach($entry in $open){$entry.status=[string]$Job.Record.Status;$entry.completedUtc=Get-WsmUtc}}
     }
+    $noticeRows=@($output|Where-Object {$_ -and $_.PSObject -and $_.PSObject.Properties['CredentialNotice'] -and $_.CredentialNotice -is [string] -and $_.CredentialNotice});if($noticeRows.Count){$Job.Record|Add-Member NoteProperty credentialNotice ([string]$noticeRows[0].CredentialNotice) -Force}
     if($waitingForInput){$Job.Record|Add-Member NoteProperty outputs @(Get-WsmHtmlResultProjection $output) -Force;$Job.Record.canCancel=$false;$Job.Handle=$null;Write-WsmHtmlCredentialJobAndReleaseRuntime $Job;return}
     if(-not $output.Count -and $Job.Record.Status -in @('Failed','Cancelled')){try{$output=@(Get-WsmHtmlWizardTerminalOutput $Job.Record (Get-WsmHtmlWizardJobs $Jobs $Workspace)|Where-Object {$null -ne $_})}catch{}}
     $Job.Record|Add-Member NoteProperty outputs @(Get-WsmHtmlResultProjection $output) -Force
@@ -922,6 +923,68 @@ function Complete-WsmHtmlFinishedJob($Job,[string]$Workspace,[hashtable]$Jobs,[s
     $Job.Record|Add-Member NoteProperty reportArtifacts @(Get-WsmHtmlReportArtifacts $Job.Record.action $Job.Record.outputs $Workspace) -Force
     $Job.Record.canCancel=$false
     $Job.Record.CompletedUtc=Get-WsmUtc;$Job.Handle=$null;Write-WsmHtmlCredentialJobAndReleaseRuntime $Job
+}
+
+function Submit-WsmHtmlCredentialDeferral {
+    param([string]$Workspace,[string]$PairId,[string]$Role,[hashtable]$Jobs,[string]$JobId,$Request,[string]$SessionId,[string]$ContextId,[string]$ModulePath,[hashtable]$Out)
+    # Defer whole SecretRef groups of a WaitingForInput TargetRestore. The body carries only the group names (never a secret). When no group is left to
+    # ask for, the same job continues without input (same guard / worker start as the credential reply); otherwise it keeps waiting.
+    $worker=$null;$resumeContext=$null;$workerStarted=$false;$job=$null;$deferralApplied=$false;$submissionGuard=$null;$workerArguments=$null
+    try{
+        if(-not $Request.Headers.ContainsKey('content-type') -or $Request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw 'JSON body required.'}
+        if(-not $Jobs.ContainsKey($JobId)){throw 'UnknownJob'};$job=$Jobs[$JobId];Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role
+        if($Role -cne 'Target' -or [string]$job.Record.action -cne 'TargetRestore' -or [string]$job.Record.status -cne 'WaitingForInput'){throw 'TargetRestore parent is not waiting for secure service credentials.'}
+        $body=ConvertFrom-WsmJson $Request.Body
+        if($body -isnot [System.Management.Automation.PSCustomObject]){throw 'Malformed deferral request: an object with secretRefs is required.'}
+        Assert-WsmFields $body @('secretRefs') @('secretRefs')
+        if($body.secretRefs -isnot [array] -or @($body.secretRefs).Count -lt 1 -or @($body.secretRefs).Count -gt 64){throw 'Malformed deferral request: secretRefs must be a non-empty array.'}
+        $refs=@();foreach($ref in @($body.secretRefs)){if($ref -isnot [string] -or [string]::IsNullOrWhiteSpace($ref) -or $ref.Length -gt 256 -or $ref -match '[\x00-\x1f]'){throw 'Malformed deferral request: every SecretRef must be a plain string.'};$refs+=@([string]$ref)}
+        $refs=@($refs|Sort-Object -Unique)
+        $challengeBinding=Get-WsmHtmlTargetRestoreChallenge $Workspace $job.Record
+        if($challengeBinding.RecoverablePreWrite -or [string]$challengeBinding.Challenge.State -cne 'WaitingForInput'){throw 'Only a durably waiting challenge can have credential groups deferred.'}
+        $current=@($challengeBinding.Challenge.RequiredSecretRefs|ForEach-Object {[string]$_})
+        foreach($ref in $refs){if($ref -cnotin $current){throw 'A SecretRef to defer is not a current credential requirement of this challenge.'}}
+        $currentProjection=$null;try{$currentProjection=Get-WsmWizardTargetRestoreProjection -Workspace $Workspace -PairId ([string]$job.Record.pairId) -Jobs (Get-WsmHtmlWizardJobs $Jobs $Workspace)}catch{$currentProjection=$null}
+        if(-not (Test-WsmWizardTargetRestorePreviewCurrent $challengeBinding.Attempt $challengeBinding.State $currentProjection)){
+            Revoke-WsmWizardTargetRestoreParent -StateDirectory $challengeBinding.StateDirectory -PairId ([string]$job.Record.pairId) -ParentOperationId ([string]$job.Record.jobId) -Reason 'PreviewChanged'
+            Set-WsmHtmlJobSuperseded $job 'PreviewChanged'
+            $Out.Status=409;$Out.Response=New-WsmHtmlError 'The reviewed restore preview changed, so this deferral was not used.' 'challenge_revoked_preview_changed' 'Nothing was written. Review the restore preview again and start a new restore.'
+            return
+        }
+        $remaining=@($current|Where-Object {$_ -cnotin $refs})
+        if($remaining.Count){
+            [void](Set-WsmAssistiveCredentialDeferral -StateDirectory $challengeBinding.StateDirectory -PairId ([string]$job.Record.pairId) -ParentOperationId ([string]$job.Record.jobId) -PreviewHash ([string]$job.Record.targetRestorePreviewHash) -SecretRefs $refs)
+            $deferralApplied=$true
+            $retryWait=Get-WsmHtmlTargetRestoreRetryWaitOutput $Workspace $job.Record
+            if(-not $retryWait){throw 'The deferred challenge is no longer waiting for input.'}
+            Set-WsmHtmlCredentialJobWaitingForRetry $job $retryWait
+            $Out.Status=200;$Out.Response=@{job=(ConvertTo-WsmHtmlPublicJobRecord $job.Record)}
+            return
+        }
+        # Every remaining group is deferred: prepare the worker (guard, arguments) first, so nothing is persisted if the continuation cannot start.
+        $resumeContext=New-WsmHtmlCredentialResumeContext $Workspace $job.Record $Jobs ([pscustomobject]@{}) ([pscustomobject]@{RequiredSecretRefs=@()}) $SessionId $ContextId
+        $workerArguments=$resumeContext.Arguments;$submissionGuard=$resumeContext.Guard
+        try{
+            [void](Set-WsmAssistiveCredentialDeferral -StateDirectory $challengeBinding.StateDirectory -PairId ([string]$job.Record.pairId) -ParentOperationId ([string]$job.Record.jobId) -PreviewHash ([string]$job.Record.targetRestorePreviewHash) -SecretRefs $refs)
+            $deferralApplied=$true
+            $commandName='Invoke-WsmWizardTargetRestore';$worker=New-WsmHtmlTargetRestoreWorker $ModulePath $commandName $workerArguments
+            $job.Record.Status='Running';$job.Record.CompletedUtc=$null;$job.Record.canCancel=$true;$job.Record|Add-Member NoteProperty requiredSecretRefs @() -Force
+            $job.Record|Add-Member NoteProperty credentialRequirements @(Get-WsmHtmlChallengeRequirements (Get-WsmHtmlTargetRestoreChallenge $Workspace $job.Record).Challenge) -Force;$job.Record|Add-Member NoteProperty outputs @() -Force
+            $jobPath=$job.Path;Write-WsmJson $jobPath $job.Record
+            $guard=$submissionGuard;$submissionGuard=$null;$job=@{Record=$job.Record;Path=$jobPath;PowerShell=$worker;Handle=$null;CancellationToken=$workerArguments.CancellationToken;WorkerGuard=$guard;SecretCredentials=$resumeContext.Secrets;WorkerCommandName=$commandName};$Jobs[$JobId]=$job
+            Start-WsmHtmlCredentialJobWorker $job
+            $workerStarted=$true
+            $Out.Response=@{job=(ConvertTo-WsmHtmlPublicJobRecord $job.Record)};$Out.Status=202
+        }catch{
+            if($workerStarted){throw}
+            if($worker){try{$worker.Dispose()}catch{}}
+            if($job -is [hashtable]){Clear-WsmHtmlCredentialJobRuntime $job}
+            if($submissionGuard){Exit-WsmWorkspaceWorkerGuard $submissionGuard;$submissionGuard=$null}
+            $retryWait=$null;try{$retryWait=Get-WsmHtmlTargetRestoreRetryWaitOutput $Workspace $job.Record}catch{}
+            if($retryWait){Set-WsmHtmlCredentialJobWaitingForRetry $job $retryWait;$Out.SafeError=New-WsmHtmlError 'The continuation worker did not start.' 'credential_resume_not_started' 'The deferral was recorded and this TargetRestore parent remains WaitingForInput; retry the same parent. No native write began.'}
+            throw
+        }
+    }finally{if($submissionGuard){Exit-WsmWorkspaceWorkerGuard $submissionGuard};if($Request){$Request.Body=''}}
 }
 
 function Submit-WsmHtmlServiceCredentials {
@@ -965,7 +1028,7 @@ function Submit-WsmHtmlServiceCredentials {
 
 function ConvertTo-WsmHtmlServiceCredentials($InputObject,$Challenge) {
     if(-not $InputObject -or $InputObject -isnot [System.Management.Automation.PSCustomObject]){throw 'Credentials must be an object keyed by the reviewed SecretRefs.'}
-    $refs=@($InputObject.PSObject.Properties.Name|Sort-Object -Unique);$expected=@($Challenge.RequiredSecretRefs|Sort-Object -Unique)
+    $refs=@($InputObject.PSObject.Properties|ForEach-Object {$_.Name}|Sort-Object -Unique);$expected=@($Challenge.RequiredSecretRefs|Sort-Object -Unique)
     if(($refs -join "`n") -cne ($expected -join "`n")){throw 'Credential SecretRef set differs from the durable challenge.'}
     $validated=@{}
     foreach($ref in $expected){$entry=$InputObject.PSObject.Properties[$ref].Value;if(-not $entry -or $entry -isnot [System.Management.Automation.PSCustomObject]){throw 'Credential entry is malformed.'};Assert-WsmFields $entry @('username','password') @('username','password');$username=$entry.username;$password=$entry.password;if($username -isnot [string] -or $password -isnot [string] -or [string]::IsNullOrWhiteSpace($username) -or $username.Length -gt 256 -or $username -match '[\x00-\x1f]' -or [string]::IsNullOrEmpty($password) -or $password.Length -gt 4096){throw 'Credential entry is invalid.'};$validated[$ref]=@{Username=$username;Password=$password}}
@@ -1198,6 +1261,11 @@ function Start-WsmHtmlConsole {
                         $body=ConvertFrom-WsmJson $request.Body;if($body -isnot [System.Management.Automation.PSCustomObject] -or @($body.PSObject.Properties).Count -ne 0){throw 'Credential cancellation body must be an empty JSON object.'};$binding=Get-WsmHtmlTargetRestoreChallenge $Workspace $job.Record
                         Cancel-WsmAssistiveServiceCredentialChallenge -StateDirectory $binding.StateDirectory -PairId ([string]$job.Record.pairId) -OperationId ([string]$job.Record.jobId) -PreviewHash ([string]$job.Record.targetRestorePreviewHash) | Out-Null
                         $job.Record.Status='Cancelled';$job.Record.CompletedUtc=Get-WsmUtc;$job.Record.canCancel=$false;$job.Record|Add-Member NoteProperty outputs @([pscustomobject]@{Status='Cancelled';ParentOperationId=[string]$job.Record.jobId;NoTargetWrites=$true;ProductionVerified=$false}) -Force;Write-WsmJson $job.Path $job.Record;$response=ConvertTo-WsmHtmlPublicJobRecord $job.Record
+                    }
+                    elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/service-credentials/defer$' -and $request.Method -ceq 'POST'){
+                        $deferOut=@{Status=200;Response=$null;SafeError=$null}
+                        try{Submit-WsmHtmlCredentialDeferral -Workspace $Workspace -PairId $PairId -Role $Role -Jobs $jobs -JobId $Matches[1] -Request $request -SessionId $sessionId -ContextId $contextId -ModulePath $modulePath -Out $deferOut}finally{if($deferOut.SafeError){$requestSafeError=$deferOut.SafeError}}
+                        $status=$deferOut.Status;$response=$deferOut.Response
                     }
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/service-credentials$' -and $request.Method -ceq 'POST'){
                         $credentialOut=@{Status=202;Response=$null;SafeError=$null}

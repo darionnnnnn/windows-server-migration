@@ -776,6 +776,25 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 理由：(1) 結果集要等封裝封存與交付驗證後才能完整判定「已備份」，若放進封裝本體就得先封存再改寫，違反 16.5「封存後不可改、不能循環引用自身 hash」；(2) 舊格式封裝讀取端與 CV2 封裝成員清單不必為此改版；(3) 篡改仍可偵測：結果集與報告的雜湊記在 attempt（Source workspace 內），獨立副本由同一驗證入口逐檔比對。
 - 代價與未做：新機只拿到獨立副本、沒有 Source attempt 時，結果集與報告的雜湊只能由獨立副本收據佐證，沒有封裝本體層級的綁定。本輪不新增外層交付索引；若之後要讓新機在完全離線下驗證結果集，另案在交付描述檔外層加入成員雜湊索引（索引本身由獨立副本收據引用，避免循環）。
 
+### 17.48 F4a-4 帳密整組延後、密碼被拒與結果未知分流、重試上限（後端，部分完成）
+
+- 第一位 Sonnet 5.5 subagent 做到一半時，前一個工作階段結束而中斷；主代理把它的部分改動移開、先提交 M1，再放回並派第二位 Sonnet 接續完成，主代理審 diff，並在 M2 也完成後一起重跑全部測試。
+- 延後：`Set-WsmAssistiveCredentialDeferral` 只在 WaitingForInput 且父作業、預覽綁定相符時，把指定 SecretRef 組在 challenge `Requirements` 標 `Deferred`（不含秘密、寫 journal）；續作時延後組的項目以 `Deferred／CredentialDeferred` 結束、不寫 intent、不做原生寫入，其他項目照常，父作業 Partial；全部延後時不再要求輸入；`restored` 不把延後項算成已還原。HTML `POST /api/jobs/{id}/service-credentials/defer`（只收 `secretRefs` 陣列，必須是目前需求），部分延後回 200 仍等待、全部延後回 202 並啟動不帶秘密的 worker。CLI 每組可輸入 `DEFER`。
+- 被拒與未知分流：`Test-WsmAssistiveCredentialRejectedError` 沿例外鏈判斷 1326／1069 及其 0x8007xxxx 形式；只有判為被拒、該項只有單一「建立中」intent（建立前不存在、沒有資料夾或附屬所有權），且事後讀回確認物件仍不存在時，才判 `CredentialRejected`：移除該項 intent、該組記 `LastFailure` 與 `Attempts`、父作業回 WaitingForInput。其他情況（含讀不到目標）一律走既有的未知處理並保留 pending，不重新要求密碼後再套用；不做任何額外登入探測。
+- 上限：同一父作業同一組被拒 3 次自動延後（`CredentialRejectedLimit`），其他項目繼續，結果帶 `CredentialNotice`；上限常數只在 `Get-WsmAssistiveCredentialMaxAttempts`。投影 `credentialRequirements` 新增 `deferred`、`lastFailure`、`attempts`、`maxAttempts`（小駝峰，與既有 Pascal 欄位並存）。
+- 另修：`ConvertTo-WsmHtmlServiceCredentials` 在 StrictMode 下遇到空物件 `{}` 會丟錯。
+- 驗證（WinPS 5.1，與 M2 一起重跑）：新增 CredentialDeferral 59、ServiceCredentialChallenge 46、TargetRestoreContinuation 72、AssistiveRestore 140、WizardRestore 85、HtmlConsole 165、WizardRuntime 161、WizardHtmlRuntimeProjection 185、OperationRequests、WizardTextRuntime 65、TextConsole 18、ScriptEncoding、Node WizardRuntimeTargetUi 通過。突變：被拒判定不檢查目標存在、上限常數改 99、延後項仍寫 intent（subagent）、延後端點不驗是否為目前需求（主代理）皆轉紅；主流程上限旗標恆假以 StrictMode 錯誤轉紅（非專屬斷言）。
+- 限制：HTML 路由本身只有解析層檢查，延後與被拒的真實 HTTP 流程由 F4b 畫面測試補；被拒後 Service reservation 的真實 registry 狀態只以替身驗到最後狀態；畫面在 F4b。
+
+### 17.49 M2 已擷取的型別資源參照不再阻擋規格審閱（修 a4193aa 兩處回歸）
+
+- Sonnet 5.5 subagent 實作，主代理審查、補第二處缺口並與 F4a-4 一起重跑。使用者定案（2026-10-21）：已擷取到對應資源的型別資源參照不阻擋審閱。
+- 回歸一：a4193aa 起規格審閱把每個非檔案路徑的工作負載參照都列成必須處置，但處置入口只接受綁在來源候選範圍上的參照，所以排程資料夾安全性（`TaskFolderSecurity`）、IIS 應用程式集區（`IISApplicationPool`）這類參照永遠無法處置，任何排程／IIS 站台的審閱都送不出去。修正：盤點已擷取到資源（盤點參照 `ReviewRequired=$false`）時，該列為 `Applied`、`Status='TypedResourceCaptured'`、不阻擋；沒擷取到仍阻擋並帶盤點原因；明確的 Manual／Exclude 處置仍優先；其他非路徑參照不變。
+- 回歸二（修好第一處後才露出）：a4193aa 在規格列新增 `MappingId`、`ReferenceId`、`MappingDecision`、`FileScopeItemId`，但 `src/MigrationContracts.ps1` 的列欄位允許清單沒有跟上，存檔時丟 `Unknown contract field: MappingId`。主代理在允許清單補上這 4 欄（必填不變）。
+- 測試：兩個 fixture 補上排程資料夾項目（必要時把它排除），`Test-WorkloadDiscovery` 新增兩種參照 × 已擷取／未擷取 × Manual／Exclude 的反例，且確認其他非路徑參照不被放寬。
+- 驗證：AssistiveReviewForms 53、WizardPreparationAdapters 88（兩者原本自 a4193aa 起失敗）、WorkloadDiscovery、SourceCandidateMapping 19、WorkloadActionIndex 28、WorkloadPathCoverage 18、WizardPreparation 30、WizardPreparationBulk 43、AssistiveComparison 42、AssistiveReports 39 通過。突變：放寬到所有參照種類、拿掉放寬（subagent）、拿掉允許欄位（主代理）皆轉紅。
+- 下一步（本輪處理，M2b）：subagent 發現真機的排程資料夾路徑可能沒有結尾斜線（`\Fixture`），而排程 `TaskPath` 有（`\Fixture\`），以字串精確比對會把已擷取的資料夾誤判為未擷取。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
