@@ -302,6 +302,141 @@ try {
             Check ($null -eq (Invoke-WsmWizardTargetRestoreResumeFlow $root $pairsDirectory $c2.Package @())) 'A parent whose preview changed was offered for resume instead of a new restore.'
         }finally{Set-Item Function:\Read-WsmWizardValue -Value $originalCliPrompt}
 
+        # ---- E3b-3: mid-flight FileScope ownership (D5) and re-asking for the credential on continuation (D6) ----
+        $script:payloadCopies=@{};$script:crash=$null
+        $script:realJournal=(Get-Command Add-WsmJournal -CommandType Function).ScriptBlock
+        Set-Item Function:\Add-WsmJournal -Value {param($Paths,$State,[string]$Action,[string]$ItemId,$Detail)if($script:crash){if($script:crash.Dead){throw 'SIMULATED-PROCESS-DEATH'};if($Action -ceq $script:crash.Action){$script:crash.Seen++;if($script:crash.Seen -eq $script:crash.N){$script:crash.Dead=$true;throw [OperationCanceledException]::new('SIMULATED-PROCESS-DEATH')}}};& $script:realJournal $Paths $State $Action $ItemId $Detail}
+        Set-Item Function:\Read-WsmArtifactLines -Value {param($Path,$Hash,$CancellationToken)$script:fixture.Entries}
+        Set-Item Function:\Restore-WsmPayloadBytes -Value {param($Entry,$PackageRoot,$Destination,$CancellationToken)$key=[string]$Entry.RelativePath;if($script:payloadCopies.ContainsKey($key)){$script:payloadCopies[$key]++}else{$script:payloadCopies[$key]=1};[IO.File]::Copy([string]$Entry.Data.SourcePath,$Destination,$true)}
+        function Set-FixtureAcl([string]$Path){$acl=Get-Acl -LiteralPath $Path;$acl.SetAccessRuleProtection($true,$false);$inherit=[Security.AccessControl.InheritanceFlags]([int][Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [int][Security.AccessControl.InheritanceFlags]::ObjectInherit);foreach($id in @([Security.Principal.WindowsIdentity]::GetCurrent().User.Value,'S-1-5-18','S-1-5-32-544')){$sid=New-Object Security.Principal.SecurityIdentifier($id);[void]$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,[Security.AccessControl.FileSystemRights]::FullControl,$inherit,[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow))};Set-Acl -LiteralPath $Path -AclObject $acl}
+        function NewScopeFixture([bool]$WithService){
+            $pair=[Guid]::NewGuid().ToString('D');$parent=[Guid]::NewGuid().ToString('D')
+            $src=Join-Path $root ('fs-src-'+$pair);$sub=Join-Path $src 'sub';[void][IO.Directory]::CreateDirectory($sub);Set-FixtureAcl $src;Set-FixtureAcl $sub
+            $target=Join-Path $root ('fs-target-'+$pair)
+            $fileDefs=@(@('one.txt',(Join-Path $src 'one.txt'),'first file bytes'),@('sub\two.txt',(Join-Path $sub 'two.txt'),'second file bytes'),@('three.txt',(Join-Path $src 'three.txt'),'third file bytes'))
+            foreach($def in $fileDefs){[IO.File]::WriteAllText($def[1],$def[2])}
+            $itemId=Get-WsmHashText ('e3b3-files-'+$pair)
+            $entries=@([pscustomobject]@{ItemId=$itemId;RelativePath='';Directory=$true;Data=$null;Metadata=(Get-WsmFileMetadata $src 'DaclOwner')},[pscustomobject]@{ItemId=$itemId;RelativePath='sub';Directory=$true;Data=$null;Metadata=(Get-WsmFileMetadata $sub 'DaclOwner')})
+            foreach($def in $fileDefs){$entries+=@([pscustomobject]@{ItemId=$itemId;RelativePath=$def[0];Directory=$false;Data=[pscustomobject]@{Hash=(Get-FileHash -LiteralPath $def[1] -Algorithm SHA256).Hash.ToLowerInvariant();Bytes=([IO.FileInfo]$def[1]).Length;SourcePath=$def[1]};Metadata=(Get-WsmFileMetadata $def[1] 'DaclOwner')})}
+            $fileItem=[pscustomobject]@{ItemId=$itemId;Name='Files';Kind='FileScope';Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='FileScope';TransferChannel='C';TargetPath=$target;Metadata='DaclOwner';AclControlPolicy='Exact'}}
+            $items=@($fileItem);$ids=@{Files=$itemId}
+            if($WithService){$svcId=Get-WsmHashText ('e3b3-service-'+$pair);$ids['Svc']=$svcId;$items+=@([pscustomobject]@{ItemId=$svcId;Name='Svc';Kind='Service';Decision='Include';MigrationSpec=[pscustomobject]@{Adapter='Service';AccountMode='UserPassword';SecretRef='ServiceSecretA';Owner='Fixture owner';Desired=[pscustomobject]@{Name=('E3b3Svc'+$pair.Substring(0,8));Account='CONTOSO\svc-app';BinaryPathName='C:\Fixture\service.exe';Dependencies=@();Supplement=[pscustomobject]@{}}}})}
+            $package=[pscustomobject]@{Root=$root;PlanHash=$planHash;SHA256=$manifestHash;Plan=[pscustomobject]@{SchemaVersion=3;Items=@($items)};Manifest=[pscustomobject]@{PairId=$pair;BatchId=[Guid]::NewGuid().ToString('D');PlanHash=$planHash;Generation=7;DecisionRevision=9;ArtifactsHash=('b'*64);Target=[pscustomobject]@{Fingerprint=$fingerprint}}}
+            $selected=@($items|ForEach-Object {$_.ItemId})
+            $decision=[pscustomobject]@{Decision='RestoreNow';ReceiptPath=(Join-Path $root 'decision.json');ReceiptHash=$receiptHash;SnapshotPath=(Join-Path $root 'snapshot.json');SelectedItemIds=$selected;Receipt=[pscustomobject]@{Decision='RestoreNow';TargetSnapshotHash=$snapshotHash}}
+            $rows=@($items|ForEach-Object {[pscustomobject]@{ItemId=$_.ItemId;Adapter=$_.MigrationSpec.Adapter;Action='RestoreNow';Status='Ready';Reason=''}})
+            $preview=[pscustomobject]@{Rows=$rows;SelectedItemIds=$selected;Problems=@();GeneralHostIssues=@();Blocked=$false;CanRestoreIndependentItems=$true;WizardPreviewHash=$previewHash}
+            $projection=[pscustomobject]@{Status='Previewed';PairId=$pair;PlanHash=$planHash;ManifestPath=(Join-Path $root 'manifest.json');ManifestHash=$manifestHash;Generation=7;ReceiptPath=$decision.ReceiptPath;ReceiptHash=$receiptHash;TargetSnapshotPath=$decision.SnapshotPath;TargetSnapshotHash=$snapshotHash;ComparisonHash=('9'*64);ComparisonRevision=1;SelectionRevision=1;Decision='RestoreNow';SelectedItemIds=$selected;Rows=$rows;Problems=@();GeneralHostIssues=@();Blocked=$false;CanRestoreIndependentItems=$true;PreviewHash=$previewHash}
+            [pscustomobject]@{Pair=$pair;Parent=$parent;Package=$package;Decision=$decision;Items=$items;Ids=$ids;OriginalRows=$rows;Preview=$preview;Projection=$projection;Context=[pscustomobject]@{Plan=[pscustomobject]@{Items=@($items)};Received=[pscustomobject]@{SHA256=$planHash}};Workspace=$root;Entries=$entries;Target=$target;ServiceName=$(if($WithService){('e3b3svc'+$pair.Substring(0,8))}else{''})}
+        }
+        function RunFresh($Fixture,[hashtable]$Secrets=@{},$Context=$null){
+            $script:fixture=$Fixture
+            Invoke-WsmAssistiveRestore -Package $Fixture.Package -ManifestHash $manifestHash -StateDirectory $pairsDirectory -Secrets $Secrets -SidMap @{} -CancellationToken ([pscustomobject]@{OperationId=$Fixture.Parent}) -GeneralHostEvidence @() -ReceiptPath $Fixture.Decision.ReceiptPath -ReceiptHash $receiptHash -TargetSnapshotPath $Fixture.Decision.SnapshotPath -Preview $Fixture.Preview -ParentOperationId $Fixture.Parent -ChallengeContext $Context
+        }
+        # Simulated process death: the Nth journal event of the action throws a cancellation (so the item handler cannot continue with later native side effects) and every later journal append throws too, so no in-memory change reaches disk.
+        function RunUntilDeath([scriptblock]$Run,[string]$Action,[int]$Nth){
+            $script:crash=@{Action=$Action;N=$Nth;Seen=0;Dead=$false};$died=$false
+            try{& $Run|Out-Null}catch{if($_.Exception.Message -match 'SIMULATED-PROCESS-DEATH'){$died=$true}else{throw}}finally{$script:crash=$null}
+            $died
+        }
+        function FileStatus($Result,$Fixture,[string]$Relative){$record=(ResultOf $Result $Fixture 'Files')[0];@($record.FileResults|Where-Object RelativePath -CEQ $Relative)[0].Status}
+        function MakeDeadScopeRun([bool]$WithService){
+            ResetNative;$script:payloadCopies=@{}
+            $fx=NewScopeFixture $WithService
+            Check (RunUntilDeath {RunFresh $fx} 'AssistiveFileCompleted' 2) 'The simulated process death did not interrupt the FileScope after the second file was written.'
+            $fx
+        }
+
+        # D5 positive: three files, one created subdirectory; first completed, second written but not journalled as completed.
+        $d1=MakeDeadScopeRun $false
+        $sd1=StateOf $d1
+        Check (@($sd1.PendingOperations).Count -eq 1 -and [string]$sd1.PendingOperations[0].RelativePath -ceq 'sub\two.txt') 'The dead run did not leave the second file transaction pending.'
+        Check ([IO.File]::Exists((Join-Path $d1.Target 'one.txt')) -and [IO.File]::Exists((Join-Path $d1.Target 'sub\two.txt')) -and -not [IO.File]::Exists((Join-Path $d1.Target 'three.txt'))) 'The dead run did not stop between the second and third file.'
+        $partial1=@($sd1.AssistivePartialOwnership)
+        Check (@($partial1|Where-Object {$_.Kind -ceq 'File' -and $_.Record.RelativePath -ceq 'one.txt'}).Count -eq 1 -and @($partial1|Where-Object Kind -ceq 'File').Count -eq 1 -and @($partial1|Where-Object Kind -ceq 'Directory').Count -eq 2) 'In-flight ownership must be durable for the completed file and both created directories, and for nothing else.'
+        Check (@($partial1|Where-Object {[string]$_.ParentOperationId -cne $d1.Parent -or [string]$_.ManifestHash -cne $manifestHash -or [long]$_.Generation -ne 7}).Count -eq 0) 'In-flight ownership is not bound to the parent operation, manifest and generation.'
+        $r1d=ResumeNow $d1
+        Check ($r1d.Status -ceq 'Succeeded') ('D5: the continuation did not finish Succeeded; status='+$r1d.Status+'; files='+((@((ResultOf $r1d $d1 'Files')[0].FileResults|ForEach-Object {$_.RelativePath+'='+$_.Status+':'+$_.Reason})) -join ' | '))
+        Check ((FileStatus $r1d $d1 'one.txt') -ceq 'VerifiedOwned' -and (FileStatus $r1d $d1 'sub\two.txt') -ceq 'VerifiedOwned' -and (FileStatus $r1d $d1 'three.txt') -ceq 'Applied') 'D5: completed, in-doubt and remaining files must end VerifiedOwned / VerifiedOwned / Applied.'
+        Check ((FileStatus $r1d $d1 'sub') -ceq 'DirectoryVerified' -and (FileStatus $r1d $d1 '') -ceq 'DirectoryVerified') ('D5: directories created by this parent must be verified, not DirectoryPreserved; files='+((@((ResultOf $r1d $d1 'Files')[0].FileResults|ForEach-Object {'['+$_.RelativePath+']='+$_.Status+':'+$_.Reason})) -join ' | '))
+        Check ((ResultOf $r1d $d1 'Files')[0].Status -ceq 'Succeeded' -and @((ResultOf $r1d $d1 'Files')[0].OwnedFiles).Count -eq 3 -and @((ResultOf $r1d $d1 'Files')[0].OwnedDirectories).Count -eq 2) 'D5: the FileScope item must end Succeeded owning all three files and both directories.'
+        Check ($script:payloadCopies['one.txt'] -eq 1 -and $script:payloadCopies['sub\two.txt'] -eq 1 -and $script:payloadCopies['three.txt'] -eq 1) 'D5: a file was written more than once.'
+        $sd1b=StateOf $d1
+        Check (@($sd1b.AssistivePartialOwnership|Where-Object ItemId -CEQ $d1.Ids['Files']).Count -eq 0) 'D5: in-flight ownership was not folded into the final record and cleared.'
+
+        # D5 counter 1: in-flight ownership of another parent operation grants nothing.
+        $d2=MakeDeadScopeRun $false
+        $pp2=Get-WsmOperationPaths $pairsDirectory $d2.Pair;$st2=Get-WsmOperationState $pp2 $d2.Package;foreach($entry2 in @($st2.AssistivePartialOwnership)){$entry2.ParentOperationId=[Guid]::NewGuid().ToString('D')};Write-WsmJson $pp2.State $st2
+        $r2d=ResumeNow $d2
+        Check ((FileStatus $r2d $d2 'one.txt') -ceq 'BlockedConflict' -and (FileStatus $r2d $d2 'sub') -ceq 'DirectoryPreserved' -and $r2d.Status -ceq 'Partial') 'D5: in-flight ownership of another parent operation granted ownership.'
+        Check ($script:payloadCopies['one.txt'] -eq 1 -and [IO.File]::ReadAllText((Join-Path $d2.Target 'one.txt')) -ceq 'first file bytes') 'D5: the foreign-parent case rewrote the first file.'
+        # D5 counter 2: in-flight ownership of another generation grants nothing.
+        $d2b=MakeDeadScopeRun $false
+        $pp2b=Get-WsmOperationPaths $pairsDirectory $d2b.Pair;$st2b=Get-WsmOperationState $pp2b $d2b.Package;foreach($entry2b in @($st2b.AssistivePartialOwnership)){$entry2b.Generation=6};Write-WsmJson $pp2b.State $st2b
+        $r2e=ResumeNow $d2b
+        Check ((FileStatus $r2e $d2b 'one.txt') -ceq 'BlockedConflict' -and $r2e.Status -ceq 'Partial') 'D5: in-flight ownership of another generation granted ownership.'
+        # D5 counter 3: the first file changed externally after the death: reported as drift, never overwritten.
+        $d3=MakeDeadScopeRun $false
+        [IO.File]::WriteAllText((Join-Path $d3.Target 'one.txt'),'externally changed')
+        $r3d=ResumeNow $d3
+        Check ((FileStatus $r3d $d3 'one.txt') -ceq 'BlockedConflict' -and [IO.File]::ReadAllText((Join-Path $d3.Target 'one.txt')) -ceq 'externally changed' -and $script:payloadCopies['one.txt'] -eq 1 -and $r3d.Status -ceq 'Partial') 'D5: an externally changed completed file was overwritten or accepted.'
+        Check ((FileStatus $r3d $d3 'three.txt') -ceq 'Applied') 'D5: drift of one file stopped the remaining files.'
+
+        # D6: FileScope first, Service (UserPassword) second; credential submitted, process dies inside the FileScope.
+        $sentinel6='SYNTHETIC-E3B3-SENTINEL-71ac'
+        $ctx1=[pscustomobject]@{Role='Target';Actor='S-1-5-18@FIXTURE';SessionId='session-one';ContextId='context-one';Revision=9;OperationId=''}
+        function NewContext([string]$Parent,[string]$Session){[pscustomobject]@{Role='Target';Actor='S-1-5-18@FIXTURE';SessionId=$Session;ContextId=('context-'+$Session);Revision=9;OperationId=$Parent}}
+        function StartDeadServiceRun(){
+            ResetNative;$script:payloadCopies=@{}
+            $fx=NewScopeFixture $true
+            $c1=NewContext $fx.Parent 'session-one'
+            $w=RunFresh $fx @{} $c1
+            Check ($w.Status -ceq 'WaitingForInput' -and @($w.RequiredSecretRefs) -contains 'ServiceSecretA') 'D6 setup: the first call did not wait for the Service credential.'
+            $cred=New-Object Management.Automation.PSCredential('CONTOSO\svc-app',(ConvertTo-SecureString $sentinel6 -AsPlainText -Force))
+            Check (RunUntilDeath {RunFresh $fx @{ServiceSecretA=$cred} $c1} 'AssistiveFileCompleted' 2) 'D6 setup: the submitted run did not die inside the FileScope.'
+            $fx
+        }
+        $e1=StartDeadServiceRun
+        $se1=StateOf $e1
+        Check ([string]$se1.AssistiveServiceChallenge.State -ceq 'Running' -and [string]$se1.AssistiveServiceChallenge.SessionId -ceq 'session-one') 'D6 setup: the dead run must leave a Running challenge bound to the old session.'
+        $ctx2=NewContext $e1.Parent 'session-two'
+        $r6=ResumeNow $e1 -Context $ctx2
+        $s6=StateOf $e1
+        Check ($r6.Status -ceq 'WaitingForInput' -and $r6.ParentOperationId -ceq $e1.Parent -and @($r6.RequiredSecretRefs).Count -eq 1 -and @($r6.RequiredSecretRefs)[0] -ceq 'ServiceSecretA') ('D6: the continuation without a secret must wait for the Service credential only; status='+$r6.Status)
+        Check ($script:writes -eq 0 -and -not $script:native.ContainsKey($e1.ServiceName)) 'D6: the Service was written without a credential.'
+        Check ([string]$s6.AssistiveServiceChallenge.State -ceq 'WaitingForInput' -and [string]$s6.AssistiveServiceChallenge.SessionId -ceq 'session-two' -and [string]$s6.AssistiveServiceChallenge.ContextId -ceq 'context-session-two' -and [string]$s6.AssistiveServiceChallenge.Actor -ceq 'S-1-5-18@FIXTURE' -and @($s6.AssistiveServiceChallenge.RequiredSecretRefs).Count -eq 1) 'D6: the challenge was not rebound to the current session.'
+        Check ([string]$s6.RestoreAttempt.Status -ceq 'WaitingForInput' -and [string]$s6.Stage -ceq 'WaitingForInput' -and @($s6.PendingOperations).Count -eq 0) 'D6: the parent is not back in WaitingForInput with nothing pending.'
+        $filesRecord6=@($s6.Items|Where-Object ItemId -CEQ $e1.Ids['Files'])
+        Check ($filesRecord6.Count -eq 1 -and [string]$filesRecord6[0].Status -ceq 'Succeeded' -and @($filesRecord6[0].OwnedFiles).Count -eq 3 -and $script:payloadCopies['one.txt'] -eq 1 -and $script:payloadCopies['sub\two.txt'] -eq 1 -and $script:payloadCopies['three.txt'] -eq 1) 'D6: the FileScope was not finished exactly once before waiting.'
+        Check (@($s6.Items|Where-Object ItemId -CEQ $e1.Ids['Svc']).Count -eq 0 -and -not (@($s6.RestoreAttempt.ItemResults|Where-Object ItemId -CEQ $e1.Ids['Svc']).Count)) 'D6: the Service was marked with a result although it was never attempted.'
+        # reply from the old session is refused; reply from the new session finishes the parent
+        $cred6=New-Object Management.Automation.PSCredential('CONTOSO\svc-app',(ConvertTo-SecureString $sentinel6 -AsPlainText -Force))
+        $script:fixture=$e1
+        Reject {Invoke-WsmWizardTargetRestore -Workspace $root -PairId $e1.Pair -PreviewHash $previewHash -Jobs @() -OperationId $e1.Parent -CancellationToken ([pscustomobject]@{OperationId=$e1.Parent}) -Secrets @{ServiceSecretA=$cred6} -ChallengeContext (NewContext $e1.Parent 'session-one')} 'D6: a secret reply from the old session was accepted.'
+        Check ($script:writes -eq 0) 'D6: the old-session reply wrote natively.'
+        $done6=Invoke-WsmWizardTargetRestore -Workspace $root -PairId $e1.Pair -PreviewHash $previewHash -Jobs @() -OperationId $e1.Parent -CancellationToken ([pscustomobject]@{OperationId=$e1.Parent}) -Secrets @{ServiceSecretA=$cred6} -ChallengeContext $ctx2
+        Check ($done6.Status -ceq 'Succeeded' -and $script:writes -eq 1 -and @($script:writeLog|Where-Object {$_ -ceq $e1.ServiceName}).Count -eq 1) ('D6: the Service was not applied exactly once after the new reply; status='+$done6.Status)
+        Check ($script:payloadCopies['one.txt'] -eq 1 -and $script:payloadCopies['three.txt'] -eq 1) 'D6: the finished FileScope was redone after the credential arrived.'
+        Check ([string](StateOf $e1).Stage -ceq 'Succeeded') 'D6: the parent did not end Succeeded.'
+        $pathsE=Get-WsmOperationPaths $pairsDirectory $e1.Pair;$durableE=[IO.File]::ReadAllText($pathsE.State)+[IO.File]::ReadAllText($pathsE.Journal)
+        foreach($fileE in @(Get-ChildItem -LiteralPath $pathsE.Root -Recurse -File)){$durableE+=[IO.File]::ReadAllText($fileE.FullName)}
+        Check ($durableE -notmatch [regex]::Escape($sentinel6) -and $durableE -match 'AssistiveServiceCredentialReprompt') 'D6: the synthetic secret reached durable state, or the reprompt left no journal event.'
+
+        # D6 counter: the remaining credential group was already deferred -> no input is requested; the parent ends Partial.
+        $e2=StartDeadServiceRun
+        $pe2=Get-WsmOperationPaths $pairsDirectory $e2.Pair;$ste2=Get-WsmOperationState $pe2 $e2.Package
+        foreach($requirement2 in @($ste2.AssistiveServiceChallenge.Requirements)){$requirement2|Add-Member NoteProperty Deferred $true -Force;$requirement2|Add-Member NoteProperty DeferReason 'CredentialRejectedLimit' -Force}
+        Write-WsmJson $pe2.State $ste2
+        $r6d=ResumeNow $e2 -Context (NewContext $e2.Parent 'session-two')
+        Check ($r6d.Status -ceq 'Partial' -and (ResultOf $r6d $e2 'Svc')[0].Status -ceq 'Deferred' -and $script:writes -eq 0) ('D6: a deferred credential group was asked for again or written; status='+$r6d.Status)
+        # D6 counter: an already owned Service only reads back and needs no credential on continuation.
+        $e3=StartDeadServiceRun
+        $script:native[$e3.ServiceName]=@{Passes=$true}
+        $pe3=Get-WsmOperationPaths $pairsDirectory $e3.Pair;$ste3=Get-WsmOperationState $pe3 $e3.Package
+        $ste3.Items=@($ste3.Items)+@([pscustomobject]@{ItemId=$e3.Ids['Svc'];Status='Succeeded';CreatedByTool=$true;AppliedManifestHash=$manifestHash;AppliedGeneration=7;ActualHash=('7'*64);Target=$e3.ServiceName;Error='';NativeCode=0});Write-WsmJson $pe3.State $ste3
+        $r6e=ResumeNow $e3 -Context (NewContext $e3.Parent 'session-two')
+        Check ($r6e.Status -ceq 'Succeeded' -and $script:writes -eq 0) ('D6: a Service that already exists and is owned was asked for a credential; status='+$r6e.Status)
+
         Write-Host ('PASS: TargetRestore continuation core ('+$script:checks+' checks).')
     } $root
 } finally {

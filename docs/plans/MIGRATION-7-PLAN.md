@@ -846,6 +846,13 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 新增靜態守門 `tests/Test-HtmlRouteMatches.ps1`：HtmlConsole 每個以 `$route -match` 擷取參數的路由區塊（目前 9 個），都必須在任何其他 `-match／-notmatch` 之前讀取 `$Matches[...]`；在 HEAD 版本會精確指出 resume 路由而轉紅。其餘 8 個路由都已符合。
 - 驗證：HtmlRouteMatches、HtmlConsole 165 通過；完整的 HTTP 續作由 G 旅程驗證。
 
+### 17.57 E3b-3 寫檔途中中斷後的續作：已完成檔案的擁有權、未開始項目重新要求帳密（修 G-D5／D6）
+
+- G 旅程以真實 journal 發現：(D5) 項目層級擁有權只在項目結束時寫入，崩潰前已完成的檔案與本次建立的目錄在續作時被當成外部物件（BlockedConflict／DirectoryPreserved），項目只能 Partial；(D6) 帳密已接受、寫檔中途崩潰後，續作沿用 Running challenge 又沒有秘密，尚未開始的 Service 項目以 Failed 結束且沒有補送路徑。依 PLAN 16.2「程序中斷：對帳後續作，需要的秘密重新輸入」判定為缺陷。
+- Sonnet 5.5 subagent 實作，主代理審查、重跑並突變。D5：新增 `state.AssistivePartialOwnership`（綁 ItemId、ParentOperationId、ManifestHash、Generation），每個檔案在 `AssistiveFileCompleted` 同一耐久點、每個本次建立的目錄在建立當下寫入；續作只採用同父作業、同世代且雜湊／metadata 吻合者（目錄另比建立時間），項目完成時併入 `OwnedFiles`／`OwnedDirectories` 並清除，不改既有讀取端語意。D6：續作時尚未完成、需要帳密、沒有秘密且目標尚不存在的項目不再失敗，改把 challenge 改回 WaitingForInput 並綁目前 session，只要求剩下項目的 SecretRef（保留延後與被拒次數），已完成項不重做；剩下全是延後組則不要求輸入。新增 journal 動作 `AssistiveServiceCredentialReprompt`。
+- 驗證（WinPS 5.1）：TargetRestoreContinuation 112（D5 正例三檔＋子目錄每檔只寫一次；反例：別的父作業、別的世代、中斷後被外部改內容都不授予擁有權；D6 正例：續作回 WaitingForInput 只含 Service、舊 session 回覆被拒、新 session 後 Service 只套用一次且 Succeeded；反例：延後組、已擁有的 Service）、AssistiveRestore 140、AssistiveRecoveryBoundaries 6、AssistiveRollback 16、RecoveryContracts、ServiceCredentialChallenge 46、CredentialDeferral 68、WizardRestore 85、HtmlConsole 165、WizardRuntime 161、JournalAppendFailure 22、ScriptEncoding 通過。突變：拿掉檔案採用、拿掉目錄採用、拿掉重新要求帳密（subagent）、拿掉父作業比對（主代理）皆以專屬斷言轉紅。
+- 限制與後續（本輪處理，J1）：`JournalRecovery.ps1` 的重播清單沒有涵蓋本輪新增（以及部分既有）的 journal 動作，state 落後 journal 的窄窗崩潰後會以「保留證據、需人工」失敗關閉；`AssistivePartialOwnership` 也不會被重播（該窄窗中崩潰時保守判為衝突）。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

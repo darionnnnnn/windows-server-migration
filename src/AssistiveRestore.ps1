@@ -744,7 +744,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     # Durable per-group state: deferred groups are never asked for; attempts / last failure survive each return to WaitingForInput.
     $credentialState=Get-WsmAssistiveCredentialStateMap $challenge;$deferredRefs=New-Object 'System.Collections.Hashtable' ([StringComparer]::Ordinal);foreach($stateRef in @($credentialState.Keys)){if($credentialState[$stateRef].Deferred){$deferredRefs[[string]$stateRef]=[string]$credentialState[$stateRef].DeferReason}}
     if(@($inputServiceRefs|Where-Object {$deferredRefs.ContainsKey($_)}).Count){throw 'A credential was supplied for a deferred SecretRef; deferred groups are not restored in this parent.'}
-    $maxCredentialAttempts=Get-WsmAssistiveCredentialMaxAttempts;$rejectedItemRefs=@{}
+    $maxCredentialAttempts=Get-WsmAssistiveCredentialMaxAttempts;$rejectedItemRefs=@{};$repromptItemRefs=@{}
     $reservationOperationState='Running';if(-not $challengeCrossed -and @($expectedReviewedServiceRefs|Where-Object {$_ -cnotin $inputServiceRefs -and -not $deferredRefs.ContainsKey($_)}).Count){$reservationOperationState='WaitingForInput'}
     $serviceReservations=New-Object 'System.Collections.Generic.List[object]';$requiredSecretRefs=New-Object 'System.Collections.Generic.List[string]';$serviceSecretRefs=New-Object 'System.Collections.Generic.List[string]'
     try {
@@ -832,6 +832,8 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
         Assert-WsmAssistiveReceiptFresh $Package $decision | Out-Null
         $item=$itemsById[[string]$row.ItemId];$spec=$item.MigrationSpec
         try{
+            # Continuation without the secret an unfinished credential item needs: ask again under the current session instead of failing it. Already-existing owned objects only read back and never need it.
+            if($Continuation -and $credentialByItem.ContainsKey([string]$item.ItemId) -and -not $Secrets.ContainsKey([string]$credentialByItem[[string]$item.ItemId].SecretRef) -and -not (Get-WsmAdapterState $spec).Exists){$repromptItemRefs[[string]$item.ItemId]=[string]$credentialByItem[[string]$item.ItemId].SecretRef;continue}
             $reservations=@();if(-not ($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'NonC')){$reservations=Get-WsmAssistiveReservations $item $Package $StateDirectory -OperationId $ParentOperationId}
             $priorRecord=@($state.Items | Where-Object ItemId -CEQ $item.ItemId);$undo=$null;if($priorRecord.Count){$undo=$priorRecord[0]}
             Add-WsmJournal $paths $state 'AssistiveItemStarted' $item.ItemId ([pscustomobject]@{Adapter=$spec.Adapter;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;DecisionReceiptHash=$decision.ReceiptHash})
@@ -900,6 +902,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
             if($result.Status -eq 'Succeeded' -and -not $result.PSObject.Properties['ActualHash']){$result | Add-Member NoteProperty ActualHash ([string]$result.ActualHash)}
             if(@($reservations).Count){$desiredEvidence=$null;if($spec.Adapter -eq 'FileScope'){$desiredEvidence=@(Read-WsmArtifactLines (Join-Path $Package.Root 'artifacts.jsonl') $Package.Manifest.ArtifactsHash $CancellationToken | Where-Object ItemId -CEQ $item.ItemId | Select-Object RelativePath,Directory,Data,Metadata)}else{$desiredEvidence=$spec.Desired};$readback=$result;if($result.PSObject.Properties['OwnedFiles']){$readback=[pscustomobject]@{OwnedFiles=$result.OwnedFiles;OwnedDirectories=$result.OwnedDirectories;ActualHash=$result.ActualHash}};Set-WsmAssistiveReservationEvidence $reservations $item $Package $undo $desiredEvidence $readback $undo $StateDirectory;$result | Add-Member NoteProperty ResourceReservations @($reservations | ForEach-Object {$_.Preview.ResourceKey}) -Force}
             $state.PendingOperations=@($state.PendingOperations | Where-Object ItemId -CNE $item.ItemId)
+            Clear-WsmAssistivePartialOwnership $state ([string]$item.ItemId)
             $state.Items=@($state.Items | Where-Object ItemId -CNE $item.ItemId)+@($result)
             $itemResults.Add($result)
             Add-WsmJournal $paths $state 'AssistiveItemCompleted' $item.ItemId $result
@@ -939,7 +942,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
         return [pscustomobject]@{PairId=$Package.Manifest.PairId;ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;Stage='Cancelled';Items=$state.Items;Results=$cancelResults;Deferred=@($Preview.Rows | Where-Object Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired'));PendingOperations=@($state.PendingOperations);JournalHash=$state.JournalHash;BusinessValidationRequired=$true;ProductionVerified=$false}
     }
     $credentialNotice=''
-    if($rejectedItemRefs.Count){
+    if($rejectedItemRefs.Count -or $repromptItemRefs.Count){
         # Refused passwords with a proven no-effect failure: count the attempt per SecretRef. Below the limit the parent returns to WaitingForInput
         # (other settled items stay); at the limit the whole group is deferred and the rest of the restore finishes.
         $waitingRefs=New-Object 'System.Collections.Generic.List[string]';$limitRefs=New-Object 'System.Collections.Generic.List[string]';$rejectionSummary=@()
@@ -950,6 +953,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
             if($atLimit){$limitRefs.Add($rejectedRef)}else{$waitingRefs.Add($rejectedRef)}
             $rejectionSummary+=@([pscustomobject]@{SecretRef=$rejectedRef;Attempts=$newAttempts;MaxAttempts=$maxCredentialAttempts;Deferred=$atLimit})
         }
+        foreach($repromptRef in @($repromptItemRefs.Values|Sort-Object -Unique)){if(-not $waitingRefs.Contains([string]$repromptRef)){$waitingRefs.Add([string]$repromptRef)}}
         foreach($limitItemId in @($rejectedItemRefs.Keys|Where-Object {$rejectedItemRefs[$_] -cin $limitRefs.ToArray()})){
             $limitResult=[pscustomobject]@{ItemId=$limitItemId;Status='Deferred';CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error='CredentialRejectedLimit';Reason='CredentialRejectedLimit';NativeCode=$null}
             for($resultIndex=0;$resultIndex -lt $itemResults.Count;$resultIndex++){if([string]$itemResults[$resultIndex].ItemId -ceq [string]$limitItemId){$itemResults[$resultIndex]=$limitResult}}
@@ -959,10 +963,10 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
         $deferredAll=@($credentialState.Keys|Where-Object {$credentialState[$_].Deferred}|Sort-Object)
         $requirementRefs=@($expectedServiceRefs|Where-Object {$_ -cin $waitingRefs.ToArray() -or $_ -cin $deferredAll})
         $credentialRequirements=@(New-WsmAssistiveCredentialRequirementList $requirementRefs $credentialByItem $preflightItemsById $credentialAccountByRef $credentialState)
-        $challenge|Add-Member NoteProperty Requirements @($credentialRequirements) -Force;$challenge|Add-Member NoteProperty DeferredSecretRefs @($deferredAll) -Force;$challenge.UpdatedUtc=Get-WsmUtc
+        $challenge|Add-Member NoteProperty Requirements @($credentialRequirements) -Force;$challenge|Add-Member NoteProperty DeferredSecretRefs @($deferredAll) -Force;$challenge.UpdatedUtc=Get-WsmUtc;if($repromptItemRefs.Count){$challenge|Add-Member NoteProperty Role $contextRole -Force;$challenge|Add-Member NoteProperty Actor $contextActor -Force;$challenge|Add-Member NoteProperty SessionId $contextSession -Force;$challenge|Add-Member NoteProperty ContextId $contextId -Force;$challenge|Add-Member NoteProperty Revision ([int]$contextRevision) -Force}
         if($limitRefs.Count){$credentialNotice=Get-WsmAssistiveCredentialLimitNotice;Add-WsmJournal $paths $state 'AssistiveServiceCredentialRejectedLimit' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;SecretRefs=@($limitRefs.ToArray());MaxAttempts=$maxCredentialAttempts;Reason='CredentialRejectedLimit'})}
         if($waitingRefs.Count){
-            $waitingItemIds=@($rejectedItemRefs.Keys|Where-Object {$rejectedItemRefs[$_] -cin $waitingRefs.ToArray()})
+            $waitingItemIds=@(@($rejectedItemRefs.Keys|Where-Object {$rejectedItemRefs[$_] -cin $waitingRefs.ToArray()})+@($repromptItemRefs.Keys))
             $priorReservations=@();if($challenge.PSObject.Properties['ServiceReservations']){$priorReservations=@($challenge.ServiceReservations)};$keptReservations=@()
             foreach($reservation in @($serviceReservations.ToArray())){
                 if([string]$reservation.ItemId -cin $waitingItemIds){
@@ -976,9 +980,10 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
             $waitingResults=@(Merge-WsmAssistiveItemResults $priorItemResults $itemResults.ToArray())
             $attempt|Add-Member NoteProperty ItemResults @($waitingResults) -Force;$attempt|Add-Member NoteProperty Status 'WaitingForInput' -Force
             $state.ManifestHash=$ManifestHash;$state.Generation=[long]$Package.Manifest.Generation;$state.Stage='WaitingForInput'
-            Add-WsmJournal $paths $state 'AssistiveServiceCredentialRejected' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;PairId=[string]$Package.Manifest.PairId;PreviewHash=[string]$Preview.WizardPreviewHash;Rejections=@($rejectionSummary);RequiredSecretRefs=@($challenge.RequiredSecretRefs)})
+            $waitingAction='AssistiveServiceCredentialRejected';if(-not $rejectedItemRefs.Count){$waitingAction='AssistiveServiceCredentialReprompt'}
+            Add-WsmJournal $paths $state $waitingAction '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;PairId=[string]$Package.Manifest.PairId;PreviewHash=[string]$Preview.WizardPreviewHash;Rejections=@($rejectionSummary);RequiredSecretRefs=@($challenge.RequiredSecretRefs)})
             Complete-WsmAssistivePackageJob $Package $job $StateDirectory
-            return [pscustomobject][ordered]@{Status='WaitingForInput';PairId=[string]$Package.Manifest.PairId;ParentOperationId=$ParentOperationId;RequiredSecretRefs=@($challenge.RequiredSecretRefs);CredentialRequirements=@($credentialRequirements);ServiceReservations=@($challenge.ServiceReservations);ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviewHash=[string]$Preview.WizardPreviewHash;Role=$contextRole;Actor=$contextActor;SessionId=$contextSession;ContextId=$contextId;Revision=[int]$contextRevision;NoTargetWrites=$false;ResumeRequired=$true;CredentialRejected=$true;CredentialNotice=$credentialNotice;Results=@($waitingResults);ProductionVerified=$false}
+            return [pscustomobject][ordered]@{Status='WaitingForInput';PairId=[string]$Package.Manifest.PairId;ParentOperationId=$ParentOperationId;RequiredSecretRefs=@($challenge.RequiredSecretRefs);CredentialRequirements=@($credentialRequirements);ServiceReservations=@($challenge.ServiceReservations);ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviewHash=[string]$Preview.WizardPreviewHash;Role=$contextRole;Actor=$contextActor;SessionId=$contextSession;ContextId=$contextId;Revision=[int]$contextRevision;NoTargetWrites=$false;ResumeRequired=$true;CredentialRejected=[bool]$rejectedItemRefs.Count;CredentialNotice=$credentialNotice;Results=@($waitingResults);ProductionVerified=$false}
         }
     }
     $state.ManifestHash=$ManifestHash;$state.Generation=[long]$Package.Manifest.Generation
@@ -995,6 +1000,26 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     [pscustomobject]@{PairId=$Package.Manifest.PairId;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;Stage=$state.Stage;Items=$state.Items;Results=$finalResults;Deferred=$remaining;JournalHash=$state.JournalHash;CredentialNotice=$credentialNotice;BusinessValidationRequired=$true;ProductionVerified=$false}
 }
 
+function Get-WsmAssistiveRestoreParentId($State) {
+    if($State -and $State.PSObject.Properties['RestoreAttempt'] -and $State.RestoreAttempt -and $State.RestoreAttempt.PSObject.Properties['OperationId']){return [string]$State.RestoreAttempt.OperationId}
+    ''
+}
+# In-flight FileScope ownership: durable per file / per created directory, scoped to one parent operation + manifest + generation.
+function Get-WsmAssistivePartialOwnership($State,$Item,$Package,[string]$Kind) {
+    $parent=Get-WsmAssistiveRestoreParentId $State
+    if(-not $parent -or -not $State.PSObject.Properties['AssistivePartialOwnership']){return @()}
+    @($State.AssistivePartialOwnership | Where-Object {$_ -and [string]$_.ItemId -ceq [string]$Item.ItemId -and [string]$_.Kind -ceq $Kind -and [string]$_.ParentOperationId -ceq $parent -and [string]$_.ManifestHash -ieq [string]$Package.SHA256 -and [long]$_.Generation -eq [long]$Package.Manifest.Generation -and $_.Record})
+}
+function Set-WsmAssistivePartialOwnership($State,$Item,$Package,[string]$Kind,$Record) {
+    $parent=Get-WsmAssistiveRestoreParentId $State;if(-not $parent){return}
+    $kept=@();if($State.PSObject.Properties['AssistivePartialOwnership']){$kept=@($State.AssistivePartialOwnership | Where-Object {$_ -and -not ([string]$_.ItemId -ceq [string]$Item.ItemId -and [string]$_.Kind -ceq $Kind -and [string]$_.RelativePath -ceq [string]$Record.RelativePath)})}
+    $entry=[pscustomobject][ordered]@{ItemId=[string]$Item.ItemId;Kind=$Kind;RelativePath=[string]$Record.RelativePath;ParentOperationId=$parent;ManifestHash=[string]$Package.SHA256;Generation=[long]$Package.Manifest.Generation;Record=$Record}
+    $State | Add-Member NoteProperty AssistivePartialOwnership (@($kept)+@($entry)) -Force
+}
+function Clear-WsmAssistivePartialOwnership($State,[string]$ItemId) {
+    if($State.PSObject.Properties['AssistivePartialOwnership']){$State.AssistivePartialOwnership=@($State.AssistivePartialOwnership | Where-Object {$_ -and [string]$_.ItemId -cne $ItemId})}
+}
+
 function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hashtable]$SidMap,$CancellationToken,[string]$Workspace='') {
     $spec=$Item.MigrationSpec;$target=ConvertTo-WsmCanonicalPath $spec.TargetPath;if($Package.PSObject.Properties['Plan']){Assert-WsmOfflineFullSetOriginalLocation $Package.Plan $spec};if(-not [IO.Directory]::Exists([IO.Path]::GetPathRoot($target))){throw 'Target volume for the original location is not available; prepare the same location and recheck.'};Assert-WsmNoReparse $target;Assert-WsmAssistiveTargetScopeTopology -Path $target -Spec $spec -TargetRoot $target -Kind Root
     $index=Join-Path $Package.Root 'artifacts.jsonl';$entries=@(Read-WsmArtifactLines $index $Package.Manifest.ArtifactsHash $CancellationToken | Where-Object {$_.ItemId -ceq $Item.ItemId});if(-not $entries.Count){throw 'Approved FileScope has no package artifacts.'}
@@ -1005,13 +1030,16 @@ function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hasht
     if($prior.Count){if($prior.Count -ne 1 -or -not $prior[0].PSObject.Properties['OwnedFiles']){throw 'Prior schema 3 FileScope ownership data is incomplete; preserve and reconcile.'};$ownedFiles=@($prior[0].OwnedFiles);if($prior[0].PSObject.Properties['OwnedDirectories']){$ownedDirectories=@($prior[0].OwnedDirectories)}}
     $results=New-Object 'System.Collections.Generic.List[object]';$nextFiles=New-Object 'System.Collections.Generic.List[object]';foreach($f in $ownedFiles){$nextFiles.Add($f)}
     $nextDirectories=New-Object 'System.Collections.Generic.List[object]';foreach($d in $ownedDirectories){$nextDirectories.Add($d)}
+    $partialDirectories=@(Get-WsmAssistivePartialOwnership $State $Item $Package 'Directory')
+    foreach($partialFile in @(Get-WsmAssistivePartialOwnership $State $Item $Package 'File')){$partialRecord=$partialFile.Record;$known=@($nextFiles | Where-Object RelativePath -CEQ ([string]$partialRecord.RelativePath));if(-not $known.Count){$nextFiles.Add($partialRecord)}elseif([long]$partialRecord.Generation -gt [long]$known[0].Generation){[void]$nextFiles.Remove($known[0]);$nextFiles.Add($partialRecord)}}
     $directoriesToApply=New-Object 'System.Collections.Generic.List[object]';$blockedDirectoryPaths=New-Object 'System.Collections.Generic.List[string]';$aclPolicy='Exact';if($spec.PSObject.Properties['AclControlPolicy']){$aclPolicy=[string]$spec.AclControlPolicy}
     foreach($entry in @($entries | Where-Object Directory | Sort-Object {if($_.RelativePath){$_.RelativePath.Split([char]92).Count}else{0}})){
         Assert-WsmCancellationBoundary $CancellationToken 'AssistiveDirectoryCreate'
         $path=$target;if($entry.RelativePath){$path=Join-Path $target $entry.RelativePath};Assert-WsmNoReparse $path
         if([IO.File]::Exists($path)){ $results.Add([pscustomobject]@{RelativePath=$entry.RelativePath;Status='BlockedConflict';Reason='A file occupies the required directory path.'});continue }
         $directoryOwner=@($nextDirectories | Where-Object RelativePath -CEQ ([string]$entry.RelativePath));if($directoryOwner.Count -gt 1){throw 'Duplicate per-directory ownership record.'}
-        $newDirectory=($createdDirs -contains $path) -or -not [IO.Directory]::Exists($path);if(-not [IO.Directory]::Exists($path)){[void][IO.Directory]::CreateDirectory($path);$createdDirs.Add($path)};Assert-WsmAssistiveTargetScopeTopology -Path $path -Spec $spec -TargetRoot $target -Artifact $entry -Kind Directory -Destination $path
+        $adoptPartialDirectory=$false;if(-not $directoryOwner.Count){$partialDirectory=@($partialDirectories | Where-Object {[string]$_.Record.RelativePath -ceq [string]$entry.RelativePath});if($partialDirectory.Count -eq 1 -and [IO.Directory]::Exists($path)){try{$adoptPartialDirectory=(([IO.Directory]::GetCreationTimeUtc($path).Ticks.ToString([Globalization.CultureInfo]::InvariantCulture)) -ceq [string]$partialDirectory[0].Record.CreationTicksUtc)}catch{$adoptPartialDirectory=$false}}}
+        $newDirectory=($createdDirs -contains $path) -or -not [IO.Directory]::Exists($path) -or $adoptPartialDirectory;if(-not [IO.Directory]::Exists($path)){[void][IO.Directory]::CreateDirectory($path);$createdDirs.Add($path)};if($newDirectory){Set-WsmAssistivePartialOwnership $State $Item $Package 'Directory' ([pscustomobject][ordered]@{RelativePath=[string]$entry.RelativePath;TargetPath=$path;CreationTicksUtc=[IO.Directory]::GetCreationTimeUtc($path).Ticks.ToString([Globalization.CultureInfo]::InvariantCulture);CreatedByTool=$true;Generation=[long]$Package.Manifest.Generation})};Assert-WsmAssistiveTargetScopeTopology -Path $path -Spec $spec -TargetRoot $target -Artifact $entry -Kind Directory -Destination $path
         $ownedDirectory=($newDirectory -or $directoryOwner.Count -eq 1)
         $priorDirectoryMetadata=$null
         if($directoryOwner.Count -eq 1 -and -not $newDirectory){
@@ -1061,6 +1089,7 @@ function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hasht
             $record=[pscustomobject]@{RelativePath=[string]$entry.RelativePath;TargetPath=$dest;SHA256=$expectedHash;MetadataHash=(Get-WsmAssistiveMetadataHash $actualMetadata);Backup=$backup;BackupHash=$previousHash;BackupMetadata=$priorMetadataForBackup;BackupMetadataHash=$(if($owner){[string]$owner.MetadataHash}else{''});BackupMaterialId=$backupMaterialId;Generation=[long]$Package.Manifest.Generation}
             $nextFiles=@($nextFiles | Where-Object RelativePath -CNE $entry.RelativePath)+@($record)
             $State.PendingOperations=@($State.PendingOperations | Where-Object ItemId -CNE $Item.ItemId)
+            Set-WsmAssistivePartialOwnership $State $Item $Package 'File' $record
             Add-WsmJournal $Paths $State 'AssistiveFileCompleted' $Item.ItemId ([pscustomobject]@{ItemId=$Item.ItemId;Record=$record;Target=$dest})
             $results.Add([pscustomobject]@{RelativePath=$entry.RelativePath;Status='Applied';MetadataStatus='Verified';Reason=''})
         }catch [OperationCanceledException] {throw}catch{
