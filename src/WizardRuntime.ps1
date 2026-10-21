@@ -308,7 +308,7 @@ function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,
     $result.package=$package;$result.plan.generation=[long]$package.Package.Manifest.Generation
     $itemState=$null;try{$itemPaths=Get-WsmOperationPaths (Join-Path $Profile.WorkRoot 'pairs') $PairId;if([IO.File]::Exists($itemPaths.State)){$itemState=Get-WsmOperationState $itemPaths $package.Package}}catch{$itemState=$null}
     $result.itemOptions=@(Get-WsmWizardTargetItemOptions $context $package $itemState)
-    $inventoryDefaults=@{Workspace=$Workspace;OutputDirectory=(Join-Path $Workspace ('hosts\'+$Profile.Fingerprint+'\inventory'));DeepDiscovery=$true;IncludeSoftwareCatalog=$true}
+    $inventoryDefaults=@{OutputDirectory=(Join-Path $Workspace ('hosts\'+$Profile.Fingerprint+'\inventory'));DeepDiscovery=$true;IncludeSoftwareCatalog=$true}
     $actions.Add((New-WsmWizardRuntimeAction 'Inventory' $true '重新觀測本機 Target 現況，不更新封存的來源事實。' $inventoryDefaults @()))
     $snapshot=$null
     try{$snapshot=Get-WsmWizardTargetSnapshotForRuntime $Workspace $context $Jobs}catch{$result.status='NeedsTargetInventory';$result.issues=@('需要與本機 Target 綁定、仍新鮮且含原生軟體觀測的盤點。');$result.actions=@($actions.ToArray());return [pscustomobject]$result}

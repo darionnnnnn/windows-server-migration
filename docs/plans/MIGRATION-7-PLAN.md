@@ -826,6 +826,13 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - `Test-AssistiveUi.js` 兩項：(1) 19 個精靈執行 action（StartBackup、IndependentCopy、TargetLocalComparison、各 NonC 交接等）在前端沒有中文標籤，選單會顯示「其他進階操作（第 n 項）」——產品缺口，在 `actionOverrides` 補上台灣繁中標籤（後端已有標籤者沿用其文字）；突變拿掉一個標籤即轉紅。(2) 6a8e6bf 起錯誤摘要會加「重新連線」按鈕，測試非 DOM 模式的假元素缺 `addEventListener`（測試漂移，補上）；補上後露出第三個問題：`followPreparationReviewSave`（b20f1d5）讀 `job.args`，違反「前端不得讀作業參數」的守門，而公開作業投影本來就不含 args，這段永遠取不到值——移除，行為不變。
 - 驗證：AssistiveUi 47／47、WizardPendingUi、WizardPreparationUi、WizardRuntimeTargetUi、CredentialDialogUi、WaitingConsistencyUi、SessionDraftReconnect 通過。
 
+### 17.54 G 旅程發現的產品缺陷 D1／D3（D2 另段）
+
+- G 旅程（Sonnet subagent，進行中）以 HTTP 走新機流程時發現三個產品缺陷並依規格停下，主代理親自修 D1、D3；D2 牽涉核准綁定的安全邊界，經使用者定案（核准計畫隨附快照）另段實作。
+- D1：`New-WsmWizardTargetLocalComparison` 與 `Invoke-WsmWizardIndependentCopy` 沒有列入模組匯出清單；HTML worker 在新 runspace 重新匯入模組後以 `Get-Command -CommandType Function` 找不到它們，所以 `TargetLocalComparison` 與 `IndependentCopy` 兩個 action 在真實 HTML 流程中一定失敗。既有 JS 測試預置了比較材料、而獨立副本的真實 Edge 測試只斷言「本機固定磁碟目的地→作業失敗且不留資料夾」，分不出是因規則拒絕還是函式找不到，所以 17.30 的通過證據不足以證明 action 可執行。修正：補進 `FunctionsToExport`；新增 `tests/Test-ActionExports.ps1`：所有經 worker 執行的 action（HTML 與核心對照表，排除 console 內部處理的 `Set-WsmHtml*`）都必須對應已匯出函式（在 HEAD 會列出這兩個而轉紅）。
+- D3：Target 執行投影的 `Inventory` 預設值帶 `Workspace`，但 `Export-WsmInventory` 沒有這個參數，原樣送出會被 `ConvertTo-WsmHtmlArguments` 以 400 拒絕。修正：移除；`Test-ActionExports` 另以靜態解析檢查 `WizardRuntime.ps1` 內每個 runtime action 的預設值鍵都是對應指令的參數（突變加回 `Workspace` 即轉紅）。
+- 驗證（WinPS 5.1）：ActionExports（194 個 action 指令）、WizardRuntime 161、HtmlConsole 165、WizardRestore 85、WizardBackup、OperationRequests、ScriptEncoding、真實 Edge NativeWizardRuntimeHandler 通過。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
