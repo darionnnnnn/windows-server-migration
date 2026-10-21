@@ -795,6 +795,11 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證：AssistiveReviewForms 53、WizardPreparationAdapters 88（兩者原本自 a4193aa 起失敗）、WorkloadDiscovery、SourceCandidateMapping 19、WorkloadActionIndex 28、WorkloadPathCoverage 18、WizardPreparation 30、WizardPreparationBulk 43、AssistiveComparison 42、AssistiveReports 39 通過。突變：放寬到所有參照種類、拿掉放寬（subagent）、拿掉允許欄位（主代理）皆轉紅。
 - 下一步（本輪處理，M2b）：subagent 發現真機的排程資料夾路徑可能沒有結尾斜線（`\Fixture`），而排程 `TaskPath` 有（`\Fixture\`），以字串精確比對會把已擷取的資料夾誤判為未擷取。
 
+### 17.50 M2b 排程資料夾路徑有無結尾反斜線一律正規化
+
+- 使用者定案本輪修正。主代理親自修（小修）。排程器 COM 的 `Folder.Path` 沒有結尾反斜線（`\Custom`，根目錄為 `\`），排程的 `TaskPath` 有（`\Custom\`）；`Get-WsmWorkloadDiscovery` 以資料夾項目的 NaturalKey 原字串當索引、以 TaskPath 原字串查找，真機上已擷取的資料夾會被判成「未擷取」，連帶讓 M2 的放寬失效。新增 `ConvertTo-WsmTaskFolderKey`（切段後以 `\a\b\` 形式組回，根為 `\`），建索引與查找共用。grep 其他同類比對：TaskSecurity（`ConvertTo-WsmTaskSecurityFolderPath`＋大寫鍵）、AssistiveResources（TaskFolder 身分正規化）、WizardGrouping（TrimEnd＋小寫）都已正規化；AssistiveOsProvided、Cutover 等比的是同源同形的 TaskPath，不受影響。PowerShell `@{}` 本身不分大小寫。
+- 驗證：Test-WorkloadDiscovery 新增四組（COM 形式、尾斜線形式、根目錄、不同資料夾）通過；AssistiveReviewForms 53、WizardPreparationAdapters 88、SourceCandidateMapping 19、WorkloadActionIndex、WorkloadPathCoverage 18、WizardPreparation 30、ScriptEncoding 通過。突變：索引鍵改回原字串，COM 形式案例轉紅。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

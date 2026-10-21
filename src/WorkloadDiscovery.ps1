@@ -20,6 +20,13 @@ function Test-WsmWorkloadLiteralAbsolutePath([string]$Path) {
     return ((Get-WsmSafeWorkloadPathProjection $Path) -and $Path -notmatch '%[^%]+%' -and $Path -match '^(?:[A-Za-z]:\\|\\\\[^\\]+\\[^\\]+(?:\\|$))' -and $Path -notmatch '(^|[\\/])\.{1,2}([\\/]|$)')
 }
 
+function ConvertTo-WsmTaskFolderKey([string]$Path) {
+    # 排程器 COM 的 Folder.Path 沒有結尾反斜線（\Fixture），排程的 TaskPath 有（\Fixture\）；兩者正規化成同一個鍵再比對。根目錄一律為 \。
+    if([string]::IsNullOrWhiteSpace($Path)){return ''}
+    $segments=@($Path -split '[\\/]+' | Where-Object {$_})
+    if(-not $segments.Count){return '\'}
+    '\'+($segments -join '\')+'\'
+}
 function Get-WsmWorkloadSettingValue($Settings,[string]$Name) {
     if($null -eq $Settings){return $null}
     if($Settings -is [System.Collections.IDictionary]){if($Settings.Contains($Name)){return $Settings[$Name]};return $null}
@@ -225,7 +232,7 @@ function Get-WsmIisConfigurationInventoryItems([string]$HostId,$Document,[string
 
 function Get-WsmWorkloadDiscovery($Inventory) {
     $references=New-Object 'System.Collections.Generic.List[object]';$coverage=New-Object 'System.Collections.Generic.List[object]';$configurationCoverage=New-Object 'System.Collections.Generic.List[object]';$resources=New-Object 'System.Collections.Generic.List[object]';$runtimeRows=New-Object 'System.Collections.Generic.List[object]';$provenanceRows=New-Object 'System.Collections.Generic.List[object]'
-    $items=@($Inventory.Items);$candidateByPath=@{};$poolByName=@{};$taskFolderByPath=@{};foreach($item in $items){if($item.Kind -eq 'PathCandidate'){$path=[string](Get-WsmWorkloadSettingValue $item.Settings 'OriginalPath');if($path){$candidateByPath[$path.ToLowerInvariant()]=$item}};if($item.Kind -eq 'IISPool'){$poolByName[[string]$item.NaturalKey]=$item};if($item.Kind -eq 'TaskFolder'){$taskFolderByPath[[string]$item.NaturalKey]=$item}}
+    $items=@($Inventory.Items);$candidateByPath=@{};$poolByName=@{};$taskFolderByPath=@{};foreach($item in $items){if($item.Kind -eq 'PathCandidate'){$path=[string](Get-WsmWorkloadSettingValue $item.Settings 'OriginalPath');if($path){$candidateByPath[$path.ToLowerInvariant()]=$item}};if($item.Kind -eq 'IISPool'){$poolByName[[string]$item.NaturalKey]=$item};if($item.Kind -eq 'TaskFolder'){$folderKey=ConvertTo-WsmTaskFolderKey ([string]$item.NaturalKey);if($folderKey){$taskFolderByPath[$folderKey]=$item}}}
     foreach($item in $items){
         if($item.Kind -in @('IISSite','ScheduledTask','IISSectionConfig','IISLocationConfig','IISWebConfig')){
             foreach($reference in @(Get-WsmWorkloadPathReferences $item)){
@@ -237,7 +244,7 @@ function Get-WsmWorkloadDiscovery($Inventory) {
             if($item.Kind -eq 'IISSite'){
                 try{$doc=Read-WsmXml ([string]$item.Settings.Xml);foreach($app in @($doc.SelectNodes("//*[local-name()='application'][@applicationPool]"))){$poolName=[string]$app.GetAttribute('applicationPool');$pool=$null;if($poolByName.ContainsKey($poolName)){$pool=$poolByName[$poolName]};$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$item.ItemId;ResourceItemId=$(if($pool){[string]$pool.ItemId}else{''});FieldPointer=('IIS/site/'+[string]$item.NaturalKey+'/application/'+[string]$app.GetAttribute('path')+'/@applicationPool');ReferenceKind='IISApplicationPool';RawValue=$poolName;ResolvedPath='';Channel='NotApplicable';ParseConfidence='Typed';Opaque=$false;Required=[bool]$pool;ReviewRequired=(-not [bool]$pool);Reason=$(if($pool){''}else{'Referenced application pool was not present in captured pool collection.'})})}}catch{}
             }
-            if($item.Kind -eq 'ScheduledTask'){$taskPath=[string]$item.Settings.TaskPath;$folder=$null;if($taskFolderByPath.ContainsKey($taskPath)){$folder=$taskFolderByPath[$taskPath]};$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$item.ItemId;ResourceItemId=$(if($folder){[string]$folder.ItemId}else{''});FieldPointer=('Task/@TaskPath:'+ $taskPath);ReferenceKind='TaskFolderSecurity';RawValue=$taskPath;ResolvedPath='';Channel='NotApplicable';ParseConfidence='Typed';Opaque=$false;Required=[bool]$folder;ReviewRequired=(-not [bool]$folder);Reason=$(if($folder){''}else{'Task folder security resource was not captured.'})})}
+            if($item.Kind -eq 'ScheduledTask'){$taskPath=[string]$item.Settings.TaskPath;$folder=$null;$taskFolderKey=ConvertTo-WsmTaskFolderKey $taskPath;if($taskFolderKey -and $taskFolderByPath.ContainsKey($taskFolderKey)){$folder=$taskFolderByPath[$taskFolderKey]};$references.Add([pscustomobject][ordered]@{ConsumerItemId=[string]$item.ItemId;ResourceItemId=$(if($folder){[string]$folder.ItemId}else{''});FieldPointer=('Task/@TaskPath:'+ $taskPath);ReferenceKind='TaskFolderSecurity';RawValue=$taskPath;ResolvedPath='';Channel='NotApplicable';ParseConfidence='Typed';Opaque=$false;Required=[bool]$folder;ReviewRequired=(-not [bool]$folder);Reason=$(if($folder){''}else{'Task folder security resource was not captured.'})})}
         }
     }
     foreach($item in $items){

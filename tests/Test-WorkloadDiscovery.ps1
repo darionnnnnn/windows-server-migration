@@ -116,4 +116,12 @@ Check ($legacyTask.Desired.Xml -eq $taskXml -and $legacyTask.DesiredFinalState -
     if(-not $pwdTask.PSObject.Properties['SecretRef'] -or $pwdTask.SecretRef -cne '' -or -not $specificPool.PSObject.Properties['SecretRef'] -or $specificPool.SecretRef -cne ''){throw 'Password task or SpecificUser pool draft lacks the empty SecretRef placeholder.'}
     if($plainTask.PSObject.Properties['SecretRef'] -or $plainPool.PSObject.Properties['SecretRef']){throw 'Non-password task or non-SpecificUser pool draft gained a SecretRef placeholder.'}
 } $hostId
+# M2b: the Task Scheduler COM folder path has no trailing backslash (\Custom) while a task TaskPath has one (\Custom\); both forms must match the same captured folder.
+foreach($case in @(@{Folder='\Custom';TaskPath='\Custom\';Captured=$true},@{Folder='\Custom\';TaskPath='\Custom\';Captured=$true},@{Folder='\';TaskPath='\';Captured=$true},@{Folder='\Other';TaskPath='\Custom\';Captured=$false})){
+    $caseTask=New-WsmItem $hostId Tasks ScheduledTask 'Job' ($case.TaskPath+'Job') @{TaskName='Job';TaskPath=$case.TaskPath;Xml=$taskXml;TaskSecurityCaptureStatus='Captured'}
+    $caseFolder=New-WsmItem $hostId Tasks TaskFolder $case.Folder $case.Folder @{SecuritySddl='O:BAG:BAD:';SecurityCaptureStatus='Captured'}
+    $caseWorkload=& $module {param($Inventory) Get-WsmWorkloadDiscovery $Inventory} (New-WsmInventory $source 1 @($caseTask,$caseFolder))
+    $caseRef=@($caseWorkload.References | Where-Object {$_.ConsumerItemId -eq $caseTask.ItemId -and $_.ReferenceKind -eq 'TaskFolderSecurity'})
+    Check ($caseRef.Count -eq 1 -and [bool]$caseRef[0].ReviewRequired -eq (-not $case.Captured) -and ([bool]$caseRef[0].ResourceItemId) -eq $case.Captured) ('Task folder '+$case.Folder+' vs TaskPath '+$case.TaskPath+' was not matched as captured='+$case.Captured+'.')
+}
 Write-Host ('PASS: R3-B workload graph and schema3 public draft consumer. Evidence: '+$root)
