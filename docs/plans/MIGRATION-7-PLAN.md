@@ -800,6 +800,16 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 使用者定案本輪修正。主代理親自修（小修）。排程器 COM 的 `Folder.Path` 沒有結尾反斜線（`\Custom`，根目錄為 `\`），排程的 `TaskPath` 有（`\Custom\`）；`Get-WsmWorkloadDiscovery` 以資料夾項目的 NaturalKey 原字串當索引、以 TaskPath 原字串查找，真機上已擷取的資料夾會被判成「未擷取」，連帶讓 M2 的放寬失效。新增 `ConvertTo-WsmTaskFolderKey`（切段後以 `\a\b\` 形式組回，根為 `\`），建索引與查找共用。grep 其他同類比對：TaskSecurity（`ConvertTo-WsmTaskSecurityFolderPath`＋大寫鍵）、AssistiveResources（TaskFolder 身分正規化）、WizardGrouping（TrimEnd＋小寫）都已正規化；AssistiveOsProvided、Cutover 等比的是同源同形的 TaskPath，不受影響。PowerShell `@{}` 本身不分大小寫。
 - 驗證：Test-WorkloadDiscovery 新增四組（COM 形式、尾斜線形式、根目錄、不同資料夾）通過；AssistiveReviewForms 53、WizardPreparationAdapters 88、SourceCandidateMapping 19、WorkloadActionIndex、WorkloadPathCoverage 18、WizardPreparation 30、ScriptEncoding 通過。突變：索引鍵改回原字串，COM 形式案例轉紅。
 
+### 17.51 F4b HTML 帳密對話框與續作畫面（F4b 完成，部分驗證）
+
+- 使用者同意套用 ui-ux-pro-max；主代理依其指引（原生 `<dialog>`、焦點管理、Escape 與關閉後焦點還原、密碼顯示切換、不擋密碼管理器、送出回饋、320px 重排、WCAG 2.2 AA、沿用 `console.css` tokens）寫成設計定案，Sonnet 5.5 subagent 實作，主代理審查並重跑。
+- 作業卡：WaitingForInput 的 TargetRestore 只顯示說明與「輸入帳密以繼續」；Interrupted 且 `resumable` 顯示「檢視恢復預覽」與「取消這次還原」。舊的內嵌面板（顯示 SecretRef）移除。
+- 帳密對話框：文件層級單一 `<dialog>`，作業清單每 3 秒重畫不會重建或清空它；每組需求一個 fieldset（用途、使用這組帳密的項目、同帳號共用說明），帳號為唯讀的已核准帳號（`autocomplete=username`，舊資料才可輸入，且不顯示 SecretRef），密碼欄有顯示／隱藏切換；「延後這組」與改回輸入；被拒時顯示「上次輸入的密碼被拒絕……（第 n／3 次）」並聚焦；空欄錯誤摘要；送出中停用；409 `challenge_revoked_preview_changed` 顯示失效並隱藏送出；取消採對話框內兩步確認；送出或關閉後一律清空密碼。只有發起作業的分頁在第一次進入等待時自動開啟一次（subagent 另以記憶體記錄本分頁送出過的作業，因為 sessionStorage 的 pending 在 202 後就被清除）。
+- 續作對話框：讀取 resume-preview（讀取中／錯誤重試／預覽已變／正常），列出結果需要核對的項目，勾選「我了解並要繼續這次還原」後才能續作；continuationId 以 jobId 為鍵存在 sessionStorage，重試沿用、成功後刪除；續作回 WaitingForInput 時直接換成帳密內容。
+- 驗證：新增真實 Edge 測試 `tests/Test-CredentialDialogUi.js`（結構、焦點、重畫存活、驗證、延後、被拒、409、兩步取消、舊資料、自動開啟、續作、320px 不水平捲動）通過；WizardRuntimeTargetUi、HtmlConsole 165 通過；NativeWizardRuntimeHandler 5 次中 1 次失敗、4 次通過（失敗輸出未保留，原因不明，該測試的帳密流程走 API 不經對話框）。突變：subagent 8 個（不清密碼、409 不隱藏送出、continuationId 不沿用等）、主代理 1 個（帳號改可編輯）皆轉紅。截圖在 `work/r7/f4b-screens/`（不進版控）。
+- 既有失敗（換回 HEAD 的 console.js／css 同樣重現，不歸因本段）：`Test-AssistiveUi.js`（`reconnect.addEventListener is not a function` 等 2 項）、`Test-WizardPendingUi.js`（401 應清除 pending）。列入本輪待修（M5）。
+- 限制：Tab 走查只斷言至少 9 個控制項在對話框內循環，未逐一核對；送出後若密碼被拒，對話框已關閉，需由作業卡按鈕再開。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

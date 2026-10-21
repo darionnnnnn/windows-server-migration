@@ -4,6 +4,7 @@
   const state = { token: null, session: null, context: null, sessionReconnectRequired:false, sessionDraftStale:false, sessionDraftStaleInfo:null, views: {}, viewRequests: new Map(), viewEpoch: 0, currentView: null, pageScroll: new Map(), reviewRequest: 0, actions: [], inventory: [], selected: new Set(), selectionReasons: new Map(), selectionDirty: false, selectionGeneration: 0, invalidSelectionIds: new Set(), inventoryPage: 0, inventoryPageSize: 50, inventoryTotal: 0, softwareChoices: new Map(), softwareChoiceReasons: new Map(), softwareGeneration: new Map(), softwareDirty: new Set(), jobs: new Map(), jobResultFilter: null, jobPollError: '', activeAction: null, preview: null, drafts: new Map(), draftGeneration: 0, pendingOperation: null, busy: false, jobPoll: null, globalJobPoll: null, canSaveSelection: true, assistiveEnabled: true, wizard: null, wizardAdvancing: false, wizardRenderSignature:'', wizardDirty:false, wizardStale:false, wizardPendingProjection:null, wizardOwnWriteAck:null, wizardActionDraftAcks:new Map(), wizardAcknowledgedInputKeys:new Set(), wizardContextWriteInFlight:false, wizardRefreshPromise:null, wizardDefaults: new Map(), wizardInputs: new Map(), wizardChoice: null, wizardAutoPending: false, wizardAutoResult: null, wizardAutoAttempt:'', wizardInventoryJobId:'', wizardInventoryBindAttempt:'', wizardPlanImportJobId:'', wizardPlanImportFollowing:false, wizardSourceHandoffExportJobId:'', wizardSourceHandoffImportJobId:'', wizardSourceHandoffImportFollowing:false, wizardPreparationReviewJobId:'', wizardPreparationSaveJobId:'', wizardPreparationJobCompletingId:'', wizardPreparationDraftKey:'', wizardPreparationItemId:'', wizardPreparationNotice:null, wizardPreparationDirty:false, wizardBulkPreparationPreviewJobId:'', wizardBulkPreparationSaveJobId:'', wizardBulkPreparationPreview:null, wizardBulkPreparationInputs:new Map(), wizardBulkPreparationDirty:false, wizardTargetHandoffExportJobId:'', wizardTargetHandoffPreviewJobId:'', wizardTargetHandoffPreview:null, wizardTargetHandoffCommitJobId:'', wizardRuntimeProjection:null, wizardRuntimeIdentity:'', wizardRuntimeLoading:'', wizardRuntimeInputs:new Map(), wizardRuntimeJobId:'', wizardRuntimeContextKey:'', wizardNonCProjection:null, wizardNonCIdentity:'', wizardNonCLoading:'', wizardNonCError:'', wizardFileInspectJobs:new Map(), developerProbeJobId: null, developerProbeUncertain: false };
   const $ = id => document.getElementById(id);
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = String(text); return n; };
+  const credUi = { dialog:null, ctx:null, submitting:false, autoOpened:new Set(), ownedJobs:new Set() };
   const safeText = value => value == null || value === '' ? '—' : String(value);
   const isSensitive = p => p.sensitive === true || /password|secret|credential|token/i.test(p.name || '');
   function announce(message) { const box = $('notice'); box.textContent = message; box.hidden = false; $('error-summary').hidden = true; }
@@ -52,7 +53,7 @@
       if (response.status === 401) { const error = new Error('session expired'); error.status = 401; error.code = 'invalid_token'; requireSessionReconnect(); throw error; }
       if (body && typeof body.code === 'string' && body.code) throw apiError(body, response.status, '要求未完成');
       if (!response.ok) { const error = new Error(body && body.message || `要求失敗（${response.status}）`); error.status = response.status; error.body = body; throw error; }
-      if (write && path === '/api/operations') { const job = body && (body.job || body), submitted = options && options.body ? JSON.parse(options.body) : {}, id = job && (job.jobId || job.id || job.operationId), knownStatuses = new Set(['Queued','Running','CancelRequested','WaitingForInput','Succeeded','Saved','Completed','Failed','Cancelled','Interrupted','Blocked','ReviewRequired','Deferred']); if (!id || id !== submitted.operationId || !knownStatuses.has(job.status) || (['Succeeded','Saved'].includes(job.status) && job.revision == null)) { const error = new Error('伺服端未回傳可核對的作業識別碼、已知狀態與 revision；寫入結果待確認。'); error.code = 'write-uncertain'; throw error; } state.jobs.set(id, job); if (job.revision != null) { state.session.revision = job.revision; $('revision-label').textContent = `revision ${job.revision}`; } clearPendingOperation(submitted.operationId); invalidateViews(); if (!(options && options.deferActiveRefresh)) setTimeout(() => { refreshActiveData(); }, 0); }
+      if (write && path === '/api/operations') { const job = body && (body.job || body), submitted = options && options.body ? JSON.parse(options.body) : {}, id = job && (job.jobId || job.id || job.operationId), knownStatuses = new Set(['Queued','Running','CancelRequested','WaitingForInput','Succeeded','Saved','Completed','Failed','Cancelled','Interrupted','Blocked','ReviewRequired','Deferred']); if (!id || id !== submitted.operationId || !knownStatuses.has(job.status) || (['Succeeded','Saved'].includes(job.status) && job.revision == null)) { const error = new Error('伺服端未回傳可核對的作業識別碼、已知狀態與 revision；寫入結果待確認。'); error.code = 'write-uncertain'; throw error; } state.jobs.set(id, job); credUi.ownedJobs.add(id); if (job.revision != null) { state.session.revision = job.revision; $('revision-label').textContent = `revision ${job.revision}`; } clearPendingOperation(submitted.operationId); invalidateViews(); if (!(options && options.deferActiveRefresh)) setTimeout(() => { refreshActiveData(); }, 0); }
       return body;
     }).catch(error => { const fixedPreauthCodes = new Set(['rejected_origin','rejected_host']), preauthStatus = error.status && [401,403].includes(error.status), definitelyRejected = error.body && error.body.submissionRejected === true || preauthStatus && fixedPreauthCodes.has(error.code); if (write && path === '/api/operations' && definitelyRejected) { const submitted = options && options.body ? JSON.parse(options.body) : {}; clearPendingOperation(submitted.operationId); } throw error; }); };
     return post ? ensureFreshContext(options && options.reviewedContext).then(send) : send();
@@ -1109,17 +1110,237 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       return `本機時間：${local}（${zone}） · UTC：${utc} · 原始時間：${raw}`;
     }catch(_){return `本機時間未知 · UTC：${utc} · 原始時間：${raw}`;}
   }
-  function renderServiceCredentialChallenge(job,id,main) {
-    if(String(job.status||'')!=='WaitingForInput'||String(job.action||'')!=='TargetRestore')return;
-    const refs=Array.isArray(job.requiredSecretRefs)?job.requiredSecretRefs:(job.outputs||[]).flatMap(output=>Array.isArray(output.RequiredSecretRefs)?output.RequiredSecretRefs:[]);if(!refs.length)return;
-    const panel=el('section','service-credential-challenge');panel.append(el('h3','','安全輸入服務帳戶憑證'),el('p','','還原已建立同一筆持久作業並暫停在輸入閘門。憑證只會送到本機控制端點的記憶體，沒有儲存到工作紀錄。'));
-    const fields=[];refs.forEach(ref=>{const row=el('div','service-credential-fields'),label=el('label','','SecretRef '+ref),user=document.createElement('input'),password=document.createElement('input');user.type='text';user.autocomplete='username';user.required=true;user.maxLength=256;user.setAttribute('aria-label','SecretRef '+ref+' 使用者名稱');password.type='password';password.autocomplete='new-password';password.required=true;password.maxLength=4096;password.setAttribute('aria-label','SecretRef '+ref+' 密碼');label.appendChild(user);row.append(label);const passLabel=el('label','','密碼');passLabel.appendChild(password);row.append(passLabel);panel.appendChild(row);fields.push({ref,user,password});});
-    const takeoverLabel=el('label','service-challenge-takeover'),takeover=document.createElement('input');takeover.type='checkbox';takeoverLabel.append(takeover,document.createTextNode('我明確接管此持久 TargetRestore 作業（僅在原工作階段已結束時勾選）'));panel.appendChild(takeoverLabel);
-    const actions=el('div','job-actions'),submit=el('button','primary-button','送出安全憑證並接續同一作業'),cancel=el('button','secondary-button','取消此憑證挑戰');submit.type='button';cancel.type='button';
-    submit.addEventListener('click',async()=>{if(fields.some(field=>!field.user.value.trim()||!field.password.value)){fail('請填寫所有要求的服務帳戶名稱與密碼。');return;}submit.disabled=true;cancel.disabled=true;const credentials={};fields.forEach(field=>{credentials[field.ref]={username:field.user.value,password:field.password.value};});try{const result=await endpoint(`/api/jobs/${encodeURIComponent(id)}/service-credentials`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credentials,takeover:takeover.checked})});const record=result&&(result.job||result);if(!record||record.jobId!==id||!['Running','WaitingForInput'].includes(record.status))throw new Error('本機服務未回傳可核對的同一筆 TargetRestore 作業狀態。');state.jobs.set(id,record);renderJobs();announce(`已將安全輸入交給同一筆 TargetRestore 作業 ${id}。`);}catch(error){if(error.message!=='session expired')fail(`安全憑證未接續作業：${error.message}`);}finally{fields.forEach(field=>{field.user.value='';field.password.value='';});submit.disabled=false;cancel.disabled=false;}});
-    cancel.addEventListener('click',async()=>{if(!window.confirm('取消此持久憑證挑戰？既有 TargetRestore 作業會標記取消，且不會自動重試。'))return;submit.disabled=true;cancel.disabled=true;try{const result=await endpoint(`/api/jobs/${encodeURIComponent(id)}/service-credentials/cancel`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const record=result&&(result.job||result);if(!record||record.jobId!==id||record.status!=='Cancelled')throw new Error('本機服務未回傳可核對的取消狀態。');state.jobs.set(id,record);renderJobs();announce('已取消服務憑證挑戰；同一 TargetRestore 作業不會自動重試。');}catch(error){if(error.message!=='session expired')fail(`取消憑證挑戰未完成：${error.message}`);}finally{submit.disabled=false;cancel.disabled=false;}});
-    actions.append(submit,cancel);panel.appendChild(actions);main.appendChild(panel);
+  // F4b: one document-level native <dialog> for service credentials and resume. renderJobs never touches it; passwords live only in the inputs and in submit-time locals.
+  const credentialKindLabels = { Service:'Windows 服務', ScheduledTask:'排程工作', IISPool:'IIS 應用程式集區' };
+  const credentialField = (row, ...names) => { for (const name of names) if (row && row[name] != null) return row[name]; return undefined; };
+  const credentialStrings = value => (Array.isArray(value) ? value : []).filter(item => typeof item === 'string' && item !== '');
+  const jobCredentialRefs = job => Array.isArray(job.requiredSecretRefs) ? job.requiredSecretRefs : (job.outputs || []).flatMap(output => Array.isArray(output.RequiredSecretRefs) ? output.RequiredSecretRefs : []);
+  function credentialRequirementsOf(job) {
+    const rows = (Array.isArray(job.credentialRequirements) ? job.credentialRequirements : []).filter(row => row && typeof credentialField(row, 'SecretRef', 'secretRef') === 'string').map(row => ({
+      ref:String(credentialField(row, 'SecretRef', 'secretRef')), kinds:credentialStrings(credentialField(row, 'Kinds', 'kinds')), names:credentialStrings(credentialField(row, 'DisplayNames', 'displayNames')), account:String(credentialField(row, 'ApprovedAccount', 'approvedAccount') || ''),
+      deferred:credentialField(row, 'Deferred', 'deferred') === true, rejected:credentialField(row, 'LastFailure', 'lastFailure') === 'CredentialRejected', attempts:Number(credentialField(row, 'Attempts', 'attempts')) || 0, maxAttempts:Number(credentialField(row, 'MaxAttempts', 'maxAttempts')) || 0, legacy:false }));
+    if (rows.length) return rows;
+    return jobCredentialRefs(job).filter(ref => typeof ref === 'string' && ref).map(ref => ({ ref, kinds:[], names:[], account:'', deferred:false, rejected:false, attempts:0, maxAttempts:0, legacy:true }));
   }
+  function isOwnedCredentialJob(id) {
+    if (credUi.ownedJobs.has(id) || (state.pendingOperation && state.pendingOperation.operationId === id)) return true;
+    try { const key = pendingStorageKey(); if (key) { const stored = JSON.parse(sessionStorage.getItem(key) || 'null'); if (stored && stored.operationId === id) return true; } } catch (_) {}
+    return false;
+  }
+  function ensureCredentialDialog() {
+    if (credUi.dialog) return credUi.dialog;
+    const dialog = document.createElement('dialog'); dialog.id = 'credential-dialog'; dialog.className = 'credential-dialog';
+    dialog.addEventListener('cancel', event => { if (credUi.submitting) event.preventDefault(); });
+    dialog.addEventListener('close', () => { if (credUi.ctx && !dialog.open) closeCredentialDialog(true); });
+    document.body.appendChild(dialog); credUi.dialog = dialog; return dialog;
+  }
+  function wipeCredentialInputs() { if (credUi.dialog) credUi.dialog.querySelectorAll('.credential-password').forEach(input => { input.value = ''; }); }
+  function restoreCredentialFocus(ctx) {
+    if (ctx.trigger && ctx.trigger.isConnected) { ctx.trigger.focus(); return; }
+    const box = $('job-list'); if (!box) return;
+    const byKey = ctx.focusKey && [...box.querySelectorAll('[data-focus-key]')].find(node => node.dataset.focusKey === ctx.focusKey);
+    if (byKey) { byKey.focus(); return; }
+    const title = [...box.querySelectorAll('[data-job-title]')].find(node => node.dataset.jobTitle === ctx.jobId); if (title) title.focus();
+  }
+  function closeCredentialDialog(restoreFocus) {
+    const ctx = credUi.ctx, dialog = credUi.dialog; wipeCredentialInputs(); credUi.ctx = null; credUi.submitting = false;
+    if (dialog) { if (dialog.open) dialog.close(); dialog.replaceChildren(); }
+    if (restoreFocus && ctx) restoreCredentialFocus(ctx);
+  }
+  function presentCredentialDialog(ctx, nodes, initialFocus) {
+    const dialog = ensureCredentialDialog(); wipeCredentialInputs(); credUi.ctx = ctx; credUi.submitting = false; ctx.buttons = ctx.buttons || [];
+    dialog.replaceChildren(...nodes); dialog.setAttribute('aria-labelledby', 'credential-dialog-title'); dialog.setAttribute('aria-describedby', 'credential-dialog-desc');
+    if (!dialog.open) dialog.showModal();
+    const target = initialFocus || dialog.querySelector('button'); if (target) target.focus();
+  }
+  function newCredentialContext(mode, jobId, trigger, focusKey) { return { mode, jobId, trigger:trigger || null, focusKey, buttons:[], summary:null, submit:null, submitLabel:'', revoked:false }; }
+  function credentialButton(ctx, className, text, handler, enabled) {
+    const button = el('button', className, text); button.type = 'button'; button.addEventListener('click', handler);
+    ctx.buttons.push({ node:button, enabled:enabled || (() => true) }); return button;
+  }
+  function syncCredentialButtons(ctx) { ctx.buttons.forEach(entry => { entry.node.disabled = credUi.submitting || !entry.enabled(); }); if (ctx.submit) ctx.submit.textContent = credUi.submitting ? '送出中…' : ctx.submitLabel; }
+  function setCredentialBusy(ctx, busy) { credUi.submitting = busy; syncCredentialButtons(ctx); }
+  function credentialSummaryNode(ctx) { const box = el('div', 'credential-summary'); box.setAttribute('role', 'alert'); box.tabIndex = -1; box.hidden = true; ctx.summary = box; return box; }
+  function showCredentialSummary(ctx, message, items) {
+    const box = ctx.summary; if (!box) return; box.replaceChildren(el('strong', '', message));
+    if (items && items.length) { const list = el('ul'); items.forEach(item => { const row = el('li'); const link = el('button', 'credential-link', item.text); link.type = 'button'; link.addEventListener('click', item.focus); row.appendChild(link); list.appendChild(row); }); box.appendChild(list); }
+    box.hidden = false; box.focus();
+  }
+  function credentialHeading(title, description) { const h = el('h2', '', title); h.id = 'credential-dialog-title'; const p = el('p', 'credential-desc', description); p.id = 'credential-dialog-desc'; return [h, p]; }
+  function buildCancelConfirm(ctx, perform, backTo) {
+    const panel = el('div', 'credential-cancel-confirm'); panel.setAttribute('role', 'group'); panel.setAttribute('aria-label', '確認取消這次還原'); panel.hidden = true;
+    const warn = el('p', 'credential-warning', '警告：取消後這次還原不會繼續，已完成的項目會保留，未完成的項目要重新預覽後才能再還原。此動作無法復原。');
+    const yes = credentialButton(ctx, 'danger-button', '確定取消', () => perform()), no = credentialButton(ctx, 'secondary-button', '返回', () => { panel.hidden = true; backTo.hidden = false; backTo.focus(); });
+    const row = el('div', 'credential-actions'); row.append(yes, no); panel.append(warn, row); return { panel, open() { backTo.hidden = true; panel.hidden = false; no.focus(); } };
+  }
+  async function performCredentialCancel(ctx, path, strict) {
+    if (credUi.submitting) return; setCredentialBusy(ctx, true);
+    try {
+      const result = await endpoint(path, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:'{}' }), record = result && (result.job || result);
+      if (!record || record.jobId !== ctx.jobId || (strict && record.status !== 'Cancelled')) throw new Error('本機服務未回傳可核對的取消狀態。');
+      state.jobs.set(ctx.jobId, record); renderJobs(); closeCredentialDialog(true); announce('已取消這次還原；同一個還原作業不會自動重試。');
+    } catch (error) { if (credUi.ctx === ctx) { setCredentialBusy(ctx, false); if (error.message !== 'session expired') showCredentialSummary(ctx, `取消這次還原未完成：${error.message}`); } else if (error.message !== 'session expired') fail(`取消這次還原未完成：${error.message}`); }
+  }
+  function buildCredentialGroup(ctx, req, index) {
+    const uid = `credential-${index}`, group = { req, localDeferred:false, deferSent:false, user:null, pass:null }, fieldset = el('fieldset', 'credential-group'); group.fieldset = fieldset;
+    const purpose = req.kinds.map(kind => credentialKindLabels[kind] || kind).join('、'); group.purpose = req.legacy || !purpose ? `帳戶 ${index + 1}` : purpose;
+    fieldset.appendChild(el('legend', '', group.purpose));
+    if (req.names.length) {
+      const list = el('ul', 'credential-items'); req.names.slice(0, 5).forEach(name => list.appendChild(el('li', '', name))); fieldset.appendChild(el('p', 'credential-hint', '使用這組帳密的項目：')); fieldset.appendChild(list);
+      if (req.names.length > 5) fieldset.appendChild(el('p', 'credential-hint', `等 ${req.names.length} 項`));
+      if (req.names.length > 1) fieldset.appendChild(el('p', 'credential-hint', '同一帳號會用於以上所有項目'));
+    }
+    if (req.deferred) { fieldset.appendChild(el('p', 'credential-deferred', '已延後：這些項目這次不會還原，其他項目照常進行')); group.backendDeferred = true; return group; }
+    if (req.rejected) { const rejected = el('p', 'credential-rejected', `上次輸入的密碼被拒絕，未對這些項目做任何變更。請確認後重新輸入${req.maxAttempts > 0 ? `（第 ${req.attempts}／${req.maxAttempts} 次）` : ''}。`); rejected.setAttribute('role', 'alert'); fieldset.appendChild(rejected); }
+    const inputs = el('div', 'credential-inputs'); group.inputs = inputs;
+    const userLabel = el('label', '', '帳號'), user = document.createElement('input'); userLabel.htmlFor = `${uid}-user`; user.id = `${uid}-user`; user.type = 'text'; user.autocomplete = 'username'; user.maxLength = 256; user.value = req.account;
+    inputs.append(userLabel, user);
+    if (req.account) { user.readOnly = true; const hint = el('p', 'credential-hint', '帳號由還原計畫核准，無法在這裡更改'); hint.id = `${uid}-hint`; user.setAttribute('aria-describedby', hint.id); inputs.appendChild(hint); }
+    const passLabel = el('label', '', '密碼'), row = el('div', 'credential-password-row'), pass = document.createElement('input'); passLabel.htmlFor = `${uid}-pass`; pass.id = `${uid}-pass`; pass.type = 'password'; pass.className = 'credential-password'; pass.autocomplete = 'current-password'; pass.maxLength = 4096;
+    const toggle = credentialButton(ctx, 'secondary-button', '顯示', () => { const show = pass.type === 'password'; pass.type = show ? 'text' : 'password'; toggle.textContent = show ? '隱藏' : '顯示'; toggle.setAttribute('aria-pressed', String(show)); });
+    toggle.setAttribute('aria-pressed', 'false'); toggle.setAttribute('aria-controls', pass.id); row.append(pass, toggle); inputs.append(passLabel, row);
+    const deferSummary = el('div', 'credential-deferred-box'); deferSummary.hidden = true; const deferNote = el('p', 'credential-deferred', '已延後：這些項目這次不會還原，其他項目照常進行');
+    const deferButton = credentialButton(ctx, 'secondary-button', '延後這組', () => { group.localDeferred = true; pass.value = ''; inputs.hidden = true; deferButton.hidden = true; deferSummary.hidden = false; undo.focus(); updateCredentialSubmitLabel(ctx); });
+    const undo = credentialButton(ctx, 'secondary-button', '改回輸入', () => { group.localDeferred = false; inputs.hidden = false; deferButton.hidden = false; deferSummary.hidden = true; (user.readOnly ? pass : user).focus(); updateCredentialSubmitLabel(ctx); }, () => !group.deferSent);
+    deferSummary.append(deferNote, undo); fieldset.append(inputs, deferButton, deferSummary);
+    Object.assign(group, { user, pass, deferButton, deferSummary, undo }); return group;
+  }
+  function updateCredentialSubmitLabel(ctx) {
+    const live = ctx.groups.filter(group => !group.backendDeferred), allDeferred = live.length > 0 && live.every(group => group.localDeferred);
+    ctx.submitLabel = allDeferred ? '延後並繼續還原其他項目' : '送出並繼續還原'; syncCredentialButtons(ctx);
+  }
+  async function submitCredentialDialog(ctx) {
+    if (credUi.submitting || ctx.revoked) return;
+    const live = ctx.groups.filter(group => !group.backendDeferred), entering = live.filter(group => !group.localDeferred), deferRefs = live.filter(group => group.localDeferred && !group.deferSent).map(group => group.req.ref);
+    live.forEach(group => { if (group.pass) { group.pass.removeAttribute('aria-invalid'); group.user.removeAttribute('aria-invalid'); } });
+    const missing = entering.filter(group => !group.pass.value || !group.user.value.trim());
+    if (missing.length) {
+      missing.forEach(group => { if (!group.user.value.trim()) group.user.setAttribute('aria-invalid', 'true'); if (!group.pass.value) group.pass.setAttribute('aria-invalid', 'true'); });
+      showCredentialSummary(ctx, '請先補齊下列欄位，才能送出。', missing.map(group => { const field = !group.user.value.trim() ? group.user : group.pass; return { text:`${group.purpose}：請輸入${field === group.user ? '帳號' : '密碼'}`, focus:() => field.focus() }; })); return;
+    }
+    if (!entering.length && !deferRefs.length) { showCredentialSummary(ctx, '目前沒有需要送出的內容。'); return; }
+    const id = ctx.jobId, base = `/api/jobs/${encodeURIComponent(id)}`, headers = { 'Content-Type':'application/json' };
+    if (ctx.summary) ctx.summary.hidden = true; setCredentialBusy(ctx, true);
+    try {
+      let record = null;
+      if (deferRefs.length) { const result = await endpoint(`${base}/service-credentials/defer`, { method:'POST', headers, body:JSON.stringify({ secretRefs:deferRefs }) }); live.forEach(group => { if (deferRefs.includes(group.req.ref)) group.deferSent = true; }); const deferred = result && (result.job || result); if (deferred && deferred.jobId === id) { record = deferred; state.jobs.set(id, deferred); } }
+      if (entering.length) {
+        const credentials = {}; entering.forEach(group => { credentials[group.req.ref] = { username:group.user.value, password:group.pass.value }; });
+        const result = await endpoint(`${base}/service-credentials`, { method:'POST', headers, body:JSON.stringify({ credentials, takeover:!!(ctx.takeover && ctx.takeover.checked) }) }); record = result && (result.job || result);
+        if (!record || record.jobId !== id || !['Running', 'WaitingForInput'].includes(record.status)) throw new Error('本機服務未回傳可核對的同一筆 TargetRestore 作業狀態。');
+        state.jobs.set(id, record);
+      }
+      wipeCredentialInputs(); renderJobs(); closeCredentialDialog(true); announce('已送出帳密，還原繼續進行。');
+    } catch (error) {
+      if (credUi.ctx !== ctx) { if (error.message !== 'session expired') fail(`送出帳密未完成：${error.message}`); return; }
+      if (error.message === 'session expired') { closeCredentialDialog(false); return; }
+      if (error.code === 'challenge_revoked_preview_changed') { ctx.revoked = true; if (ctx.submit) ctx.submit.hidden = true; showCredentialSummary(ctx, '還原範圍或目標已變更，這次等待已失效。請重新預覽後再開始還原。'); }
+      else showCredentialSummary(ctx, `送出帳密未完成：${error.message}`);
+    } finally { wipeCredentialInputs(); if (credUi.ctx === ctx) setCredentialBusy(ctx, false); }
+  }
+  function showCredentialDialog(jobId, trigger) {
+    const job = state.jobs.get(jobId); if (!job) return false;
+    if (typeof document.createElement('dialog').showModal !== 'function') { fail('這個瀏覽器不支援安全輸入對話框；請改用較新的瀏覽器開啟本機工具。'); return false; }
+    const requirements = credentialRequirementsOf(job); if (!requirements.length) { fail('目前沒有需要輸入的帳戶密碼。'); return false; }
+    const ctx = newCredentialContext('credential', jobId, trigger, `credential-open:${jobId}`), form = document.createElement('form'); form.noValidate = true; form.addEventListener('submit', event => { event.preventDefault(); submitCredentialDialog(ctx); });
+    ctx.groups = requirements.map((req, index) => buildCredentialGroup(ctx, req, index));
+    const nodes = [...credentialHeading('輸入帳戶密碼以繼續還原', '密碼只交給本機工具的記憶體使用，不會寫入工作紀錄、備份或報告。'), credentialSummaryNode(ctx)];
+    ctx.groups.forEach(group => form.appendChild(group.fieldset));
+    if (!isOwnedCredentialJob(jobId)) { const label = el('label', 'credential-takeover'), box = document.createElement('input'); box.type = 'checkbox'; ctx.takeover = box; label.append(box, document.createTextNode('由這個視窗接手此還原（原本的視窗已關閉時才勾選）')); form.appendChild(label); }
+    const submit = el('button', 'primary-button', ''); submit.type = 'submit'; ctx.submit = submit; ctx.buttons.push({ node:submit, enabled:() => !ctx.revoked });
+    const later = credentialButton(ctx, 'secondary-button', '稍後再輸入', () => closeCredentialDialog(true)), actions = el('div', 'credential-actions'); let confirm = null;
+    const cancel = credentialButton(ctx, 'danger-button', '取消這次還原', () => confirm.open()); actions.append(submit, later, cancel);
+    confirm = buildCancelConfirm(ctx, () => performCredentialCancel(ctx, `/api/jobs/${encodeURIComponent(jobId)}/service-credentials/cancel`, true), actions);
+    form.append(actions, confirm.panel); nodes.push(form); updateCredentialSubmitLabel(ctx);
+    const editable = ctx.groups.filter(group => !group.backendDeferred), first = editable.find(group => group.req.rejected) || editable[0];
+    presentCredentialDialog(ctx, nodes, first ? (first.req.rejected || first.user.readOnly ? first.pass : first.user) : later);
+    ctx.groups.forEach(group => { if (group.req.rejected && group.pass) group.pass.setAttribute('aria-invalid', 'true'); });
+    return true;
+  }
+  function continuationKey(jobId) { return `wsm.resume.continuation.v1.${jobId}`; }
+  function newContinuationId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    const bytes = new Uint8Array(16); window.crypto.getRandomValues(bytes); bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128; const hex = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  function continuationFor(jobId) {
+    try { const stored = sessionStorage.getItem(continuationKey(jobId)); if (stored && /^[0-9a-f-]{36}$/i.test(stored)) return stored; const fresh = newContinuationId(); sessionStorage.setItem(continuationKey(jobId), fresh); return fresh; } catch (_) { ctxFallbackId = ctxFallbackId || newContinuationId(); return ctxFallbackId; }
+  }
+  let ctxFallbackId = '';
+  function openResumeDialog(jobId, trigger) {
+    if (typeof document.createElement('dialog').showModal !== 'function') { fail('這個瀏覽器不支援恢復對話框；請改用較新的瀏覽器開啟本機工具。'); return; }
+    const ctx = newCredentialContext('resume', jobId, trigger, `resume-open:${jobId}`); loadResumePreview(ctx);
+  }
+  async function loadResumePreview(ctx) {
+    ctx.buttons = []; const close = credentialButton(ctx, 'secondary-button', '關閉', () => closeCredentialDialog(true));
+    const row = el('div', 'credential-actions'); row.appendChild(close);
+    presentCredentialDialog(ctx, [...credentialHeading('檢視恢復預覽', '正在讀取恢復狀態…'), row], close); document.getElementById('credential-dialog-desc').setAttribute('role', 'status');
+    try {
+      const data = await endpoint(`/api/jobs/${encodeURIComponent(ctx.jobId)}/resume-preview`); if (credUi.ctx !== ctx) return; presentResumeContent(ctx, data || {});
+    } catch (error) {
+      if (credUi.ctx !== ctx) return; if (error.message === 'session expired') { closeCredentialDialog(false); return; }
+      ctx.buttons = []; const retry = credentialButton(ctx, 'primary-button', '重試', () => loadResumePreview(ctx)), shut = credentialButton(ctx, 'secondary-button', '關閉', () => closeCredentialDialog(true)), actions = el('div', 'credential-actions');
+      const failure = el('p', 'credential-summary'); failure.setAttribute('role', 'alert'); failure.textContent = `無法讀取恢復狀態：${error.message}`; actions.append(retry, shut);
+      presentCredentialDialog(ctx, [...credentialHeading('檢視恢復預覽', '讀取恢復狀態時發生問題，可以重試。'), failure, actions], retry);
+    }
+  }
+  function presentResumeContent(ctx, data) {
+    ctx.buttons = []; const summary = credentialSummaryNode(ctx), nodes = [...credentialHeading('檢視恢復預覽', '已完成的項目不會重做；結果無法確認的項目會標為待人工確認，不會自動重新套用'), summary], actions = el('div', 'credential-actions');
+    const cancelPath = `/api/jobs/${encodeURIComponent(ctx.jobId)}/cancel`; let confirm = null, initial;
+    const close = credentialButton(ctx, 'secondary-button', '關閉', () => closeCredentialDialog(true)), cancel = credentialButton(ctx, 'danger-button', '取消這次還原', () => confirm.open());
+    if (data.previewCurrent === false || data.resumable === false) {
+      nodes.push(el('p', 'credential-warning', data.previewCurrent === false ? '還原範圍或目標已在中斷後變更，無法接續。請取消這次還原並重新預覽。' : `這次還原目前無法接續：${safeText(data.reason)}`)); actions.append(cancel, close); initial = cancel;
+    } else {
+      const pending = Array.isArray(data.pendingItems) ? data.pendingItems : [];
+      nodes.push(el('h3', '', '結果需要核對的項目'));
+      if (pending.length) { const list = el('ul', 'credential-items'); pending.forEach(item => list.appendChild(el('li', '', `${safeText(item && (item.displayName || item.itemId))}（${safeText(item && item.phase)}）`))); nodes.push(list); } else nodes.push(el('p', 'credential-hint', '沒有結果不明的項目'));
+      const label = el('label', 'credential-takeover'), agree = document.createElement('input'); agree.type = 'checkbox'; label.append(agree, document.createTextNode('我了解並要繼續這次還原'));
+      const go = el('button', 'primary-button', '繼續還原'); go.type = 'button'; ctx.submit = go; ctx.submitLabel = '繼續還原'; ctx.buttons.push({ node:go, enabled:() => agree.checked });
+      go.addEventListener('click', () => submitResume(ctx)); agree.addEventListener('change', () => syncCredentialButtons(ctx)); nodes.push(label); actions.append(go, close, cancel); initial = agree;
+    }
+    confirm = buildCancelConfirm(ctx, () => performCredentialCancel(ctx, cancelPath, false), actions); nodes.push(actions, confirm.panel); presentCredentialDialog(ctx, nodes, initial); syncCredentialButtons(ctx);
+  }
+  async function submitResume(ctx) {
+    if (credUi.submitting) return; const id = ctx.jobId, continuationId = continuationFor(id); if (ctx.summary) ctx.summary.hidden = true; setCredentialBusy(ctx, true);
+    try {
+      const result = await endpoint(`/api/jobs/${encodeURIComponent(id)}/resume`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ continuationId, confirm:true }) }), record = result && (result.job || result);
+      if (!record || record.jobId !== id) throw new Error('本機服務未回傳可核對的同一筆 TargetRestore 作業狀態。');
+      try { sessionStorage.removeItem(continuationKey(id)); } catch (_) {} ctxFallbackId = ''; state.jobs.set(id, record); renderJobs();
+      if (record.status === 'WaitingForInput' && credentialRequirementsOf(record).length) { credUi.submitting = false; showCredentialDialog(id, ctx.trigger); announce('還原已繼續，現在需要帳戶密碼。'); }
+      else { closeCredentialDialog(true); announce('已要求繼續還原；作業會從中斷處接續。'); }
+    } catch (error) {
+      if (credUi.ctx !== ctx) { if (error.message !== 'session expired') fail(`繼續還原未完成：${error.message}`); return; }
+      if (error.message === 'session expired') { closeCredentialDialog(false); return; }
+      setCredentialBusy(ctx, false); showCredentialSummary(ctx, `繼續還原未完成：${error.message}。可以再按一次「繼續還原」重試；會沿用同一個續作識別碼，不會重複執行。`);
+    }
+  }
+  function maybeAutoOpenCredentialDialog() {
+    if (credUi.ctx || (credUi.dialog && credUi.dialog.open)) return;
+    for (const [id, job] of state.jobs) {
+      if (String(job.action || '') !== 'TargetRestore' || String(job.status || '') !== 'WaitingForInput' || credUi.autoOpened.has(id) || !isOwnedCredentialJob(id) || !credentialRequirementsOf(job).length) continue;
+      credUi.autoOpened.add(id); try { showCredentialDialog(id, null); } catch (_) {} return;
+    }
+  }
+  function renderServiceCredentialChallenge(job, id, main) {
+    if (String(job.action || '') !== 'TargetRestore') return;
+    const status = String(job.status || '');
+    if (status === 'WaitingForInput') {
+      if (!credentialRequirementsOf(job).length) return;
+      const panel = el('section', 'credential-prompt'), open = el('button', 'primary-button', '輸入帳密以繼續'); open.type = 'button'; open.dataset.focusKey = `credential-open:${id}`; open.addEventListener('click', () => showCredentialDialog(id, open));
+      panel.append(el('p', '', '還原暫停，需要帳戶密碼才能繼續'), open); main.appendChild(panel);
+    } else if (status === 'Interrupted' && job.resumable === true) {
+      const panel = el('section', 'credential-prompt'), open = el('button', 'primary-button', '檢視恢復預覽'), cancel = el('button', 'secondary-button', '取消這次還原'), row = el('div', 'credential-actions'); open.type = 'button'; cancel.type = 'button';
+      open.dataset.focusKey = `resume-open:${id}`; cancel.dataset.focusKey = `resume-cancel:${id}`; open.addEventListener('click', () => openResumeDialog(id, open)); cancel.addEventListener('click', () => openInterruptedCancelDialog(id, cancel));
+      row.append(open, cancel); panel.append(el('p', '', '還原程序中斷，已完成的項目會保留'), row); main.appendChild(panel);
+    }
+  }
+  function openInterruptedCancelDialog(jobId, trigger) {
+    if (typeof document.createElement('dialog').showModal !== 'function') { fail('這個瀏覽器不支援確認對話框；請改用較新的瀏覽器開啟本機工具。'); return; }
+    const ctx = newCredentialContext('cancel', jobId, trigger, `resume-cancel:${jobId}`), nodes = [...credentialHeading('取消這次還原', '請確認是否要取消這次中斷的還原。'), credentialSummaryNode(ctx)], actions = el('div', 'credential-actions');
+    const close = credentialButton(ctx, 'secondary-button', '返回', () => closeCredentialDialog(true)), cancel = credentialButton(ctx, 'danger-button', '取消這次還原', () => confirm.open()), confirm = buildCancelConfirm(ctx, () => performCredentialCancel(ctx, `/api/jobs/${encodeURIComponent(jobId)}/cancel`, false), actions);
+    actions.append(cancel, close); nodes.push(actions, confirm.panel); presentCredentialDialog(ctx, nodes, close);
+  }
+  function jobTitleNode(title, id) { const heading = el('h2', '', title); heading.tabIndex = -1; heading.dataset.jobTitle = String(id); return heading; }
   function formatBytes(value) { const n = Number(value); if (value == null || value === '' || !Number.isFinite(n) || n < 0) return '—'; const units = ['B', 'KiB', 'MiB', 'GiB']; let v = n, i = 0; while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; } return i === 0 ? `${v} B` : `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`; }
   function downloadCsv(filename, headers, rows) {
     const cell = value => { let text = value == null ? '' : String(value); if (/^[=+\-@\t\r]/.test(text)) text = "'" + text; return '"' + text.replace(/"/g, '""') + '"'; };
@@ -1251,7 +1472,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     draw();
   }
   function renderJobs() {
-    syncBackupResultsPanel();
+    syncBackupResultsPanel(); maybeAutoOpenCredentialDialog();
     const box = $('job-list'), active = document.activeElement, preserveFocus = active && box.contains(active) && active.dataset.focusKey ? active.dataset.focusKey : '', title=$('jobs-title'), lede=document.querySelector('#view-jobs .lede'); box.replaceChildren(); const restoreFocus = () => { if (!preserveFocus) return; const target = [...box.querySelectorAll('[data-focus-key]')].find(node => node.dataset.focusKey === preserveFocus); if (target) target.focus({ preventScroll:true }); }; const resetFilter=el('button','secondary-button','查看完整作業歷史');resetFilter.type='button';resetFilter.dataset.focusKey='jobs-filter-reset';resetFilter.hidden=!state.jobResultFilter;resetFilter.addEventListener('click',()=>navigate('jobs',{force:true}));box.appendChild(resetFilter); const toggle = el('button', 'secondary-button', state.showAllJobs ? '只看目前配對' : '查看工作區全部歷史'); toggle.type = 'button'; toggle.dataset.focusKey = 'jobs-filter'; toggle.hidden=!!state.jobResultFilter; toggle.addEventListener('click', () => { state.showAllJobs = !state.showAllJobs; renderJobs(); }); box.appendChild(toggle);
     if(title)title.textContent=state.jobResultFilter==='backup'?'備份結果':state.jobResultFilter==='restore'?'還原結果':'作業與交接';if(lede)lede.textContent=state.jobResultFilter==='backup'?'只顯示本次搬移的備份封裝與交付結果。':state.jobResultFilter==='restore'?'只顯示本次搬移的還原作業與結果。':'關閉頁面不會取消工作。可用工作識別碼重新連線並查看一致的進度快照。';
     if (state.pendingOperation && state.pendingOperation.operationId) { const pending = el('article', 'job-card'), query = el('button', 'secondary-button', '查詢這次操作'); query.type = 'button'; query.dataset.focusKey = 'pending-query'; query.addEventListener('click', async () => { query.disabled = true; const record = await recoverPendingOperation(); if (!record) fail('仍無法確認這次操作的結果。請稍後查詢；不要重新提交。'); else announce(`已確認這次操作：${statusName(record.status)}。${record.nextStep || record.error && record.error.nextStep || '請依作業卡片的狀態與安全錯誤提示決定下一步。'}`); }); const details = el('details', 'technical-details'); details.append(el('summary', '', '技術詳細資料（進階）'), el('div', 'job-meta', `操作識別碼：${state.pendingOperation.operationId}`), el('div', 'job-meta', `原配對 ${safeText(state.pendingOperation.pairId)} · 原 context ${safeText(state.pendingOperation.contextId)} · 預期 revision ${safeText(state.pendingOperation.expectedRevision)}`)); pending.append(el('h2', '', '這次操作的結果待確認'), el('p', 'job-meta', '本機只會查詢這次操作，不會自動重新提交。'), query, details); box.appendChild(pending); }
@@ -1262,7 +1483,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       const provenance = job.pairId ? `${job.role || '角色未知'} · 配對 ${job.pairId}` : '配對／角色歸屬未知';
       const actor = job.actor || job.Actor || {}, actorPrincipal = actor.WindowsPrincipal || actor.windowsPrincipal, actorHost = actor.ExecutionHost || actor.executionHost, actorObserved = actor.ObservedUtc || actor.observedUtc, actorSid = actor.WindowsSID || actor.windowsSid;
       const actorMeta = el('div', 'job-meta job-actor', `本機程序執行身分：${safeText(actorPrincipal || '未知')} · 執行主機：${safeText(actorHost || '未知')} · 觀測時間：${formatEvidenceTime(actorObserved)}${actorSid ? ` · Windows SID：${safeText(actorSid)}` : ''} · 未驗證瀏覽器操作者；不代表負責人簽核。`);
-      main.append(el('h2', '', title), el('div', 'job-meta', `工作識別碼：${id} · ${status}`), el('div', 'job-meta', `來源：工作區 ${safeText(job.workspace)} · ${provenance} · session ${safeText(job.sessionId)} · context ${safeText(job.contextId)} · 起始 revision ${safeText(job.startedRevision)}`), el('div', 'job-meta', `開始時間：${formatEvidenceTime(job.startedUtc || job.createdUtc)} · 結束時間：${formatEvidenceTime(job.completedUtc || job.endedUtc)}`), el('div', 'job-meta', job.message || job.nextStep || (job.status === 'Interrupted' ? '工作程序已中斷；先核對 journal、鎖與材料引用，再選擇既有恢復操作。' : '狀態會在安全檢查點更新。'))); if (job.error) { main.append(el('div', 'job-error', `錯誤：${safeText(job.error.message || job.error.code || '工作失敗')}`)); if (job.error.nextStep) main.append(el('div', 'job-meta job-error-next', `建議下一步：${safeText(job.error.nextStep)}`)); if (job.error.code || job.error.correlationId) main.append(el('div', 'job-meta', `安全錯誤代碼：${safeText(job.error.code)} · 關聯識別碼：${safeText(job.error.correlationId)}`)); }
+      main.append(jobTitleNode(title, id), el('div', 'job-meta', `工作識別碼：${id} · ${status}`), el('div', 'job-meta', `來源：工作區 ${safeText(job.workspace)} · ${provenance} · session ${safeText(job.sessionId)} · context ${safeText(job.contextId)} · 起始 revision ${safeText(job.startedRevision)}`), el('div', 'job-meta', `開始時間：${formatEvidenceTime(job.startedUtc || job.createdUtc)} · 結束時間：${formatEvidenceTime(job.completedUtc || job.endedUtc)}`), el('div', 'job-meta', job.message || job.nextStep || (job.status === 'Interrupted' ? '工作程序已中斷；先核對 journal、鎖與材料引用，再選擇既有恢復操作。' : '狀態會在安全檢查點更新。'))); if (job.error) { main.append(el('div', 'job-error', `錯誤：${safeText(job.error.message || job.error.code || '工作失敗')}`)); if (job.error.nextStep) main.append(el('div', 'job-meta job-error-next', `建議下一步：${safeText(job.error.nextStep)}`)); if (job.error.code || job.error.correlationId) main.append(el('div', 'job-meta', `安全錯誤代碼：${safeText(job.error.code)} · 關聯識別碼：${safeText(job.error.correlationId)}`)); }
       main.appendChild(actorMeta);renderServiceCredentialChallenge(job,id,main);
       if (job.progress && job.progress.percent != null) { const bar = el('div', 'job-progress'), fill = document.createElement('progress'); fill.max = 100; fill.value = Math.max(0, Math.min(100, Number(job.progress.percent))); fill.textContent = `進度 ${job.progress.percent}%`; bar.appendChild(fill); bar.setAttribute('aria-label', `進度 ${job.progress.percent}%`); main.appendChild(bar); }
       if (job.progress && (job.progress.activity || job.progress.statusDescription)) { main.appendChild(el('p', 'job-progress-detail', String(job.progress.activity || '') + (job.progress.statusDescription ? (job.progress.activity ? ' · ' : '') + job.progress.statusDescription : ''))); }
@@ -1319,5 +1540,5 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     $('operation-form').addEventListener('input', event => { if (event.target.id !== 'operation-confirm') captureDraft(); }); $('operation-form').addEventListener('change', event => { if (event.target.id !== 'operation-confirm') captureDraft(); }); $('action-picker').addEventListener('change', event => setAction(event.target.value)); $('operation-form').addEventListener('submit', submitOperation); $('preview-operation').addEventListener('click', previewOperation); $('operation-confirm').addEventListener('change', () => { $('submit-operation').disabled = !$('operation-confirm').checked || !state.preview; }); $('reconnect-jobs').addEventListener('click', refreshJobs); $('lookup-job').addEventListener('click', lookupJob); $('job-id-lookup').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); lookupJob(); } }); window.addEventListener('hashchange', routeFromLocation); window.addEventListener('popstate', routeFromLocation); window.addEventListener('focus', () => { if (state.session && !state.sessionReconnectRequired) refreshSession(true); }); window.addEventListener('beforeunload', event => { if (!hasUnsavedDrafts()) return; event.preventDefault(); event.returnValue = ''; }); renderDocumentationGroups(); init();
   });
   // Exposed only for the repository's dependency-free mocked DOM contract test.
-  window.WsmConsole = { statusName, statusClass, isSensitive, collectArgs, collectControl, state, navigate, init, refreshActiveData, renderInventory, renderSoftware, renderFiles, renderJobs, renderActions, renderOverview, renderTaskGuide, renderWizard, renderWizardPreparationReviewJob, refreshWizard, saveWizardState, startDeveloperProbe, setAction, parseResponse, endpoint, ensureFreshContext, getView, loadView, applyContext, refreshSession, refreshJobs, recoverPendingOperation, startTargetSnapshot, openJobReport, openSpecReview, prefillSpecReview, prefillWindowsSettingsReview, createWindowsSettingsReviewDraft, createRequirementDecisionDraft, prefillRequirementDecisionReview, safeTypedFields, actionLabel, actionGroup, actionGuidance, parameterLabel, buildOperationRequest, buildSelectionArgs, stripSensitiveArguments, invalidateForConflict, saveSoftwareChoice, viewIdentity };
+  window.WsmConsole = { statusName, statusClass, isSensitive, collectArgs, collectControl, state, navigate, init, refreshActiveData, renderInventory, renderSoftware, renderFiles, renderJobs, renderActions, renderOverview, renderTaskGuide, renderWizard, renderWizardPreparationReviewJob, refreshWizard, saveWizardState, startDeveloperProbe, setAction, parseResponse, endpoint, ensureFreshContext, getView, loadView, applyContext, refreshSession, refreshJobs, recoverPendingOperation, startTargetSnapshot, openJobReport, openSpecReview, prefillSpecReview, prefillWindowsSettingsReview, createWindowsSettingsReviewDraft, createRequirementDecisionDraft, prefillRequirementDecisionReview, credentialUi:credUi, showCredentialDialog, openResumeDialog, safeTypedFields, actionLabel, actionGroup, actionGuidance, parameterLabel, buildOperationRequest, buildSelectionArgs, stripSensitiveArguments, invalidateForConflict, saveSoftwareChoice, viewIdentity };
 }());
