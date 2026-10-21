@@ -60,6 +60,48 @@ Check ($taskDraft.SourceXml -eq $taskXml -and $taskDraft.Desired.Xml -notmatch '
 $webBPath=Join-Path $root 'web-b-draft.json';New-WsmMigrationSpecTemplate $workspace $catalog.PairId $siteB.ItemId $webBPath | Out-Null;$webB=Get-Content -LiteralPath $webBPath -Raw | ConvertFrom-Json
 Check (@($webB.WorkloadMappingReview | Where-Object {$_.FieldPointer -match 'IIS/site/WebB/application\[\d+\]/virtualDirectory\[\d+\]/@physicalPath' -and $_.Status -eq 'ReviewRequired'}).Count -eq 1) 'Same source path with multiple approved maps did not require review.'
 
+# M2: typed resource references (task folder security / IIS application pool) only block review when the resource was not captured.
+& $module {param($Workload,$Task,$Folders,$SiteB,$Pool,$HostId,$Source)
+    function Rows($item,$catalog){@((Get-WsmWorkloadXmlDraft $item $catalog).WorkloadMappingReview)}
+    function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message}}
+    $captured=[pscustomobject]@{Items=@($Task,$Folders);WorkloadDiscovery=$Workload}
+    $taskRows=Rows $Task $captured
+    $folderRow=@($taskRows | Where-Object ReferenceKind -ceq 'TaskFolderSecurity')
+    Check ($folderRow.Count -eq 1 -and $folderRow[0].ReviewRequired -eq $false -and $folderRow[0].Applied -eq $true -and $folderRow[0].Status -ceq 'TypedResourceCaptured' -and $folderRow[0].Reason -match 'typed contract') 'Captured task folder security must be an informational TypedResourceCaptured row.'
+    $argRows=@($taskRows | Where-Object ReferenceKind -ceq 'TaskArguments')
+    Check ($argRows.Count -eq 2 -and @($argRows | Where-Object {$_.ReviewRequired}).Count -eq 2) 'TaskArguments references must keep blocking review when typed resources are relaxed.'
+    $poolRow=@(Rows $SiteB $captured | Where-Object ReferenceKind -ceq 'IISApplicationPool')
+    Check ($poolRow.Count -ge 1 -and @($poolRow | Where-Object {$_.ReviewRequired -or $_.Status -cne 'TypedResourceCaptured' -or -not $_.Applied}).Count -eq 0) 'Captured IIS application pool must be an informational TypedResourceCaptured row.'
+    $otherReference=[pscustomobject][ordered]@{ConsumerItemId=[string]$Task.ItemId;ResourceItemId='';FieldPointer='Task/Fixture/OtherReference';ReferenceId=('b'*64);ReferenceKind='XmlPath';RawValue='fixture';ResolvedPath='';Channel='NotApplicable';ParseConfidence='Typed';Opaque=$false;Required=$true;ReviewRequired=$false;Reason=''}
+    $otherCatalog=[pscustomobject]@{Items=@($Task,$Folders);WorkloadDiscovery=[pscustomobject]@{References=@($Workload.References)+@($otherReference)}}
+    $otherRow=@(Rows $Task $otherCatalog | Where-Object FieldPointer -ceq 'Task/Fixture/OtherReference')
+    Check ($otherRow.Count -eq 1 -and $otherRow[0].ReviewRequired -eq $true -and $otherRow[0].Applied -eq $false -and $otherRow[0].Status -cne 'TypedResourceCaptured') 'Only TaskFolderSecurity and IISApplicationPool may be relaxed; other non-path references must keep blocking review.'
+    $missingTask=New-WsmItem $HostId Tasks ScheduledTask 'Missing folder job' '\Missing\Job' @{TaskName='Job';TaskPath='\Missing\';Xml=$Task.Settings.Xml;TaskSecurityCaptureStatus='Captured'}
+    $missingSite=New-WsmItem $HostId Web IISSite 'Ghost pool site' 'GhostSite' @{Xml='<site name="GhostSite"><application path="/" applicationPool="GhostPool"><virtualDirectory path="/" physicalPath="D:\Sites\Ghost"/></application></site>'}
+    $missingInventory=New-WsmInventory $Source 1 @($missingTask,$missingSite)
+    $missingWorkload=Get-WsmWorkloadDiscovery $missingInventory
+    $missing=[pscustomobject]@{Items=@($missingTask,$missingSite);WorkloadDiscovery=$missingWorkload}
+    $missingFolder=@(Rows $missingTask $missing | Where-Object ReferenceKind -ceq 'TaskFolderSecurity')
+    Check ($missingFolder.Count -eq 1 -and $missingFolder[0].ReviewRequired -eq $true -and $missingFolder[0].Applied -eq $false -and $missingFolder[0].Status -cne 'TypedResourceCaptured' -and $missingFolder[0].Reason -ceq 'Task folder security resource was not captured.') 'Uncaptured task folder security must keep blocking review with the inventory reason.'
+    $missingPool=@(Rows $missingSite $missing | Where-Object ReferenceKind -ceq 'IISApplicationPool')
+    Check ($missingPool.Count -eq 1 -and $missingPool[0].ReviewRequired -eq $true -and $missingPool[0].Applied -eq $false -and $missingPool[0].Status -cne 'TypedResourceCaptured' -and $missingPool[0].Reason -ceq 'Referenced application pool was not present in captured pool collection.') 'Uncaptured IIS application pool must keep blocking review with the inventory reason.'
+    $candidate=New-WsmItem $HostId Storage PathCandidate 'Manual candidate' 'manual-candidate' @{OriginalPath='D:\Manual';ResolvedCandidate='D:\Manual'}
+    $candidate | Add-Member NoteProperty MigrationSpec ([pscustomobject][ordered]@{Adapter='FileScope';Owner='fixture-owner';Evidence='fixture';DesiredFinalState='Disabled';BusinessChecks=@();SourcePath='D:\Manual';TargetPath='E:\Manual';ExcludedRelativePaths=@();Consistency='OwnerFreeze';Metadata='DaclOwner';ConflictPolicy='Block';ConfigFiles=@();ConfigOverrides=@();TransferChannel='C'}) -Force
+    $candidate | Add-Member NoteProperty Decision 'Exclude' -Force
+    $bindingHash=Get-WsmSourceCandidateFileScopeBindingHash $candidate
+    foreach($case in @(@{Item=$Task;Catalog=$captured;Source=$Workload;Kind='TaskFolderSecurity'},@{Item=$missingTask;Catalog=$missing;Source=$missingWorkload;Kind='TaskFolderSecurity'},@{Item=$SiteB;Catalog=$captured;Source=$Workload;Kind='IISApplicationPool'},@{Item=$missingSite;Catalog=$missing;Source=$missingWorkload;Kind='IISApplicationPool'})){
+        foreach($decision in @('Manual','Exclude')){
+            $reference=@($case.Source.References | Where-Object {$_.ConsumerItemId -ceq $case.Item.ItemId -and $_.ReferenceKind -ceq $case.Kind} | Select-Object -First 1)[0]
+            $stored=[pscustomobject]@{ReferenceId=[string]$reference.ReferenceId;CandidateItemId=[string]$candidate.ItemId;CandidateItemSpecHash=$bindingHash;InventoryHash='';InventoryRevision=0;Decision=$decision;FileScopeItemId='';FileScopeBindingHash=''}
+            $discovery=[pscustomobject]@{References=$case.Source.References;FileScopeMappings=@($stored)}
+            $catalogWithDecision=[pscustomobject]@{InventoryHash="";InventoryRevision=0;Items=@($case.Catalog.Items)+@($candidate);WorkloadDiscovery=$discovery}
+            $row=@(Rows $case.Item $catalogWithDecision | Where-Object {$_.ReferenceKind -ceq $case.Kind -and $_.ReferenceId -ceq [string]$reference.ReferenceId})
+            $expectedStatus=if($decision -ceq 'Manual'){'ManualReviewRequired'}else{'ExplicitlyExcluded'}
+            Check ($row.Count -eq 1 -and $row[0].Status -ceq $expectedStatus -and $row[0].MappingDecision -ceq $decision -and $row[0].ReviewRequired -eq $false -and $row[0].Applied -eq $false) ('An explicit '+$decision+' disposition must win over the typed-resource relaxation for '+$case.Kind+'.')
+        }
+    }
+} $workload $task $folders $siteB $pool $hostId $source
+
 # A legacy catalog retains the prior enabled-final behavior and source XML shape.
 $legacy=$catalog.PSObject.Copy();$legacy.SchemaVersion=1;$legacy.PSObject.Properties.Remove('Assistive');$legacy.PSObject.Properties.Remove('WorkloadDiscovery');$legacyPath=Join-Path $workspace ('pairs\'+$catalog.PairId+'.json');SaveJson $legacy $legacyPath
 $legacyTaskPath=Join-Path $root 'legacy-task.json';New-WsmMigrationSpecTemplate $workspace $catalog.PairId $task.ItemId $legacyTaskPath | Out-Null;$legacyTask=Get-Content -LiteralPath $legacyTaskPath -Raw | ConvertFrom-Json

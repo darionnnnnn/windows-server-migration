@@ -226,7 +226,7 @@ function Assert-WsmAssistiveMigrationSpec($Spec) {
     if($Spec.PSObject.Properties['WorkloadMappingReview']){
         if($Spec.WorkloadMappingReview -isnot [array] -or @($Spec.WorkloadMappingReview).Count -gt 5000){throw (New-WsmContractError 'WorkloadMappingReview must be a bounded array.')}
         foreach($row in @($Spec.WorkloadMappingReview)){
-            Assert-WsmFields $row @('FieldPointer','ReferenceKind','OldRawValue','TargetValue','Applied','Status','ReviewRequired','Reason') @('FieldPointer','ReferenceKind','OldRawValue','TargetValue','Applied','Status','ReviewRequired','Reason')
+            Assert-WsmFields $row @('FieldPointer','ReferenceKind','MappingId','ReferenceId','MappingDecision','FileScopeItemId','OldRawValue','TargetValue','Applied','Status','ReviewRequired','Reason') @('FieldPointer','ReferenceKind','OldRawValue','TargetValue','Applied','Status','ReviewRequired','Reason')
             if($row.Applied -isnot [bool] -or $row.ReviewRequired -isnot [bool] -or [string]::IsNullOrWhiteSpace([string]$row.FieldPointer) -or [string]::IsNullOrWhiteSpace([string]$row.ReferenceKind) -or [string]::IsNullOrWhiteSpace([string]$row.Status)){throw (New-WsmContractError 'Workload mapping rows require a pointer, kind, status, and Boolean review/application state.')}
             foreach($value in @([string]$row.FieldPointer,[string]$row.ReferenceKind,[string]$row.OldRawValue,[string]$row.TargetValue,[string]$row.Status,[string]$row.Reason)){if($value.Length -gt 32768 -or $value -match '[\x00-\x08\x0b\x0c\x0e-\x1f]'){throw (New-WsmContractError 'Workload mapping field exceeds its safe text limit.')}}
         }
