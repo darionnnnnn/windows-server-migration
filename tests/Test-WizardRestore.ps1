@@ -84,6 +84,54 @@ try {
         $wrongPairRejected=$false;try{Import-WsmWizardTargetComparison -Workspace $work -PairId ([Guid]::NewGuid().ToString()) -Path $handoffPath -ExpectedHash $handoffHash -Jobs $jobs|Out-Null}catch{$wrongPairRejected=$true}
         Check $wrongPairRejected 'Comparison import accepted a cross-pair material.'
 
+        # X-5: 比較材料選取不靠時間戳。規則：Sequence（鎖內單調遞增，舊材料視為 0）-> CreatedUtc -> Provenance（ManagerImport 優先）-> 材料檔 SHA256 ordinal 最小。
+        # 以替身 Get-WsmUtc 固定時間，每個情境用獨立 Pair；材料由真正的 Save-WsmWizardTargetComparisonMaterial 寫入。
+        $seqCtx=[pscustomobject]@{Received=[pscustomobject]@{SHA256=$planHash}};$seqSnapshot=[pscustomobject]@{SHA256=('7'*64)}
+        function SaveSeq([string]$Pair,[string]$Marker,[string]$Provenance='ManagerImport'){Save-WsmWizardTargetComparisonMaterial -Workspace $work -PairId $Pair -Ctx $seqCtx -Snapshot $seqSnapshot -Comparison ([pscustomobject]@{Revision=1;Marker=$Marker;Rows=@()}) -SelectionRevision 1 -ComparisonRevision 1 -SourceSnapshotHash ('8'*64) -Provenance $Provenance -ImportedFromHash ''}
+        function PickSeq([string]$Pair){Get-WsmWizardTargetComparisonRecord $work $Pair $planHash}
+        function SeqOf($Saved){[long](Read-WsmTrustedJson $Saved.Path $Saved.SHA256).Sequence}
+        function RewriteSeq($Saved,$Value){$doc=Read-WsmTrustedJson $Saved.Path $Saved.SHA256;if($null -eq $Value){[void]$doc.PSObject.Properties.Remove('Sequence')}else{$doc.Sequence=[long]$Value};Write-WsmJson $Saved.Path $doc;[pscustomobject]@{Path=$Saved.Path;SHA256=(Get-FileHash -LiteralPath $Saved.Path -Algorithm SHA256).Hash.ToLowerInvariant()}}
+        function MinOrdinalHash([string[]]$Hashes){$best=$Hashes[0];foreach($h in $Hashes){if([string]::CompareOrdinal($h,$best) -lt 0){$best=$h}};$best}
+        $script:seqOriginalUtc=(Get-Command Get-WsmUtc -CommandType Function).ScriptBlock;$script:seqNow='2026-10-22T00:00:00.0000000Z'
+        function script:Get-WsmUtc{$script:seqNow}
+        try{
+            # 1. 同一秒建立的多份：每次都選最後建立的那份，不丟例外，序號 1,2,3...。
+            $pairSame=[Guid]::NewGuid().ToString();$sameSaved=@()
+            foreach($marker in @('m1','m2','m3','m4','m5')){$sameSaved+=@(SaveSeq $pairSame $marker);Check ((PickSeq $pairSame).Comparison.Marker -ceq $marker) ('Same-second comparison selection did not pick the later-created material '+$marker+'.')}
+            Check ((SeqOf $sameSaved[0]) -eq 1 -and (SeqOf $sameSaved[4]) -eq 5 -and @($sameSaved|ForEach-Object {(Read-WsmTrustedJson $_.Path $_.SHA256).CreatedUtc}|Select-Object -Unique).Count -eq 1) 'Same-second saves did not get consecutive sequence numbers with one shared CreatedUtc.'
+            # 重新匯入較早的內容：成為最新一次操作（新序號），且已是現行時再次儲存不改檔。
+            $reimport=SaveSeq $pairSame 'm2'
+            Check ((PickSeq $pairSame).Comparison.Marker -ceq 'm2' -and $reimport.Path -ceq $sameSaved[1].Path -and (SeqOf $reimport) -eq 6) 'Re-importing an earlier comparison did not make it the current material.'
+            $reimportAgain=SaveSeq $pairSame 'm2'
+            Check ($reimportAgain.SHA256 -ceq $reimport.SHA256 -and (SeqOf $reimportAgain) -eq 6) 'Saving the already-current comparison again rewrote its file or advanced its sequence.'
+            # 2. 序號優先於 CreatedUtc：後建立的那份 CreatedUtc 反而較早，仍以序號大者勝。
+            $pairOrder=[Guid]::NewGuid().ToString();$script:seqNow='2026-10-22T09:00:00.0000000Z';[void](SaveSeq $pairOrder 'late-clock-first');$script:seqNow='2026-10-22T01:00:00.0000000Z';[void](SaveSeq $pairOrder 'early-clock-second');$script:seqNow='2026-10-22T00:00:00.0000000Z'
+            Check ((PickSeq $pairOrder).Comparison.Marker -ceq 'early-clock-second') 'A higher Sequence did not win over a later CreatedUtc.'
+            # 3. 舊格式（沒有 Sequence）同一秒、同 Provenance：以材料檔 SHA256 最小者穩定勝出，連跑兩次相同。
+            foreach($variant in 1..4){
+                $pairOld=[Guid]::NewGuid().ToString();$oldA=RewriteSeq (SaveSeq $pairOld ('old-a'+$variant)) $null;$oldB=RewriteSeq (SaveSeq $pairOld ('old-b'+$variant)) $null
+                $oldPick1=PickSeq $pairOld;$oldPick2=PickSeq $pairOld
+                Check ($oldPick1.SHA256 -ceq (MinOrdinalHash @($oldA.SHA256,$oldB.SHA256)) -and $oldPick1.SHA256 -ceq $oldPick2.SHA256) 'Two same-second legacy comparisons were not selected by smallest material SHA256 stably.'
+            }
+            # 4. 舊格式同秒但 Provenance 不同：ManagerImport 優先於 TargetLocal，與 SHA256 高低無關。
+            foreach($variant in 1..4){
+                $pairProvenance=[Guid]::NewGuid().ToString();$provM=RewriteSeq (SaveSeq $pairProvenance ('prov-m'+$variant) 'ManagerImport') $null;$provT=RewriteSeq (SaveSeq $pairProvenance ('prov-t'+$variant) 'TargetLocal') $null
+                Check ((PickSeq $pairProvenance).SHA256 -ceq $provM.SHA256) 'ManagerImport did not win over TargetLocal for equal sequence and CreatedUtc.'
+            }
+            # 5. 舊格式 CreatedUtc 不同：較晚者勝（序號相同時的第二層）。
+            $pairLegacyTime=[Guid]::NewGuid().ToString();$script:seqNow='2026-10-22T05:00:00.0000000Z';$legacyLate=RewriteSeq (SaveSeq $pairLegacyTime 'legacy-late') $null;$script:seqNow='2026-10-22T02:00:00.0000000Z';$legacyEarly=RewriteSeq (SaveSeq $pairLegacyTime 'legacy-early') $null;$script:seqNow='2026-10-22T00:00:00.0000000Z'
+            Check ((PickSeq $pairLegacyTime).Comparison.Marker -ceq 'legacy-late') 'Legacy comparisons with equal sequence did not fall back to the later CreatedUtc.'
+            # 6. Sequence 被竄改成重複：仍能穩定選取（只在最高序號的那組內以 SHA256 決定），不選較低序號者，不丟例外。
+            $pairTamper=[Guid]::NewGuid().ToString();$tamperA=SaveSeq $pairTamper 'tamper-a';$tamperB=SaveSeq $pairTamper 'tamper-b';$tamperC=SaveSeq $pairTamper 'tamper-c'
+            $tamperA=RewriteSeq $tamperA 3
+            $tamperPick1=PickSeq $pairTamper;$tamperPick2=PickSeq $pairTamper
+            Check ($tamperPick1.SHA256 -ceq (MinOrdinalHash @($tamperA.SHA256,$tamperC.SHA256)) -and $tamperPick1.SHA256 -ceq $tamperPick2.SHA256 -and $tamperPick1.SHA256 -cne $tamperB.SHA256) 'Duplicated tampered Sequence values were not resolved stably within the highest-sequence group.'
+            # 7. 序號 = 同 Pair 既有最大值 + 1（含被竄改的大值）。
+            $pairNext=[Guid]::NewGuid().ToString();$nextA=RewriteSeq (SaveSeq $pairNext 'next-a') 100;$nextB=SaveSeq $pairNext 'next-b'
+            Check ((SeqOf $nextB) -eq 101 -and (PickSeq $pairNext).Comparison.Marker -ceq 'next-b') 'The next Sequence was not the pair-wide maximum plus one.'
+        }finally{Set-Item -Path Function:\script:Get-WsmUtc -Value $script:seqOriginalUtc;Remove-Variable seqOriginalUtc,seqNow -Scope Script -ErrorAction SilentlyContinue}
+        Check ((Get-WsmUtc) -cne '2026-10-22T00:00:00.0000000Z') 'The Get-WsmUtc stub was not restored.'
+
         # Build a real, non-final schema-3 package fixture from native C-volume
         # observations. The only injected observations remain local identity and
         # software-catalog collection; package validation and restore stay core.

@@ -885,6 +885,17 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：JournalReplayCoverage 413 項、JournalAppendFailure 22、JournalDiagnostics 6、RecoveryContracts、AssistiveRecoveryBoundaries 6、AssistiveRollback 16、SettingTransitionRecovery、SettingTransitions、TargetRestoreContinuation 133、ServiceCredentialChallenge 46、CredentialDeferral 68、AssistiveRestore 140、WizardRestore 85、TaskFolderJournal、RollbackRecovery、CutoverActivationWorkflow、ScriptEncoding 通過。突變：subagent 7 個（含在 src 暫加未登記動作使守門轉紅）、主代理 1 個（舊 RollbackCompleted handler）皆轉紅。
 - 限制：本次建立的目錄的進行中擁有權在下一個 journal 事件才落盤，重播無法重建（在該窄窗崩潰時保守判為衝突，不會誤授擁有權）；部分 challenge 動作的等價測試是照寫入點寫法模擬，不是呼叫完整大流程的寫入函式。
 
+### 17.62 追加 2～5 與 R5：容量依卷加總、掛載點與可寫入性、作業輸出欄位、CV2 比較來源測試、比較材料穩定選取
+
+- Sonnet 5.5 subagent 實作，主代理審查並獨立重跑。
+- 容量（第 2 項）：預覽先登記「會寫入」的 FileScope 項目（已擁有只需讀回、Deferred／Blocked 不計），迴圈結束後依目標磁碟根（不分大小寫）加總，每卷只比一次 `可用 < 總需求＋256MB`；不足時該卷所有會寫入項目標 `Deferred／AddTargetCapacity`，原因說明「同一磁碟上已選項目合計約 n MiB」。缺磁碟規則不變。寫入端沒有同類逐項檢查。
+- 掛載點與可寫入性（R5）：既有 `Assert-WsmNoReparse` 本就拒絕任何 reparse 祖先，若改以掛載點所在卷計算容量就得放寬防護，所以選擇不放寬：以 `GetVolumeNameForVolumeMountPointW` 判定真正的磁碟區掛載點（junction／symlink 不算），標 `Blocked／MountPointNotSupported` 並說明位置。可寫入性不採試寫（試寫刪除會改動目錄時間戳，讓已還原目錄的中繼資料讀回誤判衝突），改以 `CreateFileW` 對最近既存祖先做有效存取權檢查（新增檔案／子目錄），不可寫時標 `Deferred／PermissionDenied`；預覽前後目錄列舉與時間戳不變。
+- 作業輸出欄位（第 3 項）：實際讓欄位消失的是 `WizardHtmlRuntime.ps1` 的 `$allowed`。StartBackup／IndependentCopy 結果的公開投影新增固定形狀的 `OfflineReport`（Status、Path、SHA256，不帶錯誤文字）與 `ItemResults`（Status、Path、SHA256、InventorySource 與五個整數筆數，不帶列資料）；真實 Edge 測試改為直接讀作業輸出的報告路徑並核對雜湊。
+- CV2 比較來源（第 4 項，只補測試）：以真實 CV2 封裝驗證本機比較清單來自封裝 `controls/source-inventory.json`（含只在 controls 的軟體、不含只在計畫的軟體）；controls 被竄改時拒絕，controls 不存在時依設計退回計畫清單，兩者都沒有時拒絕。
+- 比較材料選取（第 5 項）：材料寫入時在材料目錄鎖內加單調遞增 `Sequence`；選取依 Sequence → CreatedUtc → Provenance（ManagerImport 優先）→ 檔案 SHA256，不再因同秒丟「模稜兩可」。subagent 另外讓「重新匯入一份內容相同但不是目前那份的比較」以新序號改寫，使重新匯入真正生效（原錯誤訊息要求重新匯入刷新時間戳，實際上刷新不了），主代理接受。
+- 驗證（WinPS 5.1）：見提交說明。突變：加總改回逐項、拿掉可寫入性檢查、拿掉 OfflineReport 投影、略過 controls、拿掉 Sequence 比較皆轉紅。
+- 限制：磁碟區掛載點只以替身驗證（建立真實掛載點會改系統）；可寫入性只檢查新增檔案與子目錄，不含刪除與改名；不同磁碟根的案例以 `subst` 暫時建立並在 finally 移除。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

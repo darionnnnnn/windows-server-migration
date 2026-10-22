@@ -104,6 +104,31 @@ try {
     CheckNoProperty $safeRestore @('RawItemResults','Diagnostics','RawSettings','ACL') 'Target restore result projection'
     CheckNoProperty $safeRestore.ItemResults[0] @('RawSettings','ACL','Diagnostics') 'Target restore item projection'
 
+    # X-3: StartBackup / IndependentCopy 的公開 job 投影要帶離線報告與逐項結果檔的非秘密欄位（路徑、SHA256、筆數），
+    # 但不得帶出逐項結果的列資料、診斷文字或合成秘密。結果物件由真正的 ConvertTo-WsmWizardBackupResult 以 attempt 實際欄位名稱產生。
+    $x3Sentinel='X3-SECRET-SENTINEL-7f3a'
+    function New-X3Attempt([string]$ReportStatus,[string]$CopyStatus){
+        [pscustomobject]@{Stage='Delivered';PairId='pair-id';AttemptId='attempt-id';StartedByOperationId='op-id';DeliveryMode='Directory';VolumeBytes=0;Freeze=$null;CoreExport=$null;PackageTest=$null;Delivery=[pscustomobject]@{Path='C:\work\delivery.json';SHA256=('1'*64);Mode='Directory'};ChannelSummary=$null;ResumeStage='';SourceResumeRequired=$false
+            IndependentCopy=[pscustomobject]@{Status=$CopyStatus;Availability='Verified';MediaClass='Removable';CopyRoot='E:\wsm-offline-copy';ReceiptPath='E:\receipt.json';ReceiptSHA256=('4'*64);VerifiedUtc='2026-10-22T00:00:00Z'}
+            ItemResults=[pscustomobject]@{Status='Generated';Path='C:\work\backup-item-results.json';SHA256=('2'*64);Counts=[pscustomobject]@{Total=7;BackedUp=5;NotBackedUp=2;Software=3;Features=1;Hidden=99};InventorySource='SourceSnapshot';Rows=@([pscustomobject]@{ItemId='row-1';Name=$x3Sentinel;Secret=$x3Sentinel})}
+            OfflineReport=[pscustomobject]@{Status=$ReportStatus;Path='C:\work\backup-report.html';SHA256=('3'*64);Error=('password='+$x3Sentinel)}}
+    }
+    foreach($x3Shape in @([pscustomobject]@{Name='StartBackup';Copy='AwaitingIndependentCopy'},[pscustomobject]@{Name='IndependentCopy';Copy='Verified'})){
+        $x3Result=CallModule {param($a)ConvertTo-WsmWizardBackupResult $a 'op-id'} @((New-X3Attempt 'Generated' $x3Shape.Copy))
+        foreach($x3Layer in @([pscustomobject]@{Name='job result projection';Value=(@(Get-ResultProjection $x3Result)[0])},[pscustomobject]@{Name='runtime projection';Value=(Get-Projection $x3Result)})){
+            $x3Where=$x3Shape.Name+' '+$x3Layer.Name;$x3Safe=$x3Layer.Value
+            Check ((Has $x3Safe 'OfflineReport') -and $x3Safe.OfflineReport.Status -ceq 'Generated' -and $x3Safe.OfflineReport.Path -ceq 'C:\work\backup-report.html' -and $x3Safe.OfflineReport.SHA256 -ceq ('3'*64)) ($x3Where+' lost the offline report path/hash.')
+            Check ((Has $x3Safe 'ItemResults') -and $x3Safe.ItemResults.Status -ceq 'Generated' -and $x3Safe.ItemResults.Path -ceq 'C:\work\backup-item-results.json' -and $x3Safe.ItemResults.SHA256 -ceq ('2'*64)) ($x3Where+' lost the item-results file path/hash.')
+            Check ($x3Safe.ItemResults.Counts.Total -eq 7 -and $x3Safe.ItemResults.Counts.BackedUp -eq 5 -and $x3Safe.ItemResults.Counts.NotBackedUp -eq 2 -and $x3Safe.ItemResults.Counts.Software -eq 3 -and $x3Safe.ItemResults.Counts.Features -eq 1) ($x3Where+' lost the item-results counts.')
+            CheckNoProperty $x3Safe.ItemResults @('Rows') ($x3Where+' item results')
+            CheckNoProperty $x3Safe.ItemResults.Counts @('Hidden') ($x3Where+' item-results counts')
+            CheckNoProperty $x3Safe.OfflineReport @('Error') ($x3Where+' offline report')
+            Check (-not (($x3Safe|ConvertTo-Json -Depth 20 -Compress).Contains($x3Sentinel))) ($x3Where+' leaked the synthetic secret sentinel.')
+        }
+    }
+    $x3Failed=@(Get-ResultProjection (CallModule {param($a)ConvertTo-WsmWizardBackupResult $a 'op-id'} @((New-X3Attempt 'Failed' 'Verified'))))[0]
+    Check ($x3Failed.OfflineReport.Status -ceq 'Failed' -and -not (Has $x3Failed.OfflineReport 'Error') -and -not (($x3Failed|ConvertTo-Json -Depth 20 -Compress).Contains($x3Sentinel))) 'A failed offline report leaked its diagnostic text or lost its Failed status.'
+
     # Unsafe display markup remains an inert string. Verify the actual widget uses textContent.
     $uiPath=Join-Path $PSScriptRoot '..\src\ui\nonc.js';$ui=[IO.File]::ReadAllText([IO.Path]::GetFullPath($uiPath))
     Check ($ui.Contains('node.textContent = text(label);') -and -not $ui.Contains('.innerHTML')) 'NonC widget is not using textContent-only rendering.'

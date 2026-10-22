@@ -84,14 +84,46 @@ function Get-WsmWizardTargetDecisionRecord([string]$Workspace,[string]$PairId,[s
     if($rows.Count -eq 1){return $rows[0]};$null
 }
 
-function Get-WsmWizardTargetComparisonRecord([string]$Workspace,[string]$PairId,[string]$ExpectedPlanHash='') {
-    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;if(-not [IO.Directory]::Exists($root)){return $null};Assert-WsmNoReparse $root
+# 比較材料選取規則（不依賴時間戳的唯一性）：
+#   1. 先比 Sequence（Save-WsmWizardTargetComparisonMaterial 在鎖內寫入的單調遞增序號，同 Pair 既有最大值加一；舊材料沒有 Sequence 視為 0），序號大者勝。
+#   2. 序號相同（舊材料，或 Sequence 被竄改成重複）再比 CreatedUtc，較晚者勝。
+#   3. 仍相同時依來源優先序 ManagerImport 優於 TargetLocal（其餘或缺漏最後）。
+#   4. 最後以材料檔 SHA256 字典序（ordinal）最小者勝。
+# 所以任何情況下都選得出唯一結果，連跑多次也相同，不再因為同秒建立而丟 ambiguous 例外。
+function Get-WsmWizardTargetComparisonSequence($Document) {
+    if($Document -and $Document.PSObject.Properties['Sequence']){$value=$Document.Sequence -as [long];if($null -ne $value -and $value -gt 0){return [long]$value}}
+    [long]0
+}
+
+function Compare-WsmWizardTargetComparisonPriority($Left,$Right) {
+    # 回傳負數代表 $Left 應該勝出，正數代表 $Right 勝出。
+    $leftSequence=Get-WsmWizardTargetComparisonSequence $Left.Document;$rightSequence=Get-WsmWizardTargetComparisonSequence $Right.Document
+    if($leftSequence -ne $rightSequence){if($leftSequence -gt $rightSequence){return -1}else{return 1}}
+    $leftTicks=[long]::MinValue;$rightTicks=[long]::MinValue
+    try{$leftTicks=([DateTimeOffset]::Parse([string]$Left.Document.CreatedUtc)).UtcTicks}catch{}
+    try{$rightTicks=([DateTimeOffset]::Parse([string]$Right.Document.CreatedUtc)).UtcTicks}catch{}
+    if($leftTicks -ne $rightTicks){if($leftTicks -gt $rightTicks){return -1}else{return 1}}
+    $rank={param($Row)$provenance='';if($Row.Document.PSObject.Properties['Provenance']){$provenance=[string]$Row.Document.Provenance};if($provenance -ceq 'ManagerImport'){0}elseif($provenance -ceq 'TargetLocal'){1}else{2}}
+    $leftRank=& $rank $Left;$rightRank=& $rank $Right
+    if($leftRank -ne $rightRank){if($leftRank -lt $rightRank){return -1}else{return 1}}
+    [string]::CompareOrdinal([string]$Left.SHA256,[string]$Right.SHA256)
+}
+
+function Get-WsmWizardTargetComparisonRows([string]$Workspace,[string]$PairId) {
+    # 同 Pair 的全部有效比較材料（不看計畫雜湊），供選取與序號配置共用。
+    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;if(-not [IO.Directory]::Exists($root)){return @()};Assert-WsmNoReparse $root
     $rows=New-Object 'System.Collections.Generic.List[object]'
     foreach($file in @(Get-ChildItem -LiteralPath $root -Filter 'comparison-*.json' -File)){
-        try{Assert-WsmNoReparse $file.FullName;if($file.Length -gt 4194304){continue};$hash=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant();$doc=Read-WsmTrustedJson $file.FullName $hash;if($doc.Kind -cne 'WizardTargetComparisonMaterial' -or $doc.SchemaVersion -ne 1 -or $doc.PairId -cne $PairId -or ($ExpectedPlanHash -and $doc.PlanHash -ine $ExpectedPlanHash)){continue};$rows.Add([pscustomobject]@{Path=$file.FullName;SHA256=$hash;Document=$doc;Comparison=$doc.Comparison})}catch{}
+        try{Assert-WsmNoReparse $file.FullName;if($file.Length -gt 4194304){continue};$hash=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant();$doc=Read-WsmTrustedJson $file.FullName $hash;if($doc.Kind -cne 'WizardTargetComparisonMaterial' -or $doc.SchemaVersion -ne 1 -or $doc.PairId -cne $PairId){continue};$rows.Add([pscustomobject]@{Path=$file.FullName;SHA256=$hash;Document=$doc;Comparison=$doc.Comparison})}catch{}
     }
-    if($rows.Count -gt 1){$latest=@($rows.ToArray() | Sort-Object { [DateTimeOffset]::Parse([string]$_.Document.CreatedUtc) } -Descending);if($latest.Count -gt 1 -and [string]$latest[0].Document.CreatedUtc -ceq [string]$latest[1].Document.CreatedUtc){throw 'Target comparison selection is ambiguous; import the current comparison again to refresh its durable timestamp.'};return $latest[0]}
-    if($rows.Count -eq 1){return $rows[0]};$null
+    $rows.ToArray()
+}
+
+function Get-WsmWizardTargetComparisonRecord([string]$Workspace,[string]$PairId,[string]$ExpectedPlanHash='') {
+    $candidates=@(Get-WsmWizardTargetComparisonRows $Workspace $PairId | Where-Object {-not $ExpectedPlanHash -or ($_.Document.PSObject.Properties['PlanHash'] -and [string]$_.Document.PlanHash -ieq $ExpectedPlanHash)})
+    if($candidates.Count -eq 0){return $null}
+    $best=$candidates[0];for($i=1;$i -lt $candidates.Count;$i++){if((Compare-WsmWizardTargetComparisonPriority $candidates[$i] $best) -lt 0){$best=$candidates[$i]}}
+    $best
 }
 
 function Get-WsmWizardTargetPreviewHash($Preview,[string]$PairId,[string]$PlanHash,[string]$ManifestHash,[long]$Generation,[string]$ReceiptHash,[string]$TargetSnapshotHash,[string]$ComparisonHash,[int]$ComparisonRevision,[int]$SelectionRevision,[string]$Decision) {
@@ -136,8 +168,22 @@ function Export-WsmWizardTargetComparison {
 
 function Save-WsmWizardTargetComparisonMaterial {
     [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)]$Ctx,[Parameter(Mandatory)]$Snapshot,[Parameter(Mandatory)]$Comparison,[Parameter(Mandatory)][int]$SelectionRevision,[Parameter(Mandatory)][int]$ComparisonRevision,[Parameter(Mandatory)][string]$SourceSnapshotHash,[Parameter(Mandatory)][ValidateSet('ManagerImport','TargetLocal')][string]$Provenance,[Parameter(Mandatory)][AllowEmptyString()][string]$ImportedFromHash)
-    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;[void](New-WsmOutputOwnedDirectory $root);$contentHash=Get-WsmHashText ($Comparison | ConvertTo-Json -Depth 100 -Compress);$stored=[pscustomobject][ordered]@{SchemaVersion=1;Kind='WizardTargetComparisonMaterial';PairId=$PairId;PlanHash=[string]$Ctx.Received.SHA256;SourceSnapshotHash=[string]$SourceSnapshotHash;TargetSnapshotHash=[string]$Snapshot.SHA256;SelectionRevision=$SelectionRevision;ComparisonRevision=$ComparisonRevision;Comparison=$Comparison;ComparisonContentHash=$contentHash;ImportedFromHash=$ImportedFromHash;Provenance=$Provenance;CreatedUtc=(Get-WsmUtc)}
-    $storedPath=Join-Path $root ('comparison-'+$contentHash+'.json');if([IO.File]::Exists($storedPath)){Assert-WsmNoReparse $storedPath;$existing=Read-WsmTrustedJson $storedPath (Get-FileHash -LiteralPath $storedPath -Algorithm SHA256).Hash;if((Get-WsmHashText ($existing.Comparison | ConvertTo-Json -Depth 100 -Compress)) -ine $contentHash){throw 'Existing owned Target comparison content-addressed path conflicts; preserve it for inspection.'}}else{Write-WsmJson $storedPath $stored}
+    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;[void](New-WsmOutputOwnedDirectory $root);$contentHash=Get-WsmHashText ($Comparison | ConvertTo-Json -Depth 100 -Compress);$storedPath=Join-Path $root ('comparison-'+$contentHash+'.json');$ownerWorkspace=$Workspace
+    # Sequence 在材料目錄的鎖內決定：同 Pair 既有材料的最大值加一，所以先後兩次儲存一定有先後，不靠 CreatedUtc。
+    # 同內容的比較已存在時，只有它不是現行（最大且唯一）那份才以新序號改寫，讓「重新匯入」真的成為最新一次操作。
+    Invoke-WsmLocked $root {
+        $priorRows=@(Get-WsmWizardTargetComparisonRows $ownerWorkspace $PairId)
+        $maxSequence=[long]0;foreach($priorRow in $priorRows){$priorSequence=Get-WsmWizardTargetComparisonSequence $priorRow.Document;if($priorSequence -gt $maxSequence){$maxSequence=$priorSequence}}
+        $nextSequence=[Math]::Min($maxSequence,[long]::MaxValue-1)+1
+        $stored=[pscustomobject][ordered]@{SchemaVersion=1;Kind='WizardTargetComparisonMaterial';PairId=$PairId;PlanHash=[string]$Ctx.Received.SHA256;SourceSnapshotHash=[string]$SourceSnapshotHash;TargetSnapshotHash=[string]$Snapshot.SHA256;SelectionRevision=$SelectionRevision;ComparisonRevision=$ComparisonRevision;Comparison=$Comparison;ComparisonContentHash=$contentHash;ImportedFromHash=$ImportedFromHash;Provenance=$Provenance;CreatedUtc=(Get-WsmUtc);Sequence=$nextSequence}
+        if([IO.File]::Exists($storedPath)){
+            Assert-WsmNoReparse $storedPath;$existing=Read-WsmTrustedJson $storedPath (Get-FileHash -LiteralPath $storedPath -Algorithm SHA256).Hash
+            if((Get-WsmHashText ($existing.Comparison | ConvertTo-Json -Depth 100 -Compress)) -ine $contentHash){throw 'Existing owned Target comparison content-addressed path conflicts; preserve it for inspection.'}
+            $existingSequence=Get-WsmWizardTargetComparisonSequence $existing
+            $isCurrent=($existingSequence -gt 0 -and $existingSequence -eq $maxSequence -and @($priorRows | Where-Object {[IO.Path]::GetFullPath([string]$_.Path) -ine [IO.Path]::GetFullPath($storedPath) -and (Get-WsmWizardTargetComparisonSequence $_.Document) -ge $maxSequence}).Count -eq 0)
+            if(-not $isCurrent){Write-WsmJson $storedPath $stored}
+        }else{Write-WsmJson $storedPath $stored}
+    } | Out-Null
     [pscustomobject][ordered]@{Status='Succeeded';PairId=$PairId;Path=[IO.Path]::GetFullPath($storedPath);SHA256=(Get-FileHash -LiteralPath $storedPath -Algorithm SHA256).Hash.ToLowerInvariant();ComparisonRevision=$ComparisonRevision;PlanHash=[string]$Ctx.Received.SHA256;TargetSnapshotHash=[string]$Snapshot.SHA256;SourceSnapshotHash=$SourceSnapshotHash;SelectionRevision=$SelectionRevision;AuthoritativeApproval=$false;InformationalOnly=$true;ProductionVerified=$false;Provenance=$Provenance}
 }
 

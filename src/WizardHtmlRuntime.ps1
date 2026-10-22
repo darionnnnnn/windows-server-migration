@@ -29,6 +29,21 @@ function ConvertTo-WsmWizardHtmlValue($Value,[int]$Depth=0) {
                 if($property.Value.PSObject.Properties[$name] -and $property.Value.$name -is [string]){$summary[$name]=ConvertTo-WsmWizardHtmlValue $property.Value.$name ($Depth+1)}
             }
             $safe.Receipt=[pscustomobject]$summary
+        }elseif($property.Name -ceq 'OfflineReport' -and $property.Value -and $property.Value -isnot [string] -and $property.Value -isnot [ValueType] -and $property.Value -isnot [array] -and $property.Value -isnot [Collections.IDictionary]){
+            # 備份離線報告：只放行固定形狀的純量（狀態、路徑、SHA256），路徑與雜湊走同一個字串安全投影；Error 等診斷文字不帶出。
+            $report=[ordered]@{}
+            foreach($name in @('Status','Path','SHA256')){if($property.Value.PSObject.Properties[$name] -and $property.Value.$name -is [string]){$report[$name]=ConvertTo-WsmWizardHtmlValue $property.Value.$name ($Depth+1)}}
+            $safe.OfflineReport=[pscustomobject]$report
+        }elseif($property.Name -ceq 'ItemResults' -and $property.Value -and $property.Value -isnot [string] -and $property.Value -isnot [ValueType] -and $property.Value -isnot [array] -and $property.Value -isnot [Collections.IDictionary] -and $property.Value.PSObject.Properties['Counts']){
+            # 備份逐項結果檔摘要（單一物件，不是還原的逐列陣列）：狀態、檔案路徑、SHA256、來源標記與固定五個筆數；絕不帶出列資料。
+            $summary=[ordered]@{}
+            foreach($name in @('Status','Path','SHA256','InventorySource')){if($property.Value.PSObject.Properties[$name] -and $property.Value.$name -is [string]){$summary[$name]=ConvertTo-WsmWizardHtmlValue $property.Value.$name ($Depth+1)}}
+            if($property.Value.Counts -and $property.Value.Counts -isnot [array] -and $property.Value.Counts -isnot [string] -and $property.Value.Counts -isnot [ValueType]){
+                $counts=[ordered]@{}
+                foreach($name in @('Total','BackedUp','NotBackedUp','Software','Features')){if($property.Value.Counts.PSObject.Properties[$name] -and $property.Value.Counts.$name -is [ValueType]){$counts[$name]=[long]$property.Value.Counts.$name}}
+                $summary.Counts=[pscustomobject]$counts
+            }
+            $safe.ItemResults=[pscustomobject]$summary
         }elseif($property.Name -in $allowed){$safe[$property.Name]=ConvertTo-WsmWizardHtmlValue $property.Value ($Depth+1)}
     }
     [pscustomobject]$safe

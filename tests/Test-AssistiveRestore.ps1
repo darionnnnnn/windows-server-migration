@@ -260,6 +260,84 @@ try {
         $preview=Get-WsmAssistiveRestorePreview -ManifestPath 'fixture' -ExpectedHash ('2'*64) -StateDirectory $root -AssistiveDecisionReceiptPath 'fixture' -AssistiveDecisionReceiptHash ('4'*64) -AssistiveTargetSnapshotPath 'fixture'
         Check (($preview.Rows|Where-Object ItemId -EQ $script:testItemId).Action -ceq 'VerifyOwnedSingleFile' -and ($preview.Rows|Where-Object ItemId -EQ $script:testItemId).Status -ceq 'Ready') 'Single-file preview did not accept only the exact owned file with matching bytes and metadata.'
 
+        # X-2: 容量依目標卷加總（同卷已選且會寫入的項目合計只比一次）；X-2b: 可寫入性預檢與掛載點。
+        $capSaved=@{Items=$script:previewPackage.Plan.Items;Entries=$script:testEntries;Selected=$script:previewDecision.SelectedItemIds}
+        $capRoot=Join-Path $root 'capacity-aggregate';[void][IO.Directory]::CreateDirectory($capRoot);$capKey=([IO.Path]::GetPathRoot($capRoot)).ToUpperInvariant()
+        function NewCapItem([string]$id,[string]$target){[pscustomobject]@{ItemId=$id;Name=('cap '+$id);Decision='Include';Dependencies=@();MigrationSpec=[pscustomobject]@{Adapter='FileScope';TransferChannel='C';TargetPath=$target;Metadata='DaclOwner'}}}
+        function NewCapEntry([string]$id,[long]$bytes){$capEntry=NewEntry '' ('cap payload '+$id);$capEntry.ItemId=$id;$capEntry.Data.Bytes=$bytes;$capEntry}
+        function Get-CapPreview([object[]]$items,[object[]]$entries){$script:previewPackage.Plan.Items=@($items);$script:testEntries=@($entries);$script:previewDecision.SelectedItemIds=@($items|ForEach-Object ItemId);Get-WsmAssistiveRestorePreview -ManifestPath 'fixture' -ExpectedHash ('2'*64) -StateDirectory $root -AssistiveDecisionReceiptPath 'fixture' -AssistiveDecisionReceiptHash ('4'*64) -AssistiveTargetSnapshotPath 'fixture'}
+        function CapRow($preview,[string]$id){@($preview.Rows|Where-Object ItemId -CEQ $id)[0]}
+        $script:capFree=@{};$script:capProbes=0
+        function Get-WsmAvailableBytes([string]$Path){$script:capProbes++;$key=([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($Path))).ToUpperInvariant();if(-not $script:capFree.ContainsKey($key)){throw ('Unexpected capacity probe for '+$key)};[long]$script:capFree[$key]}
+        $capA=NewCapItem 'cap-a' (Join-Path $capRoot 'a\one.ini');$capB=NewCapItem 'cap-b' (Join-Path $capRoot 'b\two.ini')
+        $capEntries=@((NewCapEntry 'cap-a' 300MB),(NewCapEntry 'cap-b' 300MB))
+        $script:capFree[$capKey]=700MB
+        $capLow=Get-CapPreview @($capA,$capB) $capEntries
+        Check ((CapRow $capLow 'cap-a').Action -ceq 'AddTargetCapacity' -and (CapRow $capLow 'cap-b').Action -ceq 'AddTargetCapacity' -and (CapRow $capLow 'cap-a').Status -ceq 'Deferred' -and (CapRow $capLow 'cap-b').Status -ceq 'Deferred') 'Two 300 MB items that fit separately in 700 MB but not together were not both AddTargetCapacity.'
+        Check ((CapRow $capLow 'cap-a').Reason.Contains('同一磁碟上已選項目合計約 600 MiB') -and $script:capProbes -eq 1 -and @($capLow.Problems).Count -eq 0 -and -not $capLow.Blocked) 'Aggregate capacity gap did not explain the same-disk total, probe the volume once, or stayed a non-problem Deferred row.'
+        $script:capFree[$capKey]=1GB
+        $capHigh=Get-CapPreview @($capA,$capB) $capEntries
+        Check ((CapRow $capHigh 'cap-a').Action -ceq 'CreateSingleFile' -and (CapRow $capHigh 'cap-b').Action -ceq 'CreateSingleFile' -and (CapRow $capHigh 'cap-a').Status -ceq 'Ready' -and (CapRow $capHigh 'cap-b').Status -ceq 'Ready') 'Two items with enough aggregate capacity were not both Ready.'
+        # 大小寫不同的同一磁碟根仍屬同一卷。
+        $capBLower=NewCapItem 'cap-b' ((Join-Path $capRoot 'b\two.ini').ToLowerInvariant());$script:capFree[$capKey]=700MB
+        $capCase=Get-CapPreview @($capA,$capBLower) $capEntries
+        Check ((CapRow $capCase 'cap-a').Action -ceq 'AddTargetCapacity' -and (CapRow $capCase 'cap-b').Action -ceq 'AddTargetCapacity') 'Volume keys were case sensitive: the same disk was counted as two volumes.'
+        # 不同磁碟根分開計算（以 subst 建立第二個真實磁碟根）。
+        $otherDrive=@('Q','R','S','T','U','V','W','X','Y','Z' | Where-Object {-not (Test-Path -LiteralPath ($_+':\'))} | Select-Object -First 1);Check ($otherDrive.Count -eq 1) 'No unused drive letter for the second-volume capacity case.'
+        $otherRoot=Join-Path $root 'capacity-other-volume';[void][IO.Directory]::CreateDirectory($otherRoot);$otherSubst=$otherDrive[0]+':'
+        & subst.exe $otherSubst $otherRoot | Out-Null
+        try{
+            Check ([IO.Directory]::Exists($otherSubst+'\')) 'subst did not create the second drive root fixture.'
+            $capC=NewCapItem 'cap-c' ($otherSubst+'\c\three.ini');$script:capFree[$capKey]=700MB;$script:capFree[$otherSubst.ToUpperInvariant()+'\']=700MB
+            $capEntries3=@($capEntries)+@((NewCapEntry 'cap-c' 300MB))
+            $capSplit=Get-CapPreview @($capA,$capC) $capEntries3
+            Check ((CapRow $capSplit 'cap-a').Action -ceq 'CreateSingleFile' -and (CapRow $capSplit 'cap-c').Action -ceq 'CreateSingleFile') 'Items on different volumes were summed together instead of per volume.'
+            $script:capFree[$otherSubst.ToUpperInvariant()+'\']=100MB
+            $capSplitLow=Get-CapPreview @($capA,$capC) $capEntries3
+            Check ((CapRow $capSplitLow 'cap-a').Status -ceq 'Ready' -and (CapRow $capSplitLow 'cap-c').Action -ceq 'AddTargetCapacity') 'A short second volume did not defer only its own items.'
+        }finally{& subst.exe $otherSubst /d | Out-Null}
+        Check (-not [IO.Directory]::Exists($otherSubst+'\')) 'subst fixture drive was not removed.'
+        # 已擁有、只需 readback 的項目不計入合計（此時 $item 為 VerifyOwnedSingleFile，宣稱 500 MB）。
+        $ownedEntry=$capSaved.Entries[0];$ownedBytes=$ownedEntry.Data.Bytes;$ownedEntry.Data.Bytes=500MB;$script:capFree[$capKey]=700MB
+        $capOwned=Get-CapPreview @($item,$capA) @($ownedEntry,$capEntries[0])
+        $ownedEntry.Data.Bytes=$ownedBytes
+        Check ((CapRow $capOwned $script:testItemId).Action -ceq 'VerifyOwnedSingleFile' -and (CapRow $capOwned 'cap-a').Action -ceq 'CreateSingleFile' -and (CapRow $capOwned 'cap-a').Status -ceq 'Ready') 'An already-owned readback-only item was counted in the volume total.'
+        # 可寫入性預檢：一般目錄 Ready；拒絕目前使用者建立檔案的 ACL -> PermissionDenied；預覽前後目錄列舉相同。
+        $roDir=Join-Path $root 'capacity-readonly';[void][IO.Directory]::CreateDirectory($roDir);$roItem=NewCapItem 'cap-ro' (Join-Path $roDir 'sub\x.ini');$roEntries=@((NewCapEntry 'cap-ro' 1MB));$script:capFree[$capKey]=1GB
+        function Get-DirListing([string]$Path){@(Get-ChildItem -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue|ForEach-Object FullName|Sort-Object)-join '|'}
+        $listBeforeOk=Get-DirListing $roDir;$roMtimeBefore=[IO.Directory]::GetLastWriteTimeUtc($roDir).Ticks;$roOk=Get-CapPreview @($roItem) $roEntries
+        Check ((CapRow $roOk 'cap-ro').Action -ceq 'CreateSingleFile' -and (CapRow $roOk 'cap-ro').Status -ceq 'Ready' -and (Get-DirListing $roDir) -ceq $listBeforeOk -and [IO.Directory]::GetLastWriteTimeUtc($roDir).Ticks -eq $roMtimeBefore) 'A writable ordinary directory was not Ready, or the preview left files behind or touched the directory timestamp.'
+        $selfSid=[Security.Principal.WindowsIdentity]::GetCurrent().User
+        $denyRule=New-Object Security.AccessControl.FileSystemAccessRule($selfSid,[Security.AccessControl.FileSystemRights]'CreateFiles,CreateDirectories',[Security.AccessControl.InheritanceFlags]::None,[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Deny)
+        $roAcl=Get-Acl -LiteralPath $roDir;$roAcl.AddAccessRule($denyRule);Set-Acl -LiteralPath $roDir -AclObject $roAcl
+        try{
+            $denyControl=$false;try{[IO.File]::WriteAllText((Join-Path $roDir 'control.tmp'),'x')}catch{$denyControl=$true}
+            Check $denyControl 'The deny ACL fixture did not actually block file creation.'
+            $listBeforeDeny=Get-DirListing $roDir;$roDenied=Get-CapPreview @($roItem) $roEntries;$roRow=CapRow $roDenied 'cap-ro'
+            Check ($roRow.Action -ceq 'PermissionDenied' -and $roRow.Status -ceq 'Deferred' -and $roRow.Reason.Contains('目前帳號無法寫入 '+$roDir) -and $roRow.Reason.Contains('請以具權限的帳號執行或調整權限後重新檢查') -and @($roDenied.Problems).Count -eq 0) 'A directory denying file creation was not a Deferred PermissionDenied row naming the directory.'
+            Check ((Get-DirListing $roDir) -ceq $listBeforeDeny -and (Get-DirListing $roDir) -notlike '*wsm-writecheck*') 'The writability precheck left a file behind in the denied directory.'
+        }finally{$roAcl=Get-Acl -LiteralPath $roDir;[void]$roAcl.RemoveAccessRule($denyRule);Set-Acl -LiteralPath $roDir -AclObject $roAcl}
+        $roAfter=Get-CapPreview @($roItem) $roEntries
+        Check ((CapRow $roAfter 'cap-ro').Status -ceq 'Ready' -and (Get-DirListing $roDir) -ceq $listBeforeOk) 'Removing the deny ACL did not restore a Ready, residue-free preview.'
+        # 掛載點：產品不支援寫入掛載點底下（Assert-WsmNoReparse 本就拒絕任何 reparse 祖先），所以明確標 Blocked/MountPointNotSupported，不放寬防護。
+        Check ($null -eq (Get-WsmAssistiveMountPointAncestor $capRoot)) 'An ordinary directory was reported as a volume mount point.'
+        $mountFixture=Join-Path $root 'capacity-mount';$script:mountFixturePath=$mountFixture;[void][IO.Directory]::CreateDirectory((Join-Path $mountFixture 'data'))
+        function Get-WsmAssistiveMountPointAncestor([string]$Path){if(([IO.Path]::GetFullPath($Path)).StartsWith($script:mountFixturePath,[StringComparison]::OrdinalIgnoreCase)){return $script:mountFixturePath};return $null}
+        $mountItem=NewCapItem 'cap-mount' (Join-Path $mountFixture 'data\m.ini');$script:capProbes=0
+        $mountPreview=Get-CapPreview @($mountItem) @((NewCapEntry 'cap-mount' 1MB));$mountRow=CapRow $mountPreview 'cap-mount'
+        Check ($mountRow.Action -ceq 'MountPointNotSupported' -and $mountRow.Status -ceq 'Blocked' -and $mountRow.Reason.Contains('目標路徑位於另一個掛載點（'+$mountFixture+'）') -and $mountRow.Reason.Contains('工具不會寫入掛載點底下；請改用相同位置的一般目錄或另行處理。') -and $mountPreview.Blocked -and @($mountPreview.Problems|Where-Object ItemId -CEQ 'cap-mount').Count -eq 1 -and $script:capProbes -eq 0) 'A target under a volume mount point was not Blocked/MountPointNotSupported with the explicit reason and no capacity probe.'
+        Remove-Item Function:\Get-WsmAssistiveMountPointAncestor
+        # 非磁碟區掛載的 reparse（junction）仍走既有 Assert-WsmNoReparse 拒絕，不被放寬。
+        $junction=Join-Path $root 'capacity-junction';$junctionTarget=Join-Path $root 'capacity-junction-target';[void][IO.Directory]::CreateDirectory($junctionTarget);[void](New-Item -ItemType Junction -Path $junction -Value $junctionTarget)
+        try{
+            Check ($null -eq (Get-WsmAssistiveMountPointAncestor $junction)) 'A plain junction was misreported as a volume mount point.'
+            $junctionPreview=Get-CapPreview @((NewCapItem 'cap-junction' (Join-Path $junction 'j.ini'))) @((NewCapEntry 'cap-junction' 1MB))
+            Check ((CapRow $junctionPreview 'cap-junction').Status -ceq 'Blocked' -and (CapRow $junctionPreview 'cap-junction').Action -ceq 'Blocked') 'Reparse protection was relaxed for a non-mount-point junction target.'
+        }finally{[IO.Directory]::Delete($junction)}
+        Check ([IO.Directory]::Exists($junctionTarget)) 'Junction cleanup removed the junction target.'
+        Remove-Item Function:\Get-WsmAvailableBytes
+        $script:previewPackage.Plan.Items=$capSaved.Items;$script:testEntries=$capSaved.Entries;$script:previewDecision.SelectedItemIds=$capSaved.Selected;Remove-Variable capFree,capProbes,mountFixturePath -Scope Script -ErrorAction SilentlyContinue
+
         # Final Assistive activation re-reads the exact durable receipt/snapshot
         # through the native decision seam and requires the whole sealed subset.
         $guardIdA=('a'*64);$guardIdB=('b'*64);$guardSourceId='sw-fixture';$guardIdentity=('9'*64);$guardManifestHash=('2'*64);$guardPlanHash=('3'*64)
