@@ -536,6 +536,7 @@ function Invoke-WsmWizardIndependentCopy {
             RequestOperationId=$OperationId
             DeliveryMode=$deliveryMode
             DeliverySHA256=$deliverySHA256
+            ItemResultsSHA256=$itemResultsExpectedHash
             CopyRoot=[IO.Path]::GetFullPath($copyRoot)
             MediaClass=$mediaClass
             Availability=$availability

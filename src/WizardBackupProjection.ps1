@@ -569,36 +569,139 @@ select(0,false);
     [pscustomobject]@{Path=[IO.Path]::GetFullPath($OutputPath);SHA256=(Get-FileHash -LiteralPath $OutputPath -Algorithm SHA256).Hash.ToLowerInvariant()}
 }
 
+# Latest delivered attempt that carries an item-results record and is bound to the current approved plan.
+# Read-only: the backup root is computed without the owned-directory helper, which would create it.
+function Get-WsmWizardLatestResultAttempt([string]$Workspace,[string]$PairId,$Profile,$PlanRef) {
+    $viewBackupRoot=Join-Path (Join-Path (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'workspace-control') 'wizard-backups') $PairId
+    if(-not [IO.Directory]::Exists($viewBackupRoot)){return $null}
+    Assert-WsmNoReparse $viewBackupRoot
+    $latest=$null
+    foreach($file in @(Get-ChildItem -LiteralPath $viewBackupRoot -Filter '*.json' -File)){
+        try{
+            $row=Read-WsmJson $file.FullName
+            [void](Assert-WsmWizardBackupAttempt $row $Workspace $PairId $Profile)
+        }catch{continue}
+        if([string]$row.PlanHash -ine [string]$PlanRef.SHA256 -or $row.Stage -cne 'Delivered' -or -not $row.PSObject.Properties['ItemResults']){continue}
+        if(-not $latest -or [string]$row.UpdatedUtc -gt [string]$latest.UpdatedUtc){$latest=$row}
+    }
+    $latest
+}
+
+# Re-checks the independent-copy receipt every time the view is read. The receipt is a set-level record
+# (one per backup set, not per item), so the answer is one state for the whole column:
+#   Verified     the attempt names a receipt that exists, whose bytes match the recorded SHA256, which belongs
+#                to this pair/attempt/delivery and which cites the SHA256 of the current item-results set
+#   NotVerified  no verified independent copy was ever recorded for this attempt
+#   Unverifiable a verified copy is recorded but the receipt is missing, altered, outside its folder or
+#                cites another result set; never presented as verified
+# The attempt records only its newest receipt hash, so older receipts cannot be bound and are not consulted.
+# This function only reads; sealed bytes are never modified (16.5: the receipt is stored apart from the set).
+function Get-WsmWizardIndependentCopyProjection([string]$Workspace,[string]$PairId,$Attempt,[string]$ItemResultsSha256) {
+    $notVerified=[pscustomobject][ordered]@{state='NotVerified';text='尚未驗證';verifiedUtc='';networkUnconfirmed=$false;reason='尚未建立並驗證獨立副本。'}
+    $copy=$null;if($Attempt.PSObject.Properties['IndependentCopy']){$copy=$Attempt.IndependentCopy}
+    if(-not $copy -or -not $copy.PSObject.Properties['Status'] -or [string]$copy.Status -cne 'Verified'){return $notVerified}
+    $unverifiable={param([string]$Why)[pscustomobject][ordered]@{state='Unverifiable';text='收據無法核對';verifiedUtc='';networkUnconfirmed=$false;reason=$Why}}
+    try{
+        if(-not $copy.PSObject.Properties['ReceiptPath'] -or -not $copy.PSObject.Properties['ReceiptSHA256']){return (& $unverifiable '備份紀錄沒有收據路徑或雜湊。')}
+        $receiptPath=[IO.Path]::GetFullPath([string]$copy.ReceiptPath)
+        $receiptDir=([IO.Path]::GetFullPath((Join-Path (Join-Path (Join-Path (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'workspace-control') 'wizard-backups') $PairId) 'independent-copies'))).TrimEnd('\')+'\'
+        if(-not $receiptPath.StartsWith($receiptDir,[StringComparison]::OrdinalIgnoreCase)){return (& $unverifiable '收據不在備份集的收據資料夾內。')}
+        Assert-WsmNoReparse $receiptPath
+        if(-not [IO.File]::Exists($receiptPath)){return (& $unverifiable '收據檔已不存在。')}
+        $recordedHash=[string]$copy.ReceiptSHA256
+        if($recordedHash -notmatch '^[a-fA-F0-9]{64}$'){return (& $unverifiable '備份紀錄中的收據雜湊格式不正確。')}
+        if((Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash -ine $recordedHash){return (& $unverifiable '收據檔內容與備份紀錄的雜湊不一致。')}
+        $receipt=Read-WsmJson $receiptPath
+        if([string]$receipt.Kind -cne 'IndependentCopyReceipt' -or [string]$receipt.PairId -cne $PairId -or [string]$receipt.AttemptId -cne [string]$Attempt.AttemptId){return (& $unverifiable '收據不屬於此備份。')}
+        if(-not $Attempt.Delivery -or -not $receipt.PSObject.Properties['DeliverySHA256'] -or [string]$receipt.DeliverySHA256 -ine [string]$Attempt.Delivery.SHA256){return (& $unverifiable '收據引用的交付與目前備份的交付不同。')}
+        if(-not $receipt.PSObject.Properties['ItemResultsSHA256'] -or [string]$receipt.ItemResultsSHA256 -notmatch '^[a-fA-F0-9]{64}$' -or [string]$receipt.ItemResultsSHA256 -ine $ItemResultsSha256){return (& $unverifiable '收據沒有引用、或引用的不是目前的逐項結果集。')}
+        [pscustomobject][ordered]@{state='Verified';text='已驗證';verifiedUtc=[string]$receipt.VerifiedUtc;networkUnconfirmed=([string]$receipt.Availability -ceq 'VerifiedNetworkAvailabilityUnconfirmed');reason=''}
+    }catch{
+        & $unverifiable '收據無法讀取或核對。'
+    }
+}
+
+# Shared by the results view and the file drill-down: the verified item-results document of the latest delivered attempt.
+# Failure is the user-facing view object when nothing can be shown; callers must stop on it.
+function Get-WsmWizardVerifiedResultSet([string]$Workspace,[string]$PairId,$Profile,$PlanRef) {
+    $none=[pscustomobject]@{kind='BackupItemResultsView';available=$false;reason='目前還沒有已交付的備份。'}
+    $attempt=Get-WsmWizardLatestResultAttempt $Workspace $PairId $Profile $PlanRef
+    if(-not $attempt){return [pscustomobject]@{Failure=$none;Attempt=$null;Document=$null;ResultsSha256=''}}
+    $itemResults=$attempt.ItemResults
+    if($itemResults.Status -cne 'Generated'){
+        $errorText=if($itemResults.PSObject.Properties['Error']){[string]$itemResults.Error}else{''}
+        return [pscustomobject]@{Failure=[pscustomobject]@{kind='BackupItemResultsView';available=$false;reason=('逐項結果產生失敗：'+$errorText);attemptId=[string]$attempt.AttemptId};Attempt=$attempt;Document=$null;ResultsSha256=''}
+    }
+    $failed=[pscustomobject]@{kind='BackupItemResultsView';available=$false;integrity='Failed';reason='逐項結果檔案已不存在或內容被更改，請重新備份。';attemptId=[string]$attempt.AttemptId}
+    $resultPath=[string]$itemResults.Path
+    Assert-WsmNoReparse $resultPath
+    if(-not [IO.File]::Exists($resultPath) -or (Get-FileHash -LiteralPath $resultPath -Algorithm SHA256).Hash -ine [string]$itemResults.SHA256){return [pscustomobject]@{Failure=$failed;Attempt=$attempt;Document=$null;ResultsSha256=''}}
+    $document=Read-WsmJson $resultPath
+    if($document.Kind -cne 'BackupItemResults' -or $document.PairId -cne $PairId -or $document.AttemptId -cne [string]$attempt.AttemptId){return [pscustomobject]@{Failure=$failed;Attempt=$attempt;Document=$null;ResultsSha256=''}}
+    [pscustomobject]@{Failure=$null;Attempt=$attempt;Document=$document;ResultsSha256=([string]$itemResults.SHA256).ToLowerInvariant()}
+}
+
 function Get-WsmWizardBackupItemResultsView([string]$Workspace,[string]$PairId) {
     Assert-WsmId $PairId
     $profile=Read-WsmOutputProfile $Workspace
     if(-not $profile -or $profile.Role -cne 'Source'){throw 'Backup item results are only available on the enrolled Source workspace.'}
     $planRef=Get-WsmWizardReceivedApprovedPlan $Workspace $PairId $profile
     if(-not $planRef){return [pscustomobject]@{kind='BackupItemResultsView';available=$false;reason='尚未匯入已核准計畫，沒有備份結果可查看。'}}
-    $latest=$null
-    # Read-only: compute the backup root without the owned-directory helper, which would create it.
-    $viewBackupRoot=Join-Path (Join-Path (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'workspace-control') 'wizard-backups') $PairId
-    if(-not [IO.Directory]::Exists($viewBackupRoot)){return [pscustomobject]@{kind='BackupItemResultsView';available=$false;reason='目前還沒有已交付的備份。'}}
-    Assert-WsmNoReparse $viewBackupRoot
-    foreach($file in @(Get-ChildItem -LiteralPath $viewBackupRoot -Filter '*.json' -File)){
-        try{
-            $row=Read-WsmJson $file.FullName
-            [void](Assert-WsmWizardBackupAttempt $row $Workspace $PairId $profile)
-        }catch{continue}
-        if([string]$row.PlanHash -ine [string]$planRef.SHA256 -or $row.Stage -cne 'Delivered' -or -not $row.PSObject.Properties['ItemResults']){continue}
-        if(-not $latest -or [string]$row.UpdatedUtc -gt [string]$latest.UpdatedUtc){$latest=$row}
+    $set=Get-WsmWizardVerifiedResultSet $Workspace $PairId $profile $planRef
+    if($set.Failure){return $set.Failure}
+    $attempt=$set.Attempt;$document=$set.Document
+    [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software;schemaVersion=$(if($document.PSObject.Properties['SchemaVersion']){[int]$document.SchemaVersion}else{1});coverageRegions=$(if($document.PSObject.Properties['CoverageRegions']){@($document.CoverageRegions)}else{$null});independentCopy=(Get-WsmWizardIndependentCopyProjection $Workspace $PairId $attempt $set.ResultsSha256)}
+}
+
+# Read-only drill-down (action BackupItemFiles): the archived files of one backed-up item, 100 per page.
+# The list comes only from the sealed package of the attempt that produced the current result set:
+# manifest bytes must match the hash the attempt recorded, the result set must cite that manifest, and the
+# artifact index must match the hash inside the manifest before a single row is read. No journal write.
+function Get-WsmWizardBackupItemFiles {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ItemId,[int]$Page=1)
+    Assert-WsmId $PairId
+    if([string]::IsNullOrWhiteSpace($ItemId) -or $ItemId.Length -gt 200 -or $ItemId -match '[\x00-\x1f\x7f]'){throw 'ItemId is not valid.'}
+    if($Page -lt 1 -or $Page -gt 1000000){throw 'Page is out of range.'}
+    $pageSize=100
+    $profile=Read-WsmOutputProfile $Workspace
+    if(-not $profile -or $profile.Role -cne 'Source'){throw 'Backup file details are only available on the enrolled Source workspace.'}
+    $planRef=Get-WsmWizardReceivedApprovedPlan $Workspace $PairId $profile
+    if(-not $planRef){throw 'No approved plan has been imported, so there is no backup to read.'}
+    $set=Get-WsmWizardVerifiedResultSet $Workspace $PairId $profile $planRef
+    if($set.Failure){throw ([string]$set.Failure.reason)}
+    $attempt=$set.Attempt;$document=$set.Document
+    $row=@($document.Rows | Where-Object {[string]$_.ItemId -ceq $ItemId})
+    if($row.Count -ne 1){throw 'The item is not part of the current backup result set.'}
+    if([string]$row[0].Status -cne 'BackedUp'){throw 'The item was not backed up, so the package holds no files for it.'}
+    $test=$attempt.PackageTest;$core=$attempt.CoreExport
+    if(-not $test -or -not $core -or -not $test.PSObject.Properties['Valid'] -or -not [bool]$test.Valid -or -not $core.PSObject.Properties['Sealed'] -or -not [bool]$core.Sealed){throw 'The backup package is not sealed and verified.'}
+    if([string]$test.SHA256 -notmatch '^[a-fA-F0-9]{64}$' -or [string]$test.SHA256 -ine [string]$core.SHA256 -or [string]$test.PlanHash -ine [string]$planRef.SHA256){throw 'The backup package record does not match the approved plan.'}
+    if([string]$document.ManifestHash -ine [string]$test.SHA256){throw 'The result set does not belong to this backup package.'}
+    $manifestPath=[IO.Path]::GetFullPath([string]$test.ManifestPath)
+    Assert-WsmNoReparse $manifestPath
+    $manifest=Read-WsmTrustedJson $manifestPath ([string]$test.SHA256)
+    Assert-WsmEnvelope $manifest 'MigrationPackage'
+    Assert-WsmPackageHeaderContract $manifest
+    if([string]$manifest.PairId -cne $PairId -or [string]$manifest.PlanHash -ine [string]$planRef.SHA256){throw 'The backup package is bound to another pair or plan.'}
+    if(-not $manifest.PSObject.Properties['SealedUtc'] -or -not [string]$manifest.SealedUtc){throw 'The backup package is not sealed.'}
+    $indexPath=Join-Path (Split-Path -Parent $manifestPath) 'artifacts.jsonl'
+    $skip=($Page-1)*$pageSize
+    $count=@{Total=[long]0;Directories=[long]0}
+    $entries=New-Object 'System.Collections.Generic.List[object]'
+    # Read-WsmArtifactLines hashes the whole index against the manifest's ArtifactsHash before it yields any row.
+    Read-WsmArtifactLines $indexPath ([string]$manifest.ArtifactsHash) | ForEach-Object {
+        if([string]$_.ItemId -ceq $ItemId){
+            $isDirectory=[bool]$_.Directory
+            if($count.Total -ge $skip -and $entries.Count -lt $pageSize){
+                $bytes=[long]0;$prefix=''
+                if(-not $isDirectory -and $_.Data){$bytes=[long]$_.Data.Bytes;$fileHash=[string]$_.Data.Hash;if($fileHash.Length -ge 12){$prefix=$fileHash.Substring(0,12).ToLowerInvariant()}}
+                $entries.Add([pscustomobject][ordered]@{RelativePath=[string]$_.RelativePath;Bytes=$bytes;Sha256Prefix=$prefix;IsDirectory=$isDirectory})
+            }
+            $count.Total++
+            if($isDirectory){$count.Directories++}
+        }
     }
-    if(-not $latest){return [pscustomobject]@{kind='BackupItemResultsView';available=$false;reason='目前還沒有已交付的備份。'}}
-    $attempt=$latest;$itemResults=$attempt.ItemResults
-    if($itemResults.Status -cne 'Generated'){
-        $errorText=if($itemResults.PSObject.Properties['Error']){[string]$itemResults.Error}else{''}
-        return [pscustomobject]@{kind='BackupItemResultsView';available=$false;reason=('逐項結果產生失敗：'+$errorText);attemptId=[string]$attempt.AttemptId}
-    }
-    $failed=[pscustomobject]@{kind='BackupItemResultsView';available=$false;integrity='Failed';reason='逐項結果檔案已不存在或內容被更改，請重新備份。';attemptId=[string]$attempt.AttemptId}
-    $resultPath=[string]$itemResults.Path
-    Assert-WsmNoReparse $resultPath
-    if(-not [IO.File]::Exists($resultPath) -or (Get-FileHash -LiteralPath $resultPath -Algorithm SHA256).Hash -ine [string]$itemResults.SHA256){return $failed}
-    $document=Read-WsmJson $resultPath
-    if($document.Kind -cne 'BackupItemResults' -or $document.PairId -cne $PairId -or $document.AttemptId -cne [string]$attempt.AttemptId){return $failed}
-    [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software;schemaVersion=$(if($document.PSObject.Properties['SchemaVersion']){[int]$document.SchemaVersion}else{1});coverageRegions=$(if($document.PSObject.Properties['CoverageRegions']){@($document.CoverageRegions)}else{$null})}
+    $total=[long]$count.Total
+    [pscustomobject][ordered]@{kind='BackupItemFiles';available=$true;AttemptId=[string]$attempt.AttemptId;ItemId=$ItemId;Page=$Page;PageSize=$pageSize;TotalCount=$total;DirectoryCount=[long]$count.Directories;PageCount=[int][Math]::Max(1,[Math]::Ceiling($total/[double]$pageSize));Entries=@($entries.ToArray())}
 }

@@ -162,3 +162,28 @@ body{font-size:18px}
 .wizard-runtime-group-partial{color:var(--muted)}
 .wizard-runtime-item-tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
 .wizard-runtime-item-reason{color:var(--muted)}
+.backup-filter{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-width:0}
+.backup-filter select{min-width:0;flex:1 1 auto}
+.backup-toolbar label{font-size:14px}
+.backup-toolbar select{min-height:36px}
+.backup-count{font-weight:700;margin-left:auto}
+.backup-toolbar input[type=search]:focus-visible,.backup-toolbar select:focus-visible,.backup-toolbar button:focus-visible,.backup-expand:focus-visible,.backup-pager button:focus-visible,.backup-tabpanel .table-wrap:focus-visible,.backup-tabpanel:focus-visible,.backup-detail-title:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.backup-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid currentColor;border-radius:999px;font-size:12px;font-weight:700;line-height:1.5;white-space:nowrap}
+.backup-badge::before{content:attr(data-icon);font-weight:700}
+.backup-badge.b-ok{background:#e6f4ec;color:#0b4a1f}
+.backup-badge.b-warn{background:#fff6d6;color:#5c4300}
+.backup-badge.b-bad{background:#fdecec;color:#7a1010}
+.backup-badge.b-neutral{background:#eef2f7;color:var(--ink)}
+.backup-badge-extra{display:block;margin-top:4px;color:var(--muted);font-size:12px}
+.backup-table-area table{min-width:56rem}
+.backup-table-area td,.backup-table-area th{vertical-align:top;overflow-wrap:break-word}
+.backup-path{overflow-wrap:anywhere}
+.backup-nowrap{white-space:nowrap}
+.backup-expand{white-space:nowrap}
+.backup-copy-note{margin:0 0 12px}
+.backup-detail-row>td{background:var(--surface-soft);padding:8px 12px}
+.backup-detail{position:sticky;left:0;max-width:min(100%,calc(100vw - 4rem));padding:4px 0}
+.backup-detail table{min-width:36rem}
+.backup-detail-title{margin:0 0 6px;font-size:15px}
+.backup-coverage{margin-top:6px}
+@media(max-width:480px){.backup-filter{flex:1 1 100%}.backup-count{margin-left:0;flex-basis:100%}.backup-toolbar input[type=search]{width:100%}}

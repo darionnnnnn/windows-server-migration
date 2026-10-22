@@ -322,13 +322,13 @@
   }
   function emptyRow(cols, message) { const tr = el('tr'), td = el('td', 'empty-state', message); td.colSpan = cols; tr.appendChild(td); return tr; }
   const actionTerms = { Source:'來源', Snapshot:'快照', Inventory:'盤點', Target:'目標', Preparation:'準備', Restore:'還原', Preview:'預覽', Rollback:'回復', Save:'保存', Spec:'規格', Review:'審閱', Assistive:'輔助流程', Report:'報告', Check:'檢查', Comparison:'比較', Publish:'發布', Software:'軟體', Version:'版本', File:'檔案', Placement:'放置', Non:'非', C:'C 檔案', Peer:'同端', Share:'共享', Proof:'證明', Physical:'實體', Plan:'計畫', Transfer:'傳輸', Import:'匯入', Export:'匯出', Reserve:'保留', Reservation:'保留', Resource:'資源', Evidence:'佐證', Release:'釋放', Register:'登錄', Material:'材料', Close:'結案', Job:'工作', Lock:'鎖定', Cleanup:'清理', Environment:'環境', Probe:'檢查', Enable:'啟用', Selections:'選取', Selection:'選取', Decision:'決策', Receipt:'收據', Workspace:'工作區', Delivery:'交付', Document:'文件', Windows:'Windows', Settings:'設定', Apply:'套用', Qualification:'資格', Signing:'簽署', Request:'申請', Complete:'完成', Tool:'工具', Delta:'差異', Directory:'目錄', General:'一般', Host:'主機', Disposition:'處置', Requirement:'需求', SoftwareCatalog:'軟體目錄', Output:'輸出', Initialize:'初始化', Resolve:'解析', Pair:'配對', Confirm:'確認', State:'狀態', Preferences:'偏好設定', Enrolled:'已納管', Package:'套件', Oracle:'Oracle', Binding:'繫結', Config:'設定', Draft:'草稿', Confirmation:'確認', Volumes:'磁碟區', Lab:'實驗室', Validation:'驗證', Raw:'原始', Artifact:'產物', Manifest:'清單', Zip:'ZIP', Repair:'修復', Cancellation:'取消', Token:'代碼', Group:'群組', Barrier:'屏障', Record:'記錄', Add:'新增', Revoke:'撤銷', Lookup:'查詢', Matrix:'矩陣', Task:'工作排程', Resume:'續跑', Bundle:'套件', RegisterTarget:'登錄目標', Identity:'身分', Map:'對應', Configure:'設定', Approve:'核准', Estimate:'估算', Freeze:'凍結', Acceptance:'驗收', Stage:'階段', Cutover:'切換', Journal:'日誌', Fleet:'主機群', Dependencies:'相依項目', Mapping:'映射', Manual:'人工', Item:'項目', Issue:'議題', Metadata:'中繼資料', Template:'範本', SaveSelection:'保存選取', SelectionReason:'未選原因', DirectoryDelivery:'目錄交付', Migration:'搬移', Operation:'操作', Result:'結果', Imported:'匯入', WindowsSettings:'Windows 設定', TargetReceipt:'目標收據', SourceResult:'來源結果', IdentityMap:'身分對應', SoftwareVersion:'軟體版本', PackageEstimate:'套件估算', TargetSnapshot:'目標快照', SpecBundle:'規格套件', WorkspaceTransfer:'工作區傳輸', NonCPlan:'非 C 檔案計畫', FilePlacement:'檔案放置', CancellationToken:'取消權杖', RequestCancellation:'要求取消', AssistiveReportCheck:'輔助流程報告檢查' };
-  const actionOverrides = { NonCTargetHandoffExport:'匯出非 C 槽新主機交接材料', NonCTargetHandoffPreview:'預覽非 C 槽新主機交接材料', NonCTargetHandoffImport:'匯入非 C 槽新主機交接材料', BackupImpactPreview:'預覽一鍵備份的範圍與停寫影響', TargetLocalComparison:'在新機本機產生軟體比較（離線）', CreateNonCTransferPlan:'建立非 C 槽傳輸計畫', CreateTargetDecisionReceipt:'建立明確的新主機決策收據', NonCAccountObservation:'記錄非 C 槽帳戶觀察結果', StartBackup:'開始一鍵備份', IndependentCopy:'建立並驗證獨立備份副本', StartNonCTransfer:'開始非 C 槽傳輸', TargetActivation:'獨立啟用／Cutover gate', WizardRuntimeProjection:'讀取精靈目前執行狀態', BulkPreparationPreview:'預覽批次準備變更', BulkPreparationSave:'儲存批次準備變更', ExportTargetHandoff:'交回新主機盤點供 Manager 建立比較', GetTargetHandoffPreview:'預覽新主機交接材料', CommitTargetHandoff:'確認並套用新主機交接材料', GetPreparationReview:'讀取準備審閱內容', OsProvidedCapture:'擷取 OS 提供排程工作證據', OsProvidedBaseline:'建立 OS 提供排程工作可信基準', OsProvidedReview:'比對 OS 提供排程工作證據', OsProvidedSubmit:'提交 OS 提供排程工作審閱', SourceSnapshot:'來源主機快照', SourceInventory:'來源主機盤點', TargetSnapshot:'目標現況快照', TargetPreparation:'目標環境準備', Restore:'執行還原', RestorePreview:'還原範圍預覽', Rollback:'執行回復', RollbackPreview:'回復範圍預覽', SaveSpecReview:'保存規格審閱', SpecReview:'查看規格審閱', AssistiveReport:'匯出管理報告', AssistiveReportCheck:'檢查管理報告', HttpIntegrityProbe:'檢查本機頁面傳輸完整性', MaterialJobStatus:'查看中斷作業材料鎖', WindowsSettingsPreviewExport:'匯出 Windows 設定審閱預覽', WindowsSettingsSubmit:'提交 Windows 設定審閱', DispositionSubmit:'提交一般主機處置審閱', RequirementReview:'預覽一般主機需求審閱', RequirementDecisionSubmit:'提交一般主機需求決策', RequirementSubmit:'提交一般主機需求審閱（進階）', PreparationPreview:'預覽目標準備需求', PreparationEvidence:'匯出準備佐證', Report:'匯出審核報告', FleetReport:'匯出主機群報告', Inventory:'匯出本機盤點', SaveSelection:'保存項目選取', ConfigScopeDraft:'匯出設定檔範圍草稿', DeltaVolumeImport:'匯入磁碟區差異', GeneralHostMode:'設定一般主機模式', QualificationKey:'查詢資格記錄索引鍵', SetSoftwareVersion:'設定軟體版本', SoftwareAttach:'附加一般主機軟體目錄', Validate:'執行驗證', CrossHostDependency:'登錄跨主機相依關係', SetRestoreChoice:'設定還原處置選擇', ExportSourceReviewHandoff:'匯出來源盤點與審閱選擇', ImportSourceReviewHandoff:'匯入來源盤點與審閱選擇', ImportApprovedPlan:'匯入核准搬移計畫', InspectWizardFiles:'列出已核准範圍的檔案資訊', DeveloperProbe:'產生本機工具診斷報告' };
+  const actionOverrides = { BackupItemFiles:'查看已備份項目的封存檔案清單', NonCTargetHandoffExport:'匯出非 C 槽新主機交接材料', NonCTargetHandoffPreview:'預覽非 C 槽新主機交接材料', NonCTargetHandoffImport:'匯入非 C 槽新主機交接材料', BackupImpactPreview:'預覽一鍵備份的範圍與停寫影響', TargetLocalComparison:'在新機本機產生軟體比較（離線）', CreateNonCTransferPlan:'建立非 C 槽傳輸計畫', CreateTargetDecisionReceipt:'建立明確的新主機決策收據', NonCAccountObservation:'記錄非 C 槽帳戶觀察結果', StartBackup:'開始一鍵備份', IndependentCopy:'建立並驗證獨立備份副本', StartNonCTransfer:'開始非 C 槽傳輸', TargetActivation:'獨立啟用／Cutover gate', WizardRuntimeProjection:'讀取精靈目前執行狀態', BulkPreparationPreview:'預覽批次準備變更', BulkPreparationSave:'儲存批次準備變更', ExportTargetHandoff:'交回新主機盤點供 Manager 建立比較', GetTargetHandoffPreview:'預覽新主機交接材料', CommitTargetHandoff:'確認並套用新主機交接材料', GetPreparationReview:'讀取準備審閱內容', OsProvidedCapture:'擷取 OS 提供排程工作證據', OsProvidedBaseline:'建立 OS 提供排程工作可信基準', OsProvidedReview:'比對 OS 提供排程工作證據', OsProvidedSubmit:'提交 OS 提供排程工作審閱', SourceSnapshot:'來源主機快照', SourceInventory:'來源主機盤點', TargetSnapshot:'目標現況快照', TargetPreparation:'目標環境準備', Restore:'執行還原', RestorePreview:'還原範圍預覽', Rollback:'執行回復', RollbackPreview:'回復範圍預覽', SaveSpecReview:'保存規格審閱', SpecReview:'查看規格審閱', AssistiveReport:'匯出管理報告', AssistiveReportCheck:'檢查管理報告', HttpIntegrityProbe:'檢查本機頁面傳輸完整性', MaterialJobStatus:'查看中斷作業材料鎖', WindowsSettingsPreviewExport:'匯出 Windows 設定審閱預覽', WindowsSettingsSubmit:'提交 Windows 設定審閱', DispositionSubmit:'提交一般主機處置審閱', RequirementReview:'預覽一般主機需求審閱', RequirementDecisionSubmit:'提交一般主機需求決策', RequirementSubmit:'提交一般主機需求審閱（進階）', PreparationPreview:'預覽目標準備需求', PreparationEvidence:'匯出準備佐證', Report:'匯出審核報告', FleetReport:'匯出主機群報告', Inventory:'匯出本機盤點', SaveSelection:'保存項目選取', ConfigScopeDraft:'匯出設定檔範圍草稿', DeltaVolumeImport:'匯入磁碟區差異', GeneralHostMode:'設定一般主機模式', QualificationKey:'查詢資格記錄索引鍵', SetSoftwareVersion:'設定軟體版本', SoftwareAttach:'附加一般主機軟體目錄', Validate:'執行驗證', CrossHostDependency:'登錄跨主機相依關係', SetRestoreChoice:'設定還原處置選擇', ExportSourceReviewHandoff:'匯出來源盤點與審閱選擇', ImportSourceReviewHandoff:'匯入來源盤點與審閱選擇', ImportApprovedPlan:'匯入核准搬移計畫', InspectWizardFiles:'列出已核准範圍的檔案資訊', DeveloperProbe:'產生本機工具診斷報告' };
   const safeJobOutputFields = new Set(['Status','Stage','Path','SHA256','Hash','ReportPath','HtmlPath','ManifestPath','ManifestHash','Archive','ArchiveSHA256','RunId','PairId','Generation','Revision','ObservedChecks','PendingChecks','SpecPath','SpecHash','SourceSnapshotHash','ReceiptPath','ReceiptHash','DecisionRevision','AssistiveRevision','SelectionRevision','TargetPhysicalId','RegistryRevision','ResourceKey','DocumentManifestPath','DocumentManifestHash','DocumentId','BundlePath','MemberCount','Valid','ProbeStatus','IndexPath','Kind','ExpectedRevision','PreviewPath','PreviewFileHash','PreviewHash','ReviewHash','ReviewWindowsSettings','RowCount','SourceInventoryPath','ConfirmedChoiceCount','IncludedChoiceCount','ExcludedChoiceCount','AppliedChoiceCount','TargetInventoryPath','TargetInventoryHash','GeneratedDecisionsPath','GeneratedDecisionsHash','GeneratedRequirementsPath','GeneratedRequirementsHash','FailureCode','HandoffStatus','AuthoritativeApproval','ProductionVerified','ContentRead','ScanId','CandidateCount','CandidatePath','CandidateHash','ScannedEntryCount','VisitedDirectoryCount','GapCount','ExcludedAreaCount','RemainingDirectoryCount','SegmentNumber','SegmentCount','ExplicitContinuationRequired','ContinuationRequired','ContinuationScanId','ParentOperationId','NoTargetWrites','ResumeRequired','RequiredSecretRefs']);
   function jobOutputFieldLabel(key){const labels={Status:'材料狀態',Stage:'作業階段',Path:'交接材料檔案位置',SHA256:'交接材料指紋（SHA-256）',SourceInventoryPath:'來源盤點檔案位置',ConfirmedChoiceCount:'已確認的項目數',IncludedChoiceCount:'選擇納入的項目數',ExcludedChoiceCount:'選擇排除的項目數',AppliedChoiceCount:'已帶入審閱的項目數',HandoffStatus:'交接結果',AuthoritativeApproval:'是否為正式核准',ProductionVerified:'是否已完成正式環境驗證',ContentRead:'是否讀取檔案內容',ManifestPath:'備份清單位置',ManifestHash:'備份清單指紋',Archive:'封裝位置',ArchiveSHA256:'封裝指紋（SHA-256）',Generation:'備份世代'};return labels[key]||key;}
   function jobOutputFieldValue(key,value){if(['Status','HandoffStatus'].includes(key))return statusName(value);if(typeof value==='boolean'){if(key==='AuthoritativeApproval')return value?'是':'否；交接本身不代表正式核准';if(key==='ProductionVerified')return value?'是':'否';if(key==='ContentRead')return value?'是':'否';return value?'是':'否';}return typeof value==='string'||typeof value==='number'?String(value).trim():'未知';}
   function translatedWords(value) { return String(value || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2').split(/[^A-Za-z0-9]+/).filter(Boolean).map(word => actionTerms[word] || (/s$/i.test(word) ? actionTerms[word.slice(0, -1)] : '') || '').filter(Boolean).join(''); }
   function actionLabel(action, fallbackOrOrdinal) { if (actionOverrides[action]) return actionOverrides[action]; const tokens = String(action || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2').split(/[^A-Za-z0-9]+/).filter(Boolean), words = translatedWords(action); if (tokens.length && tokens.every(word => actionTerms[word] || (/s$/i.test(word) && actionTerms[word.slice(0, -1)]))) return words; if (typeof fallbackOrOrdinal === 'string' && /[\u3400-\u9fff]/.test(fallbackOrOrdinal)) return fallbackOrOrdinal; return `其他進階操作（第 ${typeof fallbackOrOrdinal === 'number' ? fallbackOrOrdinal : 1} 項）`; }
-  function actionGroup(action, metadata) { const declared = String(metadata && metadata.requiredRole || ''); if (['Source','Manager','Target'].includes(declared)) return declared; const name = String(action || ''); if (name === 'OsProvidedCapture' || /^(Source|Inventory|FreezeSource|SourceResult|SourceTask|SourceResume|NonCPeer)/i.test(name) || name === 'EnrolledInventory') return 'Source'; if (name === 'TargetSnapshot' || name === 'NonCPlan' || name === 'ImportInventory') return 'Manager'; if (name === 'MaterialJobStatus' || /(Target|Preparation|Restore|Rollback|Cutover|Validation|Resource|Reservation|Reserve|Release|Cleanup|NonCPhysical|NonCTransfer|TargetReceipt|WorkspaceTransferRestore)/i.test(name)) return 'Target'; return 'Manager'; }
+  function actionGroup(action, metadata) { const declared = String(metadata && metadata.requiredRole || ''); if (['Source','Manager','Target'].includes(declared)) return declared; const name = String(action || ''); if (name === 'OsProvidedCapture' || /^(Source|Inventory|FreezeSource|SourceResult|SourceTask|SourceResume|NonCPeer)/i.test(name) || name === 'EnrolledInventory') return 'Source'; if (name === 'BackupItemFiles') return 'Source'; if (name === 'TargetSnapshot' || name === 'NonCPlan' || name === 'ImportInventory') return 'Manager'; if (name === 'MaterialJobStatus' || /(Target|Preparation|Restore|Rollback|Cutover|Validation|Resource|Reservation|Reserve|Release|Cleanup|NonCPhysical|NonCTransfer|TargetReceipt|WorkspaceTransferRestore)/i.test(name)) return 'Target'; return 'Manager'; }
   const actionGroupLabels = { Source:'來源端｜盤點與來源材料', Manager:'管理端｜審閱、交付與協調', Target:'目標端｜準備、套用與驗證' };
   const wizardStepLabels = { start:'開始這次搬移', prepare:'準備搬移資料', scan:'掃描可處理內容', review:'審閱搬移項目', backup:'產生已核准備份', handoff:'交接與新主機準備', restore:'選擇並還原內容', validate:'檢查還原結果', result:'查看目前結果' };
   const roleName = value => ({ Source:'舊主機', Target:'新主機', Manager:'整理搬移資料的電腦' })[String(value || '')] || safeText(value);
@@ -1361,6 +1361,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     if (state.jobResultFilter === 'backup') {
       const section = ensureBackupResultsPanel(); section.hidden = false;
       if (state.backupResultsLoadedFor !== currentBackupPair()) loadBackupResults(false);
+      else if (state.backupResultsData && state.backupHashWritten !== location.hash) renderBackupResults(section, state.backupResultsData, false);
     } else {
       const section = $('backup-item-results'); if (section) section.hidden = true;
       state.backupResultsLoadedFor = null;
@@ -1379,33 +1380,42 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       const retry = el('button', 'secondary-button', '重試'); retry.type = 'button'; retry.addEventListener('click', () => loadBackupResults(true)); section.appendChild(retry); return;
     }
     if (token !== state.backupResultsRequest) return;
-    renderBackupResults(section, data, force === true);
+    state.backupResultsData = data; renderBackupResults(section, data, force === true);
   }
+  function backupHashState() {
+    const parts = String(location.hash || '').slice(1).split('?'), query = new URLSearchParams(parts.slice(1).join('?')), page = parseInt(query.get('p') || '1', 10);
+    return { tab: query.get('tab') || '', filters: { type: query.get('type') || '', restore: query.get('restore') || '', copy: query.get('copy') || '', reason: query.get('reason') || '', query: query.get('q') || '', page: Number.isFinite(page) && page > 0 ? page : 1 } };
+  }
+  function backupHashFragment(tab, view) {
+    const query = new URLSearchParams(); query.set('filter', 'backup'); query.set('tab', tab);
+    if (view) { for (const [key, name] of [['type', 'type'], ['restore', 'restore'], ['copy', 'copy'], ['reason', 'reason'], ['query', 'q']]) if (view[key]) query.set(name, view[key]); if (view.page > 0) query.set('p', String(view.page + 1)); }
+    return `#jobs?${query.toString()}`;
+  }
+  function writeBackupHash(tab, view) { const fragment = backupHashFragment(tab, view); if (location.hash !== fragment) history.replaceState(null, '', fragment); state.backupHashWritten = location.hash; }
   function renderBackupResults(section, data, refocus) {
     section.replaceChildren(); backupResultsHeading(section);
     if (!data || data.available !== true) {
       wizardMessage(section, data && data.reason ? data.reason : '目前無法顯示備份明細。', data && data.integrity === 'Failed' ? 'callout' : 'inline-note');
       const again = el('button', 'secondary-button', '重新整理明細'); again.type = 'button'; again.addEventListener('click', () => loadBackupResults(true)); section.appendChild(again); return;
     }
-    const sources = { PackageControls: '封裝內的來源盤點', TrustedInventory: '已核驗的來源盤點', Unavailable: '無法取得來源盤點' }, counts = data.counts || {};
+    const sources = { PackageControls: '封裝內的來源盤點', TrustedInventory: '已核驗的來源盤點', Unavailable: '無法取得來源盤點' }, counts = data.counts || {}, allRows = Array.isArray(data.rows) ? data.rows : [];
     appendSummaryRows(section, [['產生時間', formatEvidenceTime(data.generatedUtc)], ['離線還原就緒', offlineReadinessText(data.offlineReadiness)], ['來源盤點', Object.prototype.hasOwnProperty.call(sources, data.inventorySource) ? sources[data.inventorySource] : safeText(data.inventorySource)]]);
     if (data.inventorySource === 'Unavailable') wizardMessage(section, '無法取得來源盤點，未備份清單只包含核准計畫內的項目，未選入的已發現項目沒有列出。', 'callout');
     const refresh = el('button', 'secondary-button', '重新整理明細'); refresh.type = 'button'; refresh.addEventListener('click', () => loadBackupResults(true)); section.appendChild(refresh);
+    const hashState = backupHashState(), views = {}, initialFor = key => hashState.tab === key ? hashState.filters : null;
     const defs = [
-      { key: 'backed', label: `已備份（${counts.BackedUp == null ? 0 : counts.BackedUp}）`, render: panel => renderBackupRowsPanel(panel, (data.rows || []).filter(r => r.Status === 'BackedUp'), 'backed') },
-      { key: 'pending', label: `未備份（${counts.NotBackedUp == null ? 0 : counts.NotBackedUp}）`, render: panel => renderBackupRowsPanel(panel, (data.rows || []).filter(r => r.Status === 'NotBackedUp'), 'pending') },
+      { key: 'backed', label: `已備份（${counts.BackedUp == null ? 0 : counts.BackedUp}）`, render: panel => { views.backed = renderBackupRowsPanel(panel, allRows.filter(r => r.Status === 'BackedUp'), 'backed', data, initialFor('backed')); } },
+      { key: 'pending', label: `未備份（${counts.NotBackedUp == null ? 0 : counts.NotBackedUp}）`, render: panel => { views.pending = renderBackupRowsPanel(panel, allRows.filter(r => r.Status === 'NotBackedUp'), 'pending', data, initialFor('pending')); } },
       { key: 'software', label: `安裝軟體（${counts.Software == null ? 0 : counts.Software}）`, render: panel => renderSoftwarePanel(panel, data.software || {}) }
     ];
-    const urlTab = new URLSearchParams(String(location.hash || '').split('?')[1] || '').get('tab');
-    let current = defs.some(d => d.key === state.backupResultsTab) ? state.backupResultsTab : defs.some(d => d.key === urlTab) ? urlTab : 'backed';
-    if (defs.some(d => d.key === urlTab) && !defs.some(d => d.key === state.backupResultsTab)) current = urlTab;
+    const current = defs.some(d => d.key === hashState.tab) ? hashState.tab : defs.some(d => d.key === state.backupResultsTab) ? state.backupResultsTab : 'backed';
     state.backupResultsTab = current;
     const tablist = el('div', 'backup-tablist'); tablist.setAttribute('role', 'tablist'); tablist.setAttribute('aria-label', '備份明細分頁'); section.appendChild(tablist);
     const tabs = [], panels = [];
     const select = (key, focus) => {
       state.backupResultsTab = key;
       defs.forEach((d, i) => { const on = d.key === key; tabs[i].setAttribute('aria-selected', on ? 'true' : 'false'); tabs[i].tabIndex = on ? 0 : -1; panels[i].hidden = !on; if (on && focus) tabs[i].focus(); });
-      const fragment = `#jobs?filter=backup&tab=${key}`; if (location.hash !== fragment) history.replaceState(null, '', fragment);
+      writeBackupHash(key, views[key] || null);
     };
     defs.forEach(d => {
       const tab = el('button', 'backup-tab', d.label); tab.type = 'button'; tab.id = `backup-tab-${d.key}`; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-controls', `backup-panel-${d.key}`);
@@ -1420,12 +1430,72 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     });
     select(current, refocus);
   }
-  function renderBackupRowsPanel(panel, rows, kind) {
-    const backed = kind === 'backed';
-    const columns = backed
-      ? [{ h: '名稱', text: r => safeText(r.Name) }, { h: '類型', text: r => safeText(r.Kind) }, { h: '原位置', text: r => safeText(r.Location) }, { h: '通道', text: r => backupChannelText(r.Channel) }, { h: '檔案數', text: r => r.Files == null ? '—' : r.Files }, { h: '大小', text: r => formatBytes(r.Bytes) }]
-      : [{ h: '名稱', text: r => safeText(r.Name) }, { h: '類型', text: r => safeText(r.Kind) }, { h: '原位置', text: r => safeText(r.Location) }, { h: '原因', text: r => safeText(r.Reason) }, { h: '下一步', text: r => safeText(r.NextStep) }, { h: '盤點狀態', text: r => safeText(r.DiscoveryStatus) }];
-    renderBackupPagedTable(panel, { id: `backup-${kind}`, name: backed ? '已備份' : '未備份', caption: backed ? '已備份項目' : '未備份項目', columns, rows, search: r => [r.Name, r.Location], reasonFilter: !backed, csvName: backed ? 'backup-backed-up.csv' : 'backup-not-backed-up.csv' });
+  const BACKUP_RESTORE_LABEL = { Restorable: '可還原', RequiresPrerequisite: '需前置條件', ManualOnly: '僅人工處理', NotApplicable: '不適用' };
+  const BACKUP_RESTORE_ICON = { Restorable: '✓', RequiresPrerequisite: '◐', ManualOnly: '!', NotApplicable: '—' };
+  const BACKUP_RESTORE_CLASS = { Restorable: 'ok', RequiresPrerequisite: 'warn', ManualOnly: 'warn', NotApplicable: 'neutral' };
+  const BACKUP_COPY_LABEL = { Verified: '已驗證', NotVerified: '尚未驗證', Unverifiable: '收據無法核對', Unrecorded: '未記錄' };
+  const BACKUP_COPY_ICON = { Verified: '✓', NotVerified: '○', Unverifiable: '!', Unrecorded: '?' };
+  const BACKUP_COPY_CLASS = { Verified: 'ok', NotVerified: 'neutral', Unverifiable: 'bad', Unrecorded: 'neutral' };
+  function backupPlain(value) { return value == null ? '' : String(value); }
+  function backupTimeText(value) { const date = new Date(String(value || '')); if (!String(value || '').trim() || Number.isNaN(date.getTime())) return '時間未知'; const two = n => String(n).padStart(2, '0'); return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}（本機時間）`; }
+  function backupBadge(info) { const badge = el('span', `backup-badge b-${info.cls}`, info.text); badge.dataset.icon = info.icon; return badge; }
+  function backupWorkloadText(r) { if (!Object.prototype.hasOwnProperty.call(r, 'Workloads') || r.Workloads == null) return '未記錄'; const names = (Array.isArray(r.Workloads) ? r.Workloads : [r.Workloads]).map(backupPlain).filter(Boolean); return names.length ? names.join('、') : '未關聯'; }
+  function backupRestoreInfo(r) {
+    const condition = r && r.RestoreCondition; if (!condition || typeof condition !== 'object') return { code: 'Unrecorded', text: '未記錄', icon: '?', cls: 'neutral' };
+    const code = backupPlain(condition.Code), known = Object.prototype.hasOwnProperty.call(BACKUP_RESTORE_LABEL, code);
+    return { code, text: known ? BACKUP_RESTORE_LABEL[code] : backupPlain(condition.Text) || '未記錄', icon: known ? BACKUP_RESTORE_ICON[code] : '?', cls: known ? BACKUP_RESTORE_CLASS[code] : 'neutral' };
+  }
+  function backupCopyInfo(data) {
+    const copy = data && data.independentCopy, code = copy && Object.prototype.hasOwnProperty.call(BACKUP_COPY_LABEL, backupPlain(copy.state)) ? copy.state : 'Unrecorded';
+    return { code, text: BACKUP_COPY_LABEL[code], icon: BACKUP_COPY_ICON[code], cls: BACKUP_COPY_CLASS[code], verifiedUtc: copy ? backupPlain(copy.verifiedUtc) : '', networkUnconfirmed: !!(copy && copy.networkUnconfirmed), reason: copy ? backupPlain(copy.reason) : '' };
+  }
+  async function fetchBackupItemFiles(itemId, page) {
+    const s = state.session;
+    const data = await endpoint('/api/view', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'BackupItemFiles', args: { ItemId: itemId, Page: page }, expectedRevision: s.revision, expectedDecisionRevision: s.decisionRevision, expectedSelectionRevision: s.selectionRevision, expectedDataVersion: s.dataVersion, contextId: s.contextId }) });
+    if (!data || data.available !== true || !Array.isArray(data.Entries)) throw new Error('伺服端回傳的檔案明細格式不正確。');
+    return data;
+  }
+  function appendBackupSimpleTable(parent, name, caption, headers, rows) {
+    const wrap = el('div', 'table-wrap'); wrap.tabIndex = 0; wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', `${name}表格`);
+    const table = el('table'), head = el('tr'); table.appendChild(el('caption', '', `${caption}，共 ${rows.length} 筆`));
+    headers.forEach(h => { const th = el('th', '', h); th.scope = 'col'; head.appendChild(th); }); table.appendChild(el('thead')).appendChild(head);
+    const body = el('tbody'); rows.forEach(cells => { const tr = el('tr'); cells.forEach(text => tr.appendChild(el('td', '', text === '' ? '—' : text))); body.appendChild(tr); });
+    table.appendChild(body); wrap.appendChild(table); parent.appendChild(wrap); return wrap;
+  }
+  function renderBackupCoverageRegions(panel, data) {
+    panel.appendChild(el('h3', '', '探索未涵蓋區域（以區域列出，不是項目）'));
+    const region = el('div', 'backup-coverage'); region.dataset.coverage = 'unset'; panel.appendChild(region);
+    if (Number(data.schemaVersion) !== 2 || !Array.isArray(data.coverageRegions)) { region.dataset.coverage = 'legacy'; wizardMessage(region, '此結果集未記錄'); return; }
+    if (!data.coverageRegions.length) { region.dataset.coverage = 'empty'; wizardMessage(region, '沒有記錄到未涵蓋區域'); return; }
+    region.dataset.coverage = 'data';
+    appendBackupSimpleTable(region, '探索未涵蓋區域', '探索未涵蓋區域', ['區域', '原因', '下一步'], data.coverageRegions.map(r => [backupPlain(r.Region), backupPlain(r.Reason), backupPlain(r.NextStep)]));
+  }
+  function renderBackupRowsPanel(panel, rows, kind, data, initial) {
+    const backed = kind === 'backed', copy = backupCopyInfo(data), uniqueKinds = [...new Set(rows.map(r => backupPlain(r.Kind)).filter(Boolean))].sort();
+    const typeFilter = { key: 'type', label: '類型', options: uniqueKinds.map(k => ({ value: k, text: k })), match: (r, value) => backupPlain(r.Kind) === value };
+    let columns, filters;
+    const statusBadge = backed ? { text: '已備份', icon: '✓', cls: 'ok' } : { text: '未備份', icon: '✕', cls: 'bad' };
+    if (backed) {
+      const restoreCodes = [...new Set(rows.map(r => backupRestoreInfo(r).code))];
+      const restoreOptions = [...Object.keys(BACKUP_RESTORE_LABEL).filter(code => restoreCodes.includes(code)), ...restoreCodes.filter(code => !Object.prototype.hasOwnProperty.call(BACKUP_RESTORE_LABEL, code))].map(code => ({ value: code, text: Object.prototype.hasOwnProperty.call(BACKUP_RESTORE_LABEL, code) ? BACKUP_RESTORE_LABEL[code] : '未記錄' }));
+      filters = [typeFilter,
+        { key: 'restore', label: '可還原條件', options: restoreOptions, match: (r, value) => backupRestoreInfo(r).code === value },
+        { key: 'copy', label: '獨立副本', options: ['Verified', 'NotVerified', 'Unverifiable', 'Unrecorded'].map(code => ({ value: code, text: BACKUP_COPY_LABEL[code] })), match: (r, value) => copy.code === value }];
+      columns = [{ h: '名稱', text: r => backupPlain(r.Name) }, { h: '類型', nowrap: true, text: r => backupPlain(r.Kind) }, { h: '工作負載', text: backupWorkloadText }, { h: '原位置', text: r => backupPlain(r.Location) }, { h: '通道', nowrap: true, text: r => backupChannelText(r.Channel) }, { h: '檔案數', nowrap: true, text: r => r.Files == null ? '' : r.Files }, { h: '大小', nowrap: true, text: r => formatBytes(r.Bytes) },
+        { h: '狀態', text: () => statusBadge.text, badge: () => statusBadge }, { h: '可還原條件', text: r => backupRestoreInfo(r).text, badge: r => backupRestoreInfo(r) },
+        { h: '獨立副本', csv: false, text: () => copy.text, badge: () => copy, extra: () => copy.code === 'Verified' && copy.verifiedUtc ? `收據時間 ${backupTimeText(copy.verifiedUtc)}${copy.networkUnconfirmed ? '；網路位置，可用性未確認' : ''}` : '' }];
+    } else {
+      const reasonSeen = new Map(); rows.forEach(r => { const code = backupPlain(r.ReasonCode); if (code && !reasonSeen.has(code)) reasonSeen.set(code, backupPlain(r.Reason) || code); });
+      filters = [typeFilter, { key: 'reason', label: '原因', options: [...reasonSeen.entries()].map(([value, text]) => ({ value, text })), match: (r, value) => backupPlain(r.ReasonCode) === value }];
+      columns = [{ h: '名稱', text: r => backupPlain(r.Name) }, { h: '類型', nowrap: true, text: r => backupPlain(r.Kind) }, { h: '工作負載', text: backupWorkloadText }, { h: '原位置', text: r => backupPlain(r.Location) }, { h: '原因', text: r => backupPlain(r.Reason) }, { h: '下一步', text: r => backupPlain(r.NextStep) }, { h: '盤點狀態', nowrap: true, text: r => backupPlain(r.DiscoveryStatus) }, { h: '狀態', text: () => statusBadge.text, badge: () => statusBadge }];
+    }
+    if (backed) {
+      panel.appendChild(el('p', 'inline-note backup-copy-note', '「獨立副本」欄只表示備份可取用（收據在每次讀取時重新核對），不授權關閉舊機；舊機何時可以關閉，仍須另依停機窗口與負責人確認。'));
+      if (copy.code === 'Unverifiable') wizardMessage(panel, `獨立副本收據無法核對，整欄不顯示為已驗證：${copy.reason || '收據檔遺失或內容已被更改。'}`, 'callout');
+    }
+    const view = renderBackupPagedTable(panel, { id: `backup-${kind}`, name: backed ? '已備份' : '未備份', caption: backed ? '已備份項目' : '未備份項目', columns, rows, filters, initial, csvMeta: true, search: r => [r.Name, r.Location], csvName: backed ? 'backup-backed-up.csv' : 'backup-not-backed-up.csv', drill: backed ? { load: fetchBackupItemFiles } : null, onChange: v => { if (state.backupResultsTab === kind) writeBackupHash(kind, v); } });
+    if (!backed) renderBackupCoverageRegions(panel, data);
+    return view;
   }
   function renderSoftwarePanel(panel, software) {
     const softwareRows = Array.isArray(software.SoftwareRows) ? software.SoftwareRows : [], featureRows = Array.isArray(software.FeatureRows) ? software.FeatureRows : [], gaps = Array.isArray(software.CoverageGaps) ? software.CoverageGaps : [];
@@ -1440,36 +1510,100 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       columns: [{ h: '顯示名稱', text: r => safeText(r.Name) }, { h: 'Install-WindowsFeature 名稱', text: r => safeText(r.FeatureName), code: true }] });
   }
   function renderBackupPagedTable(panel, cfg) {
-    const pageSize = 100, view = { query: '', reason: '', page: 0 }, rows = cfg.rows;
+    const pageSize = 100, rows = cfg.rows, filterDefs = cfg.filters || [], view = { query: '', page: 0 };
+    filterDefs.forEach(f => { view[f.key] = ''; });
+    const init = cfg.initial;
+    if (init) { view.query = String(init.query || ''); filterDefs.forEach(f => { const value = String(init[f.key] || ''); if (f.options.some(o => o.value === value)) view[f.key] = value; }); view.page = Math.max(0, (Number(init.page) || 1) - 1); }
     const bar = el('div', 'backup-toolbar'), searchId = `${cfg.id}-search`, label = el('label', '', '搜尋名稱或位置'); label.htmlFor = searchId;
-    const input = el('input'); input.type = 'search'; input.id = searchId; input.autocomplete = 'off'; bar.append(label, input);
-    let reasonSelect = null;
-    if (cfg.reasonFilter) {
-      const reasonId = `${cfg.id}-reason`, reasonLabel = el('label', '', '原因'); reasonLabel.htmlFor = reasonId; reasonSelect = el('select'); reasonSelect.id = reasonId; reasonSelect.appendChild(new Option('全部', ''));
-      const seen = new Set(); rows.forEach(r => { const code = String(r.ReasonCode == null ? '' : r.ReasonCode); if (code && !seen.has(code)) { seen.add(code); reasonSelect.appendChild(new Option(String(r.Reason || code), code)); } });
-      bar.append(reasonLabel, reasonSelect);
-    }
+    const input = el('input'); input.type = 'search'; input.id = searchId; input.autocomplete = 'off'; input.value = view.query; bar.append(label, input);
+    filterDefs.forEach(f => {
+      const id = `${cfg.id}-${f.key}`, group = el('span', 'backup-filter'), filterLabel = el('label', '', f.label), select = el('select'); filterLabel.htmlFor = id; select.id = id; select.appendChild(new Option('全部', ''));
+      f.options.forEach(o => select.appendChild(new Option(o.text, o.value))); select.value = view[f.key];
+      select.addEventListener('change', () => { view[f.key] = select.value; view.page = 0; draw(true); }); group.append(filterLabel, select); bar.appendChild(group);
+    });
     const exportButton = el('button', 'secondary-button', '匯出 CSV'); exportButton.type = 'button'; bar.appendChild(exportButton);
+    const count = el('div', 'backup-count'); count.setAttribute('role', 'status'); count.setAttribute('aria-atomic', 'true'); bar.appendChild(count);
     const out = el('div', 'backup-table-area'); panel.append(bar, out);
-    const filtered = () => { const q = view.query.toLocaleLowerCase(); return rows.filter(r => (!view.reason || String(r.ReasonCode == null ? '' : r.ReasonCode) === view.reason) && (!q || cfg.search(r).some(v => String(v == null ? '' : v).toLocaleLowerCase().includes(q)))); };
-    const draw = () => {
+    const csvColumns = cfg.columns.filter(c => c.csv !== false), expanded = new Map(), hosts = new Map();
+    let detailSequence = 0;
+    const filtered = () => { const q = view.query.trim().toLocaleLowerCase(); return rows.filter(r => filterDefs.every(f => !view[f.key] || f.match(r, view[f.key])) && (!q || cfg.search(r).some(v => String(v == null ? '' : v).toLocaleLowerCase().includes(q)))); };
+    const paintDetail = (itemId, focusTitle) => {
+      const host = hosts.get(itemId), info = expanded.get(itemId); if (!host || !info) return; host.replaceChildren();
+      if (info.status === 'loading') { const p = el('p', 'wizard-loading', '正在讀取檔案明細…'); p.setAttribute('role', 'status'); host.appendChild(p); return; }
+      if (info.status === 'error') {
+        wizardMessage(host, `無法讀取檔案明細：${info.error}`, 'callout');
+        const retry = el('button', 'secondary-button', '重試'); retry.type = 'button'; retry.addEventListener('click', () => loadDetail(itemId, info.page)); host.appendChild(retry); return;
+      }
+      const data = info.data, total = Number(data.TotalCount) || 0, pages = Math.max(1, Number(data.PageCount) || 1), entries = data.Entries;
+      const title = el('h4', 'backup-detail-title', `${info.name} 的封存檔案`); title.tabIndex = -1; host.appendChild(title);
+      if (!total) { wizardMessage(host, '沒有檔案明細：此項目在封存套件中沒有檔案（可能只封存設定）。'); if (focusTitle) title.focus(); return; }
+      const dirs = Number(data.DirectoryCount) || 0;
+      host.appendChild(el('p', 'inline-note', `共 ${total} 筆（其中目錄 ${dirs} 筆），讀自已核驗的封存套件；SHA-256 只顯示前 12 碼。`));
+      const wrap = el('div', 'table-wrap'); wrap.tabIndex = 0; wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', `${info.name} 的檔案明細表格`);
+      const table = el('table'), head = el('tr'); table.appendChild(el('caption', '', `${info.name} 的檔案明細，第 ${data.Page}／${pages} 頁，共 ${total} 筆`));
+      ['相對路徑', '大小', 'SHA-256 前 12 碼', '類型'].forEach(h => { const th = el('th', '', h); th.scope = 'col'; head.appendChild(th); }); table.appendChild(el('thead')).appendChild(head);
+      const body = el('tbody'); entries.forEach(entry => {
+        const tr = el('tr'), path = el('td'), size = el('td', '', entry.IsDirectory ? '—' : formatBytes(entry.Bytes)), hash = el('td'), kindCell = el('td');
+        path.appendChild(el('code', 'backup-path', backupPlain(entry.RelativePath) || '（根目錄）')); hash.appendChild(el('code', '', entry.IsDirectory ? '—' : backupPlain(entry.Sha256Prefix) || '—'));
+        kindCell.appendChild(backupBadge(entry.IsDirectory ? { text: '目錄', icon: '▣', cls: 'neutral' } : { text: '檔案', icon: '▪', cls: 'ok' })); tr.append(path, size, hash, kindCell); body.appendChild(tr);
+      });
+      table.appendChild(body); wrap.appendChild(table); host.appendChild(wrap);
+      const pager = el('div', 'backup-pager'), prev = el('button', 'secondary-button', '上一頁'), next = el('button', 'secondary-button', '下一頁'), pageText = el('span', '', `第 ${data.Page}／${pages} 頁，共 ${total} 筆`);
+      prev.type = 'button'; next.type = 'button'; prev.disabled = info.page <= 1; next.disabled = info.page >= pages;
+      prev.addEventListener('click', () => loadDetail(itemId, info.page - 1, true)); next.addEventListener('click', () => loadDetail(itemId, info.page + 1, true));
+      pager.append(prev, pageText, next); host.appendChild(pager);
+      if (focusTitle) title.focus();
+    };
+    const loadDetail = (itemId, page, focusTitle) => {
+      const info = expanded.get(itemId); if (!info) return; const token = ++info.token; info.page = page; info.status = 'loading'; paintDetail(itemId);
+      cfg.drill.load(itemId, page).then(data => { if (info.token !== token || expanded.get(itemId) !== info) return; info.status = 'ready'; info.data = data; paintDetail(itemId, focusTitle); }, error => { if (info.token !== token || expanded.get(itemId) !== info) return; info.status = 'error'; info.error = error && error.message ? error.message : String(error); paintDetail(itemId); });
+    };
+    const draw = user => {
       const list = filtered(), pages = Math.max(1, Math.ceil(list.length / pageSize)); if (view.page >= pages) view.page = pages - 1; if (view.page < 0) view.page = 0;
-      out.replaceChildren();
-      if (!list.length) { wizardMessage(out, rows.length ? '沒有符合搜尋條件的項目' : '沒有項目'); return; }
+      count.textContent = `顯示 ${list.length}／共 ${rows.length} 筆`;
+      out.replaceChildren(); hosts.clear();
+      if (!list.length) { wizardMessage(out, rows.length ? (filterDefs.some(f => view[f.key]) ? '沒有符合搜尋或篩選條件的項目' : '沒有符合搜尋條件的項目') : '沒有項目'); if (user && cfg.onChange) cfg.onChange(view); return; }
       const wrap = el('div', 'table-wrap'); wrap.tabIndex = 0; wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', `${cfg.name}表格`);
       const table = el('table'), head = el('tr'); table.appendChild(el('caption', '', `${cfg.caption}，共 ${list.length} 筆`));
-      cfg.columns.forEach(c => { const th = el('th', '', c.h); th.scope = 'col'; head.appendChild(th); }); table.appendChild(el('thead')).appendChild(head);
-      const body = el('tbody'); list.slice(view.page * pageSize, (view.page + 1) * pageSize).forEach(r => { const tr = el('tr'); cfg.columns.forEach(c => { const td = el('td'); if (c.code) td.appendChild(el('code', '', c.text(r))); else td.textContent = String(c.text(r)); tr.appendChild(td); }); body.appendChild(tr); });
+      const headers = cfg.columns.map(c => c.h).concat(cfg.drill ? ['檔案明細'] : []);
+      headers.forEach(h => { const th = el('th', '', h); th.scope = 'col'; head.appendChild(th); }); table.appendChild(el('thead')).appendChild(head);
+      const body = el('tbody');
+      list.slice(view.page * pageSize, (view.page + 1) * pageSize).forEach(r => {
+        const tr = el('tr'); if (r.ItemId != null) { tr.dataset.id = String(r.ItemId); tr.dataset.status = backupPlain(r.Status); tr.dataset.reason = backupPlain(r.ReasonCode); }
+        cfg.columns.forEach(c => {
+          const td = el('td', c.nowrap ? 'backup-nowrap' : '');
+          if (c.badge) { td.appendChild(backupBadge(c.badge(r))); const extra = c.extra ? c.extra(r) : ''; if (extra) td.appendChild(el('small', 'backup-badge-extra', extra)); }
+          else if (c.code) td.appendChild(el('code', '', c.text(r)));
+          else { const text = String(c.text(r)); td.textContent = text === '' ? '—' : text; }
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+        if (cfg.drill) {
+          const itemId = String(r.ItemId), td = el('td'), open = expanded.has(itemId), detailId = `${cfg.id}-detail-${++detailSequence}`;
+          const button = el('button', 'secondary-button backup-expand', '檔案明細'); button.type = 'button'; button.setAttribute('aria-expanded', open ? 'true' : 'false'); button.setAttribute('aria-controls', detailId); button.setAttribute('aria-label', `檔案明細：${backupPlain(r.Name)}`);
+          td.appendChild(button); tr.appendChild(td);
+          const detailRow = el('tr', 'backup-detail-row'), detailCell = el('td'), host = el('div', 'backup-detail'); detailRow.id = detailId; detailRow.hidden = !open; detailCell.colSpan = headers.length; detailCell.appendChild(host); detailRow.appendChild(detailCell); body.appendChild(detailRow); hosts.set(itemId, host);
+          if (open) paintDetail(itemId);
+          button.addEventListener('click', () => {
+            if (expanded.has(itemId)) { expanded.delete(itemId); button.setAttribute('aria-expanded', 'false'); detailRow.hidden = true; host.replaceChildren(); return; }
+            expanded.set(itemId, { name: backupPlain(r.Name), page: 1, token: 0, status: 'loading', data: null, error: '' }); button.setAttribute('aria-expanded', 'true'); detailRow.hidden = false; loadDetail(itemId, 1);
+          });
+        }
+      });
       table.appendChild(body); wrap.appendChild(table); out.appendChild(wrap);
-      const pager = el('div', 'backup-pager'), prev = el('button', 'secondary-button', '上一頁'), next = el('button', 'secondary-button', '下一頁'), status = el('span', '', `第 ${view.page + 1}／${pages} 頁，共 ${list.length} 筆`);
-      prev.type = 'button'; next.type = 'button'; prev.disabled = view.page <= 0; next.disabled = view.page >= pages - 1; status.setAttribute('aria-live', 'polite');
-      prev.addEventListener('click', () => { view.page--; draw(); }); next.addEventListener('click', () => { view.page++; draw(); });
-      pager.append(prev, status, next); out.appendChild(pager);
+      const pager = el('div', 'backup-pager'), prev = el('button', 'secondary-button', '上一頁'), next = el('button', 'secondary-button', '下一頁'), pageText = el('span', '', `第 ${view.page + 1}／${pages} 頁，共 ${list.length} 筆`);
+      prev.type = 'button'; next.type = 'button'; prev.disabled = view.page <= 0; next.disabled = view.page >= pages - 1;
+      prev.addEventListener('click', () => { view.page--; draw(true); }); next.addEventListener('click', () => { view.page++; draw(true); });
+      pager.append(prev, pageText, next); out.appendChild(pager);
+      if (user && cfg.onChange) cfg.onChange(view);
     };
-    input.addEventListener('input', () => { view.query = input.value.trim(); view.page = 0; draw(); });
-    if (reasonSelect) reasonSelect.addEventListener('change', () => { view.reason = reasonSelect.value; view.page = 0; draw(); });
-    exportButton.addEventListener('click', () => downloadCsv(cfg.csvName, cfg.columns.map(c => c.h), filtered().map(r => cfg.columns.map(c => c.text(r)))));
-    draw();
+    input.addEventListener('input', () => { view.query = input.value.trim(); view.page = 0; draw(true); });
+    exportButton.addEventListener('click', () => {
+      const headers = csvColumns.map(c => c.h).concat(cfg.csvMeta ? ['項目 ID', '狀態碼', '原因碼'] : []);
+      downloadCsv(cfg.csvName, headers, filtered().map(r => csvColumns.map(c => c.text(r)).concat(cfg.csvMeta ? [backupPlain(r.ItemId), backupPlain(r.Status), backupPlain(r.ReasonCode)] : [])));
+    });
+    draw(false);
+    return view;
   }
   function renderJobs() {
     syncBackupResultsPanel(); maybeAutoOpenCredentialDialog();

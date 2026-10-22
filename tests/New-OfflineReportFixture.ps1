@@ -26,7 +26,9 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
             if($i % 3 -eq 0 -and $i -ne 180){$planItems.Add((& $item $id $name ([pscustomobject]@{Adapter='Service'}) 'Include' 'Service' 'Services'))}
             else{
                 $planItems.Add((& $item $id $name (& $file 'C') 'Include'))
-                $artifacts.Add([pscustomobject]@{ItemId=$id;RelativePath='a.txt';Directory=$false;Data=[pscustomobject]@{Bytes=(100+$i)}})
+                # Mixed magnitudes so the size text (B / KiB / MiB, one decimal, exact halves) is compared between the report and the workbench.
+                $bytes=(100+$i);if($i -eq 2){$bytes=3407872}elseif($i -eq 4){$bytes=1280}elseif($i % 7 -eq 0){$bytes=$i*1500}
+                $artifacts.Add([pscustomobject]@{ItemId=$id;RelativePath='a.txt';Directory=$false;Data=[pscustomobject]@{Bytes=$bytes}})
             }
         }elseif($i -le 240){$planItems.Add((& $item $id $name (& $file 'C') 'Exclude'))}
         elseif($i -le 270){$planItems.Add((& $item $id $name (& $file 'C') 'Pending'))}

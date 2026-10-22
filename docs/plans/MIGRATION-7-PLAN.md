@@ -965,6 +965,46 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 工作負載是依相依關係「可到達」，共用資源會列出多個工作負載。
   - 報告 CSV 在尾端附加項目 ID、狀態碼、原因碼三欄；B2 完成後需要和工作台 CSV 對齊。
   - 色彩對比為估算，沒有用量測工具驗證。
+### 17.66 B2 工作台「備份結果」接上結果集 v2（獨立副本欄、篩選、下鑽、跨畫面一致）
+
+- 由 Sonnet 5.5 subagent 實作。主代理審查時補上一個授權缺口，然後獨立重跑測試。設計依 ui-ux-pro-max 準則。
+- 獨立副本已驗證欄：
+  - 以 attempt 記錄的 ReceiptPath／ReceiptSHA256 為錨點，逐項核對，任一項不符就顯示「收據無法核對」：
+    - 收據位於收據資料夾內；
+    - 檔案存在；
+    - SHA256 一致；
+    - Kind、PairId、AttemptId、DeliverySHA256 相符；
+    - 收據引用的 `ItemResultsSHA256` 等於目前結果集的 hash。
+  - 沒有收據時顯示「尚未驗證」。頁首註明此欄只表示備份可取用，不授權關閉舊機。
+  - 收據寫入端新增 `ItemResultsSHA256` 欄位（`WizardBackup.ps1`）。本來規格只允許唯讀核對，但這個欄位是讓綁定成立的唯一方式，主代理接受。舊收據沒有這個欄位，會顯示「收據無法核對」。
+  - attempt 只記錄最新一份收據，所以只認這一份；最新一次複製失敗時，回到「尚未驗證」。
+- 欄位與篩選：
+  - 已備份頁加上工作負載與可還原條件（短標籤）；未備份頁的原因直接取自結果集，包含 PermissionDenied。舊結果集的這些欄位顯示「未記錄」。
+  - 已備份頁可依類型、可還原條件、獨立副本狀態篩選；未備份頁可依類型、原因篩選。篩選可與搜尋疊加。
+  - 筆數只透過單一 `role=status` 元素播報。分頁、篩選、頁碼都寫進 URL hash，重新整理或返回後仍會保留。
+- 未涵蓋區域：有資料、空集合、舊結果集三種情況分開顯示。
+- 下鑽：新增唯讀 action `BackupItemFiles`（`Get-WsmWizardBackupItemFiles`），限 Source 角色，只能透過 `/api/view` 呼叫，不寫 journal。
+  - 讀取前依序核對：attempt 已封存且 Valid、manifest 位元組、結果集的 ManifestHash、`artifacts.jsonl` 的 ArtifactsHash。
+  - 每頁 100 筆並回傳總數，目錄成員會標示出來。
+  - 畫面上有 loading、錯誤（附重試）、空集合三種狀態，展開鈕帶 `aria-expanded`。
+  - 主代理修正：HTML 路由只在參數缺少時才補入工作階段的 `Workspace`、`PairId`（`HtmlConsole.ps1` 約 :1371），subagent 版本對兩者照單全收，前端可藉此指向別的工作區。現在要求兩者必須等於工作階段綁定，否則拒絕，並加上測試守門。
+  - 同型風險待查（M6）：其他 action 是否也接受前端自帶的 `Workspace`／`PairId` 而沒有比對（TargetRestore 已有比對）。
+- CSV 與跨畫面一致：
+  - 工作台 CSV 與離線報告 CSV 的欄名、順序、每列內容完全相同，尾端都附上項目 ID、狀態碼、原因碼。
+  - 對同一份結果集，以下四方對每個 ItemId 的狀態碼與原因碼一致：JSON、報告 CSV、工作台 CSV、工作台 DOM。另外驗證已備份與未備份的聯集等於全部列。
+- 驗證（WinPS 5.1、真實 Edge）：見提交說明。截圖存在 `work/r7/screens/b2-*.png`。
+- 突變（皆轉紅）：
+  - 收據 hash 不核對；
+  - 篩選不寫進 hash；
+  - 下鑽不分頁；
+  - 下鑽讀未驗證的 artifacts（第一次存活，因為竄改測試只加了換行；改成修改內容後轉紅）；
+  - 工作台 CSV 少一欄；
+  - 不比對前端傳入的 Workspace（主代理）。
+- 限制：
+  - 下鑽不重驗每個 payload blob，檔案清單本身受 hash 鏈保護。
+  - 瀏覽器測試用 mock API 搭配真實的 `src/ui`；後端整合由 PowerShell 測試與 NativeWizardRuntimeHandler（真實 HTTP 路由下鑽）覆蓋。
+  - 寬表格在桌面捲到右側時，下鑽面板會跟著表格一起捲動。
+  - `Test-HtmlBridge`（ECONNRESET）與 `Test-WizardRuntimeUi`（TimeoutError）在 HEAD 就已經失敗，另段處理。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
