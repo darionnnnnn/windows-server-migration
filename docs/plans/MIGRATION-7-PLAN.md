@@ -853,6 +853,13 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：TargetRestoreContinuation 112（D5 正例三檔＋子目錄每檔只寫一次；反例：別的父作業、別的世代、中斷後被外部改內容都不授予擁有權；D6 正例：續作回 WaitingForInput 只含 Service、舊 session 回覆被拒、新 session 後 Service 只套用一次且 Succeeded；反例：延後組、已擁有的 Service）、AssistiveRestore 140、AssistiveRecoveryBoundaries 6、AssistiveRollback 16、RecoveryContracts、ServiceCredentialChallenge 46、CredentialDeferral 68、WizardRestore 85、HtmlConsole 165、WizardRuntime 161、JournalAppendFailure 22、ScriptEncoding 通過。突變：拿掉檔案採用、拿掉目錄採用、拿掉重新要求帳密（subagent）、拿掉父作業比對（主代理）皆以專屬斷言轉紅。
 - 限制與後續（本輪處理，J1）：`JournalRecovery.ps1` 的重播清單沒有涵蓋本輪新增（以及部分既有）的 journal 動作，state 落後 journal 的窄窗崩潰後會以「保留證據、需人工」失敗關閉；`AssistivePartialOwnership` 也不會被重播（該窄窗中崩潰時保守判為衝突）。
 
+### 17.58 E3b-4 續作後預覽因自身寫入改變時，父作業耐久重綁（修 G-D7）
+
+- G 旅程發現：續作寫完崩潰前未完成的檔案後，預覽列因本父作業自己的寫入而改變；之後再送帳密時，`New-WsmHtmlTargetRestoreChallengeArguments`、核心 `Invoke-WsmWizardTargetRestore` 等仍以原預覽 hash 嚴格比對而拒絕，E3b-3 的「重新要求帳密」在 HTTP 上走不完。
+- 第一位 Sonnet 5.5 subagent 做到一半因使用者暫停而停止；第二位審視後沿用全部 src 改動並完成測試，主代理獨立重跑。新增 `Update-WsmWizardTargetRestorePreviewBinding`（鎖內；只有既有單一判定 `Test-WsmWizardTargetRestorePreviewCurrent` 為真且 hash 不同才把 attempt 的 `WizardPreviewHash`／`PreviewRowHashes` 與 challenge 的 `PreviewHash` 改為目前值，寫 journal `AssistiveRestorePreviewRebound`；判定為假仍丟原錯誤）與包裝 `Resolve-WsmWizardTargetRestorePreviewBinding`。呼叫點：Resume 接受自身漂移後、續作回到等待時、HTML 送帳密與延後前（並以 `Update-WsmHtmlJobPreviewBinding` 把新 hash 耐久寫回 job 檔）、CLI 續作再送帳密前；worker 回報等待時 `Sync-WsmHtmlJobPreviewHashFromWaiting` 只在 durable attempt 與 challenge 都帶該 hash 時才採用。重播 switch 新增該動作的 handler。沒有任何嚴格比對被放寬。
+- 取消與接管端點沒有自己重綁：它們要求 job 為 WaitingForInput，而 job 只會在 worker 完成並同步 hash 後才回到等待，所以不存在「hash 已重綁但 job 未同步」的可操作窗口（主代理判斷）。
+- 驗證（WinPS 5.1）：TargetRestoreContinuation 133、HtmlConsole 175、WizardRestore 85、ServiceCredentialChallenge 46、CredentialDeferral 68、AssistiveRestore 140、RecoveryContracts、JournalAppendFailure 22、HtmlRouteMatches 9、ActionExports 194、WizardRuntime 161、ScriptEncoding、Node CredentialDialogUi、真實 Edge NativeWizardRuntimeHandler 兩次通過。突變：不更新 challenge 的 hash、判定為假仍重綁（專屬斷言）、HTML 不寫回 job hash（既有守門擋下）皆轉紅。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

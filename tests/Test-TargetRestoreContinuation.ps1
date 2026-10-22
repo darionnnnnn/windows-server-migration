@@ -303,11 +303,11 @@ try {
         }finally{Set-Item Function:\Read-WsmWizardValue -Value $originalCliPrompt}
 
         # ---- E3b-3: mid-flight FileScope ownership (D5) and re-asking for the credential on continuation (D6) ----
-        $script:payloadCopies=@{};$script:crash=$null
+        $script:payloadCopies=@{};$script:crash=$null;$script:onPayload=$null;$script:driftFixture=$null;$script:driftHash=''
         $script:realJournal=(Get-Command Add-WsmJournal -CommandType Function).ScriptBlock
         Set-Item Function:\Add-WsmJournal -Value {param($Paths,$State,[string]$Action,[string]$ItemId,$Detail)if($script:crash){if($script:crash.Dead){throw 'SIMULATED-PROCESS-DEATH'};if($Action -ceq $script:crash.Action){$script:crash.Seen++;if($script:crash.Seen -eq $script:crash.N){$script:crash.Dead=$true;throw [OperationCanceledException]::new('SIMULATED-PROCESS-DEATH')}}};& $script:realJournal $Paths $State $Action $ItemId $Detail}
         Set-Item Function:\Read-WsmArtifactLines -Value {param($Path,$Hash,$CancellationToken)$script:fixture.Entries}
-        Set-Item Function:\Restore-WsmPayloadBytes -Value {param($Entry,$PackageRoot,$Destination,$CancellationToken)$key=[string]$Entry.RelativePath;if($script:payloadCopies.ContainsKey($key)){$script:payloadCopies[$key]++}else{$script:payloadCopies[$key]=1};[IO.File]::Copy([string]$Entry.Data.SourcePath,$Destination,$true)}
+        Set-Item Function:\Restore-WsmPayloadBytes -Value {param($Entry,$PackageRoot,$Destination,$CancellationToken)$key=[string]$Entry.RelativePath;if($script:onPayload){& $script:onPayload $key};if($script:payloadCopies.ContainsKey($key)){$script:payloadCopies[$key]++}else{$script:payloadCopies[$key]=1};[IO.File]::Copy([string]$Entry.Data.SourcePath,$Destination,$true)}
         function Set-FixtureAcl([string]$Path){$acl=Get-Acl -LiteralPath $Path;$acl.SetAccessRuleProtection($true,$false);$inherit=[Security.AccessControl.InheritanceFlags]([int][Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [int][Security.AccessControl.InheritanceFlags]::ObjectInherit);foreach($id in @([Security.Principal.WindowsIdentity]::GetCurrent().User.Value,'S-1-5-18','S-1-5-32-544')){$sid=New-Object Security.Principal.SecurityIdentifier($id);[void]$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,[Security.AccessControl.FileSystemRights]::FullControl,$inherit,[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow))};Set-Acl -LiteralPath $Path -AclObject $acl}
         function NewScopeFixture([bool]$WithService){
             $pair=[Guid]::NewGuid().ToString('D');$parent=[Guid]::NewGuid().ToString('D')
@@ -436,6 +436,67 @@ try {
         $ste3.Items=@($ste3.Items)+@([pscustomobject]@{ItemId=$e3.Ids['Svc'];Status='Succeeded';CreatedByTool=$true;AppliedManifestHash=$manifestHash;AppliedGeneration=7;ActualHash=('7'*64);Target=$e3.ServiceName;Error='';NativeCode=0});Write-WsmJson $pe3.State $ste3
         $r6e=ResumeNow $e3 -Context (NewContext $e3.Parent 'session-two')
         Check ($r6e.Status -ceq 'Succeeded' -and $script:writes -eq 0) ('D6: a Service that already exists and is owned was asked for a credential; status='+$r6e.Status)
+
+        # ---- E3b-4: a preview that moved because of this parent's own writes is rebound durably (G-D7) ----
+        function JournalRows([string]$Pair){$jp=(Get-WsmOperationPaths $pairsDirectory $Pair).Journal;@([IO.File]::ReadAllLines($jp)|Where-Object {$_}|ForEach-Object {ConvertFrom-WsmJson $_})}
+        function ReboundRows([string]$Pair){@(JournalRows $Pair|Where-Object Action -CEQ 'AssistiveRestorePreviewRebound')}
+        function DriftFilesRow($Fixture,[string]$Hash){
+            $Fixture.Projection.Rows=@($Fixture.Projection.Rows|ForEach-Object {$c=$_.PSObject.Copy();if([string]$c.ItemId -ceq $Fixture.Ids['Files']){$c.Action='MergeIntoExistingDirectory';$c.Reason='Rows written by this parent.'};$c})
+            $Fixture.Projection.PreviewHash=$Hash
+        }
+        $rebindHash=('5'*64)
+        $g1=StartDeadServiceRun
+        $ctxG=NewContext $g1.Parent 'session-two'
+        # the continuation itself writes the third file, which is what moves the live preview (the Files row turns into a merge)
+        $script:driftFixture=$g1;$script:driftHash=$rebindHash
+        $script:onPayload={param($key)if($key -ceq 'three.txt'){DriftFilesRow $script:driftFixture $script:driftHash}}
+        try{$gr=ResumeNow $g1 -Context $ctxG}finally{$script:onPayload=$null}
+        $sg=StateOf $g1
+        Check ($gr.Status -ceq 'WaitingForInput' -and [string]$gr.PreviewHash -ceq $rebindHash) ('E3b-4: the waiting result must carry the rebound preview hash; status='+$gr.Status+' hash='+$gr.PreviewHash)
+        Check ([string]$sg.RestoreAttempt.WizardPreviewHash -ceq $rebindHash -and [string]$sg.AssistiveServiceChallenge.PreviewHash -ceq $rebindHash) 'E3b-4: attempt and challenge were not both rebound to the current preview.'
+        $expectedRows=@(Get-WsmAssistivePreviewRowHashes $g1.Projection.Rows)
+        Check ((($sg.RestoreAttempt.PreviewRowHashes|ForEach-Object {$_.ItemId+'='+$_.Hash}) -join ';') -ceq (($expectedRows|ForEach-Object {$_.ItemId+'='+$_.Hash}) -join ';')) 'E3b-4: the stored per-row digests were not moved to the current rows.'
+        $reboundG=@(ReboundRows $g1.Pair)
+        Check ($reboundG.Count -eq 1 -and [string]$reboundG[0].Detail.ParentOperationId -ceq $g1.Parent -and [string]$reboundG[0].Detail.PreviousPreviewHash -ceq $previewHash -and [string]$reboundG[0].Detail.PreviewHash -ceq $rebindHash -and [string]$reboundG[0].Detail.Reason -ceq 'OwnWritesExplained') 'E3b-4: AssistiveRestorePreviewRebound was not journalled once with parent, old hash, new hash and reason.'
+        # strictness is unchanged: the old reviewed hash no longer matches the durable parent
+        $cred7=New-Object Management.Automation.PSCredential('CONTOSO\svc-app',(ConvertTo-SecureString 'SYNTHETIC-E3B4-SENTINEL-2d1e' -AsPlainText -Force))
+        $script:fixture=$g1
+        Reject {Invoke-WsmWizardTargetRestore -Workspace $root -PairId $g1.Pair -PreviewHash $previewHash -Jobs @() -OperationId $g1.Parent -CancellationToken ([pscustomobject]@{OperationId=$g1.Parent}) -Secrets @{ServiceSecretA=$cred7} -ChallengeContext $ctxG} 'E3b-4: the superseded old preview hash was still accepted.'
+        Check ($script:writes -eq 0) 'E3b-4: a refused old-hash reply wrote natively.'
+        $doneG=Invoke-WsmWizardTargetRestore -Workspace $root -PairId $g1.Pair -PreviewHash ([string]$gr.PreviewHash) -Jobs @() -OperationId $g1.Parent -CancellationToken ([pscustomobject]@{OperationId=$g1.Parent}) -Secrets @{ServiceSecretA=$cred7} -ChallengeContext $ctxG
+        Check ($doneG.Status -ceq 'Succeeded' -and $script:writes -eq 1 -and @($script:writeLog|Where-Object {$_ -ceq $g1.ServiceName}).Count -eq 1) ('E3b-4: the Service was not applied exactly once with the rebound hash; status='+$doneG.Status)
+        Check ($script:payloadCopies['one.txt'] -eq 1 -and $script:payloadCopies['sub\two.txt'] -eq 1 -and $script:payloadCopies['three.txt'] -eq 1) 'E3b-4: a file was written again after the rebind.'
+        Check (@(ReboundRows $g1.Pair).Count -eq 1) 'E3b-4: the final restore rebound the preview again although the hash was unchanged.'
+
+        # equal hash: nothing is written and the stored value is returned
+        ResetNative;$h1=NewFixture @('PoolA','PoolB');$ph1=NewInterruptedState $h1;AddWaitingChallenge $h1 $ph1;$script:fixture=$h1
+        $beforeStateH=FileHash $ph1.State;$beforeJournalH=FileHash $ph1.Journal
+        $sameHash=Update-WsmWizardTargetRestorePreviewBinding -StateDirectory $pairsDirectory -PairId $h1.Pair -ParentOperationId $h1.Parent -Projection $h1.Projection
+        Check ($sameHash -ceq $previewHash -and (FileHash $ph1.State) -ceq $beforeStateH -and (FileHash $ph1.Journal) -ceq $beforeJournalH) 'E3b-4: an unchanged preview hash wrote state or journal.'
+        # a different hash with no own-write explanation: refused, nothing moves, and the resolver leaves the given hash alone
+        $h1.Projection.PreviewHash=('6'*64)
+        Reject {Update-WsmWizardTargetRestorePreviewBinding -StateDirectory $pairsDirectory -PairId $h1.Pair -ParentOperationId $h1.Parent -Projection $h1.Projection} 'E3b-4: an unexplained preview change was rebound.'
+        Check ((Resolve-WsmWizardTargetRestorePreviewBinding -Workspace $root -PairId $h1.Pair -ParentOperationId $h1.Parent -PreviewHash $previewHash) -ceq $previewHash -and (FileHash $ph1.State) -ceq $beforeStateH -and (FileHash $ph1.Journal) -ceq $beforeJournalH) 'E3b-4: the resolver rebound or wrote after a false judgment.'
+        # counter: one row explained by own writes, another row changed by something else -> the judgment is false, no rebind, the normal revoke path applies
+        ResetNative;$h2=NewFixture @('PoolA','PoolB') @{PoolA='MergeIntoExisting';PoolB='BlockedConflict'};$ph2=NewInterruptedState $h2 -Owned @{PoolA=1};AddWaitingChallenge $h2 $ph2;$h2.Projection.PreviewHash=('7'*64);$script:fixture=$h2
+        $beforeStateH2=FileHash $ph2.State;$beforeJournalH2=FileHash $ph2.Journal
+        Reject {Update-WsmWizardTargetRestorePreviewBinding -StateDirectory $pairsDirectory -PairId $h2.Pair -ParentOperationId $h2.Parent -Projection $h2.Projection} 'E3b-4: a change outside this parent own writes was rebound.'
+        Check ((FileHash $ph2.State) -ceq $beforeStateH2 -and (FileHash $ph2.Journal) -ceq $beforeJournalH2 -and @(ReboundRows $h2.Pair).Count -eq 0) 'E3b-4: the refused rebind changed state or journal.'
+        $rh2=ResumeNow $h2
+        Check ($rh2.Status -ceq 'NeedsNewPreview' -and [string](StateOf $h2).AssistiveServiceChallenge.State -ceq 'Revoked' -and @(ReboundRows $h2.Pair).Count -eq 0 -and $script:writes -eq 0) 'E3b-4: an externally changed row must still revoke through the existing path without any rebind.'
+        # replay: AssistiveRestorePreviewRebound restores both hashes after the checkpoint rolled back
+        ResetNative;$h3=NewFixture @('PoolA','PoolB') @{PoolA='MergeIntoExisting'};$ph3=NewInterruptedState $h3 -Owned @{PoolA=1};AddWaitingChallenge $h3 $ph3;$h3.Projection.PreviewHash=('8'*64);$script:fixture=$h3
+        $checkpointBytes=[IO.File]::ReadAllBytes($ph3.State)
+        $newH3=Update-WsmWizardTargetRestorePreviewBinding -StateDirectory $pairsDirectory -PairId $h3.Pair -ParentOperationId $h3.Parent -Projection $h3.Projection
+        Check ($newH3 -ceq ('8'*64) -and @(ReboundRows $h3.Pair).Count -eq 1 -and [string](StateOf $h3).AssistiveServiceChallenge.PreviewHash -ceq ('8'*64)) 'E3b-4: the explained own-write drift was not rebound by the core function.'
+        [IO.File]::WriteAllBytes($ph3.State,$checkpointBytes)
+        $rolledBack=Read-WsmJson $ph3.State
+        Check ([string]$rolledBack.AssistiveServiceChallenge.PreviewHash -ceq $previewHash -and [string]$rolledBack.RestoreAttempt.WizardPreviewHash -ceq $previewHash) 'E3b-4 replay setup: the rolled back checkpoint should hold the old hash.'
+        Restore-WsmJournalCheckpoint $ph3 $rolledBack
+        $replayed=StateOf $h3
+        Check ([string]$replayed.RestoreAttempt.WizardPreviewHash -ceq ('8'*64) -and [string]$replayed.AssistiveServiceChallenge.PreviewHash -ceq ('8'*64)) 'E3b-4: journal replay did not restore the rebound hash on attempt and challenge.'
+        Check ((($replayed.RestoreAttempt.PreviewRowHashes|ForEach-Object {$_.ItemId+'='+$_.Hash}) -join ';') -ceq ((@(Get-WsmAssistivePreviewRowHashes $h3.Projection.Rows)|ForEach-Object {$_.ItemId+'='+$_.Hash}) -join ';')) 'E3b-4: journal replay did not restore the per-row digests.'
+
 
         Write-Host ('PASS: TargetRestore continuation core ('+$script:checks+' checks).')
     } $root

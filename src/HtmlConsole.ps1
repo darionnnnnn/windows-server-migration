@@ -784,6 +784,32 @@ function Get-WsmHtmlTargetRestoreRetryWaitOutput([string]$Workspace,$Record) {
     [pscustomobject][ordered]@{Status='WaitingForInput';ParentOperationId=[string]$Record.jobId;PreviewHash=[string]$Record.targetRestorePreviewHash;RequiredSecretRefs=@($binding.Challenge.RequiredSecretRefs);CredentialRequirements=@(Get-WsmHtmlChallengeRequirements $binding.Challenge);NoTargetWrites=$true;ResumeRequired=$true;ProductionVerified=$false}
 }
 
+function Update-WsmHtmlJobPreviewBinding($Job,$Binding,$Projection) {
+    # Call only after Test-WsmWizardTargetRestorePreviewCurrent accepted this projection. The core rebinds the durable attempt and challenge;
+    # the job record (the HTML side copy of the reviewed hash) is then moved to the same new hash and written back, so every later strict comparison agrees.
+    $record=$Job.Record
+    $newHash=[string](Update-WsmWizardTargetRestorePreviewBinding -StateDirectory $Binding.StateDirectory -PairId ([string]$record.pairId) -ParentOperationId ([string]$record.jobId) -Projection $Projection)
+    if($newHash -ine [string]$record.targetRestorePreviewHash){
+        $record|Add-Member NoteProperty targetRestorePreviewHash $newHash -Force
+        Write-WsmJson $Job.Path $record
+    }
+    $newHash
+}
+
+function Sync-WsmHtmlJobPreviewHashFromWaiting($Job,[string]$Workspace,[string]$ReportedHash) {
+    # A finished worker reported a WaitingForInput hash. The job record adopts it only when the durable attempt and challenge of this very job both carry that hash.
+    try{
+        if($ReportedHash -notmatch '^[a-f0-9]{64}$' -or $ReportedHash -ieq [string]$Job.Record.targetRestorePreviewHash){return}
+        $statePath=Join-Path (Join-Path (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs') ([string]$Job.Record.pairId)) 'state.json'
+        if(-not [IO.File]::Exists($statePath)){return}
+        $state=Read-WsmJson $statePath
+        if(-not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.PSObject.Properties['AssistiveServiceChallenge']){return}
+        $jobId=[string]$Job.Record.jobId
+        if([string]$state.RestoreAttempt.OperationId -cne $jobId -or [string]$state.AssistiveServiceChallenge.ParentOperationId -cne $jobId -or [string]$state.RestoreAttempt.WizardPreviewHash -ine $ReportedHash -or [string]$state.AssistiveServiceChallenge.PreviewHash -ine $ReportedHash){return}
+        $Job.Record|Add-Member NoteProperty targetRestorePreviewHash $ReportedHash -Force
+    }catch{}
+}
+
 function Get-WsmHtmlTargetRestoreResumable($Record) {
     # Read-only projection: true only when the durable state holds a non-terminal attempt that belongs to this very job.
     try{
@@ -903,7 +929,7 @@ function Complete-WsmHtmlFinishedJob($Job,[string]$Workspace,[hashtable]$Jobs,[s
         $output=@($Job.PowerShell.EndInvoke($Job.Handle))
         $waitRows=@($output|Where-Object {$_.PSObject -and $_.PSObject.Properties['Status'] -and [string]$_.Status -ceq 'WaitingForInput'})
         $needsNewRows=@($output|Where-Object {$_.PSObject -and $_.PSObject.Properties['Status'] -and [string]$_.Status -ceq 'NeedsNewPreview'})
-        if([string]$Job.Record.action -ceq 'TargetRestore' -and $waitRows.Count -eq 1){$waitingForInput=$true;$Job.Record.Status='WaitingForInput';$Job.Record.CompletedUtc=$null;$Job.Record|Add-Member NoteProperty requiredSecretRefs @($waitRows[0].RequiredSecretRefs|Where-Object {$_ -is [string]}) -Force;$Job.Record|Add-Member NoteProperty credentialRequirements @(Get-WsmHtmlOutputRequirements $waitRows[0]) -Force;$Job.Record|Add-Member NoteProperty challengePreviewHash ([string]$waitRows[0].PreviewHash) -Force}
+        if([string]$Job.Record.action -ceq 'TargetRestore' -and $waitRows.Count -eq 1){$waitingForInput=$true;$Job.Record.Status='WaitingForInput';$Job.Record.CompletedUtc=$null;$Job.Record|Add-Member NoteProperty requiredSecretRefs @($waitRows[0].RequiredSecretRefs|Where-Object {$_ -is [string]}) -Force;$Job.Record|Add-Member NoteProperty credentialRequirements @(Get-WsmHtmlOutputRequirements $waitRows[0]) -Force;$Job.Record|Add-Member NoteProperty challengePreviewHash ([string]$waitRows[0].PreviewHash) -Force;Sync-WsmHtmlJobPreviewHashFromWaiting $Job $Workspace ([string]$waitRows[0].PreviewHash)}
         elseif([string]$Job.Record.action -ceq 'TargetRestore' -and $needsNewRows.Count -eq 1){$Job.Record.Status='ReviewRequired';$Job.Record|Add-Member NoteProperty reason 'PreviewChanged' -Force}
         else{$code=Get-WsmOperationStatusCode $output;$Job.Record.Status=if($code -eq 0){'Succeeded'}elseif($code -eq 3){'Cancelled'}elseif($code -eq 1){'Failed'}else{'ReviewRequired'};if($code -eq 1){$workerError=Get-WsmHtmlSafeError 'WorkerReportedFailure';$Job.Record|Add-Member NoteProperty error $workerError -Force;try{Write-WsmHtmlErrorRecord $ErrorRoot $workerError '/worker' ([string]$Job.Record.pairId)}catch{}}}
     }catch{
@@ -951,6 +977,7 @@ function Submit-WsmHtmlCredentialDeferral {
             $Out.Status=409;$Out.Response=New-WsmHtmlError 'The reviewed restore preview changed, so this deferral was not used.' 'challenge_revoked_preview_changed' 'Nothing was written. Review the restore preview again and start a new restore.'
             return
         }
+        [void](Update-WsmHtmlJobPreviewBinding $job $challengeBinding $currentProjection)
         $remaining=@($current|Where-Object {$_ -cnotin $refs})
         if($remaining.Count){
             [void](Set-WsmAssistiveCredentialDeferral -StateDirectory $challengeBinding.StateDirectory -PairId ([string]$job.Record.pairId) -ParentOperationId ([string]$job.Record.jobId) -PreviewHash ([string]$job.Record.targetRestorePreviewHash) -SecretRefs $refs)
@@ -1005,6 +1032,7 @@ function Submit-WsmHtmlServiceCredentials {
             $Out.Status=409;$Out.Response=New-WsmHtmlError 'The reviewed restore preview changed, so this credential reply was not used.' 'challenge_revoked_preview_changed' 'Nothing was written. Review the restore preview again and start a new restore.'
             return
         }
+        [void](Update-WsmHtmlJobPreviewBinding $job $challengeBinding $currentProjection)
         $resumeContext=New-WsmHtmlCredentialResumeContext $Workspace $job.Record $Jobs $body.credentials $challengeBinding.Challenge $SessionId $ContextId -Takeover:$takeover;$secretValues=$resumeContext.Secrets;$workerArguments=$resumeContext.Arguments;$submissionGuard=$resumeContext.Guard
         try{
             $commandName='Invoke-WsmWizardTargetRestore';$worker=New-WsmHtmlTargetRestoreWorker $ModulePath $commandName $workerArguments

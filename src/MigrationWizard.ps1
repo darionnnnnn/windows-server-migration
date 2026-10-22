@@ -235,6 +235,8 @@ function Invoke-WsmWizardTargetRestoreResumeFlow([string]$WorkRoot,[string]$Stat
     if([string]$open.ChallengeState -ceq 'WaitingForInput'){Confirm-WsmWizardServiceChallengeTakeover $StateDirectory $Package $context ([string]$open.PreviewHash) $parentId}
     $result=Resume-WsmWizardTargetRestore -Workspace $WorkRoot -PairId $pairId -ParentOperationId $parentId -ContinuationId $continuationId -CancellationToken $token -Secrets @{} -GeneralHostEvidence $GeneralHostEvidence -ChallengeContext $context
     if($result -and $result.PSObject.Properties['Status'] -and [string]$result.Status -ceq 'WaitingForInput'){
+        # Before any credential is asked for or sent, make the waiting challenge agree with the preview as it is now (own writes only; a false judgment changes nothing).
+        $result|Add-Member NoteProperty PreviewHash ([string](Resolve-WsmWizardTargetRestorePreviewBinding -Workspace $WorkRoot -PairId $pairId -ParentOperationId $parentId -PreviewHash ([string]$result.PreviewHash) -GeneralHostEvidence $GeneralHostEvidence)) -Force
         $result=Resolve-WsmWizardServiceChallenge -WaitingResult $result -WorkRoot $WorkRoot -StateDirectory $StateDirectory -PairId $pairId -OperationId $parentId -CancellationToken $token -GeneralHostEvidence $GeneralHostEvidence -ChallengeContext $context
     }
     $result

@@ -321,6 +321,53 @@ function Test-WsmWizardTargetRestorePreviewCurrent($Attempt,$State,$Projection) 
     [bool](Test-WsmWizardContinuationDriftExplained $Attempt $State $Projection)
 }
 
+function Update-WsmWizardTargetRestorePreviewBinding {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$StateDirectory,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ParentOperationId,[Parameter(Mandatory)]$Projection,$Package=$null)
+    # The single rebind point (E3b-4). Only when the one shared judgment says the reviewed preview is still current (exact hash, or a difference
+    # that this parent's own writes fully explain) is the durable attempt/challenge binding moved to the current preview hash. An equal hash writes
+    # nothing; a false judgment throws the existing "preview changed" error so the caller takes the revoke path. No comparison is loosened here.
+    Assert-WsmId $PairId;Assert-WsmId $ParentOperationId
+    $paths=Get-WsmOperationPaths $StateDirectory $PairId
+    Invoke-WsmLocked $paths.Root {
+        $current=if($Package){Get-WsmOperationState $paths $Package}else{Read-WsmJson $paths.State}
+        if(-not $current.PSObject.Properties['RestoreAttempt'] -or -not $current.RestoreAttempt -or [string]$current.RestoreAttempt.OperationId -cne $ParentOperationId){throw 'The TargetRestore parent changed while its preview binding was being refreshed.'}
+        $currentAttempt=$current.RestoreAttempt
+        if([string]$currentAttempt.Status -cnotin @('Running','WaitingForInput')){throw 'The TargetRestore parent is no longer active, so its preview binding cannot be refreshed.'}
+        $storedHash=[string]$currentAttempt.WizardPreviewHash
+        $currentChallenge=$null
+        if($current.PSObject.Properties['AssistiveServiceChallenge'] -and $current.AssistiveServiceChallenge -and [string]$current.AssistiveServiceChallenge.ParentOperationId -ceq $ParentOperationId -and [string]$current.AssistiveServiceChallenge.State -cin @('WaitingForInput','Running')){
+            $currentChallenge=$current.AssistiveServiceChallenge
+            if([string]$currentChallenge.PreviewHash -ine $storedHash){throw 'The durable challenge and attempt are bound to different previews; refusing to rebind.'}
+        }
+        if(-not (Test-WsmWizardTargetRestorePreviewCurrent $currentAttempt $current $Projection)){throw 'Current TargetRestore preview no longer matches the durable waiting parent.'}
+        $newHash=[string]$Projection.PreviewHash
+        if($newHash -ieq $storedHash){return $storedHash}
+        $rowHashes=@(Get-WsmAssistivePreviewRowHashes $Projection.Rows)
+        $currentAttempt|Add-Member NoteProperty WizardPreviewHash $newHash -Force
+        if($currentAttempt.PSObject.Properties['PreviewRowHashes']){$currentAttempt|Add-Member NoteProperty PreviewRowHashes @($rowHashes) -Force}
+        if($currentChallenge){$currentChallenge.PreviewHash=$newHash;$currentChallenge.UpdatedUtc=Get-WsmUtc}
+        Add-WsmJournal $paths $current 'AssistiveRestorePreviewRebound' '' ([pscustomobject][ordered]@{ParentOperationId=$ParentOperationId;PreviousPreviewHash=$storedHash;PreviewHash=$newHash;PreviewRowHashes=@($rowHashes);Reason='OwnWritesExplained'})
+        $newHash
+    }
+}
+
+function Resolve-WsmWizardTargetRestorePreviewBinding {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ParentOperationId,[Parameter(Mandatory)][string]$PreviewHash,[object[]]$Jobs=@(),[object[]]$GeneralHostEvidence=@())
+    # Re-reads the current preview and, only when the shared judgment accepts it (own writes explain the difference), rebinds the durable parent to it.
+    # Returns the hash later strict comparisons must use: the new one after a rebind, otherwise the given one unchanged (a false judgment is never rebound).
+    Assert-WsmId $PairId;Assert-WsmId $ParentOperationId
+    $stateDirectory=Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs';$statePath=Join-Path (Join-Path $stateDirectory $PairId) 'state.json'
+    if(-not [IO.File]::Exists($statePath)){return $PreviewHash}
+    $state=Read-WsmJson $statePath
+    if(-not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.RestoreAttempt -or [string]$state.RestoreAttempt.OperationId -cne $ParentOperationId -or [string]$state.RestoreAttempt.Status -cnotin @('Running','WaitingForInput')){return $PreviewHash}
+    if([string]$state.RestoreAttempt.WizardPreviewHash -ine $PreviewHash){return $PreviewHash}
+    $projection=$null;try{$projection=Get-WsmWizardTargetRestoreProjection -Workspace $Workspace -PairId $PairId -Jobs $Jobs -GeneralHostEvidence $GeneralHostEvidence}catch{return $PreviewHash}
+    if(-not $projection -or [string]$projection.Status -cne 'Previewed'){return $PreviewHash}
+    if([string]$projection.PreviewHash -ieq $PreviewHash){return $PreviewHash}
+    if(-not (Test-WsmWizardTargetRestorePreviewCurrent $state.RestoreAttempt $state $projection)){return $PreviewHash}
+    [string](Update-WsmWizardTargetRestorePreviewBinding -StateDirectory $stateDirectory -PairId $PairId -ParentOperationId $ParentOperationId -Projection $projection)
+}
+
 function Revoke-WsmWizardTargetRestoreParent {
     [CmdletBinding()]param([Parameter(Mandatory)][string]$StateDirectory,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][string]$ParentOperationId,[string]$Reason='PreviewChanged',$Package=$null,[string]$ContinuationId='',$ContinuationResult=$null,[string]$Actor='',[string]$SessionId='')
     # Reviewed context changed: revoke the challenge, supersede the parent and release its Service reservations. No native write happens
@@ -461,6 +508,8 @@ function Resume-WsmWizardTargetRestore {
         Revoke-WsmWizardTargetRestoreParent -StateDirectory $stateDirectory -PairId $PairId -ParentOperationId $ParentOperationId -Reason 'PreviewChanged' -Package $package -ContinuationId $ContinuationId -ContinuationResult $needsNew -Actor $contextActor -SessionId $contextSession
         return $needsNew
     }
+    # Accepted because only this parent's own writes explain the difference: move the durable binding to the current preview once, before the continuation runs.
+    $storedHash=[string](Update-WsmWizardTargetRestorePreviewBinding -StateDirectory $stateDirectory -PairId $PairId -ParentOperationId $ParentOperationId -Projection $projection -Package $package)
     Invoke-WsmLocked $paths.Root {
         $current=Get-WsmOperationState $paths $package;$currentAttempt=$current.RestoreAttempt
         if(-not $currentAttempt -or [string]$currentAttempt.OperationId -cne $ParentOperationId){throw 'The TargetRestore parent changed before its continuation was recorded.'}
@@ -498,6 +547,8 @@ function Resume-WsmWizardTargetRestore {
     $freshPreview | Add-Member NoteProperty WizardPreviewHash $storedHash -Force
     $result=Invoke-WsmAssistiveRestore $package $projection.ManifestHash $stateDirectory $Secrets @{} $CancellationToken $GeneralHostEvidence $projection.ReceiptPath $projection.ReceiptHash $projection.TargetSnapshotPath $freshPreview $ParentOperationId $ChallengeContext -Continuation
     if($result -and $result.PSObject.Properties['Status'] -and [string]$result.Status -ceq 'WaitingForInput'){
+        # The continuation itself wrote files, so the preview moved: bind the waiting challenge to the preview as it is now (only if the shared judgment accepts it).
+        $storedHash=[string](Resolve-WsmWizardTargetRestorePreviewBinding -Workspace $Workspace -PairId $PairId -ParentOperationId $ParentOperationId -PreviewHash $storedHash -Jobs $Jobs -GeneralHostEvidence $GeneralHostEvidence)
         $waiting=[pscustomobject][ordered]@{Status='WaitingForInput';PairId=$PairId;ParentOperationId=[string]$result.ParentOperationId;ContinuationId=$ContinuationId;PlanHash=[string]$projection.PlanHash;ManifestHash=[string]$projection.ManifestHash;Generation=[long]$projection.Generation;Decision=[string]$projection.Decision;SelectedItemIds=@($projection.SelectedItemIds);RequiredSecretRefs=@($result.RequiredSecretRefs);CredentialRequirements=$(if($result.PSObject.Properties['CredentialRequirements']){@($result.CredentialRequirements)}else{@()});ServiceReservations=@($result.ServiceReservations);PreviewHash=$storedHash;NoTargetWrites=$(if($result.PSObject.Properties['NoTargetWrites']){[bool]$result.NoTargetWrites}else{$true});ResumeRequired=$true;CredentialNotice=$(if($result.PSObject.Properties['CredentialNotice']){[string]$result.CredentialNotice}else{''});ProductionVerified=$false}
         Set-WsmWizardContinuationResult $paths $package $ParentOperationId $ContinuationId $waiting
         return $waiting

@@ -291,11 +291,11 @@ public class WsmHttpFixtureStream : System.IO.MemoryStream {
     $resumeOriginals=@{};foreach($mockName in @('Assert-WsmWizardTargetRole','Get-WsmWizardTargetPackage','Get-WsmWizardTargetRestoreProjection','Test-WsmMigrationPackage','Get-WsmHtmlChallengeActor','New-WsmHtmlTargetRestoreWorker','New-WsmHtmlTargetRestoreChallengeArguments')){$resumeOriginals[$mockName]=(Get-Command $mockName -CommandType Function).ScriptBlock}
     try{
         $resumePair=[guid]::NewGuid().ToString('D');$resumeSentinel='SYNTHETIC-RESUME-SENTINEL-7d21';$resumeHash=('a'*64)
-        $script:resumeWorkersCreated=0;$script:resumeLastCommand='';$script:resumeLastArguments=$null;$script:resumeNextOutput=@();$script:resumeLastWorker=$null;$script:resumeProjectionHash=$resumeHash
+        $script:resumeWorkersCreated=0;$script:resumeLastCommand='';$script:resumeLastArguments=$null;$script:resumeNextOutput=@();$script:resumeLastWorker=$null;$script:resumeProjectionHash=$resumeHash;$script:resumeProjectionRows=@()
         $script:newStubWorker={param($Output)$w=[pscustomobject]@{Begin=0;Disposed=0;Handle=$null;Output=@($Output)};$w|Add-Member ScriptMethod BeginInvoke {$this.Begin++;$this.Handle=[pscustomobject]@{IsCompleted=$false};$this.Handle};$w|Add-Member ScriptMethod EndInvoke {param($handle)@($this.Output)};$w|Add-Member ScriptMethod Dispose {$this.Disposed++};$w}
         Set-Item Function:\Assert-WsmWizardTargetRole -Value {param([string]$Workspace,[string]$PairId)[pscustomobject]@{Received=[pscustomobject]@{SHA256=('c'*64)}}}
         Set-Item Function:\Get-WsmWizardTargetPackage -Value {param([string]$Workspace,[string]$PairId,$Context,[object[]]$Jobs)[pscustomobject]@{Package=[pscustomobject]@{Manifest=[pscustomobject]@{DecisionRevision=12}};ManifestHash=('b'*64)}}
-        Set-Item Function:\Get-WsmWizardTargetRestoreProjection -Value {param($Workspace,$PairId,$Jobs,$GeneralHostEvidence)[pscustomobject]@{Status='Previewed';PreviewHash=$script:resumeProjectionHash;ManifestHash=('b'*64);ManifestPath='C:\fixture\manifest.json';Generation=4;ReceiptHash=('e'*64);TargetSnapshotHash=('f'*64);SelectedItemIds=@('fixture-item');PlanHash=('c'*64);Rows=@()}}
+        Set-Item Function:\Get-WsmWizardTargetRestoreProjection -Value {param($Workspace,$PairId,$Jobs,$GeneralHostEvidence)[pscustomobject]@{Status='Previewed';PreviewHash=$script:resumeProjectionHash;ManifestHash=('b'*64);ManifestPath='C:\fixture\manifest.json';Generation=4;ReceiptHash=('e'*64);TargetSnapshotHash=('f'*64);SelectedItemIds=@('fixture-item');PlanHash=('c'*64);Rows=@($script:resumeProjectionRows)}}
         Set-Item Function:\Test-WsmMigrationPackage -Value {param($Path,$ExpectedHash)$null}
         Set-Item Function:\Get-WsmHtmlChallengeActor -Value {'S-1-5-18@FIXTURE'}
         Set-Item Function:\New-WsmHtmlTargetRestoreWorker -Value {param([string]$ModulePath,[string]$CommandName,$Arguments)$script:resumeWorkersCreated++;$script:resumeLastCommand=$CommandName;$script:resumeLastArguments=$Arguments;$w=& $script:newStubWorker $script:resumeNextOutput;$script:resumeLastWorker=$w;$w}
@@ -443,6 +443,63 @@ public class WsmHttpFixtureStream : System.IO.MemoryStream {
         $fxLive=NewResumeFixture 'Running' 'Running';$resumeJobs[$fxLive.Id]=@{Record=([pscustomobject]@{jobId=$fxLive.Id;action='TargetRestore';workspace=$resumeRoot;pairId=$resumePair;role='Target';status='Running'});Path=$fxLive.JobPath;Handle=[pscustomobject]@{IsCompleted=$false};PowerShell=$null}
         Reject {Invoke-WsmHtmlSupersedeStaleRestore $resumeRoot $resumePair $resumeJobs ('7'*64) ([guid]::NewGuid().ToString('D'))} 'A newer restore was accepted while the older parent worker was alive.'
         Check ([string](Read-WsmJson $fxLive.StatePath).RestoreAttempt.Status -ceq 'Running') 'A refused newer restore changed the live older parent.'
+        # ---- E3b-4: the secret reply, the deferral and the finished worker follow a preview that moved because of the parent's own writes ----
+        $rebindRows0=@([pscustomobject]@{ItemId='fixture-item';Adapter='Service';Action='RestoreNow';Status='Ready';Reason=''},[pscustomobject]@{ItemId='other-item';Adapter='Service';Action='RestoreNow';Status='Ready';Reason=''})
+        function RowsWith([string[]]$Changed){@($rebindRows0|ForEach-Object {$c=$_.PSObject.Copy();if($Changed -contains [string]$c.ItemId){$c.Action='MergeIntoExistingDirectory';$c.Reason='changed'};$c})}
+        function NewRebindFixture([int]$Refs=1){
+            $fx=NewResumeFixture 'WaitingForInput' 'WaitingForInput' $true;$st=Read-WsmJson $fx.StatePath
+            $st.RestoreAttempt|Add-Member NoteProperty PreviewRowHashes @(Get-WsmAssistivePreviewRowHashes $rebindRows0) -Force
+            $st.Items=@([pscustomobject]@{ItemId='fixture-item';Status='Succeeded';AppliedManifestHash=('b'*64)})
+            if($Refs -gt 1){$st.AssistiveServiceChallenge.RequiredSecretRefs=@('ServiceSecretA','TaskSecretB');$st.AssistiveServiceChallenge.Requirements=@([pscustomobject]@{SecretRef='ServiceSecretA';Kinds=@('Service');ItemIds=@('fixture-item');DisplayNames=@('Fixture service');ApprovedAccount='CONTOSO\svc-app'},[pscustomobject]@{SecretRef='TaskSecretB';Kinds=@('ScheduledTask');ItemIds=@('fixture-task');DisplayNames=@('Fixture task');ApprovedAccount='CONTOSO\batch'})}
+            Write-WsmJson $fx.StatePath $st;ReloadResumeJobs;$fx
+        }
+        function RebindRows([string]$Path){@([IO.File]::ReadAllLines($Path)|Where-Object {$_}|ForEach-Object {ConvertFrom-WsmJson $_}|Where-Object Action -CEQ 'AssistiveRestorePreviewRebound')}
+        $rebindNew=('9'*64);$rebindBody='{"credentials":{"ServiceSecretA":{"username":"CONTOSO\\svc-app","password":"'+$resumeSentinel+'"}}}'
+        $realChallengeArguments=$resumeOriginals['New-WsmHtmlTargetRestoreChallengeArguments'];$mockedChallengeArguments=(Get-Command New-WsmHtmlTargetRestoreChallengeArguments -CommandType Function).ScriptBlock;$mockedMigrationPackage=(Get-Command Test-WsmMigrationPackage -CommandType Function).ScriptBlock
+        try{
+            # the real argument builder (strict comparison against the durable parent) is used here, so a stale job hash would throw "no longer matches"
+            Set-Item Function:\New-WsmHtmlTargetRestoreChallengeArguments -Value $realChallengeArguments
+            Set-Item Function:\Test-WsmMigrationPackage -Value {param($Path,$ExpectedHash)[pscustomobject]@{Manifest=[pscustomobject]@{DecisionRevision=12}}}
+            # positive: own writes explain the drift -> rebind, job record and worker request carry the new hash
+            $fxR=NewRebindFixture;$script:resumeProjectionHash=$rebindNew;$script:resumeProjectionRows=RowsWith @('fixture-item');$workersBeforeR=$script:resumeWorkersCreated;$replyR=@{Status=202;Response=$null;SafeError=$null}
+            Submit-WsmHtmlServiceCredentials -Workspace $resumeRoot -PairId $resumePair -Role 'Target' -Jobs $resumeJobs -JobId $fxR.Id -Request ([pscustomobject]@{Headers=@{'content-type'='application/json'};Body=$rebindBody}) -SessionId 'fixture-session' -ContextId 'fixture-context' -ModulePath 'M' -Out $replyR
+            $stateR=Read-WsmJson $fxR.StatePath;$jobFileR=Read-WsmJson $fxR.JobPath
+            Check ($replyR.Status -eq 202 -and $script:resumeWorkersCreated -eq $workersBeforeR+1 -and $script:resumeLastCommand -ceq 'Invoke-WsmWizardTargetRestore') 'E3b-4: a secret reply after own-write drift did not start its worker (no longer matches?).'
+            Check ([string]$script:resumeLastArguments.PreviewHash -ceq $rebindNew -and [string]$resumeJobs[$fxR.Id].Record.targetRestorePreviewHash -ceq $rebindNew -and [string]$jobFileR.targetRestorePreviewHash -ceq $rebindNew) 'E3b-4: the job record (memory and disk) and the worker request must carry the new preview hash.'
+            Check ([string]$stateR.RestoreAttempt.WizardPreviewHash -ceq $rebindNew -and [string]$stateR.AssistiveServiceChallenge.PreviewHash -ceq $rebindNew -and @(RebindRows $fxR.JournalPath).Count -eq 1 -and [string](RebindRows $fxR.JournalPath)[0].Detail.PreviousPreviewHash -ceq $resumeHash) 'E3b-4: the durable attempt/challenge were not rebound with exactly one journal row.'
+            Check (([IO.File]::ReadAllText($fxR.StatePath)+[IO.File]::ReadAllText($fxR.JournalPath)+[IO.File]::ReadAllText($fxR.JobPath)) -notmatch [regex]::Escape($resumeSentinel)) 'E3b-4: the rebind path leaked the synthetic secret.'
+            Clear-WsmHtmlCredentialJobRuntime $resumeJobs[$fxR.Id]
+            # positive: deferring one of two groups follows the same rebind, so the PreviewHash-bound deferral control matches
+            $fxD=NewRebindFixture 2;$script:resumeProjectionHash=$rebindNew;$script:resumeProjectionRows=RowsWith @('fixture-item');$deferOutR=@{Status=200;Response=$null;SafeError=$null}
+            Submit-WsmHtmlCredentialDeferral -Workspace $resumeRoot -PairId $resumePair -Role 'Target' -Jobs $resumeJobs -JobId $fxD.Id -Request ([pscustomobject]@{Headers=@{'content-type'='application/json'};Body='{"secretRefs":["TaskSecretB"]}'}) -SessionId 'fixture-session' -ContextId 'fixture-context' -ModulePath 'M' -Out $deferOutR
+            $stateD=Read-WsmJson $fxD.StatePath
+            Check ($deferOutR.Status -eq 200 -and [string]$resumeJobs[$fxD.Id].Record.targetRestorePreviewHash -ceq $rebindNew -and [string]$stateD.AssistiveServiceChallenge.PreviewHash -ceq $rebindNew -and @($stateD.AssistiveServiceChallenge.Requirements|Where-Object {$_.SecretRef -ceq 'TaskSecretB'})[0].Deferred -eq $true) 'E3b-4: the deferral after own-write drift was not applied against the rebound hash.'
+            # counter: another item (not this parent's) also changed -> judgment false -> no rebind, existing revoke path
+            $fxX=NewRebindFixture;$script:resumeProjectionHash=$rebindNew;$script:resumeProjectionRows=RowsWith @('fixture-item','other-item');$workersBeforeX=$script:resumeWorkersCreated;$reboundBeforeX=@(RebindRows $fxX.JournalPath).Count;$replyX=@{Status=202;Response=$null;SafeError=$null}
+            Submit-WsmHtmlServiceCredentials -Workspace $resumeRoot -PairId $resumePair -Role 'Target' -Jobs $resumeJobs -JobId $fxX.Id -Request ([pscustomobject]@{Headers=@{'content-type'='application/json'};Body=$rebindBody}) -SessionId 'fixture-session' -ContextId 'fixture-context' -ModulePath 'M' -Out $replyX
+            $stateX=Read-WsmJson $fxX.StatePath
+            Check ($replyX.Status -eq 409 -and $replyX.Response.code -ceq 'challenge_revoked_preview_changed' -and $script:resumeWorkersCreated -eq $workersBeforeX) 'E3b-4: an external change was not refused with 409 challenge_revoked_preview_changed.'
+            Check (@(RebindRows $fxX.JournalPath).Count -eq $reboundBeforeX -and [string]$stateX.RestoreAttempt.WizardPreviewHash -ceq $resumeHash -and [string]$stateX.AssistiveServiceChallenge.State -ceq 'Revoked' -and [string]$resumeJobs[$fxX.Id].Record.targetRestorePreviewHash -ceq $resumeHash) 'E3b-4: the refused external change was rebound or left the old job hash altered.'
+            # counter: the same external change on the deferral endpoint
+            $fxY=NewRebindFixture 2;$script:resumeProjectionHash=$rebindNew;$script:resumeProjectionRows=RowsWith @('fixture-item','other-item');$reboundBeforeY=@(RebindRows $fxY.JournalPath).Count;$deferOutY=@{Status=200;Response=$null;SafeError=$null}
+            Submit-WsmHtmlCredentialDeferral -Workspace $resumeRoot -PairId $resumePair -Role 'Target' -Jobs $resumeJobs -JobId $fxY.Id -Request ([pscustomobject]@{Headers=@{'content-type'='application/json'};Body='{"secretRefs":["TaskSecretB"]}'}) -SessionId 'fixture-session' -ContextId 'fixture-context' -ModulePath 'M' -Out $deferOutY
+            Check ($deferOutY.Status -eq 409 -and $deferOutY.Response.code -ceq 'challenge_revoked_preview_changed' -and @(RebindRows $fxY.JournalPath).Count -eq $reboundBeforeY) 'E3b-4: the deferral endpoint rebound or accepted an external change.'
+        }finally{
+            Set-Item Function:\New-WsmHtmlTargetRestoreChallengeArguments -Value $mockedChallengeArguments;Set-Item Function:\Test-WsmMigrationPackage -Value $mockedMigrationPackage
+            $script:resumeProjectionHash=$resumeHash;$script:resumeProjectionRows=@()
+        }
+        # a finished worker that reports WaitingForInput adopts its hash only when the durable attempt and challenge of this job carry it
+        $fxW=NewResumeFixture 'Running' 'Running' $true;ReloadResumeJobs
+        $stW=Read-WsmJson $fxW.StatePath;$stW.RestoreAttempt.WizardPreviewHash=$rebindNew;$stW.AssistiveServiceChallenge.PreviewHash=$rebindNew;Write-WsmJson $fxW.StatePath $stW
+        $script:resumeNextOutput=@([pscustomobject]@{Status='WaitingForInput';PairId=$resumePair;ParentOperationId=$fxW.Id;PreviewHash=$rebindNew;RequiredSecretRefs=@('ServiceSecretA');CredentialRequirements=@();NoTargetWrites=$true;ResumeRequired=$true;ProductionVerified=$false})
+        [void](ResumeCall $fxW.Id (ResumeBody ([guid]::NewGuid().ToString('D'))));$resumeJobs[$fxW.Id].Handle.IsCompleted=$true
+        Complete-WsmHtmlFinishedJob $resumeJobs[$fxW.Id] $resumeRoot $resumeJobs (Join-Path $resumeRoot 'errors')
+        Check ([string]$resumeJobs[$fxW.Id].Record.status -ceq 'WaitingForInput' -and [string]$resumeJobs[$fxW.Id].Record.targetRestorePreviewHash -ceq $rebindNew -and [string](Read-WsmJson $fxW.JobPath).targetRestorePreviewHash -ceq $rebindNew) 'E3b-4: a waiting continuation did not move the job record to the rebound durable hash.'
+        $fxW2=NewResumeFixture 'Running' 'Running' $true;ReloadResumeJobs
+        $script:resumeNextOutput=@([pscustomobject]@{Status='WaitingForInput';PairId=$resumePair;ParentOperationId=$fxW2.Id;PreviewHash=$rebindNew;RequiredSecretRefs=@('ServiceSecretA');CredentialRequirements=@();NoTargetWrites=$true;ResumeRequired=$true;ProductionVerified=$false})
+        [void](ResumeCall $fxW2.Id (ResumeBody ([guid]::NewGuid().ToString('D'))));$resumeJobs[$fxW2.Id].Handle.IsCompleted=$true
+        Complete-WsmHtmlFinishedJob $resumeJobs[$fxW2.Id] $resumeRoot $resumeJobs (Join-Path $resumeRoot 'errors')
+        Check ([string]$resumeJobs[$fxW2.Id].Record.targetRestorePreviewHash -ceq $resumeHash) 'E3b-4: the job record adopted a hash the durable parent does not carry.'
     }finally{
         foreach($mockName in $resumeOriginals.Keys){Set-Item ('Function:\'+$mockName) -Value $resumeOriginals[$mockName]}
         Remove-WsmHtmlChallengeTestRoot $resumeRoot 'wsm-html-resume-'
