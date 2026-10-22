@@ -1070,6 +1070,35 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - BytesTotal 在封存後才知道。
   - 頁面載入後，會依 session 提供的 assetHashes 多抓 5 個 /ui 資產核對。
   - 「完成」只在獨立副本驗證後出現。
+### 17.69 R6 還原項目選擇與預覽補齊（類型篩選、預計寫入量、相依不完整確認、重新還原確認）
+
+- 由 Sonnet 5.5 subagent 實作，主代理審查並獨立重跑測試。設計依循 ui-ux-pro-max 準則。
+- 選項（`Get-WsmWizardTargetItemOptions`，在 `WizardRuntime.ps1`）新增以下欄位：`typeLabel`、`fileCount`、`bytes`、`countsAvailable`、`dependencies`、`requiredBy`、`preselected`。
+  - 檔數與位元組：用 `Read-WsmArtifactLines` 讀取，先核對 ArtifactsHash，只計入檔案列。
+  - 相依：取計畫項目 `Dependencies` 中 `Mandatory` 的部分，並限於本次還原範圍內；`requiredBy` 是同一份關係的反向。
+  - 預選：依最後一份決策收據；已還原的項目仍預設不勾。
+- 預覽：
+  - 逐列新增 `FileCount`、`Bytes`、`MissingDependencies`、`AlreadyRestored`；頂層新增 `PlannedFileCount`、`PlannedBytes`。
+  - 這些都是顯示欄位，計算預覽 hash 與逐列 hash 前會先移除，所以 E3b 已存的 `PreviewRowHashes` 不受影響（有測試比對舊公式）。
+  - 必要相依已成功還原者視為已滿足。
+- 畫面：
+  - 選擇器：可依類型篩選，並可選取或取消選取篩選結果。摘要顯示「已選 x／可還原 y，預計寫入 n 檔／b 位元組」，使用單一 live region。
+  - 不完整標示：取消勾選必要相依時，會立即在受影響項目與摘要區標示不完整。
+  - 確認對話框：選取中有不完整項目或重新還原項目時，建立決策收據前要先在原生 `<dialog>` 確認，兩類項目分開列出。Esc 或「返回」不會送出，焦點回到觸發按鈕。
+  - 預覽畫面：顯示總計、不完整清單、重新還原清單。
+- 驗證（WinPS 5.1、真實 Edge、G 旅程 r6a001 48 項通過）：見提交說明。截圖在 `work/r7/screens/r6-*.png`。
+- 突變（皆轉紅）：
+  - `RequiredBy` 反向寫錯。
+  - 目錄計入檔數與位元組。
+  - 不完整時不確認：第一次存活，補上「只有不完整」情境後轉紅。
+  - 已還原項目不確認。
+  - 摘要重複播報。
+  - 主代理另做一個獨立突變：逐列 hash 不移除顯示欄位，轉紅。
+- 限制：
+  - 前端只把可選取的相依算作缺少；後端 `MissingDependencies` 涵蓋範圍內全部必要相依，兩者在人工或不可還原相依的邊界略有差異。
+  - 「此工作負載將停止」只是顯示文案，沒有改變還原語意。
+  - 新欄位沒有另做真實 HTTP 端到端驗證。
+  - 測試替身封裝沒有 ArtifactsHash 時，預覽略過計數。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

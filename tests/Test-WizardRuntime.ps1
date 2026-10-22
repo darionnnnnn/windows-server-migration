@@ -46,6 +46,19 @@ try {
         Check (@($noPackage|Where-Object restored).Count -eq 0 -and $noPackage.Count -eq 6) 'Without a package no option may be restored.'
         Check (@(Get-WsmWizardTargetItemOptions $optContext $optPackage $null|Where-Object restored).Count -eq 0) 'Without state no option may be restored.'
 
+        # R6: 相依、反向關係、預選與數量欄位（沒有已驗證封裝時不假裝有數量）。
+        $r6Dep={param($Id,$Type) [pscustomobject]@{ItemId=$Id;Type=$Type}}
+        $r6Spec={param($Id,$Adapter,$Dependencies,$Decision) $planItem=[pscustomobject]@{ItemId=$Id;Name=('name-'+$Id);Kind='K';Decision=$Decision;MigrationSpec=[pscustomobject]@{Adapter=$Adapter}};if($null -ne $Dependencies){$planItem|Add-Member NoteProperty Dependencies @($Dependencies)};$planItem}
+        $r6Context=[pscustomobject]@{Plan=[pscustomobject]@{Items=@((& $r6Spec 'a' 'IISSite' @((& $r6Dep 'b' 'Mandatory'),(& $r6Dep 'x' 'Mandatory'),(& $r6Dep 'a' 'Mandatory'),(& $r6Dep 'b' 'Mandatory')) 'Include'),(& $r6Spec 'b' 'IISPool' @() 'Include'),(& $r6Spec 'c' 'ScheduledTask' @((& $r6Dep 'b' 'Optional'),(& $r6Dep 'a' 'External')) 'Include'),(& $r6Spec 'd' 'Service' @((& $r6Dep 'zzz' 'Mandatory')) 'Include'),(& $r6Spec 'e' 'FileScope' $null 'Include'),(& $r6Spec 'x' 'IISPool' @() 'Exclude'))}}
+        $r6Opts=@(Get-WsmWizardTargetItemOptions $r6Context $null $null);$r6By=@{};foreach($o in $r6Opts){$r6By[$o.value]=$o}
+        Check ((@($r6By['a'].dependencies) -join ',') -ceq 'b' -and (@($r6By['b'].requiredBy) -join ',') -ceq 'a') 'Mandatory dependency must appear once in Dependencies and mirrored in RequiredBy (self, duplicates and excluded targets dropped).'
+        Check (@($r6By['c'].dependencies).Count -eq 0 -and @($r6By['d'].dependencies).Count -eq 0 -and @($r6By['e'].dependencies).Count -eq 0 -and @($r6By['a'].requiredBy).Count -eq 0 -and -not $r6By.ContainsKey('x')) 'Optional / External / unknown-target dependencies must not become required relations.'
+        Check ($r6By['e'].countsAvailable -eq $false -and $r6By['e'].fileCount -eq 0 -and $r6By['e'].bytes -eq 0 -and $null -eq $r6By['e'].preselected) 'Without a verified package counts are unavailable and no preselection exists.'
+        Check ($r6By['a'].typeLabel -ceq '網站' -and $r6By['b'].typeLabel -ceq '應用程式集區' -and $r6By['c'].typeLabel -ceq '排程工作' -and $r6By['e'].typeLabel -ceq '檔案範圍') 'Options must carry their type label for the filter.'
+        $r6Receipt=[pscustomobject]@{Receipt=[pscustomobject]@{SelectedItemIds=@('a','e')}}
+        $r6Pre=@{};foreach($o in @(Get-WsmWizardTargetItemOptions $r6Context $null $null $r6Receipt)){$r6Pre[$o.value]=$o.preselected}
+        Check ($r6Pre['a'] -eq $true -and $r6Pre['e'] -eq $true -and $r6Pre['b'] -eq $false -and $r6Pre['d'] -eq $false) 'Preselection must come from the latest decision receipt selection.'
+
         $sourceWork=Join-Path $Root 'source';$targetWork=Join-Path $Root 'target'
         Initialize-WsmOutputWorkspace -WorkRoot $sourceWork -Role Source|Out-Null
         Initialize-WsmOutputWorkspace -WorkRoot $targetWork -Role Target|Out-Null

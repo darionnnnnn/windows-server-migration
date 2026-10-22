@@ -34,7 +34,7 @@ try {
         $item|Add-Member NoteProperty MigrationSpec $fileSpec -Force
         $scopeRoot2=Join-Path $Root 'source-scope-2';[void][IO.Directory]::CreateDirectory($scopeRoot2);$sourceBytes2=[Text.Encoding]::UTF8.GetBytes('second actual Target restore payload');$sourceFile2=Join-Path $scopeRoot2 'state.bin';[IO.File]::WriteAllBytes($sourceFile2,$sourceBytes2)
         $targetRoot2=Join-Path $Root 'restored-scope-2';[void][IO.Directory]::CreateDirectory($targetRoot2);$targetFile2=Join-Path $targetRoot2 'state.bin';$preexistingBytes=[Text.Encoding]::UTF8.GetBytes('unowned target file must remain untouched');[IO.File]::WriteAllBytes($targetFile2,$preexistingBytes);$preexistingHash=(Get-FileHash -LiteralPath $targetFile2 -Algorithm SHA256).Hash.ToLowerInvariant();$preexistingMetadata=Get-WsmFileMetadata $targetFile2 'DaclOwner';$preexistingCreationTicks=(Get-Item -LiteralPath $targetFile2).CreationTimeUtc.Ticks
-        $item2=New-WsmItem $source.HostId Storage DataRoot 'Approved conflicting fixture workload' 'fixture-source-2' @{Path='C:\fixture\source-2'}
+        $item2=New-WsmItem $source.HostId Storage DataRoot 'Approved conflicting fixture workload' 'fixture-source-2' @{Path='C:\fixture\source-2'} @([pscustomobject][ordered]@{ItemId=[string]$item.ItemId;Type='Mandatory'})
         $item2|Add-Member NoteProperty Decision Include -Force;$item2|Add-Member NoteProperty Reason 'Source owner reviewed second fixture scope' -Force;$item2|Add-Member NoteProperty Owner 'Source owner' -Force;$item2|Add-Member NoteProperty Evidence 'fixture approval evidence' -Force
         $fileSpec2=$fileSpec|ConvertTo-Json -Depth 40|ConvertFrom-Json;$fileSpec2.SourcePath=$scopeRoot2;$fileSpec2.TargetPath=$targetRoot2;$item2|Add-Member NoteProperty MigrationSpec $fileSpec2 -Force
         $scopeRoot3=Join-Path $Root 'source-scope-3';[void][IO.Directory]::CreateDirectory($scopeRoot3);$sourceBytes3=New-Object byte[] (512*1024);$randomBytes3=[Security.Cryptography.RandomNumberGenerator]::Create();try{$randomBytes3.GetBytes($sourceBytes3)}finally{$randomBytes3.Dispose()};$sourceFile3=Join-Path $scopeRoot3 'state.bin';[IO.File]::WriteAllBytes($sourceFile3,$sourceBytes3)
@@ -292,6 +292,56 @@ try {
         $preview=Get-WsmWizardTargetRestoreProjection -Workspace $work -PairId $pair -Jobs $allJobs
         $readyRow=@($preview.Rows|Where-Object ItemId -CEQ $item.ItemId)[0];$conflictRow=@($preview.Rows|Where-Object ItemId -CEQ $item2.ItemId)[0]
         Check ($preview.Status -ceq 'Previewed' -and $preview.CanRestoreIndependentItems -and $preview.SelectedItemIds.Count -eq 2 -and $readyRow.Status -ceq 'Ready' -and $conflictRow.Status -eq 'Ready' -and $conflictRow.Action -ceq 'MergeIntoExistingDirectory' -and $preview.PreviewHash -match '^[a-f0-9]{64}$') ('Actual core restore preview did not expose both selected merged-directory items and the bound preview hash: '+($preview.Rows|ConvertTo-Json -Depth 20 -Compress))
+        # R6: 項目選擇器的檔數／位元組／相依與預覽的新欄位，數量只取自已驗證封裝；顯示專用欄位不進預覽雜湊。
+        $r6Ctx=Assert-WsmWizardTargetRole $work $pair;$r6Package=Get-WsmWizardTargetPackage $work $pair $r6Ctx $allJobs
+        $r6Totals=@{};$script:r6DirectoryRows=0
+        Read-WsmArtifactLines (Join-Path $r6Package.Package.Root 'artifacts.jsonl') ([string]$r6Package.Package.Manifest.ArtifactsHash) | ForEach-Object {$r6Id=[string]$_.ItemId;if(-not $r6Totals.ContainsKey($r6Id)){$r6Totals[$r6Id]=@{Files=[long]0;Bytes=[long]0}};if($_.Directory){$script:r6DirectoryRows++}else{$r6Totals[$r6Id].Files++;$r6Totals[$r6Id].Bytes+=[long]$_.Data.Bytes}}
+        Check ($script:r6DirectoryRows -gt 0) 'R6 fixture must contain directory members, otherwise "directories are not counted" cannot be observed.'
+        $r6Options=@(Get-WsmWizardTargetItemOptions $r6Ctx $r6Package $null);$r6By=@{};foreach($r6Option in $r6Options){$r6By[[string]$r6Option.value]=$r6Option}
+        $r6FileSum=[long]0;$r6ByteSum=[long]0;foreach($r6Option in $r6Options){$r6FileSum+=[long]$r6Option.fileCount;$r6ByteSum+=[long]$r6Option.bytes}
+        Check ($r6FileSum -eq [long]$r6Package.Package.Manifest.Files -and $r6ByteSum -eq [long]$r6Package.Package.Manifest.Bytes -and $r6FileSum -gt 0) 'Option file counts and bytes must add up to the sealed manifest totals (directory members excluded).'
+        foreach($r6Id in @($r6Totals.Keys)){Check ($r6By.ContainsKey($r6Id) -and [long]$r6By[$r6Id].fileCount -eq [long]$r6Totals[$r6Id].Files -and [long]$r6By[$r6Id].bytes -eq [long]$r6Totals[$r6Id].Bytes -and $r6By[$r6Id].countsAvailable -eq $true) ('Option counts differ from the verified package artifacts for '+$r6Id)}
+        Check ($null -eq $r6By[[string]$item.ItemId].preselected) 'Without a decision receipt no option may carry a preselection.'
+        Check ((@($r6By[[string]$item2.ItemId].dependencies) -join ',') -ceq [string]$item.ItemId -and (@($r6By[[string]$item.ItemId].requiredBy) -join ',') -ceq [string]$item2.ItemId -and @($r6By[[string]$item.ItemId].dependencies).Count -eq 0 -and @($r6By[[string]$item2.ItemId].requiredBy).Count -eq 0) 'Dependencies and RequiredBy must be exact mirror images from the sealed plan.'
+        Check ([string]$r6By[[string]$item.ItemId].typeLabel -ceq '檔案範圍') 'FileScope option must carry its type label.'
+        foreach($r6Row in @($preview.Rows)){$r6O=$r6By[[string]$r6Row.ItemId];Check ([long]$r6Row.FileCount -eq [long]$r6O.fileCount -and [long]$r6Row.Bytes -eq [long]$r6O.bytes) 'Preview row counts must equal the option counts from the same verified package.'}
+        $r6Write=@($preview.Rows|Where-Object {[string]$_.Status -ceq 'Ready' -and [string]$_.Action -notlike 'Verify*'})
+        $r6PlannedFiles=[long]0;$r6PlannedBytes=[long]0;foreach($r6Row in $r6Write){$r6PlannedFiles+=[long]$r6Row.FileCount;$r6PlannedBytes+=[long]$r6Row.Bytes}
+        Check ([long]$preview.PlannedFileCount -eq $r6PlannedFiles -and [long]$preview.PlannedBytes -eq $r6PlannedBytes -and $r6PlannedFiles -gt 0 -and $r6PlannedBytes -gt 0) 'Preview PlannedFileCount / PlannedBytes must equal the sum of the writing rows.'
+        Check (@($readyRow.MissingDependencies).Count -eq 0 -and @($conflictRow.MissingDependencies).Count -eq 0 -and $readyRow.AlreadyRestored -eq $false) 'With the dependency selected nothing may be reported missing or already restored.'
+        # 預覽雜湊與逐列雜湊不含顯示專用欄位：改它們不動雜湊，改真正的欄位會動。
+        $r6Hash={param($Candidate) Get-WsmWizardTargetPreviewHash $Candidate $pair ([string]$r6Ctx.Received.SHA256) ([string]$r6Package.ManifestHash) ([long]$r6Package.Package.Manifest.Generation) ([string]$preview.ReceiptHash) ([string]$preview.TargetSnapshotHash) ([string]$preview.ComparisonHash) ([int]$preview.ComparisonRevision) ([int]$preview.SelectionRevision) ([string]$preview.Decision)}
+        Check ((& $r6Hash $preview) -ceq [string]$preview.PreviewHash) 'Test harness must reproduce the projection preview hash before altering display fields.'
+        $r6Altered=$preview|Select-Object *;$r6Altered.Rows=@($preview.Rows|ForEach-Object {$copy=$_|Select-Object *;$copy.FileCount=[long]$copy.FileCount+7;$copy.Bytes=[long]$copy.Bytes+9;$copy.MissingDependencies=[string[]]@('x');$copy.AlreadyRestored=-not [bool]$copy.AlreadyRestored;$copy})
+        Check ((& $r6Hash $r6Altered) -ceq [string]$preview.PreviewHash) 'Display-only row fields must not change the preview hash.'
+        $r6Blocked=$preview|Select-Object *;$r6Blocked.Rows=@($preview.Rows|ForEach-Object {$copy=$_|Select-Object *;$copy.Status='Blocked';$copy})
+        Check ((& $r6Hash $r6Blocked) -cne [string]$preview.PreviewHash) 'The preview hash must still react to real row changes.'
+        Check ((@(Get-WsmAssistivePreviewRowHashes $preview.Rows|ForEach-Object Hash) -join ',') -ceq (@(Get-WsmAssistivePreviewRowHashes $r6Altered.Rows|ForEach-Object Hash) -join ',')) 'Per-row hashes (continuation drift tolerance) must ignore display-only fields.'
+        $r6Legacy=[pscustomobject][ordered]@{ItemId='legacy';Name='n';Adapter='FileScope';Action='RestoreNow';Status='Ready';Reason='';Rollback='Per-item journal; exact owned state only';RebootPossible=$false}
+        $r6LegacyExpected=Get-WsmHashText ($r6Legacy|ConvertTo-Json -Depth 20 -Compress)
+        Check ([string](Get-WsmAssistivePreviewRowHashes @($r6Legacy))[0].Hash -ceq $r6LegacyExpected) 'A row without display fields must keep exactly the pre-R6 row hash (attempts stored before the upgrade stay comparable).'
+        $r6WithDisplay=$r6Legacy|Select-Object *;$r6WithDisplay|Add-Member NoteProperty FileCount ([long]5);$r6WithDisplay|Add-Member NoteProperty Bytes ([long]6);$r6WithDisplay|Add-Member NoteProperty MissingDependencies ([string[]]@('a'));$r6WithDisplay|Add-Member NoteProperty AlreadyRestored $true
+        Check ([string](Get-WsmAssistivePreviewRowHashes @($r6WithDisplay))[0].Hash -ceq $r6LegacyExpected) 'Adding display fields must not change a row hash.'
+        # 竄改封裝：索引被改後，選項與預覽都拒絕，還原內容後恢復。
+        $r6Index=Join-Path $r6Package.Package.Root 'artifacts.jsonl';$r6IndexBytes=[IO.File]::ReadAllBytes($r6Index)
+        try{
+            [IO.File]::AppendAllText($r6Index,' ')
+            Reject {Get-WsmWizardTargetItemOptions $r6Ctx $r6Package $null} 'Item options accepted a package whose artifact index was altered.'
+            Reject {Get-WsmWizardTargetRestoreProjection -Workspace $work -PairId $pair -Jobs $allJobs} 'Restore preview accepted a package whose artifact index was altered.'
+        }finally{[IO.File]::WriteAllBytes($r6Index,$r6IndexBytes)}
+        Check ((Get-WsmWizardTargetRestoreProjection -Workspace $work -PairId $pair -Jobs $allJobs).PreviewHash -ceq [string]$preview.PreviewHash) 'Restoring the artifact index bytes must restore the exact preview.'
+        # 取消必要相依：只選相依者時，預覽列要帶出缺少的必要相依，但不改變還原語意（狀態仍由既有判定決定）；選取以最後一份收據預選。
+        [void](Create-WsmWizardTargetDecisionReceipt -Workspace $work -PairId $pair -Decision RestoreNow -Owner 'Target operator' -Reason 'R6 dependent selected without its mandatory dependency' -SelectedItemIds @($item2.ItemId) -Jobs $allJobs)
+        $r6Partial=Get-WsmWizardTargetRestoreProjection -Workspace $work -PairId $pair -Jobs $allJobs
+        $r6PartialRow=@($r6Partial.Rows|Where-Object ItemId -CEQ $item2.ItemId)[0]
+        Check ((@($r6PartialRow.MissingDependencies) -join ',') -ceq [string]$item.ItemId -and $r6PartialRow.Status -ceq $conflictRow.Status -and $r6PartialRow.Action -ceq $conflictRow.Action) 'A selected item whose mandatory dependency is not selected must list it in MissingDependencies without changing the restore semantics.'
+        Check ($r6Partial.PreviewHash -cne [string]$preview.PreviewHash) 'Changing the selection must change the preview hash.'
+        $r6Decision=Get-WsmWizardTargetDecisionRecord $work $pair ([string]$r6Ctx.Received.SHA256)
+        $r6Pre=@{};foreach($r6Option in @(Get-WsmWizardTargetItemOptions $r6Ctx $r6Package $null $r6Decision)){$r6Pre[[string]$r6Option.value]=$r6Option.preselected}
+        Check ($r6Pre[[string]$item2.ItemId] -eq $true -and $r6Pre[[string]$item.ItemId] -eq $false -and $r6Pre[[string]$item3.ItemId] -eq $false) 'Options must be preselected exactly from the latest decision receipt.'
+        # 回到原本的兩項收據，後續情境照舊。
+        $restoreReceipt=Create-WsmWizardTargetDecisionReceipt -Workspace $work -PairId $pair -Decision RestoreNow -Owner 'Target operator' -Reason 'Explicitly authorize the reviewed isolated file restore and leave the existing conflict untouched' -SelectedItemIds @($item.ItemId,$item2.ItemId) -Jobs $allJobs
+        $preview=Get-WsmWizardTargetRestoreProjection -Workspace $work -PairId $pair -Jobs $allJobs
         $nonCHandoffRoot=Join-Path (Get-WsmWizardTargetMaterialRoot $work $pair) 'nonc-handoffs';[void](New-WsmOutputOwnedDirectory $nonCHandoffRoot)
         $badNonCPointer=Join-Path $nonCHandoffRoot 'active-receipt.json';Write-WsmJson $badNonCPointer ([pscustomobject]@{Kind='CorruptNonCTestFixture'})
         $cOnlyPreview=Get-WsmWizardTargetRestoreProjection -Workspace $work -PairId $pair -Jobs $allJobs

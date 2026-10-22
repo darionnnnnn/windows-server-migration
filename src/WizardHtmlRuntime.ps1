@@ -21,6 +21,8 @@ function ConvertTo-WsmWizardHtmlValue($Value,[int]$Depth=0) {
     $allowed+=@('RelativePath','Sha256Prefix','IsDirectory','TotalCount','DirectoryCount','Page','PageSize','PageCount');$allowed+=@('softwareCheck','TargetOnlyRows','SoftwareId','Publisher','Architecture','SourceVersion','ChosenVersion','ObservedTargetVersion','CheckState','CheckStateText','CheckReason','SourceStatus')
     # F1-P: closed field list of the backup progress view (ConvertTo-WsmWizardBackupProgressView). The stored ItemId/Result pair stays the only per-item content; ItemName is the display label.
     $allowed+=@('backup','Backup','StageLabel','StageIndex','StageCount','Workload','CurrentFile','ItemsDone','ItemsTotal','BytesDone','BytesTotal','Percent','StartedUtc','Recent','FailedCount','Terminal','Outcome','State','EndReason')
+    # R6: 項目選擇器的數量／相依／預選與預覽的顯示專用欄位（預覽雜湊會先移除這些列欄位，見 Remove-WsmAssistivePreviewDisplayFields）。
+    $allowed+=@('typeLabel','fileCount','countsAvailable','dependencies','requiredBy','preselected','FileCount','MissingDependencies','AlreadyRestored','PlannedFileCount','PlannedBytes')
     $safe=[ordered]@{}
     if($Value -is [Collections.IDictionary]){$properties=@(foreach($key in $Value.Keys){[pscustomobject]@{Name=[string]$key;Value=$Value[$key]}})}else{$properties=@($Value.PSObject.Properties)}
     foreach($property in $properties){

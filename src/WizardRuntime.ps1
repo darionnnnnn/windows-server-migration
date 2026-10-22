@@ -260,18 +260,86 @@ function Get-WsmWizardRuntimeSource([string]$Workspace,[string]$PairId,$Profile,
     [pscustomobject][ordered]@{status=$status;plan=[pscustomobject]@{path=[string]$planRef.Path;hash=[string]$planRef.SHA256;inventoryHash=[string]$planRef.Plan.InventoryHash;inventoryRevision=[int]$planRef.Plan.InventoryRevision;AuthoritativeApproval=$false};backupPreview=$preview;backupResult=$availability;delivery=[pscustomobject]@{mode=$selectedMode;volumeBytes=$volume;frozen=$frozen;attemptId=$(if($attempt){[string]$attempt.AttemptId}else{''})};sourceFreeze=[pscustomobject]@{required=$freezeRequired;missingEvidence=@($missingEvidence);resumeRequired=$sourceResumeRequired;resumeAvailable=$sourceResumeAvailable;resumeRoute=$resumeRoute;impact=$preview;sourceResumed=$sourceResumed;manualReviewRequired=[bool]($resumeRoute -and $resumeRoute.manualReviewRequired);manualReviewReason=$(if($resumeRoute){[string]$resumeRoute.manualReviewReason}else{''})};actions=$actions;canStartBackup=$canStartBackupReady;offlineReadiness=(Get-WsmWizardOfflineReadiness $availability)}
 }
 
-function Get-WsmWizardTargetItemOptions($Context,$Package,$State) {
+# 項目選擇器的類型篩選標籤（只做顯示分類；還原語意由 adapter 決定）。
+function Get-WsmWizardItemTypeLabel([string]$Adapter,[string]$Kind) {
+    switch -CaseSensitive ($Adapter) {
+        'IISSite' {return '網站'}
+        'IISPool' {return '應用程式集區'}
+        'IISSection' {return 'IIS 設定區段'}
+        'IISLocation' {return 'IIS 設定位置'}
+        'ScheduledTask' {return '排程工作'}
+        'FileScope' {return '檔案範圍'}
+        'Service' {return '服務'}
+        'WindowsFeature' {return 'Windows 功能'}
+        'Certificate' {return '憑證'}
+        'LocalUser' {return '本機使用者'}
+        'LocalGroup' {return '本機群組'}
+        'ManualWorkflow' {return '人工處理'}
+    }
+    if($Adapter){return $Adapter}
+    if($Kind){return $Kind}
+    '其他'
+}
+
+# 每個項目的檔數與位元組，只取自已驗證封裝的 artifacts.jsonl（Read-WsmArtifactLines 會先核對索引雜湊，被改過就丟例外）。
+# 目錄列只是結構，不算檔案也不算位元組。沒有已驗證封裝（尚未匯入）時回傳 $null，呼叫端標示「數量尚未取得」。
+function Get-WsmWizardTargetArtifactTotals($PackageRecord) {
+    if(-not $PackageRecord -or -not $PackageRecord.PSObject.Properties['Package'] -or -not $PackageRecord.Package){return $null}
+    $verified=$PackageRecord.Package
+    if(-not $verified.PSObject.Properties['Root'] -or -not $verified.PSObject.Properties['Manifest'] -or -not $verified.Manifest.PSObject.Properties['ArtifactsHash']){return $null}
+    $root=[string]$verified.Root;$expected=[string]$verified.Manifest.ArtifactsHash
+    if(-not $root -or -not $expected){return $null}
+    $totals=@{}
+    Read-WsmArtifactLines (Join-Path $root 'artifacts.jsonl') $expected | ForEach-Object {
+        $id=[string]$_.ItemId
+        if(-not $totals.ContainsKey($id)){$totals[$id]=[pscustomobject]@{Files=[long]0;Bytes=[long]0}}
+        if(-not [bool]$_.Directory){
+            $totals[$id].Files++
+            if($_.PSObject.Properties['Data'] -and $_.Data -and $_.Data.PSObject.Properties['Bytes']){$totals[$id].Bytes+=[long]$_.Data.Bytes}
+        }
+    }
+    $totals
+}
+
+function Get-WsmWizardTargetItemOptions($Context,$Package,$State,$Decision=$null) {
     $manifestHash=if($Package){[string]$Package.ManifestHash}else{''}
     $rows=@{};if($Package -and $manifestHash -and $State -and $State.PSObject.Properties['Items']){foreach($row in @($State.Items)){if($row -and $row.PSObject.Properties['ItemId']){$rows[[string]$row.ItemId]=$row}}}
     # An item with an unresolved native intent or a continuation result of NeedsReconciliation / BlockedByUnknownDependency is never counted as restored; neither is one deferred (credential deferral / retry limit) or refused (CredentialRejected).
     $unproven=@{};if($Package -and $State){if($State.PSObject.Properties['PendingOperations']){foreach($op in @($State.PendingOperations)){if($op -and $op.PSObject.Properties['ItemId']){$unproven[[string]$op.ItemId]=$true}}};if($State.PSObject.Properties['RestoreAttempt'] -and $State.RestoreAttempt -and $State.RestoreAttempt.PSObject.Properties['ItemResults']){foreach($itemResult in @($State.RestoreAttempt.ItemResults)){if($itemResult -and $itemResult.PSObject.Properties['Status'] -and [string]$itemResult.Status -cin @('NeedsReconciliation','BlockedByUnknownDependency','Deferred','CredentialRejected')){$unproven[[string]$itemResult.ItemId]=$true}}}}
-    @($Context.Plan.Items|Where-Object Decision -CEQ Include|ForEach-Object {
+    $included=@($Context.Plan.Items|Where-Object Decision -CEQ Include)
+    # 必要相依（Type=Mandatory）只認同樣在還原範圍內的項目；RequiredBy 是同一份關係的反向。
+    $includedIds=@{};foreach($entry in $included){$includedIds[[string]$entry.ItemId]=$true}
+    $dependencyMap=@{};$requiredByMap=@{}
+    foreach($entry in $included){
+        $entryId=[string]$entry.ItemId;$dependsOnList=New-Object 'System.Collections.Generic.List[string]'
+        if($entry.PSObject.Properties['Dependencies']){
+            foreach($dependency in @($entry.Dependencies)){
+                if(-not $dependency -or -not $dependency.PSObject.Properties['Type'] -or [string]$dependency.Type -cne 'Mandatory'){continue}
+                $dependencyId=[string]$dependency.ItemId
+                if(-not $dependencyId -or $dependencyId -ceq $entryId -or -not $includedIds.ContainsKey($dependencyId) -or $dependsOnList.Contains($dependencyId)){continue}
+                $dependsOnList.Add($dependencyId)
+                if(-not $requiredByMap.ContainsKey($dependencyId)){$requiredByMap[$dependencyId]=New-Object 'System.Collections.Generic.List[string]'}
+                $requiredByMap[$dependencyId].Add($entryId)
+            }
+        }
+        $dependencyMap[$entryId]=$dependsOnList
+    }
+    $artifactTotals=Get-WsmWizardTargetArtifactTotals $Package
+    # 最後一份決策收據的選取；沒有收據時 preselected 為 $null（前端改用預設全選未還原項）。
+    $chosen=$null
+    if($Decision -and $Decision.PSObject.Properties['Receipt'] -and $Decision.Receipt -and $Decision.Receipt.PSObject.Properties['SelectedItemIds']){$chosen=@{};foreach($chosenId in @($Decision.Receipt.SelectedItemIds)){$chosen[[string]$chosenId]=$true}}
+    @($included|ForEach-Object {
         $spec=$_.MigrationSpec;$adapter=if($spec){[string]$spec.Adapter}else{''}
         $group=if($adapter -cin @('IISSite','IISPool','IISSection','IISLocation')){'Web'}elseif($adapter -ceq 'ScheduledTask'){'Tasks'}elseif($adapter -ceq 'FileScope'){'Data'}else{'Settings'}
         $restorable=$true;$reason=''
         if(-not $spec -or $adapter -ceq 'ManualWorkflow'){$restorable=$false;$reason='需要人工處理，工具不會還原。'}elseif($adapter -ceq 'FileScope' -and $spec.PSObject.Properties['TransferChannel'] -and [string]$spec.TransferChannel -ceq 'External'){$restorable=$false;$reason='標示為外部處理，未包含在備份中。'}
         $row=$rows[[string]$_.ItemId];$restored=[bool]($row -and -not $unproven.ContainsKey([string]$_.ItemId) -and [string]$row.Status -ceq 'Succeeded' -and $row.PSObject.Properties['AppliedManifestHash'] -and [string]$row.AppliedManifestHash -ceq $manifestHash)
-        [pscustomobject]@{value=[string]$_.ItemId;label=[string]$_.Name;kind=[string]$_.Kind;adapter=$adapter;group=$group;restorable=$restorable;restorableReason=$reason;restored=$restored}
+        $optionId=[string]$_.ItemId;$fileCount=[long]0;$byteCount=[long]0
+        if($null -ne $artifactTotals -and $artifactTotals.ContainsKey($optionId)){$fileCount=[long]$artifactTotals[$optionId].Files;$byteCount=[long]$artifactTotals[$optionId].Bytes}
+        $dependsOn=@();if($dependencyMap.ContainsKey($optionId)){$dependsOn=@($dependencyMap[$optionId].ToArray())}
+        $neededBy=@();if($requiredByMap.ContainsKey($optionId)){$neededBy=@($requiredByMap[$optionId].ToArray())}
+        $preselected=$null;if($null -ne $chosen){$preselected=[bool]$chosen.ContainsKey($optionId)}
+        [pscustomobject]@{value=$optionId;label=[string]$_.Name;kind=[string]$_.Kind;adapter=$adapter;group=$group;typeLabel=(Get-WsmWizardItemTypeLabel $adapter ([string]$_.Kind));restorable=$restorable;restorableReason=$reason;restored=$restored;fileCount=$fileCount;bytes=$byteCount;countsAvailable=[bool]($null -ne $artifactTotals);dependencies=$dependsOn;requiredBy=$neededBy;preselected=$preselected}
     })
 }
 
@@ -308,7 +376,9 @@ function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,
     if(-not $package){$result.status='NeedsPackage';$result.actions=@($actions.ToArray());return [pscustomobject]$result}
     $result.package=$package;$result.plan.generation=[long]$package.Package.Manifest.Generation
     $itemState=$null;try{$itemPaths=Get-WsmOperationPaths (Join-Path $Profile.WorkRoot 'pairs') $PairId;if([IO.File]::Exists($itemPaths.State)){$itemState=Get-WsmOperationState $itemPaths $package.Package}}catch{$itemState=$null}
-    $result.itemOptions=@(Get-WsmWizardTargetItemOptions $context $package $itemState)
+    # 重新開啟頁面時，選擇器以最後一份決策收據的選取為準預選（讀不到就用預設）。
+    $lastDecision=$null;try{$lastDecision=Get-WsmWizardTargetDecisionRecord $Workspace $PairId ([string]$received.SHA256)}catch{$lastDecision=$null}
+    $result.itemOptions=@(Get-WsmWizardTargetItemOptions $context $package $itemState $lastDecision)
     $inventoryDefaults=@{OutputDirectory=(Join-Path $Workspace ('hosts\'+$Profile.Fingerprint+'\inventory'));DeepDiscovery=$true;IncludeSoftwareCatalog=$true}
     $actions.Add((New-WsmWizardRuntimeAction 'Inventory' $true '重新觀測本機 Target 現況，不更新封存的來源事實。' $inventoryDefaults @()))
     $snapshot=$null

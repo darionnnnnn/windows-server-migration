@@ -536,45 +536,142 @@
   async function refreshWizardCore(options) { const force=!!(options&&options.force),projection = await wizardEndpoint(`/api/wizard?${wizardContextQuery()}`);state.wizard=projection;restoreAutoPending(projection);const signature=wizardProjectionSignature(projection);if(state.wizardDirty&&state.wizardRenderSignature&&signature!==state.wizardRenderSignature&&!force){markWizardStale(projection);}else if(force||signature!==state.wizardRenderSignature){renderWizard(projection);state.wizardRenderSignature=signature;state.wizardDirty=false;state.wizardStale=false;state.wizardPendingProjection=null;}updateWizardNavigation(projection);const status=String(projection.scan&&projection.scan.status||'');if(!state.wizardInventoryJobId&&!projection.intentRequired&&!state.wizardDirty&&!state.wizardAutoPending&&automaticReviewReady(projection)&&!automaticReviewMarker(projection)){const attempt=[projection.workspaceRole||projection.role,projection.pairId||'',projection.revision,projection.context&&projection.context.inventoryRevision,projection.context&&projection.context.selectionRevision].join('\u001f');if(state.wizardAutoAttempt!==attempt){state.wizardAutoAttempt=attempt;Promise.resolve().then(()=>applyWizardAutomaticChoices(projection,null));}}else if(!state.wizardInventoryJobId&&!projection.intentRequired&&projection.currentStep==='scan'&&projection.scan&&projection.scan.hasResult&&['Succeeded','Complete','Partial','Completed'].includes(status)&&projection.nextStep&&projection.nextStep!=='scan'&&!state.wizardAdvancing&&!(projection.mode==='Automatic'&&(projection.state&&projection.state.AutoContinue===true))){state.wizardAdvancing=true;Promise.resolve().then(()=>saveWizardState({CurrentStep:projection.nextStep})).finally(()=>{state.wizardAdvancing=false;});} return projection; }
   function updateWizardNavigation(projection) { const scan = projection && projection.scan || {}, results = projection && projection.results || {}; $('navigation-inventory').hidden = !(scan.hasResult === true && ['Succeeded','Complete','Partial','Completed','CoverageIncomplete'].includes(String(scan.status || ''))); $('navigation-backup-results').hidden = !(results.backup === true || !!(results.backup&&results.backup.hasDurableRecord) || results.backupResult === true); $('navigation-restore-results').hidden = !(results.restore === true || !!(results.restore&&results.restore.hasDurableRecord) || results.restoreResult === true); }
   function wizardMessage(parent, text, cls) { const p = el('p', cls || 'inline-note', text); parent.appendChild(p); return p; }
+  // R6: 還原項目選擇器。資料來自 Get-WsmWizardTargetItemOptions（數量取自已驗證封裝）；前端只做預填與提示，後端收據驗證不變。
+  function formatByteCount(value) {
+    const bytes = Math.max(0, Number(value) || 0), units = ['KiB', 'MiB', 'GiB', 'TiB'];
+    let text = `${bytes} 位元組`;
+    if (bytes >= 1024) { let size = bytes, index = -1; do { size /= 1024; index++; } while (size >= 1024 && index < units.length - 1); text += `（約 ${size.toFixed(size < 10 ? 2 : 1)} ${units[index]}）`; }
+    return text;
+  }
+  function normalizeRestoreOption(option) {
+    const read = (lower, upper) => option[lower] !== undefined ? option[lower] : option[upper], list = value => Array.isArray(value) ? value.map(String) : [];
+    return {
+      value: String(read('value', 'Value') || ''), label: String(read('label', 'Label') || '已核准項目'), detail: String(read('adapter', 'Adapter') || read('kind', 'Kind') || ''),
+      group: String(read('group', 'Group') || 'Settings'), typeLabel: String(read('typeLabel', 'TypeLabel') || read('adapter', 'Adapter') || read('kind', 'Kind') || '其他'),
+      restorable: read('restorable', 'Restorable'), reason: String(read('restorableReason', 'RestorableReason') || ''), restored: read('restored', 'Restored') === true,
+      counts: read('countsAvailable', 'CountsAvailable') === true, files: Math.max(0, Number(read('fileCount', 'FileCount')) || 0), bytes: Math.max(0, Number(read('bytes', 'Bytes')) || 0),
+      dependencies: list(read('dependencies', 'Dependencies')), requiredBy: list(read('requiredBy', 'RequiredBy')), preselected: read('preselected', 'Preselected')
+    };
+  }
+  // 確認對話框：Esc 或「返回修改選取」都不送出，焦點回到觸發的按鈕；只有「確認並建立決策收據」才呼叫 onConfirm。
+  function openRestoreSelectionConfirm(review, opener, onConfirm) {
+    let dialog = document.getElementById('restore-selection-confirm-dialog');
+    if (!dialog) { dialog = document.createElement('dialog'); dialog.id = 'restore-selection-confirm-dialog'; dialog.className = 'credential-dialog'; document.body.appendChild(dialog); }
+    const title = el('h2', '', '確認建立決策收據'); title.id = 'restore-selection-confirm-title';
+    const nodes = [title, el('p', '', '決策收據會記錄你目前的選取。送出前請先確認下列項目。')];
+    if (review.incomplete.length) {
+      const list = el('ul', 'wizard-runtime-confirm-list'); list.dataset.confirmKind = 'incomplete';
+      review.incomplete.forEach(entry => list.appendChild(el('li', '', `${entry.option.label}：缺少必要相依 ${entry.missing.join('、')}`)));
+      nodes.push(el('h3', '', '⚠ 不完整的工作負載'), el('p', 'credential-warning', '此工作負載將停止，不會啟用。若要補齊，請返回勾選缺少的相依項目。'), list);
+    }
+    if (review.reapply.length) {
+      const list = el('ul', 'wizard-runtime-confirm-list'); list.dataset.confirmKind = 'reapply';
+      review.reapply.forEach(option => list.appendChild(el('li', '', option.label)));
+      nodes.push(el('h3', '', '↻ 將重新還原的項目'), el('p', '', '這些項目先前已還原成功；重新還原會再次套用，請確認這是你要的。'), list);
+    }
+    const row = el('div', 'credential-actions'), yes = el('button', 'primary-button', '確認並建立決策收據'), no = el('button', 'secondary-button', '返回修改選取'); yes.type = 'button'; no.type = 'button';
+    yes.dataset.confirmAction = 'accept'; no.dataset.confirmAction = 'back';
+    const focusBack = () => { if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus({ preventScroll: true }); };
+    dialog.addEventListener('close', focusBack, { once: true });
+    no.addEventListener('click', () => dialog.close());
+    yes.addEventListener('click', () => { if (yes.disabled) return; yes.disabled = true; dialog.close(); onConfirm(); });
+    row.append(yes, no); nodes.push(row);
+    dialog.replaceChildren(...nodes); dialog.setAttribute('aria-labelledby', 'restore-selection-confirm-title');
+    if (!dialog.open) dialog.showModal(); no.focus();
+  }
   function renderRestoreItemPicker(section,projection,id,optionsList) {
-    const key=runtimeInputKey(projection,id,'SelectedItemIds'),box=el('fieldset','wizard-runtime-items');
+    const key=runtimeInputKey(projection,id,'SelectedItemIds'),filterKey=key+'\u001ftype-filter',box=el('fieldset','wizard-runtime-items');
     box.appendChild(el('legend','','選擇要納入決策收據的核准項目'));
-    const opts=(optionsList||[]).map(option=>({value:String(option.value||option.Value||''),label:String(option.label||option.Label||'已核准項目'),detail:String(option.adapter||option.Adapter||option.kind||option.Kind||''),group:String(option.group||option.Group||'Settings'),restorable:option.restorable===undefined?option.Restorable:option.restorable,reason:String(option.restorableReason||option.RestorableReason||''),restored:(option.restored===undefined?option.Restored:option.restored)===true}));
+    const opts=(optionsList||[]).map(normalizeRestoreOption);
     if(!opts.length){wizardMessage(box,'目前沒有可由此比較收據確認的核准項目。','callout');section.appendChild(box);return box;}
-    const canSelect=option=>option.restorable!==false;
-    if(!state.wizardRuntimeInputs.has(key))state.wizardRuntimeInputs.set(key,opts.filter(option=>option.restorable===true&&!option.restored).map(option=>option.value));
+    const canSelect=option=>option.restorable!==false,byId=new Map(opts.map(option=>[option.value,option]));
+    if(!state.wizardRuntimeInputs.has(key)){
+      // 有決策收據時以最後一份收據為準預選（已還原的項目不預選，避免重開頁面就預設重新還原）；沒有收據時預設全選可還原且未還原的項目。
+      const hasReceipt=opts.some(option=>option.preselected===true||option.preselected===false);
+      state.wizardRuntimeInputs.set(key,opts.filter(option=>option.restorable===true&&!option.restored&&(!hasReceipt||option.preselected===true)).map(option=>option.value));
+    }
     const current=()=>new Set(state.wizardRuntimeInputs.get(key)||[]);
     const commit=next=>{state.wizardRuntimeInputs.set(key,[...next]);state.wizardDirty=true;refresh();};
     const names={Web:'網站',Tasks:'排程',Data:'資料範圍',Settings:'設定'},summary=el('p','wizard-field-hint'),views=[],rows=[];
-    summary.setAttribute('aria-live','polite');
-    const tools=el('div','wizard-runtime-item-tools'),all=el('button','secondary-button','全選'),none=el('button','secondary-button','全不選');
-    all.type='button';none.type='button';
-    all.addEventListener('click',()=>{commit(new Set(opts.filter(canSelect).map(option=>option.value)));box.dispatchEvent(new Event('change',{bubbles:true}));});
-    none.addEventListener('click',()=>{commit(new Set());box.dispatchEvent(new Event('change',{bubbles:true}));});
-    tools.append(all,none);box.append(tools,summary);
+    // 只有這一個 live region：摘要文字只在選取改變時才變動，重畫或篩選不會重複播報。
+    summary.setAttribute('aria-live','polite');summary.setAttribute('aria-atomic','true');summary.dataset.restoreSummary='true';
+    const incompleteList=el('p','wizard-runtime-incomplete');incompleteList.dataset.restoreIncomplete='true';incompleteList.hidden=true;
+    const missingOf=(option,selected)=>option.dependencies.filter(dependencyId=>{const dependency=byId.get(dependencyId);return dependency&&canSelect(dependency)&&!dependency.restored&&!selected.has(dependencyId);});
+    const visibleOptions=()=>rows.filter(entry=>!entry.row.hidden).map(entry=>entry.option);
+    const tools=el('div','wizard-runtime-item-tools'),all=el('button','secondary-button','全選'),none=el('button','secondary-button','全不選'),pick=el('button','secondary-button','選取篩選結果'),unpick=el('button','secondary-button','取消選取篩選結果');
+    [all,none,pick,unpick].forEach(button=>{button.type='button';});
+    const notify=()=>box.dispatchEvent(new Event('change',{bubbles:true}));
+    all.addEventListener('click',()=>{commit(new Set(opts.filter(canSelect).map(option=>option.value)));notify();});
+    none.addEventListener('click',()=>{commit(new Set());notify();});
+    pick.addEventListener('click',()=>{const next=current();visibleOptions().filter(canSelect).forEach(option=>next.add(option.value));commit(next);notify();});
+    unpick.addEventListener('click',()=>{const next=current();visibleOptions().forEach(option=>next.delete(option.value));commit(next);notify();});
+    tools.append(all,none,pick,unpick);
+    const filterRow=el('div','wizard-runtime-item-filter'),filterId='wizard-runtime-type-filter',filterLabel=el('label','',  '類型篩選'),filter=document.createElement('select');
+    filterLabel.htmlFor=filterId;filter.id=filterId;filter.dataset.restoreFilter='true';
+    filter.appendChild(new Option('全部類型',''));[...new Set(opts.map(option=>option.typeLabel))].forEach(label=>filter.appendChild(new Option(label,label)));
+    filter.value=[...filter.options].some(option=>option.value===state.wizardRuntimeInputs.get(filterKey))?state.wizardRuntimeInputs.get(filterKey):'';
+    filterRow.append(filterLabel,filter);box.append(filterRow,tools,summary,incompleteList);
     Object.keys(names).forEach(groupId=>{
       const members=opts.filter(option=>(names[option.group]?option.group:'Settings')===groupId);if(!members.length)return;
       const fieldset=el('fieldset','wizard-runtime-group'),legend=el('legend','wizard-runtime-group-title'),parent=document.createElement('input'),badge=el('span','wizard-runtime-group-partial','');
       parent.type='checkbox';parent.setAttribute('aria-label','全選此群組');parent.disabled=!members.some(canSelect);
       legend.append(parent,el('span','',names[groupId]),badge);fieldset.appendChild(legend);
-      parent.addEventListener('change',()=>{const next=current(),selectable=members.filter(canSelect),full=selectable.length>0&&selectable.every(option=>next.has(option.value));selectable.forEach(option=>full?next.delete(option.value):next.add(option.value));commit(next);});
+      parent.addEventListener('change',()=>{const next=current(),selectable=members.filter(option=>canSelect(option)&&visibleOptions().includes(option)),full=selectable.length>0&&selectable.every(option=>next.has(option.value));selectable.forEach(option=>full?next.delete(option.value):next.add(option.value));commit(next);});
       members.forEach(option=>{
         const row=el('label','wizard-choice'),checkbox=document.createElement('input'),copy=el('span','wizard-choice-copy');
         checkbox.type='checkbox';checkbox.dataset.runtimeItem=option.value;checkbox.disabled=!canSelect(option);
-        copy.append(el('strong','',option.label+(option.restored?'（已還原）':'')),el('span','',option.detail));
+        const meta=el('span','wizard-runtime-item-meta',`${option.typeLabel}${option.counts?` · ${option.files} 檔／${formatByteCount(option.bytes)}`:''}`),reapply=el('span','wizard-runtime-item-badge','↻ 將重新還原'),incomplete=el('span','wizard-runtime-item-badge is-incomplete','');
+        reapply.hidden=true;incomplete.hidden=true;reapply.dataset.badge='reapply';incomplete.dataset.badge='incomplete';
+        copy.append(el('strong','',option.label+(option.restored?'（已還原）':'')),el('span','',option.detail),meta);
         if(option.restorable===false)copy.appendChild(el('span','wizard-runtime-item-reason',option.reason));
-        row.append(checkbox,copy);fieldset.appendChild(row);rows.push({option,checkbox});
+        copy.append(reapply,incomplete);
+        row.append(checkbox,copy);fieldset.appendChild(row);rows.push({option,checkbox,row,reapply,incomplete});
         checkbox.addEventListener('change',()=>{const next=current();checkbox.checked&&canSelect(option)?next.add(option.value):next.delete(option.value);commit(next);});
       });
-      views.push({members,parent,badge});box.appendChild(fieldset);
+      views.push({members,parent,badge,fieldset});box.appendChild(fieldset);
     });
+    filter.addEventListener('change',()=>{state.wizardRuntimeInputs.set(filterKey,filter.value);refresh();});
+    // 勾選／取消／全選／篩選結果之後呼叫：更新勾選狀態、群組三態、相依提示與摘要。
     function refresh() {
-      const selected=current();
-      rows.forEach(({option,checkbox})=>{checkbox.checked=canSelect(option)&&selected.has(option.value);});
-      views.forEach(({members,parent,badge})=>{const selectable=members.filter(canSelect),count=selectable.filter(option=>selected.has(option.value)).length;parent.checked=selectable.length>0&&count===selectable.length;parent.indeterminate=count>0&&count<selectable.length;badge.textContent=parent.indeterminate?'部分':'';});
-      const total=opts.filter(canSelect).length;summary.textContent=`已選 ${opts.filter(option=>canSelect(option)&&selected.has(option.value)).length}／可還原 ${total}`;
+      const selected=current(),typeFilter=filter.value;
+      rows.forEach(({option,checkbox,row,reapply,incomplete})=>{
+        row.hidden=!!typeFilter&&option.typeLabel!==typeFilter;
+        const picked=canSelect(option)&&selected.has(option.value);checkbox.checked=picked;
+        reapply.hidden=!(picked&&option.restored);
+        const missing=picked?missingOf(option,selected):[];incomplete.hidden=!missing.length;
+        incomplete.textContent=missing.length?`⚠ 不完整：缺少必要相依 ${missing.map(dependencyId=>byId.get(dependencyId).label).join('、')}`:'';
+      });
+      views.forEach(({members,parent,badge,fieldset})=>{
+        const visible=members.filter(option=>!typeFilter||option.typeLabel===typeFilter),selectable=visible.filter(canSelect),count=selectable.filter(option=>selected.has(option.value)).length;
+        fieldset.hidden=!visible.length;
+        parent.checked=selectable.length>0&&count===selectable.length;parent.indeterminate=count>0&&count<selectable.length;parent.disabled=!selectable.length;badge.textContent=parent.indeterminate?'部分':'';
+      });
+      const pickedOptions=opts.filter(option=>canSelect(option)&&selected.has(option.value)),total=opts.filter(canSelect).length;
+      const affected=pickedOptions.map(option=>({option,missing:missingOf(option,selected)})).filter(entry=>entry.missing.length),reapplied=pickedOptions.filter(option=>option.restored);
+      const known=pickedOptions.every(option=>option.counts),files=pickedOptions.reduce((sum,option)=>sum+option.files,0),bytes=pickedOptions.reduce((sum,option)=>sum+option.bytes,0);
+      let text=`已選 ${pickedOptions.length}／可還原 ${total}，${known?`預計寫入 ${files} 檔／${formatByteCount(bytes)}`:'預計寫入量尚未取得'}`;
+      if(affected.length)text+=`；⚠ 不完整 ${affected.length} 項`;
+      if(reapplied.length)text+=`；↻ 重新還原 ${reapplied.length} 項`;
+      if(summary.textContent!==text)summary.textContent=text;
+      const incompleteText=affected.length?`⚠ 受影響的工作負載（此工作負載將停止，不會啟用）：${affected.map(entry=>`${entry.option.label}（缺少 ${entry.missing.map(dependencyId=>byId.get(dependencyId).label).join('、')}）`).join('；')}`:'';
+      if(incompleteList.textContent!==incompleteText)incompleteList.textContent=incompleteText;
+      incompleteList.hidden=!affected.length;
     }
+    // 建立決策收據前的確認內容：不完整（缺少必要相依）與重新還原兩類分開列出。
+    box.wsmReview=()=>{
+      const selected=current(),incomplete=[],reapply=[];
+      opts.forEach(option=>{if(!canSelect(option)||!selected.has(option.value))return;const missing=missingOf(option,selected);if(missing.length)incomplete.push({option,missing:missing.map(dependencyId=>byId.get(dependencyId).label)});if(option.restored)reapply.push(option);});
+      return {incomplete,reapply};
+    };
     refresh();section.appendChild(box);return box;
+  }
+  // R6: Target 還原預覽的總計、不完整與重新還原清單（欄位取自預覽的顯示專用欄位）。
+  function renderTargetPreviewSelection(card,record,rows,optionsList) {
+    const names=new Map((optionsList||[]).map(option=>[String(option.value||option.Value||''),String(option.label||option.Label||'')])),nameOf=itemId=>names.get(String(itemId))||String(itemId);
+    const selectedRows=rows.filter(row=>row&&typeof row==='object'&&String(row.Action||row.action||'')!=='DeferredBySelection');
+    if(record&&(record.PlannedFileCount!==undefined||record.PlannedBytes!==undefined)){const total=wizardMessage(card,`預計寫入 ${Number(record.PlannedFileCount)||0} 檔／${formatByteCount(record.PlannedBytes)}`,'notice');total.dataset.previewTotal='true';}
+    selectedRows.filter(row=>Array.isArray(row.MissingDependencies)&&row.MissingDependencies.length).forEach(row=>{const line=wizardMessage(card,`⚠ 不完整，此工作負載將停止：${runtimeScalar(row.Name)||nameOf(row.ItemId)}（缺少必要相依 ${row.MissingDependencies.map(nameOf).join('、')}）`,'callout');line.dataset.previewIncomplete=String(row.ItemId||'');});
+    selectedRows.filter(row=>row.AlreadyRestored===true).forEach(row=>{const line=wizardMessage(card,`↻ 重新還原：${runtimeScalar(row.Name)||nameOf(row.ItemId)}（先前已還原成功，這次會再次套用）`,'callout');line.dataset.previewReapply=String(row.ItemId||'');});
   }
 
   function renderWizard(projection) {
@@ -757,14 +854,14 @@
   function targetRuntimeFieldLabel(name){return({Path:'可信材料位置',ExpectedHash:'獨立可信來源提供的預期 SHA-256',TransportPath:'收到的 ZIP 材料位置',SummaryPath:'收到的 Directory 摘要位置',ExpectedSummaryHash:'獨立可信來源提供的摘要 SHA-256',SourceDirectory:'收到的封裝資料夾',Owner:'本次決策負責人',Reason:'決策理由',CutoverPlanPath:'已核准的 CutoverPlan 位置',CutoverPlanHash:'獨立可信來源提供的 CutoverPlan SHA-256',Acknowledgement:'精確啟用確認'}[name]||name);}
   function renderTargetRuntime(content,projection){const identity=runtimeIdentity(projection),card=el('article','wizard-action-card wizard-runtime-target');card.appendChild(el('h2','','新主機材料、決策與還原'));if(state.wizardRuntimeIdentity!==identity||!state.wizardRuntimeProjection){wizardMessage(card,state.wizardRuntimeUnavailableIdentity===identity?'無法核驗這份執行畫面；請明確重新讀取後再操作。':'正在讀取與目前新主機、封裝世代及盤點綁定的執行狀態…',state.wizardRuntimeUnavailableIdentity===identity?'callout':'wizard-loading');content.appendChild(card);loadRuntimeCard(card,projection,identity);return;}const response=state.wizardRuntimeProjection,runtime=response.runtime||response.Runtime||{},target=runtime.target||runtime.Target||runtime,actions=Array.isArray(response.actions)?response.actions:[],actionById=id=>wizardRuntimeAction(response,id),job=String(state.wizardRuntimeJobId||'')&&state.jobs.get(String(state.wizardRuntimeJobId)),jobAction=String(job&&(job.action||job.Action)||''),jobStatus=String(job&&(job.status||job.Status)||'');
     appendSummaryRows(card,[['目前階段',statusName(target.status||response.status||'Unknown')],['已核准計畫 SHA-256',target.plan&&(target.plan.hash||target.plan.Hash)],['封裝 manifest SHA-256',target.package&&(target.package.ManifestHash||target.package.manifestHash)],['Target 盤點 SHA-256',target.inventory&&(target.inventory.SHA256||target.inventory.sha256)],['Comparison 狀態',target.comparison&&(target.comparison.Status||target.comparison.status||'已匯入並綁定最新盤點')],['決策收據',target.decision?'已核驗':'尚未建立']]);const statusSummary=runtimeScalar(target.statusSummary||target.StatusSummary||runtime.statusSummary);if(statusSummary)wizardMessage(card,statusSummary,'callout');const decision=target.decision||target.Decision||{},receipt=decision.Receipt||decision.receipt||null;if(receipt&&typeof receipt==='object'){const owner=runtimeScalar(receipt.Owner||receipt.owner),reason=runtimeScalar(receipt.Reason||receipt.reason);appendSummaryRows(card,[['決策負責人宣告',owner||'未知'],['決策理由宣告',reason||'未知']]);wizardMessage(card,'此為收據中的責任宣告，系統未驗證負責人的企業身分。','wizard-provenance');}
-    const previewRecord=target.restorePreview||target.RestorePreview||null,nonCEvidenceIssue=runtimeScalar(previewRecord&&(previewRecord.NonCEvidenceIssue||previewRecord.nonCEvidenceIssue||previewRecord.WizardNonCEvidenceIssue||previewRecord.wizardNonCEvidenceIssue));if(nonCEvidenceIssue)wizardMessage(card,`非 C 證據提示：${nonCEvidenceIssue}。請依核心逐項預覽的狀態與原因判斷 C 項目；此提示不會取代逐項結果。`,'callout');const previewRows=previewRecord&&(previewRecord.Rows||previewRecord.rows);if(Array.isArray(previewRows))previewRows.forEach(row=>{if(!row||typeof row!=='object')return;const item=runtimeScalar(row.Name||row.ItemName||row.ItemId||row.itemId)||'核准項目',status=runtimeScalar(row.Status||row.status)||'Unknown',reason=runtimeScalar(row.Reason||row.reason),summary=`${item} · ${statusName(status)}${reason?`：${reason}`:''}`;wizardMessage(card,summary,statusClass(status)==='danger'?'callout':'inline-note');});const issues=target.issues||target.Issues||[];issues.forEach(issue=>wizardMessage(card,String(issue),'callout'));renderTargetSoftwareCheck(card,target);const warning=el('p','wizard-field-hint','每個材料都由目前角色與配對綁定；預期 hash 必須從畫面外的可信來源取得。系統不會由觀察到的 hash 自動填入預期值。');card.appendChild(warning);
+    const previewRecord=target.restorePreview||target.RestorePreview||null,nonCEvidenceIssue=runtimeScalar(previewRecord&&(previewRecord.NonCEvidenceIssue||previewRecord.nonCEvidenceIssue||previewRecord.WizardNonCEvidenceIssue||previewRecord.wizardNonCEvidenceIssue));if(nonCEvidenceIssue)wizardMessage(card,`非 C 證據提示：${nonCEvidenceIssue}。請依核心逐項預覽的狀態與原因判斷 C 項目；此提示不會取代逐項結果。`,'callout');const previewRows=previewRecord&&(previewRecord.Rows||previewRecord.rows);if(Array.isArray(previewRows)){renderTargetPreviewSelection(card,previewRecord,previewRows,target.itemOptions||target.ItemOptions||[]);previewRows.forEach(row=>{if(!row||typeof row!=='object')return;const item=runtimeScalar(row.Name||row.ItemName||row.ItemId||row.itemId)||'核准項目',status=runtimeScalar(row.Status||row.status)||'Unknown',reason=runtimeScalar(row.Reason||row.reason),counted=row.FileCount!==undefined&&String(row.Action||row.action||'')!=='DeferredBySelection',summary=`${item} · ${statusName(status)}${reason?`：${reason}`:''}${counted?` · ${Number(row.FileCount)||0} 檔／${Number(row.Bytes)||0} 位元組`:''}`;wizardMessage(card,summary,statusClass(status)==='danger'?'callout':'inline-note');});}const issues=target.issues||target.Issues||[];issues.forEach(issue=>wizardMessage(card,String(issue),'callout'));renderTargetSoftwareCheck(card,target);const warning=el('p','wizard-field-hint','每個材料都由目前角色與配對綁定；預期 hash 必須從畫面外的可信來源取得。系統不會由觀察到的 hash 自動填入預期值。');card.appendChild(warning);
     if(state.pendingOperation){wizardMessage(card,'上一筆 Target 操作尚未確認；只查詢原作業，不會重新提交。','callout');const query=el('button','secondary-button','查詢原作業狀態');query.type='button';query.addEventListener('click',async()=>{const record=await recoverPendingOperation();if(record){await refreshWizardRuntime(true);await refreshWizard({force:true});renderWizard(state.wizard);}else fail('仍無法確認原作業結果。請稍後查詢同一作業，不要重新提交。');});card.appendChild(query);content.appendChild(card);return;}
     if(job){wizardMessage(card,`最近送出的 ${jobAction} 作業：${statusName(jobStatus||'Unknown')} · ${String(job.jobId||job.operationId||'')}`,'notice');if(['Failed','Cancelled','Interrupted','Blocked','ReviewRequired','Deferred'].includes(jobStatus))wizardMessage(card,'結果已保留。系統不會自動重送、還原或啟用；請先讀取目前執行狀態，再由操作者明確決定下一步。','callout');const output=(job.outputs||job.Outputs||[])[0];if(output){if(output.Kind==='WizardTargetRestoreResult'||output.Kind==='WizardTargetValidation'||output.Kind==='WizardTargetAcceptance'||output.Kind==='WizardTargetActivationResult'){appendSummaryRows(card,[['逐項作業結果',output.Status||output.status],['機械驗證',output.MechanicalStatus||output.mechanicalStatus],['業務接受',output.AcceptanceStatus||output.acceptanceStatus],['啟用狀態',output.ActivationStatus||output.activationStatus]]);}}
     }
     const formAction=(id,title,fields,options={})=>{const action=actionById(id);if(!action)return;const section=el('fieldset','wizard-runtime-form');section.appendChild(el('legend','',title));if(action.reason)wizardMessage(section,String(action.reason),'inline-note');const defaults=action.defaults||{},inputs={};for(const name of fields){if(name==='Decision'){const wrap=el('label','wizard-field-label','目標端決策'),select=document.createElement('select');select.dataset.runtimeField=name;[['RestoreNow','現在還原'],['WaitForInstall','等待人工補裝']].forEach(([value,label])=>select.appendChild(new Option(label,value)));select.value=state.wizardRuntimeInputs.get(runtimeInputKey(projection,id,name))||'RestoreNow';wrap.appendChild(select);section.appendChild(wrap);inputs[name]=select;select.addEventListener('change',()=>{state.wizardRuntimeInputs.set(runtimeInputKey(projection,id,name),select.value);state.wizardDirty=true;});continue;}if(name==='SelectedItemIds'){const optionsList=target.itemOptions||target.ItemOptions||[];inputs[name]=renderRestoreItemPicker(section,projection,id,optionsList);continue;}const hint=({ExpectedHash:'請從與此畫面分開的可信交接來源取得；不可複製目前觀察值。',ExpectedSummaryHash:'請從與此畫面分開的可信交接來源取得；不可由摘要檔自行推定信任。',SourceDirectory:'選取已收到的封裝資料夾；核心會重新核驗內容及來源綁定。',Reason:'說明操作者為何選擇此決策。'}[name]||'');inputs[name]=runtimeTextInput(section,projection,id,name,targetRuntimeFieldLabel(name),hint,name==='Reason');}
       if(id==='TargetRestore'){const label=el('label','wizard-choice'),check=document.createElement('input');check.type='checkbox';check.dataset.runtimeField='RestoreConfirmation';check.checked=state.wizardRuntimeInputs.get(runtimeInputKey(projection,id,'RestoreConfirmation'))===true;label.append(check,el('span','wizard-choice-copy'));label.lastChild.append(el('strong','','我已核對目前還原預覽並明確確認'),el('span','','確認只授權此預覽，不會授權業務接受或啟用。'));section.appendChild(label);inputs.RestoreConfirmation=check;check.addEventListener('change',()=>{state.wizardRuntimeInputs.set(runtimeInputKey(projection,id,'RestoreConfirmation'),check.checked);state.wizardDirty=true;});}
       if(id==='TargetActivation'){wizardMessage(section,'啟用是獨立 Cutover gate；需另有已核准計畫與獨立確認。','callout');}
-      const submit=el('button',options.primary?'primary-button':'secondary-button',options.button||title);submit.type='button';const required=fields.filter(name=>name!=='SelectedItemIds');const valid=()=>action.available!==false&&!state.busy&&!state.pendingOperation&&!state.wizardStale&&required.every(name=>{const input=inputs[name];return !!input&&String(input.value||'').trim().length>0;})&&(!fields.includes('SelectedItemIds')||id==='CreateTargetDecisionReceipt'&&inputs.Decision.value==='WaitForInstall'||(state.wizardRuntimeInputs.get(runtimeInputKey(projection,id,'SelectedItemIds'))||[]).length>0)&&(!inputs.RestoreConfirmation||inputs.RestoreConfirmation.checked);const sync=()=>{submit.disabled=!valid();};Object.values(inputs).forEach(input=>{if(input&&input.addEventListener){input.addEventListener('input',sync);input.addEventListener('change',sync);}});submit.disabled=!valid();submit.addEventListener('click',()=>{if(!valid()){fail('請完成此步驟明確要求的欄位與確認。');return;}const args=Object.assign({},defaults);for(const name of fields){if(name==='SelectedItemIds')args[name]=state.wizardRuntimeInputs.get(runtimeInputKey(projection,id,name))||[];else args[name]=String(inputs[name].value||'').trim();}if(inputs.RestoreConfirmation)delete args.RestoreConfirmation;submitWizardRuntimeAction(id,args,projection,submit,response.viewContext);});section.appendChild(submit);card.appendChild(section);};
+      const submit=el('button',options.primary?'primary-button':'secondary-button',options.button||title);submit.type='button';const required=fields.filter(name=>name!=='SelectedItemIds');const valid=()=>action.available!==false&&!state.busy&&!state.pendingOperation&&!state.wizardStale&&required.every(name=>{const input=inputs[name];return !!input&&String(input.value||'').trim().length>0;})&&(!fields.includes('SelectedItemIds')||id==='CreateTargetDecisionReceipt'&&inputs.Decision.value==='WaitForInstall'||(state.wizardRuntimeInputs.get(runtimeInputKey(projection,id,'SelectedItemIds'))||[]).length>0)&&(!inputs.RestoreConfirmation||inputs.RestoreConfirmation.checked);const sync=()=>{submit.disabled=!valid();};Object.values(inputs).forEach(input=>{if(input&&input.addEventListener){input.addEventListener('input',sync);input.addEventListener('change',sync);}});submit.disabled=!valid();submit.addEventListener('click',()=>{if(!valid()){fail('請完成此步驟明確要求的欄位與確認。');return;}const send=()=>{if(!valid()){fail('請完成此步驟明確要求的欄位與確認。');return;}const args=Object.assign({},defaults);for(const name of fields){if(name==='SelectedItemIds')args[name]=state.wizardRuntimeInputs.get(runtimeInputKey(projection,id,name))||[];else args[name]=String(inputs[name].value||'').trim();}if(inputs.RestoreConfirmation)delete args.RestoreConfirmation;submitWizardRuntimeAction(id,args,projection,submit,response.viewContext);};const review=inputs.SelectedItemIds&&typeof inputs.SelectedItemIds.wsmReview==='function'?inputs.SelectedItemIds.wsmReview():null;if(review&&(review.incomplete.length||review.reapply.length)){openRestoreSelectionConfirm(review,submit,send);return;}send();});section.appendChild(submit);card.appendChild(section);};
     const planAction=actionById('ImportApprovedPlan');if(planAction)formAction('ImportApprovedPlan','匯入已核准計畫',['Path','ExpectedHash'],{button:'核對並匯入計畫'});
     const zipAction=actionById('TargetZipImport');if(zipAction)formAction('TargetZipImport','匯入 ZIP 封裝',['TransportPath','ExpectedHash'],{button:'核對並匯入 ZIP'});const directoryAction=actionById('TargetDirectoryImport');if(directoryAction)formAction('TargetDirectoryImport','匯入 Directory 封裝',['SummaryPath','ExpectedSummaryHash','SourceDirectory'],{button:'核對並匯入 Directory'});
     const inventoryAction=actionById('Inventory');if(inventoryAction)formAction('Inventory','重新盤點這台新主機',[],{button:'開始 Target 本機盤點'});const exportAction=actionById('ExportTargetHandoff');if(exportAction)formAction('ExportTargetHandoff','交回新主機盤點供 Manager 建立比較',[],{button:'匯出 Target 盤點'});

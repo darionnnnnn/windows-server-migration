@@ -331,6 +331,35 @@ function Assert-WsmAssistiveTargetScopeTopology {
     }
 }
 
+# 預覽列的顯示專用欄位：檔數、位元組、缺少的必要相依、是否已還原過。它們由已驗證封裝與目前狀態推得，不是核對依據；
+# 預覽雜湊與逐列雜湊一律先移除這些欄位，所以既有續作的漂移容忍與重綁判定、以及升級前留下的雜湊都不受影響。
+function Remove-WsmAssistivePreviewDisplayFields($Row) {
+    if($null -eq $Row){return $null}
+    $names=@('FileCount','Bytes','MissingDependencies','AlreadyRestored')
+    $present=$false;foreach($name in $names){if($Row.PSObject.Properties[$name]){$present=$true;break}}
+    if(-not $present){return $Row}
+    $Row|Select-Object -Property * -ExcludeProperty $names
+}
+function Add-WsmAssistivePreviewDisplayFields($Row,$Item,[hashtable]$Totals,[hashtable]$Selected,[hashtable]$PlanItems,[hashtable]$Restored) {
+    $itemId=[string]$Item.ItemId;$files=[long]0;$bytes=[long]0
+    if($Totals.ContainsKey($itemId)){$files=[long]$Totals[$itemId].Files;$bytes=[long]$Totals[$itemId].Bytes}
+    $missing=New-Object 'System.Collections.Generic.List[string]'
+    if($Item.PSObject.Properties['Dependencies']){
+        foreach($dependency in @($Item.Dependencies)){
+            if(-not $dependency -or [string]$dependency.Type -cne 'Mandatory'){continue}
+            $dependencyId=[string]$dependency.ItemId
+            if(-not $dependencyId -or $dependencyId -ceq $itemId -or -not $PlanItems.ContainsKey($dependencyId)){continue}
+            $dependencyItem=$PlanItems[$dependencyId];if($dependencyItem.PSObject.Properties['Decision'] -and [string]$dependencyItem.Decision -cne 'Include'){continue}
+            if($Selected.ContainsKey($dependencyId) -or $Restored.ContainsKey($dependencyId) -or $missing.Contains($dependencyId)){continue}
+            $missing.Add($dependencyId)
+        }
+    }
+    $Row|Add-Member NoteProperty FileCount $files
+    $Row|Add-Member NoteProperty Bytes $bytes
+    $Row|Add-Member NoteProperty MissingDependencies ([string[]]@($missing.ToArray()))
+    $Row|Add-Member NoteProperty AlreadyRestored ([bool]$Restored.ContainsKey($itemId))
+}
+
 function Get-WsmAssistiveRestorePreview {
     [CmdletBinding()]param([Parameter(Mandatory)][string]$ManifestPath,[Parameter(Mandatory)][string]$ExpectedHash,[Parameter(Mandatory)][string]$StateDirectory,[hashtable]$Secrets=@{},$CancellationToken=$null,[object[]]$GeneralHostEvidence=@(),[Parameter(Mandatory)][string]$AssistiveDecisionReceiptPath,[Parameter(Mandatory)][string]$AssistiveDecisionReceiptHash,[string]$AssistiveTargetSnapshotPath='',[string]$NonCTransferPlanPath='',[string]$NonCTransferPlanHash='',[string]$NonCResultPath='',[string]$NonCResultHash='')
     $package=Test-WsmMigrationPackage $ManifestPath $ExpectedHash $CancellationToken
@@ -341,11 +370,20 @@ function Get-WsmAssistiveRestorePreview {
     $issues=@();if($package.Plan.PSObject.Properties['GeneralHost']){$issues=@(Get-WsmGeneralHostIssues $package.Plan RestoreReady $package.Manifest.Target.Fingerprint '' $package.Manifest.PlanHash $GeneralHostEvidence)}
     $issues+=@(Get-WsmAssistiveComparisonDependencyIssues $package $decision)
     $rows=New-Object 'System.Collections.Generic.List[object]';$problems=New-Object 'System.Collections.Generic.List[object]'
+    # 顯示專用的數量與相依：數量只取自已驗證封裝的 artifacts.jsonl（目錄列不計檔也不計位元組）；相依只認封裝計畫內的必要相依。
+    $artifactTotals=@{}
+    if($package.PSObject.Properties['Root'] -and $package.Manifest.PSObject.Properties['ArtifactsHash']){Read-WsmArtifactLines (Join-Path $package.Root 'artifacts.jsonl') $package.Manifest.ArtifactsHash $CancellationToken | ForEach-Object {
+        $totalId=[string]$_.ItemId;if(-not $artifactTotals.ContainsKey($totalId)){$artifactTotals[$totalId]=[pscustomobject]@{Files=[long]0;Bytes=[long]0}}
+        if(-not [bool]$_.Directory){$artifactTotals[$totalId].Files++;if($_.PSObject.Properties['Data'] -and $_.Data -and $_.Data.PSObject.Properties['Bytes']){$artifactTotals[$totalId].Bytes+=[long]$_.Data.Bytes}}
+    }}
+    $planItemsById=@{};foreach($planItem in @($package.Plan.Items)){$planItemsById[[string]$planItem.ItemId]=$planItem}
+    $pendingIds=@{};if($state.PSObject.Properties['PendingOperations']){foreach($pendingOp in @($state.PendingOperations)){if($pendingOp -and $pendingOp.PSObject.Properties['ItemId']){$pendingIds[[string]$pendingOp.ItemId]=$true}}}
+    $restoredIds=@{};foreach($stateItem in @($state.Items)){if($stateItem -and $stateItem.PSObject.Properties['ItemId'] -and [string]$stateItem.Status -ceq 'Succeeded' -and $stateItem.PSObject.Properties['AppliedManifestHash'] -and [string]$stateItem.AppliedManifestHash -ieq $ExpectedHash -and -not $pendingIds.ContainsKey([string]$stateItem.ItemId)){$restoredIds[[string]$stateItem.ItemId]=$true}}
     # 會寫入的 FileScope 項目先登記（所在卷、所需位元組），迴圈結束後依卷加總再比對一次容量。
     $capacityCandidates=New-Object 'System.Collections.Generic.List[object]'
     foreach($item in @($package.Plan.Items)){
         Assert-WsmCancellationBoundary $CancellationToken 'AssistiveRestorePreviewItem'
-        if(-not $selected.ContainsKey([string]$item.ItemId)){$rows.Add([pscustomobject]@{ItemId=$item.ItemId;Adapter=$item.MigrationSpec.Adapter;Action='DeferredBySelection';Status='Deferred';Reason='This approved item was not selected in the current target decision receipt.'});continue}
+        if(-not $selected.ContainsKey([string]$item.ItemId)){$deferredRow=[pscustomobject]@{ItemId=$item.ItemId;Adapter=$item.MigrationSpec.Adapter;Action='DeferredBySelection';Status='Deferred';Reason='This approved item was not selected in the current target decision receipt.'};Add-WsmAssistivePreviewDisplayFields $deferredRow $item $artifactTotals $selected $planItemsById $restoredIds;$deferredRow.MissingDependencies=[string[]]@();$rows.Add($deferredRow);continue}
         $spec=$item.MigrationSpec;$action='RestoreNow';$status='Ready';$reason='';$cv2=[bool]($package.Plan.PSObject.Properties['Assistive'] -and $package.Plan.Assistive -and $package.Plan.Assistive.PSObject.Properties['ContractVersion'] -and [int]$package.Plan.Assistive.ContractVersion -eq 2);$locationError='';$readiness=Get-WsmAssistiveWorkloadReadiness $item
         if($decision.Receipt.Decision -eq 'WaitForInstall'){$action='WaitForInstall';$status='DeferredSoftware';$reason='Owner chose to wait for target preparation; no target writes will occur.'}
         elseif($readiness.Status -ne 'Ready'){$action=$readiness.Status;$status=$readiness.Status;$reason=$readiness.Reason}
@@ -393,7 +431,7 @@ function Get-WsmAssistiveRestorePreview {
         }
         if($spec.PSObject.Properties['SharedResourceImpacts']){foreach($impact in @($spec.SharedResourceImpacts | Where-Object RequiresSharedReview)){$problems.Add([pscustomobject]@{ItemId=$item.ItemId;Reason=('Shared resource reservation/review required: '+$impact.ResourceKind+' '+$impact.ResourceItemId)})}}
         if($status -in @('Blocked','BlockedConflict')){$problems.Add([pscustomobject]@{ItemId=$item.ItemId;Reason=$reason})}
-        $previewRow=[pscustomobject]@{ItemId=$item.ItemId;Name=$item.Name;Adapter=$spec.Adapter;Action=$action;Status=$status;Reason=$reason;Rollback='Per-item journal; exact owned state only';RebootPossible=($spec.Adapter -eq 'WindowsFeature')};$previewCredential=$null;if([string]$spec.Adapter -cin @('Service','ScheduledTask','IISPool')){try{$previewCredential=Get-WsmAdapterCredentialRequirement $spec}catch{$previewCredential=$null}};if($previewCredential){$previewRow|Add-Member NoteProperty CredentialRequired $true;$previewRow|Add-Member NoteProperty CredentialKind ([string]$previewCredential.Kind)};$rows.Add($previewRow)
+        $previewRow=[pscustomobject]@{ItemId=$item.ItemId;Name=$item.Name;Adapter=$spec.Adapter;Action=$action;Status=$status;Reason=$reason;Rollback='Per-item journal; exact owned state only';RebootPossible=($spec.Adapter -eq 'WindowsFeature')};$previewCredential=$null;if([string]$spec.Adapter -cin @('Service','ScheduledTask','IISPool')){try{$previewCredential=Get-WsmAdapterCredentialRequirement $spec}catch{$previewCredential=$null}};if($previewCredential){$previewRow|Add-Member NoteProperty CredentialRequired $true;$previewRow|Add-Member NoteProperty CredentialKind ([string]$previewCredential.Kind)};Add-WsmAssistivePreviewDisplayFields $previewRow $item $artifactTotals $selected $planItemsById $restoredIds;$rows.Add($previewRow)
     }
     # 容量依目標卷加總：同一磁碟上所有會寫入的已選項目合計後只比對一次（舊流程 Restore.ps1 亦先依磁碟根加總）。
     # 單看各項都夠、合計不夠時，該卷上所有會寫入的項目一律標 AddTargetCapacity。
@@ -412,7 +450,10 @@ function Get-WsmAssistiveRestorePreview {
     $decisionBlocked=($decision.Receipt.Decision -eq 'RestoreNow' -and -not $decision.Snapshot)
     if($decisionBlocked){$problems.Add([pscustomobject]@{ItemId='';Reason='Target decision receipt requires a trusted target snapshot file.'})}
     $nonCFileResults=@(foreach($itemId in $nonCRows.Keys){foreach($fileResult in @($nonCRows[$itemId].FileResults)){$fileResult}})
-    [pscustomobject]@{PairId=$package.Manifest.PairId;ManifestHash=$ExpectedHash;Generation=$package.Manifest.Generation;PlanHash=$package.Manifest.PlanHash;Mode='AssistivePerItem';ScopeMode='Assistive';Decision=$decision.Receipt.Decision;DecisionReceiptHash=$decision.ReceiptHash;SelectedItemIds=@($decision.SelectedItemIds);Rows=$rows.ToArray();NonCFileResults=$nonCFileResults;Problems=$problems.ToArray();GeneralHostIssues=$issues;NonCTransferPlanPath=$NonCTransferPlanPath;NonCTransferPlanHash=$NonCTransferPlanHash;NonCResultPath=$NonCResultPath;NonCResultHash=$NonCResultHash;NonCEvidenceIssue=$nonCError;Blocked=($decisionBlocked -or @($rows | Where-Object Status -EQ 'Blocked').Count -gt 0);CanRestoreIndependentItems=(@($rows | Where-Object Status -EQ 'Ready').Count -gt 0);NoOp=($rows.Count -eq 0);BusinessValidationRequired=$true;ProductionVerified=$false}
+    # 預計寫入量：只加總實際會寫入的列（Ready 且不是只核對的動作）；其他列不計。
+    $plannedFileCount=[long]0;$plannedBytes=[long]0
+    foreach($plannedRow in $rows.ToArray()){if($plannedRow.PSObject.Properties['FileCount'] -and [string]$plannedRow.Status -ceq 'Ready' -and [string]$plannedRow.Action -notlike 'Verify*'){$plannedFileCount+=[long]$plannedRow.FileCount;$plannedBytes+=[long]$plannedRow.Bytes}}
+    [pscustomobject]@{PairId=$package.Manifest.PairId;ManifestHash=$ExpectedHash;Generation=$package.Manifest.Generation;PlanHash=$package.Manifest.PlanHash;Mode='AssistivePerItem';ScopeMode='Assistive';Decision=$decision.Receipt.Decision;DecisionReceiptHash=$decision.ReceiptHash;SelectedItemIds=@($decision.SelectedItemIds);Rows=$rows.ToArray();PlannedFileCount=$plannedFileCount;PlannedBytes=$plannedBytes;NonCFileResults=$nonCFileResults;Problems=$problems.ToArray();GeneralHostIssues=$issues;NonCTransferPlanPath=$NonCTransferPlanPath;NonCTransferPlanHash=$NonCTransferPlanHash;NonCResultPath=$NonCResultPath;NonCResultHash=$NonCResultHash;NonCEvidenceIssue=$nonCError;Blocked=($decisionBlocked -or @($rows | Where-Object Status -EQ 'Blocked').Count -gt 0);CanRestoreIndependentItems=(@($rows | Where-Object Status -EQ 'Ready').Count -gt 0);NoOp=($rows.Count -eq 0);BusinessValidationRequired=$true;ProductionVerified=$false}
 }
 
 function Get-WsmAssistiveTargetVolumeKey([string]$TargetPath) {
@@ -741,7 +782,7 @@ function Get-WsmAssistivePreviewRowHashes($Rows) {
     # Per-row digests let a continuation tell which preview rows drifted. A very large plan keeps the strict whole-preview comparison only.
     $list=New-Object 'System.Collections.Generic.List[object]'
     if(@($Rows).Count -gt 2000){return @()}
-    foreach($row in @($Rows)){if($row){$list.Add([pscustomobject][ordered]@{ItemId=[string]$row.ItemId;Hash=(Get-WsmHashText ($row | ConvertTo-Json -Depth 20 -Compress))})}}
+    foreach($row in @($Rows)){if($row){$list.Add([pscustomobject][ordered]@{ItemId=[string]$row.ItemId;Hash=(Get-WsmHashText ((Remove-WsmAssistivePreviewDisplayFields $row) | ConvertTo-Json -Depth 20 -Compress))})}}
     $list.ToArray()
 }
 
