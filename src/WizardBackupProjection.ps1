@@ -116,8 +116,51 @@ function Get-WsmHtmlProgressProjection($Job) {
     [pscustomobject][ordered]@{activity=$activity;statusDescription=$status;currentOperation=$operation;percent=$percent;processedCount=$processedCount;updatedUtc=$updated}
 }
 
-function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[bool]$OfflineFullSet) {
+# RestoreCondition decision table (first match wins). Inputs are facts already in
+# the plan or inventory item; nothing is inferred from names or paths.
+#   Status is not BackedUp                                   -> NotApplicable
+#   Classification.Disposition SpecialProduct / Preparation  -> ManualOnly
+#   Channel Certificate, or Kind IISSite / IISPool / IIS*Config / ScheduledTask / Service / TaskFolder
+#     (needs IIS role, service binaries, account or key password first) -> RequiresPrerequisite
+#     IIS configuration is only BackedUp when an owner supplied a typed section spec; the default
+#     ManualWorkflow draft is NotBackedUp (ManualHandling) and therefore NotApplicable above.
+#   anything else that was backed up                          -> Restorable
+function Get-WsmBackupRestoreCondition([string]$Status,[string]$Kind,[string]$Channel,[string]$ClassificationDisposition) {
+    $text=@{
+        Restorable='可由本工具還原'
+        RequiresPrerequisite='可還原，但需先安裝軟體、角色或補齊帳密等前置條件'
+        ManualOnly='只能人工處理，工具不會自動還原'
+        NotApplicable='未備份，沒有可還原的內容'
+    }
+    $code='Restorable'
+    if($Status -cne 'BackedUp'){$code='NotApplicable'}
+    elseif($ClassificationDisposition -cin @('SpecialProduct','Preparation')){$code='ManualOnly'}
+    elseif($Channel -ceq 'Certificate' -or $Kind -cin @('IISSite','IISPool','IISGlobalConfig','IISSectionConfig','IISLocationConfig','IISWebConfig','ScheduledTask','Service','TaskFolder')){$code='RequiresPrerequisite'}
+    [pscustomobject][ordered]@{Code=$code;Text=$text[$code]}
+}
+
+function Get-WsmBackupCoverageRegions([string]$InventorySource,[object[]]$SoftwareCoverageGaps) {
+    # Regions, not items: scopes the discovery could not fully cover.
+    $statusText=@{Partial='只取得部分資料';Failed='取得失敗';PermissionDenied='權限不足';Unsupported='此環境不支援';NotInstalled='未安裝'}
+    $regions=New-Object 'System.Collections.Generic.List[object]'
+    if($InventorySource -ceq 'Unavailable'){
+        $regions.Add([pscustomobject][ordered]@{Region='來源盤點整體';Status='Unavailable';Reason='無法取得來源盤點，探索範圍未知';NextStep='重新執行來源盤點後再備份'})
+    }
+    foreach($gap in @($SoftwareCoverageGaps)){
+        if($null -eq $gap){continue}
+        $parts=New-Object 'System.Collections.Generic.List[string]'
+        foreach($field in @('Probe','Scope','SID','View')){if($gap.PSObject.Properties[$field] -and [string]$gap.$field){$parts.Add([string]$gap.$field)}}
+        $status=[string]$gap.Status
+        $reason=$(if($statusText.ContainsKey($status)){$statusText[$status]}else{'未完整取得（'+$status+'）'})
+        if($gap.PSObject.Properties['ErrorKind'] -and [string]$gap.ErrorKind){$reason+='：'+[string]$gap.ErrorKind}
+        $regions.Add([pscustomobject][ordered]@{Region=('已安裝軟體盤點'+$(if($parts.Count){'：'+($parts -join ' / ')}else{''}));Status=$status;Reason=$reason;NextStep='以具備權限的帳號重新盤點此範圍，或人工確認該範圍的軟體'})
+    }
+    @($regions.ToArray())
+}
+
+function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[bool]$OfflineFullSet,$WorkloadDiscovery=$null) {
     $reasonText=@{
+        PermissionDenied=@('盤點時權限不足，工具無法讀取此項目','以具備權限的帳號重新盤點並備份，或人工處理')
         PayloadCaptured=@('資料已封存並驗證','無')
         ConfigurationCaptured=@('設定定義已封存在核准計畫中','無')
         ExternalHandling=@('此範圍標示為外部處理，未包含在備份中','依外部處理程序另行搬移')
@@ -142,6 +185,18 @@ function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[b
     $ids=New-Object 'System.Collections.Generic.List[string]'
     foreach($id in $planById.Keys){$ids.Add([string]$id)}
     foreach($id in $inventoryById.Keys){if(-not $planById.Contains($id)){$ids.Add([string]$id)}}
+    # Workload association comes only from recorded relations: item Dependencies
+    # (same edges WizardGrouping uses) and optional WorkloadDiscovery.References.
+    # A business item (site, task, service) is its own workload. Never inferred from names or paths.
+    $consumersOf=@{}
+    $addEdge={param([string]$Consumer,[string]$Target)if($Consumer -and $Target -and $Consumer -cne $Target){if(-not $consumersOf.ContainsKey($Target)){$consumersOf[$Target]=New-Object 'System.Collections.Generic.List[string]'};if(-not $consumersOf[$Target].Contains($Consumer)){$consumersOf[$Target].Add($Consumer)}}}
+    foreach($edgeSource in @(@($planById.Values),@($inventoryById.Values))){foreach($edgeItem in $edgeSource){
+        $dependencies=& $get $edgeItem 'Dependencies'
+        if($null -ne $dependencies){foreach($dependency in @($dependencies)){& $addEdge ([string]$edgeItem.ItemId) ([string](& $get $dependency 'ItemId'))}}
+    }}
+    if($WorkloadDiscovery -and $WorkloadDiscovery.PSObject.Properties['References']){foreach($reference in @($WorkloadDiscovery.References)){& $addEdge ([string](& $get $reference 'ConsumerItemId')) ([string](& $get $reference 'ResourceItemId'))}}
+    $workloadKinds=@('IISSite','ScheduledTask','Service')
+    $nameOf={param([string]$Id)$o=$null;if($planById.Contains($Id)){$o=$planById[$Id]}elseif($inventoryById.ContainsKey($Id)){$o=$inventoryById[$Id]};$o}
     $rows=New-Object 'System.Collections.Generic.List[object]'
     foreach($id in $ids){
         $planItem=$null;if($planById.Contains($id)){$planItem=$planById[$id]}
@@ -164,6 +219,16 @@ function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[b
         elseif($included){$status='BackedUp';$code='ConfigurationCaptured'}
         elseif($planItem -and $decision -ceq 'Exclude'){$code='Excluded'}
         elseif($planItem){$code='NotIncluded'}
+        $discoveryStatus=$(if($inventoryItem){[string](& $get $inventoryItem 'Status')}else{''})
+        # Only when the item was not captured and no explicit user/tool decision already explains it.
+        if($status -ceq 'NotBackedUp' -and $discoveryStatus -ceq 'PermissionDenied' -and $code -cin @('NotSelected','NotIncluded','NoCapturedContent')){$code='PermissionDenied'}
+        $workloadNames=New-Object 'System.Collections.Generic.List[string]'
+        $visited=@{};$pending=New-Object 'System.Collections.Generic.Queue[string]';$pending.Enqueue($id);$visited[$id]=$true
+        while($pending.Count){
+            $current=$pending.Dequeue();$currentItem=& $nameOf $current
+            if($currentItem -and [string](& $get $currentItem 'Kind') -cin $workloadKinds){$workloadName=[string](& $get $currentItem 'Name');if($workloadName -and -not $workloadNames.Contains($workloadName)){$workloadNames.Add($workloadName)}}
+            if($consumersOf.ContainsKey($current)){foreach($consumer in $consumersOf[$current]){if(-not $visited.ContainsKey($consumer)){$visited[$consumer]=$true;$pending.Enqueue($consumer)}}}
+        }
         $settings=& $get $base 'Settings'
         $location=''
         if($isFileScope){$location=[string](& $get $spec 'SourcePath')}
@@ -175,7 +240,9 @@ function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[b
             elseif($adapter -ceq 'Certificate' -or [string](& $get $planItem 'Kind') -ceq 'Certificate'){$channel='Certificate'}
             else{$channel='Configuration'}
         }
-        $rows.Add([pscustomobject][ordered]@{ItemId=$id;Name=[string](& $get $base 'Name');Kind=[string](& $get $base 'Kind');Category=[string](& $get $base 'Category');Location=$location;Channel=$channel;Status=$status;ReasonCode=$code;Reason=$reasonText[$code][0];NextStep=$reasonText[$code][1];Files=$files;Bytes=$bytes;Decision=$decision;DiscoveryStatus=$(if($inventoryItem){[string](& $get $inventoryItem 'Status')}else{''})})
+        $classification=& $get $base 'Classification';$classificationDisposition=[string](& $get $classification 'Disposition')
+        $restoreCondition=Get-WsmBackupRestoreCondition $status ([string](& $get $base 'Kind')) $channel $classificationDisposition
+        $rows.Add([pscustomobject][ordered]@{ItemId=$id;Name=[string](& $get $base 'Name');Kind=[string](& $get $base 'Kind');Category=[string](& $get $base 'Category');Location=$location;Channel=$channel;Status=$status;ReasonCode=$code;Reason=$reasonText[$code][0];NextStep=$reasonText[$code][1];Files=$files;Bytes=$bytes;Decision=$decision;DiscoveryStatus=$discoveryStatus;Workloads=@($workloadNames.ToArray() | Sort-Object);RestoreCondition=$restoreCondition})
     }
     @($rows.ToArray() | Sort-Object -Property @{Expression={if($_.Status -ceq 'BackedUp'){0}else{1}}},@{Expression={([string]$_.Name).ToLowerInvariant()}})
 }
@@ -221,7 +288,8 @@ function Export-WsmBackupItemResults([string]$Path,[object[]]$Rows,$Meta) {
     $allRows=@($Rows)
     $backedUp=@($allRows | Where-Object Status -CEQ 'BackedUp').Count
     $counts=[ordered]@{Total=$allRows.Count;BackedUp=$backedUp;NotBackedUp=($allRows.Count-$backedUp);Software=@($Meta.Software.SoftwareRows).Count;Features=@($Meta.Software.FeatureRows).Count}
-    $document=[pscustomobject][ordered]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='BackupItemResults';PairId=[string]$Meta.PairId;AttemptId=[string]$Meta.AttemptId;PlanHash=[string]$Meta.PlanHash;ManifestHash=[string]$Meta.ManifestHash;InventorySource=[string]$Meta.InventorySource;GeneratedUtc=(Get-WsmUtc);Counts=[pscustomobject]$counts;Software=[pscustomobject][ordered]@{SoftwareRows=@($Meta.Software.SoftwareRows);FeatureRows=@($Meta.Software.FeatureRows);CoverageGaps=@($Meta.Software.CoverageGaps)};Rows=$allRows}
+    $coverageRegions=$(if($Meta.PSObject.Properties['CoverageRegions'] -and $null -ne $Meta.CoverageRegions){@($Meta.CoverageRegions)}else{@(Get-WsmBackupCoverageRegions ([string]$Meta.InventorySource) @($Meta.Software.CoverageGaps))})
+    $document=[pscustomobject][ordered]@{SchemaVersion=2;ToolVersion=$script:ToolVersion;Kind='BackupItemResults';PairId=[string]$Meta.PairId;AttemptId=[string]$Meta.AttemptId;PlanHash=[string]$Meta.PlanHash;ManifestHash=[string]$Meta.ManifestHash;InventorySource=[string]$Meta.InventorySource;GeneratedUtc=(Get-WsmUtc);Counts=[pscustomobject]$counts;Software=[pscustomobject][ordered]@{SoftwareRows=@($Meta.Software.SoftwareRows);FeatureRows=@($Meta.Software.FeatureRows);CoverageGaps=@($Meta.Software.CoverageGaps)};CoverageRegions=@($coverageRegions);Rows=$allRows}
     Write-WsmJson $Path $document
     [pscustomobject]@{Path=[IO.Path]::GetFullPath($Path);SHA256=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant();Counts=[pscustomobject]$counts;InventorySource=[string]$Meta.InventorySource}
 }
@@ -240,34 +308,78 @@ function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha
     $encode={param($Value)ConvertTo-WsmHtmlText $Value}
     $channelText=@{C='C 槽';NonC='非 C 槽';Configuration='設定';Certificate='憑證'}
     $sizeText={param($Value)$n=[double]$Value;if($n -lt 0){return '—'};$units=@('B','KiB','MiB','GiB');$i=0;while($n -ge 1024 -and $i -lt 3){$n=$n/1024;$i++};if($i -eq 0){([string][long]$n)+' B'}else{($n.ToString($(if($n -ge 100){'0'}else{'0.0'}),[Globalization.CultureInfo]::InvariantCulture))+' '+$units[$i]}}
+    $schemaVersion=0;if($document.PSObject.Properties['SchemaVersion']){try{$schemaVersion=[int]$document.SchemaVersion}catch{}}
+    $isV2=($schemaVersion -ge 2)
+    # A cell is plain text, or a hashtable @{Text;Icon;Class} rendered as a text badge (status never relies on colour alone).
     $buildTable={
-        param([string]$Id,[string]$Caption,[string]$SearchColumns,[string[]]$Headers,[object[]]$RowCells)
+        param([string]$Id,[string]$Caption,[string]$SearchColumns,[string[]]$Headers,[object[]]$RowCells,[string]$Filters='',[string]$CsvName='',[string[]]$RowAttrs=@())
         if(@($RowCells).Count -eq 0){return '<p class="empty">沒有項目</p>'}
         $sb=New-Object Text.StringBuilder
-        [void]$sb.Append('<div class="table-wrap" tabindex="0" role="region" aria-label="'+(& $encode $Caption)+'表格"><table id="'+$Id+'" data-search="'+$SearchColumns+'"><caption>'+(& $encode $Caption)+'，共 '+@($RowCells).Count+' 筆</caption><thead><tr>')
+        $tableAttrs=' id="'+$Id+'"';if($SearchColumns){$tableAttrs+=' data-search="'+$SearchColumns+'"'};if($Filters){$tableAttrs+=' data-filters="'+(& $encode $Filters)+'"'};if($CsvName){$tableAttrs+=' data-csv="'+(& $encode $CsvName)+'"'};if(@($RowAttrs).Count){$tableAttrs+=' data-csv-meta="1"'}
+        [void]$sb.Append('<div class="table-wrap" tabindex="0" role="region" aria-label="'+(& $encode $Caption)+'表格"><table'+$tableAttrs+'><caption>'+(& $encode $Caption)+'，共 '+@($RowCells).Count+' 筆</caption><thead><tr>')
         foreach($header in $Headers){[void]$sb.Append('<th scope="col">'+(& $encode $header)+'</th>')}
         [void]$sb.Append('</tr></thead><tbody>')
+        $rowIndex=0
         foreach($cells in $RowCells){
-            [void]$sb.Append('<tr>')
-            foreach($cell in $cells){[void]$sb.Append('<td>'+(& $encode $cell)+'</td>')}
+            $attr='';if($rowIndex -lt @($RowAttrs).Count){$attr=' '+$RowAttrs[$rowIndex]}
+            [void]$sb.Append('<tr'+$attr+'>')
+            foreach($cell in $cells){
+                if($cell -is [hashtable]){[void]$sb.Append('<td><span class="badge b-'+$cell.Class+'" data-icon="'+(& $encode $cell.Icon)+'">'+(& $encode $cell.Text)+'</span></td>')}
+                else{[void]$sb.Append('<td>'+(& $encode $cell)+'</td>')}
+            }
             [void]$sb.Append('</tr>')
+            $rowIndex++
         }
         [void]$sb.Append('</tbody></table></div>')
         $sb.ToString()
     }
+    $workloadText={param($Row)
+        if(-not $Row.PSObject.Properties['Workloads'] -or $null -eq $Row.Workloads){return '未記錄'}
+        $names=@($Row.Workloads | Where-Object {[string]$_})
+        if(-not $names.Count){return '未關聯'}
+        ($names -join '、')
+    }
+    $restoreCell={param($Row)
+        if(-not $Row.PSObject.Properties['RestoreCondition'] -or $null -eq $Row.RestoreCondition){return @{Text='未記錄';Icon='?';Class='neutral'}}
+        $code=[string]$Row.RestoreCondition.Code
+        $icon=@{Restorable='✓';RequiresPrerequisite='◐';ManualOnly='!';NotApplicable='—'}
+        $class=@{Restorable='ok';RequiresPrerequisite='warn';ManualOnly='warn';NotApplicable='neutral'}
+        $short=@{Restorable='可還原';RequiresPrerequisite='需前置條件';ManualOnly='僅人工處理';NotApplicable='不適用'}
+        @{Text=$(if($short.ContainsKey($code)){$short[$code]}else{[string]$Row.RestoreCondition.Text});Icon=$(if($icon.ContainsKey($code)){$icon[$code]}else{'?'});Class=$(if($class.ContainsKey($code)){$class[$code]}else{'neutral'})}
+    }
+    $rowAttr={param($Row)'data-id="'+(& $encode $Row.ItemId)+'" data-status="'+(& $encode $Row.Status)+'" data-reason="'+(& $encode $Row.ReasonCode)+'"'}
     $allRows=@($document.Rows | Where-Object {$null -ne $_})
     $backedRows=@($allRows | Where-Object {[string]$_.Status -ceq 'BackedUp'})
     $pendingRows=@($allRows | Where-Object {[string]$_.Status -ceq 'NotBackedUp'})
     $softwareRows=@($document.Software.SoftwareRows | Where-Object {$null -ne $_})
     $featureRows=@($document.Software.FeatureRows | Where-Object {$null -ne $_})
     $gapCount=@($document.Software.CoverageGaps | Where-Object {$null -ne $_}).Count
-    $backedCells=@(foreach($row in $backedRows){,@([string]$row.Name,[string]$row.Kind,[string]$row.Location,$(if($channelText.ContainsKey([string]$row.Channel)){$channelText[[string]$row.Channel]}else{[string]$row.Channel}),[string]$row.Files,(& $sizeText $row.Bytes))})
-    $pendingCells=@(foreach($row in $pendingRows){,@([string]$row.Name,[string]$row.Kind,[string]$row.Location,[string]$row.Reason,[string]$row.NextStep,[string]$row.DiscoveryStatus)})
+    $backedBadge=@{Text='已備份';Icon='✓';Class='ok'}
+    $pendingBadge=@{Text='未備份';Icon='✕';Class='bad'}
+    $backedCells=@(foreach($row in $backedRows){,@([string]$row.Name,[string]$row.Kind,(& $workloadText $row),[string]$row.Location,$(if($channelText.ContainsKey([string]$row.Channel)){$channelText[[string]$row.Channel]}else{[string]$row.Channel}),[string]$row.Files,(& $sizeText $row.Bytes),$backedBadge,(& $restoreCell $row))})
+    $backedAttrs=@(foreach($row in $backedRows){& $rowAttr $row})
+    $pendingCells=@(foreach($row in $pendingRows){,@([string]$row.Name,[string]$row.Kind,(& $workloadText $row),[string]$row.Location,[string]$row.Reason,[string]$row.NextStep,[string]$row.DiscoveryStatus,$pendingBadge)})
+    $pendingAttrs=@(foreach($row in $pendingRows){& $rowAttr $row})
     $softwareCells=@(foreach($row in $softwareRows){,@([string]$row.Name,[string]$row.Version,[string]$row.Publisher,[string]$row.Architecture,[string]$row.Scope,[string]$row.Location,[string]$row.DispositionText)})
     $featureCells=@(foreach($row in $featureRows){,@([string]$row.Name,[string]$row.FeatureName)})
     $sourceTexts=@{PackageControls='封裝內的來源盤點';TrustedInventory='已核驗的來源盤點';Unavailable='無法取得來源盤點'}
     $inventorySource=[string]$document.InventorySource
     $sourceText=$(if($sourceTexts.ContainsKey($inventorySource)){$sourceTexts[$inventorySource]}else{$inventorySource})
+    $hashText={param($Value)$v=[string]$Value;if($v){'<code class="hash">'+(& $encode $v)+'</code>'}else{'未記錄'}}
+    $manifestHash=$(if($document.PSObject.Properties['ManifestHash']){[string]$document.ManifestHash}else{''})
+    $planHash=$(if($document.PSObject.Properties['PlanHash']){[string]$document.PlanHash}else{''})
+    $coverageHtml=''
+    if(-not $document.PSObject.Properties['CoverageRegions'] -or $null -eq $document.CoverageRegions){$coverageHtml='<p class="empty">此結果集未記錄</p>'}
+    else{
+        $regionRows=@($document.CoverageRegions | Where-Object {$null -ne $_})
+        if(-not $regionRows.Count){$coverageHtml='<p class="empty">沒有記錄到未涵蓋區域</p>'}
+        else{
+            $regionCells=@(foreach($region in $regionRows){,@([string]$region.Region,[string]$region.Reason,[string]$region.NextStep)})
+            $coverageHtml=(& $buildTable 'tbl-coverage' '探索未涵蓋區域' '' @('區域','原因','下一步') $regionCells)
+        }
+    }
+    $noJsNote='<noscript><p class="js-note">需啟用 JavaScript 才能匯出 CSV，也才能使用搜尋、篩選與分頁；目前顯示全部列。</p></noscript>'
+    $layerRestore=$(if($isV2){'逐列顯示在已備份清單的「可還原條件」欄：可還原＝可由本工具還原；需前置條件＝可還原，但需先安裝軟體、角色或補齊帳密；僅人工處理＝工具不會自動還原；不適用＝未備份。'}else{'此結果集為舊格式，未記錄可還原條件。'})
     $page=New-Object Text.StringBuilder
     [void]$page.Append(@'
 <!doctype html>
@@ -282,42 +394,74 @@ main{max-width:72rem;margin:0 auto;padding:1rem}
 h1{font-size:1.5rem;margin:.5rem 0}
 h2{font-size:1.25rem;margin:1.5rem 0 .5rem}
 h3{font-size:1.1rem;margin:1.25rem 0 .5rem}
-dl.meta{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem;margin:.5rem 0}
+dl.meta{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:.25rem 1rem;margin:.5rem 0}
 dl.meta dt{font-weight:700}
-dl.meta dd{margin:0;overflow-wrap:anywhere}
+dl.meta dd{margin:0;min-width:0;overflow-wrap:anywhere}
+code.hash{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:.9rem;overflow-wrap:anywhere;word-break:break-all}
 .note{border:2px solid #7a5a00;background:#fff6d6;padding:.75rem 1rem;margin:1rem 0;border-radius:4px}
 .callout{border:2px solid #9b1c1c;background:#fdecec;padding:.75rem 1rem;margin:1rem 0;border-radius:4px}
+.layers{border:1px solid #bbc4ce;padding:.5rem 1rem;margin:1rem 0;border-radius:4px}
+.layers h2{margin-top:.5rem}
+.layers ol{margin:.5rem 0;padding-left:1.5rem}
+.layers li{margin:.35rem 0}
 .empty{font-style:italic;margin:.5rem 0}
+.js-note{margin:.5rem 0}
 .table-wrap{overflow-x:auto;max-width:100%;border:1px solid #bbc4ce}
 .table-wrap:focus{outline:3px solid #1b5fc1;outline-offset:2px}
 table{border-collapse:collapse;width:100%;font-size:.9rem}
 caption{text-align:left;padding:.5rem;font-weight:700}
-th,td{border:1px solid #bbc4ce;padding:.4rem .5rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+th,td{border:1px solid #bbc4ce;padding:.4rem .5rem;text-align:left;vertical-align:top;overflow-wrap:break-word}
 th{background:#eef2f7}
+.badge{display:inline-block;padding:.05rem .5rem;border:1px solid currentColor;border-radius:1rem;font-weight:700;font-size:.85rem;white-space:nowrap}
+.badge::before{content:attr(data-icon) " ";font-weight:700}
+.b-ok{background:#e3f4e8;color:#0b4a1f}
+.b-warn{background:#fff6d6;color:#5c4300}
+.b-bad{background:#fdecec;color:#7a1010}
+.b-neutral{background:#eef2f7;color:#172033}
 [hidden]{display:none!important}
 .tabs{display:flex;flex-wrap:wrap;gap:.25rem;border-bottom:2px solid #172033;margin-top:1rem}
 .tabs button{font:inherit;padding:.5rem .9rem;border:1px solid #172033;border-bottom:0;background:#eef2f7;color:#172033;cursor:pointer}
 .tabs button[aria-selected=true]{background:#fff;font-weight:700;border-top:5px solid #172033;text-decoration:underline}
-.tabs button:focus{outline:3px solid #1b5fc1;outline-offset:2px}
+.tabs button:focus,.toolbar button:focus,.toolbar select:focus,.toolbar input:focus,.pager button:focus{outline:3px solid #1b5fc1;outline-offset:2px}
 .toolbar,.pager{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.5rem 0}
 .toolbar input{font:inherit;padding:.3rem .5rem;min-width:12rem;max-width:100%}
-.pager button{font:inherit;padding:.3rem .8rem}
-@media (max-width:480px){main{padding:.5rem}dl.meta{grid-template-columns:1fr}}
+.toolbar select{font:inherit;padding:.3rem .5rem;max-width:100%}
+.toolbar button,.pager button{font:inherit;padding:.3rem .8rem}
+.toolbar .count{font-weight:700}
+@media (max-width:480px){main{padding:.5rem}dl.meta{grid-template-columns:minmax(0,1fr)}.toolbar input{min-width:0;width:100%}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media print{
+.tabs,.toolbar,.pager,.js-note,noscript{display:none!important}
+main > section[hidden]{display:block!important}
+tbody tr[hidden]{display:table-row!important}
+.table-wrap[hidden]{display:block!important}
+.table-wrap{overflow:visible;border:0}
+thead{display:table-header-group}
+tr{break-inside:avoid}
+body{font-size:12pt;color:#000}
+a{color:#000}
+.badge{border:1px solid #000;background:#fff;color:#000}
+}
 </style>
 </head>
 <body>
 <main>
 <h1>搬移備份報告</h1>
 '@)
-    [void]$page.Append("`n"+'<dl class="meta"><dt>配對 ID</dt><dd>'+(& $encode $document.PairId)+'</dd><dt>Attempt ID</dt><dd>'+(& $encode $document.AttemptId)+'</dd><dt>產生時間</dt><dd>'+(& $encode $document.GeneratedUtc)+'</dd><dt>來源盤點</dt><dd>'+(& $encode $sourceText)+'</dd></dl>'+"`n")
+    [void]$page.Append("`n"+'<dl class="meta"><dt>配對 ID</dt><dd>'+(& $encode $document.PairId)+'</dd><dt>Attempt ID</dt><dd>'+(& $encode $document.AttemptId)+'</dd><dt>產生時間</dt><dd>'+(& $encode $document.GeneratedUtc)+'</dd><dt>來源盤點</dt><dd>'+(& $encode $sourceText)+'</dd><dt>ManifestHash</dt><dd>'+(& $hashText $manifestHash)+'</dd><dt>PlanHash</dt><dd>'+(& $hashText $planHash)+'</dd></dl>'+"`n")
     [void]$page.Append('<p class="note" role="note">這份報告顯示擷取與封存當時的狀態，不代表目前備份媒體仍然完整，也不代表新機的還原結果。新機匯入時會重新驗證所有檔案。</p>'+"`n")
+    [void]$page.Append('<div class="layers" role="group" aria-labelledby="layers-title"><h2 id="layers-title">四層狀態說明</h2><ol>'+
+        '<li><strong>資料已備份：</strong>本報告呈現（已備份與未備份分頁）。</li>'+
+        '<li><strong>獨立副本已驗證：</strong>不在此報告判定。這是封存後才產生的收據，請看新機工作台或獨立副本收據。</li>'+
+        '<li><strong>可還原條件：</strong>本報告呈現。'+$layerRestore+'</li>'+
+        '<li><strong>業務可用：</strong>不在此報告判定。需要在新機驗證，本工具不判定。</li>'+
+        '</ol></div>'+"`n")
     if($inventorySource -ceq 'Unavailable'){[void]$page.Append('<p class="callout">無法取得來源盤點，未備份清單只包含核准計畫內的項目，未選入的已發現項目沒有列出。</p>'+"`n")}
-    [void]$page.Append('<section id="backed" data-tab="已備份（'+$backedRows.Count+'）"><h2>已備份（'+$backedRows.Count+'）</h2>'+"`n"+(& $buildTable 'tbl-backed' '已備份項目' '0,2' @('名稱','類型','原位置','通道','檔案數','大小') $backedCells)+"`n</section>`n")
-    [void]$page.Append('<section id="pending" data-tab="未備份（'+$pendingRows.Count+'）"><h2>未備份（'+$pendingRows.Count+'）</h2>'+"`n"+(& $buildTable 'tbl-pending' '未備份項目' '0,2' @('名稱','類型','原位置','原因','下一步','盤點狀態') $pendingCells)+"`n</section>`n")
-    [void]$page.Append('<section id="software" data-tab="安裝軟體（'+$softwareRows.Count+'）"><h2>安裝軟體（'+$softwareRows.Count+'）</h2>'+"`n"+'<p>這是舊機上發現的軟體清單，供您在新機自行安裝。工具不會自動安裝，也不保證新版相容。</p>'+"`n")
+    [void]$page.Append('<section id="backed" data-tab="已備份（'+$backedRows.Count+'）"><h2>已備份（'+$backedRows.Count+'）</h2>'+"`n"+$noJsNote+"`n"+(& $buildTable 'tbl-backed' '已備份項目' '0,3' @('名稱','類型','工作負載','原位置','通道','檔案數','大小','狀態','可還原條件') $backedCells '1:類型;8:可還原條件' 'backup-backed-up.csv' $backedAttrs)+"`n</section>`n")
+    [void]$page.Append('<section id="pending" data-tab="未備份（'+$pendingRows.Count+'）"><h2>未備份（'+$pendingRows.Count+'）</h2>'+"`n"+$noJsNote+"`n"+(& $buildTable 'tbl-pending' '未備份項目' '0,3' @('名稱','類型','工作負載','原位置','原因','下一步','盤點狀態','狀態') $pendingCells '1:類型;4:原因' 'backup-not-backed-up.csv' $pendingAttrs)+"`n"+'<h3>探索未涵蓋區域（以區域列出，不是項目）</h3>'+"`n"+$coverageHtml+"`n</section>`n")
+    [void]$page.Append('<section id="software" data-tab="安裝軟體（'+$softwareRows.Count+'）"><h2>安裝軟體（'+$softwareRows.Count+'）</h2>'+"`n"+$noJsNote+"`n"+'<p>這是舊機上發現的軟體清單，供您在新機自行安裝。工具不會自動安裝，也不保證新版相容。</p>'+"`n")
     if($gapCount -gt 0){[void]$page.Append('<p class="callout">軟體盤點有 '+$gapCount+' 個範圍未完整取得，清單可能不完整。</p>'+"`n")}
-    [void]$page.Append('<h3>安裝軟體清單</h3>'+"`n"+(& $buildTable 'tbl-software' '安裝軟體' '0,1,5' @('名稱','版本','發行者','架構','範圍','安裝位置','新機決策') $softwareCells)+"`n"+'<h3>Windows 角色與功能</h3>'+"`n"+(& $buildTable 'tbl-features' 'Windows 角色與功能' '0,1' @('顯示名稱','Install-WindowsFeature 名稱') $featureCells)+"`n</section>`n")
+    [void]$page.Append('<h3>安裝軟體清單</h3>'+"`n"+(& $buildTable 'tbl-software' '安裝軟體' '0,1,5' @('名稱','版本','發行者','架構','範圍','安裝位置','新機決策') $softwareCells '' 'installed-software.csv')+"`n"+'<h3>Windows 角色與功能</h3>'+"`n"+(& $buildTable 'tbl-features' 'Windows 角色與功能' '0,1' @('顯示名稱','Install-WindowsFeature 名稱') $featureCells '' 'windows-features.csv')+"`n</section>`n")
     [void]$page.Append(@'
 </main>
 <script>
@@ -325,32 +469,71 @@ th{background:#eef2f7}
 var doc=document,PAGE=100;
 doc.documentElement.className+=' js';
 function mk(tag,text,cls){var e=doc.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;}
+function csvCell(v){var t=v==null?'':String(v);if(/^[=+\-@\t\r]/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"';}
+function downloadCsv(name,headers,rows){
+ var lines=[headers].concat(rows).map(function(r){return r.map(csvCell).join(',');});
+ var blob=new Blob(['﻿'+lines.join('\r\n')+'\r\n'],{type:'text/csv;charset=utf-8'});
+ var url=URL.createObjectURL(blob),a=doc.createElement('a');
+ a.href=url;a.download=name;a.hidden=true;doc.body.appendChild(a);a.click();doc.body.removeChild(a);
+ setTimeout(function(){URL.revokeObjectURL(url);},0);
+}
 function enhanceTable(table){
  var wrap=table.parentNode,body=table.tBodies[0],rows=[].slice.call(body.rows);
  var cols=(table.getAttribute('data-search')||'0').split(',');
  var texts=rows.map(function(r){return cols.map(function(c){return r.cells[+c]?r.cells[+c].textContent:'';}).join('\n').toLowerCase();});
+ var defs=(table.getAttribute('data-filters')||'').split(';').filter(Boolean).map(function(s){var i=s.indexOf(':');return {col:+s.slice(0,i),label:s.slice(i+1)};});
  var bar=mk('div','','toolbar'),label=mk('label','搜尋名稱或位置'),input=doc.createElement('input');
  input.type='search';input.id=table.id+'-q';input.autocomplete='off';label.htmlFor=input.id;bar.appendChild(label);bar.appendChild(input);
+ var selects=defs.map(function(f){
+  var sel=doc.createElement('select'),lab=mk('label',f.label),seen=Object.create(null),vals=[];
+  sel.id=table.id+'-f'+f.col;lab.htmlFor=sel.id;
+  rows.forEach(function(r){var v=r.cells[f.col]?r.cells[f.col].textContent:'';if(!seen[v]){seen[v]=1;vals.push(v);}});
+  vals.sort();
+  var all=doc.createElement('option');all.value='';all.textContent='全部';sel.appendChild(all);
+  vals.forEach(function(v){var o=doc.createElement('option');o.value=v;o.textContent=v;sel.appendChild(o);});
+  bar.appendChild(lab);bar.appendChild(sel);return sel;
+ });
+ var csvName=table.getAttribute('data-csv'),csvMeta=table.getAttribute('data-csv-meta')==='1',exportButton=null;
+ if(csvName){exportButton=mk('button','匯出 CSV');exportButton.type='button';bar.appendChild(exportButton);}
+ var count=mk('div','','count');count.setAttribute('role','status');count.setAttribute('aria-atomic','true');bar.appendChild(count);
  var none=mk('p','沒有符合搜尋條件的項目','empty');none.hidden=true;
- var pager=mk('div','','pager'),prev=mk('button','上一頁'),next=mk('button','下一頁'),status=mk('span');
- prev.type='button';next.type='button';status.setAttribute('aria-live','polite');
- pager.appendChild(prev);pager.appendChild(status);pager.appendChild(next);
+ var pager=mk('div','','pager'),prev=mk('button','上一頁'),next=mk('button','下一頁'),pageInfo=mk('span');
+ prev.type='button';next.type='button';
+ pager.appendChild(prev);pager.appendChild(pageInfo);pager.appendChild(next);
  wrap.parentNode.insertBefore(bar,wrap);wrap.parentNode.insertBefore(none,wrap);wrap.parentNode.insertBefore(pager,wrap.nextSibling);
- var page=0;
+ var page=0,matched=[];
  function draw(){
   var q=input.value.toLowerCase(),m=[],i;
-  for(i=0;i<rows.length;i++){if(!q||texts[i].indexOf(q)>=0)m.push(i);}
+  for(i=0;i<rows.length;i++){
+   if(q&&texts[i].indexOf(q)<0)continue;
+   var ok=true;
+   for(var k=0;k<selects.length;k++){if(selects[k].value&&rows[i].cells[defs[k].col].textContent!==selects[k].value){ok=false;break;}}
+   if(ok)m.push(i);
+  }
+  matched=m;
   var pages=Math.max(1,Math.ceil(m.length/PAGE));
   if(page>=pages)page=pages-1;if(page<0)page=0;
   for(i=0;i<rows.length;i++)rows[i].hidden=true;
   m.slice(page*PAGE,(page+1)*PAGE).forEach(function(k){rows[k].hidden=false;});
   wrap.hidden=!m.length;none.hidden=m.length>0;pager.hidden=!m.length;
-  status.textContent=m.length?'第 '+(page+1)+'／'+pages+' 頁，共 '+m.length+' 筆':'';
+  count.textContent='顯示 '+m.length+'／共 '+rows.length+' 筆';
+  pageInfo.textContent=m.length?'第 '+(page+1)+'／'+pages+' 頁':'';
   prev.hidden=next.hidden=pages<2;prev.disabled=page<=0;next.disabled=page>=pages-1;
  }
  input.addEventListener('input',function(){page=0;draw();});
+ selects.forEach(function(s){s.addEventListener('change',function(){page=0;draw();});});
  prev.addEventListener('click',function(){page--;draw();});
  next.addEventListener('click',function(){page++;draw();});
+ if(exportButton)exportButton.addEventListener('click',function(){
+  var headers=[].slice.call(table.tHead.rows[0].cells).map(function(c){return c.textContent;});
+  if(csvMeta)headers=headers.concat(['項目 ID','狀態碼','原因碼']);
+  var out=matched.map(function(i){
+   var r=rows[i],cells=[].slice.call(r.cells).map(function(c){return c.textContent;});
+   if(csvMeta)cells=cells.concat([r.getAttribute('data-id'),r.getAttribute('data-status'),r.getAttribute('data-reason')]);
+   return cells;
+  });
+  downloadCsv(csvName,headers,out);
+ });
  draw();
 }
 [].slice.call(doc.querySelectorAll('table[data-search]')).forEach(enhanceTable);
@@ -417,5 +600,5 @@ function Get-WsmWizardBackupItemResultsView([string]$Workspace,[string]$PairId) 
     if(-not [IO.File]::Exists($resultPath) -or (Get-FileHash -LiteralPath $resultPath -Algorithm SHA256).Hash -ine [string]$itemResults.SHA256){return $failed}
     $document=Read-WsmJson $resultPath
     if($document.Kind -cne 'BackupItemResults' -or $document.PairId -cne $PairId -or $document.AttemptId -cne [string]$attempt.AttemptId){return $failed}
-    [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software}
+    [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software;schemaVersion=$(if($document.PSObject.Properties['SchemaVersion']){[int]$document.SchemaVersion}else{1});coverageRegions=$(if($document.PSObject.Properties['CoverageRegions']){@($document.CoverageRegions)}else{$null})}
 }

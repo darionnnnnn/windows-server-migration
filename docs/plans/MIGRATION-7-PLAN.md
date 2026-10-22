@@ -940,6 +940,31 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 限制：
   - 中介父目錄（例如 `tree\level1`）不記擁有權，與檔案成員的父目錄一致。
   - 候選確認不檢查目錄名稱的被擋副檔名，所以可能「確認過但匯入被拒」，這與檔案成員的既有行為一致。
+### 17.65 B3 逐項結果集第 2 版與離線報告（CSV、hash、四層狀態、篩選、列印）
+
+- Sonnet 5.5 subagent 實作；主代理審查後修正判定表與版面，獨立重跑。設計依 ui-ux-pro-max 準則（使用者 2026-10-22 定案 B1～B5、R6 全部套用）。
+- 結果集（`WizardBackupProjection.ps1`，SchemaVersion=2）：
+  - `Workloads`：沿計畫項目的 `Dependencies` 往上找到的網站、排程、服務。這和 `WizardGrouping` 建立分組邊用的是同一份資料，不依名稱或路徑推測；找不到時顯示「未關聯」。
+  - `RestoreCondition`：代碼為 `Restorable`／`RequiresPrerequisite`／`ManualOnly`／`NotApplicable`，判定表寫在函式註解。主代理修正一處：IIS 設定類別改為 `RequiresPrerequisite`。原因是 IIS 設定只有在負責人提供型別化規格時才會被備份；預設的 ManualWorkflow 草稿屬於未備份（NotApplicable）。
+  - 新原因碼 `PermissionDenied`：盤點 Status 為 PermissionDenied，且原本會落在未選、未納入或無內容的項目。
+  - `CoverageRegions`：探索未涵蓋的區域，目前來源有兩種：軟體盤點 Coverage 中非 Success 的紀錄，以及來源盤點整體不可用。
+  - 讀取舊結果集時，新欄位顯示「未記錄」，不推算。
+- 離線報告：
+  - 頁首顯示完整的 ManifestHash 與 PlanHash（報告不在封裝內，不會自我循環）。
+  - 四層狀態說明：「獨立副本已驗證」與「業務可用」標明不在此報告判定。
+  - 已備份分頁依類型與可還原條件篩選；未備份分頁依類型與原因篩選。篩選可與搜尋疊加，筆數只在單一 `role=status` 播報。
+  - 「探索未涵蓋區域」表以區域列出。
+  - 每個分頁可匯出 CSV：匯出套用篩選後的全部列，UTF-8 BOM、CRLF、防公式注入；JS 關閉時改為文字說明。
+  - `@media print`：展開全部列並隱藏控制項，表頭在每頁重複。
+  - 可還原條件用短標籤（可還原／需前置條件／僅人工處理／不適用），完整說明放在四層說明；窄欄不再被拆字。
+- 驗證（WinPS 5.1、真實 Edge file://）：見提交說明。瀏覽器測試用 301 列 fixture：翻頁到最後一筆、搜尋、篩選疊加、CSV 內容、JS 關閉、列印模擬、390px、零 console 錯誤；截圖在 `work/r7/screens/b3-*.png`（不進版控）。
+- 突變（皆轉紅）：聯集漏一列、CSV 只匯出當頁、列印不展開隱藏列、報告不 escape、列印展開規則移除（主代理）。
+- 未做與限制：
+  - `BundleExcluded` 與 `CaptureFailed` 沒有可靠資料來源，沒有加。套裝本體路徑在候選探索就被排除，不會進入計畫；逐項擷取失敗也沒有欄位可依。
+  - 未涵蓋區域只有軟體與來源盤點兩類；其他探索缺口需要呼叫端（`WizardBackup.ps1`）提供，目前不在範圍內。
+  - 工作負載是依相依關係「可到達」，共用資源會列出多個工作負載。
+  - 報告 CSV 在尾端附加項目 ID、狀態碼、原因碼三欄；B2 完成後需要和工作台 CSV 對齊。
+  - 色彩對比為估算，沒有用量測工具驗證。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

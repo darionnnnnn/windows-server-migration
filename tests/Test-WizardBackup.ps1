@@ -463,7 +463,7 @@ try {
             [pscustomobject]@{ItemId='cap';RelativePath='dir\b.txt';Directory=$false;Data=[pscustomobject]@{Bytes=5}},
             [pscustomobject]@{ItemId='cfg';RelativePath='ignored-by-config';Directory=$true;Data=$null})
         $irRows=@(Get-WsmBackupItemResultRows $irPlan $irInventory $irArtifacts $false)
-        $irExpected=[ordered]@{ext=@('NotBackedUp','ExternalHandling');nonc=@('NotBackedUp','SeparateNonCTransfer');cap=@('BackedUp','PayloadCaptured');nocap=@('NotBackedUp','NoCapturedContent');man=@('NotBackedUp','ManualHandling');nospec=@('NotBackedUp','ManualHandling');cfg=@('BackedUp','PayloadCaptured');exc=@('NotBackedUp','Excluded');pend=@('NotBackedUp','NotIncluded');sel=@('NotBackedUp','NotSelected')}
+        $irExpected=[ordered]@{ext=@('NotBackedUp','ExternalHandling');nonc=@('NotBackedUp','SeparateNonCTransfer');cap=@('BackedUp','PayloadCaptured');nocap=@('NotBackedUp','NoCapturedContent');man=@('NotBackedUp','ManualHandling');nospec=@('NotBackedUp','ManualHandling');cfg=@('BackedUp','PayloadCaptured');exc=@('NotBackedUp','Excluded');pend=@('NotBackedUp','NotIncluded');sel=@('NotBackedUp','PermissionDenied')}
         if($irRows.Count -ne $irExpected.Count){throw ('Backup item rows must contain exactly one row per plan-or-inventory item; got '+$irRows.Count)}
         foreach($expectedId in $irExpected.Keys){$irRow=@($irRows | Where-Object ItemId -CEQ $expectedId);if($irRow.Count -ne 1 -or $irRow[0].Status -cne $irExpected[$expectedId][0] -or $irRow[0].ReasonCode -cne $irExpected[$expectedId][1]){throw ('Backup item row rule mismatch for '+$expectedId+': '+(($irRow | ForEach-Object {$_.Status+'/'+$_.ReasonCode}) -join ','))}}
         $irCapRow=@($irRows | Where-Object ItemId -CEQ 'cap')[0]
