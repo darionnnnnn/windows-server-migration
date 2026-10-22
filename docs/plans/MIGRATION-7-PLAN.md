@@ -865,6 +865,18 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - G 旅程（R8「補裝後重新盤點」）發現：Target 有兩份成功的盤點作業時（補裝後依畫面指示重新盤點就會如此），`Get-WsmWizardTargetSnapshot` 與 `WizardTargetPackage` 取盤點時沒有帶入精靈狀態中已綁定的盤點（`SourceInventoryHash`／`InventoryJobId`），一律回 `Ambiguous` 並拒絕，之後本機比較、收據、預覽全部失敗。其他 9 個呼叫端都已帶入綁定，只有這兩處漏了；既有設計本來就是「多份盤點時由畫面要求明確選擇（綁定）」。主代理親自修：兩處改為讀取 Target 精靈狀態的綁定作為偏好；沒有綁定時行為不變（仍拒絕）。
 - 驗證：Test-WizardFlow 46（新增：兩份 Target 盤點綁定第 2 份後，快照不再因不唯一被拒）、WizardRestore 85、WizardRuntime 161、WizardReceivedPlan、TargetRestoreContinuation 133、HtmlConsole 175、ScriptEncoding 通過。突變：拿掉綁定偏好即轉紅。完整的「重新盤點→本機比較→新收據」由 G 旅程驗證。
 
+### 17.60 G 主整合旅程（機器可判定劇本，G 完成，部分驗證）
+
+- Sonnet 5.5 subagent 依 `work/r7/specs/G-offline-journey.md` 撰寫，途中依規格停下回報 8 個產品缺陷（D1～D8，見 17.54～17.59），全部由主代理或後續段落修好後才跑完；主代理另外獨立完整執行一次。
+- 劇本：`tests/Test-OfflineRestoreJourney.ps1`（驅動）＋`tests/G-JourneyHost.ps1`（各階段子程序）、`tests/G-JourneyOverrides.ps1`（Source／Manager 程序內的身分、盤點、媒體分級替身）、`tests/G-RuntimeOverlay.ps1`（附加到「執行副本」模組尾端的測試 overlay，只在 `WSM_G_OVERLAY=1` 生效）。全部純 ASCII。結果寫入 `work/r7/g-journey/<runId>/verdict.json`（不進版控）。
+- 同一份產品 bytes：先建不可變快照；因 HTML worker 會在新 runspace 重新匯入模組，替身無法只在主程序覆寫，所以另建執行副本＝已提交產品 bytes＋psm1 尾端附加 overlay；驗證快照 `src/` 前後摘要相同且等於已提交 bytes、執行副本只多了附加段（verdict 明列「執行 bytes＝產品 bytes＋測試 overlay」）。核准綁定已安裝工具 bytes，所以 Source、Manager、Target 全部子程序都匯入同一份執行副本。
+- 旅程：Target 經 HTTP enrollment → Manager 以 `-OfflineFullSet` 核准（C 槽 FileScope＋UserPassword Service，未勾選鄰近範圍）→ Source 匯入核准計畫與快照附件 → 一鍵備份 → 獨立副本（媒體分級替身 Removable）→ 以 icacls Deny 讓 Source／Manager workspace 不可讀、原始資料移開 → 全新 Target 經 HTTP 匯入計畫、從獨立副本匯入封裝、預置盤點（**新機盤點為預置 fixture，非真機全量擷取**：真機全量盤點在本機非管理員下超過 10 分鐘）、本機比較、預設全選收據、預覽、TargetRestore 等待帳密 → 送帳密 → 第 2 個檔案寫到目標後、完成記錄前以 exit 137 結束 console → 新程序重啟（Interrupted／resumable、唯讀恢復預覽）→ 明確續作 → 預覽重綁 → 重新要求帳密 → 新 session 送帳密 → Succeeded → 原位置讀回。
+- 判定 48 項，兩次正式執行（gofficial1、gofficial2）皆 Passed：原位置 bytes 等於來源 SHA256、空目錄與巢狀目錄存在、未勾選鄰近目標不存在、崩潰前已完成檔案沒有第二次寫入、中斷點檔案只有一次 intent 並經 `AssistiveFileRecovered` 對帳、journal 有預覽重綁與重新要求帳密、Service 替身只套用一次且帳號為已核准帳號、Source／Manager 存取 0 次、父作業 jobId 全程相同、ProductionVerified 未改變且沒有自動啟用、快照摘要不變、合成秘密以 UTF-8／UTF-16LE／Base64 三種編碼掃描 367～379 個檔案都沒有命中。
+- R8（16.3 負例）12 項：錯目標、同名不同機（都被身分比對拒絕）、改計畫 bytes 沿用原 hash（被拒）、改目標並重算 hash（由身分比對拒絕，`RejectedBy=HostIdentity`：本產品信任模型是 ExpectedHash 須由操作者從可信管道取得）、補裝後未重新盤點建立收據／預覽（被拒）、重新盤點後舊收據被拒新收據成功、目標盤點超過 24 小時（被拒）、本機比較的來源清單確實來自封裝 controls（計畫不含 GeneralHost 清單、比較列含只在 controls 的產品）；每個負例都驗證拒絕且沒有目標寫入。補裝以 overlay 標記檔模擬（未動 HKCU）。來源材料過期：產品沒有來源年齡閘，來源事實以 hash 綁定，唯一年齡閘是 Target 快照 24 小時新鮮度。
+- 主代理獨立執行（gmain1）：Passed，48 項，305 秒；本機回環連線偶發重置，這次重試 8 次後全部成功（GET 與可安全重放的 POST 才重試，次數記入 verdict）。
+- 突變：續作改為重送新的 TargetRestore（6 項判定轉紅）、把秘密寫進 workspace 檔（哨兵掃描轉紅）。
+- 限制：帳號 consumer 為窄型替身（使用者定案）；新機盤點為預置 fixture；崩潰點固定在第 2 個檔案、Service 排在檔案之後；只有 WinPS 5.1。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
