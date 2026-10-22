@@ -187,15 +187,19 @@ function Assert-WsmAssistiveMigrationSpec($Spec) {
             if($Spec.TransferChannel -ceq 'NonC'){throw (New-WsmContractError 'ExactMembers is not supported by the legacy NonC direct-transfer channel; select C or use an explicitly supported workflow.')}
             if(@($Spec.ExcludedRelativePaths).Count -gt 0){throw (New-WsmContractError 'ExactMembers cannot combine Members with ExcludedRelativePaths; remove excluded files from the reviewed Members set.')}
             if(-not $Spec.PSObject.Properties['Members'] -or $Spec.Members -isnot [array] -or $Spec.Members.Count -eq 0){throw (New-WsmContractError 'ExactMembers requires a nonempty approved Members array.')}
-            $memberPaths=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+            $memberPaths=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase);$directoryMemberPaths=New-Object 'System.Collections.Generic.List[string]'
             foreach($member in $Spec.Members){
-                Assert-WsmFields $member @('RelativePath','SHA256') @('RelativePath','SHA256')
+                Assert-WsmFields $member @('RelativePath','SHA256','EntryType') @('RelativePath','SHA256')
+                $isDirectoryMember=Test-WsmExactDirectoryMember $member;if($member.PSObject.Properties['EntryType'] -and -not $isDirectoryMember){throw (New-WsmContractError 'ExactMembers EntryType must be omitted for files or be Directory.')}
                 $relative=[string]$member.RelativePath;Assert-WsmRelativePath $relative
                 if($relative -cne $relative.Replace('/','\') -or $relative.Trim() -cne $relative){throw (New-WsmContractError 'ExactMembers requires canonical backslash-separated relative paths.')}
                 if(-not $memberPaths.Add($relative)){throw (New-WsmContractError 'ExactMembers contains duplicate/case-colliding canonical relative paths.')}
-                if([string]$member.SHA256 -cnotmatch '^[a-f0-9]{64}$'){throw (New-WsmContractError 'Every ExactMembers entry requires a lowercase SHA256 baseline.')}
+                if($isDirectoryMember){if([string]$member.SHA256 -cne ''){throw (New-WsmContractError 'An ExactMembers directory member carries no content hash.')};$directoryMemberPaths.Add($relative)}
+                elseif([string]$member.SHA256 -cnotmatch '^[a-f0-9]{64}$'){throw (New-WsmContractError 'Every ExactMembers entry requires a lowercase SHA256 baseline.')}
                 if([IO.Path]::GetFileName($relative) -imatch '\.(sys|drv|ocx|com|msi|msp|cab|iso|wim|esd|vhd|vhdx|appx|msix)$'){throw (New-WsmContractError 'ExactMembers does not accept operating-system drivers, installers, or image formats.')}
             }
+            # Directory members are leaf-only: a directory that contains another member would make the member set ambiguous.
+            foreach($directoryPath in $directoryMemberPaths){foreach($otherPath in $memberPaths){if($otherPath.StartsWith($directoryPath.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){throw (New-WsmContractError 'An ExactMembers directory member must be a leaf and cannot contain another member.')}}}
         }elseif($Spec.PSObject.Properties['Members']){throw (New-WsmContractError 'Members is only valid with ContentSelection=ExactMembers.')}
         # These paths describe remote source/target hosts at Manager approval time;
         # local drive letters are not evidence about either remote host's aliases.

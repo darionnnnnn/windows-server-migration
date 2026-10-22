@@ -43,10 +43,11 @@ function Test-WsmPlanHasExactMembers($Plan) {
     return $false
 }
 function Assert-WsmExactMemberArtifactSet($Item,[string]$ArtifactsPath,[string]$ExpectedHash,$CancellationToken=$null) {
-    $expected=New-Object 'System.Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal);foreach($member in @($Item.MigrationSpec.Members)){$expected.Add([string]$member.RelativePath,[string]$member.SHA256)}
+    $expected=New-Object 'System.Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal);$expectedDirectories=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal);foreach($member in @($Item.MigrationSpec.Members)){$expected.Add([string]$member.RelativePath,[string]$member.SHA256);if(Test-WsmExactDirectoryMember $member){[void]$expectedDirectories.Add([string]$member.RelativePath)}}
     if(-not $expected.Count){throw 'ExactMembers package requires a nonempty sealed member set.'}
     $seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal);foreach($row in (Read-WsmArtifactLines $ArtifactsPath $ExpectedHash $CancellationToken | Where-Object ItemId -CEQ $Item.ItemId)){
-        if($row.Directory -or -not $expected.ContainsKey([string]$row.RelativePath) -or -not $seen.Add([string]$row.RelativePath)){throw 'ExactMembers package contains a directory, unapproved, or duplicate artifact.'}
+        if(-not $expected.ContainsKey([string]$row.RelativePath) -or -not $seen.Add([string]$row.RelativePath) -or [bool]$row.Directory -ne $expectedDirectories.Contains([string]$row.RelativePath)){throw 'ExactMembers package contains a directory, unapproved, or duplicate artifact.'}
+        if($row.Directory){if($row.PSObject.Properties['Data'] -and $row.Data){throw 'ExactMembers directory artifact must not carry file content.'};continue}
         if(-not $row.Data -or [string]$row.Data.Hash -cne $expected[[string]$row.RelativePath]){throw 'ExactMembers package artifact hash differs from its sealed member baseline.'}
     }
     if($seen.Count -ne $expected.Count){throw 'ExactMembers package artifact set does not equal the sealed member set.'}

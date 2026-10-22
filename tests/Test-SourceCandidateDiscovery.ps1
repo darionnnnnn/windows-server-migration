@@ -92,7 +92,7 @@ try {
     $resumed=$first
     for($attempt=0;$attempt -lt 40 -and $resumed.ContinuationRequired;$attempt++){$resumed=& $module { param($workspace,$profile,$inventory,$hash,$root,$scanId) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root $scanId $null 3 10 } $scanWorkspace $scanProfile $scanInventory $scanHash $fixtureRoot $first.ScanId}
     Check ($resumed.ScanStatus -ceq 'Succeeded' -and -not $resumed.ContinuationRequired) 'same ScanId resumes durable frontier to a terminal bounded scan result'
-    $candidateArtifact=Get-Content -LiteralPath $resumed.CandidatePath -Raw | ConvertFrom-Json
+    $candidateArtifact=Get-Content -LiteralPath $resumed.CandidatePath -Raw -Encoding UTF8 | ConvertFrom-Json
     Check (@($candidateArtifact.Candidates|Where-Object CandidateType -CEQ 'ExactFile'|Where-Object Path -IEQ (Join-Path $fixtureRoot 'loose root.txt')).Count -eq 1) 'root loose file appears as one exact-file candidate'
     Check (@($candidateArtifact.Candidates|Where-Object CandidateType -CEQ 'DirectoryRoot'|Where-Object Path -IEQ $business).Count -eq 1) 'unrelated business directory appears as a review candidate'
     Check (@($candidateArtifact.Candidates|Where-Object CandidateType -CEQ 'DirectoryRoot'|Where-Object Path -IEQ $programBusiness).Count -eq 1) 'ProgramData business directory remains discoverable as a candidate'
@@ -133,12 +133,12 @@ try {
     }
     $script:textPromptValues=@('1','SourceCandidateScan','','no','APPLY');$script:textPromptIndex=0
     $textPromptReader={param($prompt)if($script:textPromptIndex -ge $script:textPromptValues.Count){throw ('Unexpected text prompt: '+$prompt)};$answer=$script:textPromptValues[$script:textPromptIndex];$script:textPromptIndex++;$answer}
-    $storedTextInventoryJob=Get-Content -LiteralPath (Join-Path (Join-Path $workspace 'console-jobs') ($jobId+'.json')) -Raw | ConvertFrom-Json
+    $storedTextInventoryJob=Get-Content -LiteralPath (Join-Path (Join-Path $workspace 'console-jobs') ($jobId+'.json')) -Raw -Encoding UTF8 | ConvertFrom-Json
     Check ($storedTextInventoryJob.action -ceq 'EnrolledInventory' -and $storedTextInventoryJob.status -ceq 'Succeeded' -and -not $storedTextInventoryJob.pairId) ('fixture source inventory job is stored as a valid unpaired text job: action='+$storedTextInventoryJob.action+' status='+$storedTextInventoryJob.status+' pairId='+$storedTextInventoryJob.pairId)
     $textConsumer=& $module { param($workspace,$reader) Invoke-WsmTypedTextOperation -Workspace $workspace -PromptReader $reader } $workspace $textPromptReader
     $textJobs=& $module { param($workspace) Get-WsmTextWizardJobs $workspace '' Source } $workspace
     $textScanJob=@($textJobs|Where-Object action -CEQ 'SourceCandidateScan'|Select-Object -First 1)
-    $textScanRecord=Get-Content -LiteralPath (Join-Path (Join-Path $workspace 'console-jobs') ($textScanJob[0].jobId+'.json')) -Raw | ConvertFrom-Json
+    $textScanRecord=Get-Content -LiteralPath (Join-Path (Join-Path $workspace 'console-jobs') ($textScanJob[0].jobId+'.json')) -Raw -Encoding UTF8 | ConvertFrom-Json
     $textToken=& $module { $script:WsmCliCapturedToken }
     $textCancellation=& $module { param($path) Read-WsmJson $path } $textToken.RequestPath
         Check ($textConsumer.Status -ceq 'Applied' -and $textScanJob.Count -eq 1 -and $textScanJob[0].status -ceq 'ReviewRequired') 'typed text CLI discovers source inventory, dispatches the registered scan, and stores its resumable job result'
@@ -156,7 +156,7 @@ try {
     $registeredCommand=Get-Command $actionMap.SourceCandidateScan -ErrorAction Stop
     $consumerOperation=[Guid]::NewGuid().ToString('D')
     $consumerResult=& $registeredCommand -Workspace $workspace -Jobs $sourceJobs -OperationId $consumerOperation
-    $consumerArtifact=Get-Content -LiteralPath $consumerResult.CandidatePath -Raw | ConvertFrom-Json
+    $consumerArtifact=Get-Content -LiteralPath $consumerResult.CandidatePath -Raw -Encoding UTF8 | ConvertFrom-Json
     Check ($consumerResult.Status -ceq 'Succeeded' -and @($consumerArtifact.Candidates|Where-Object Path -IEQ $business).Count -eq 1 -and [IO.File]::Exists($consumerResult.ReportPath)) 'registered source candidate operation consumes bound inventory and emits fixture candidates plus review report'
     $htmlProjectedOutput=& $module { param($output) @(Get-WsmHtmlResultProjection $output)[0] } $consumerResult
     Check ($htmlProjectedOutput.ScanId -ceq $consumerResult.ScanId -and $htmlProjectedOutput.CandidatePath -ceq $consumerResult.CandidatePath -and $htmlProjectedOutput.CandidateHash -ceq $consumerResult.CandidateHash -and $htmlProjectedOutput.ContinuationRequired -eq $consumerResult.ContinuationRequired -and $htmlProjectedOutput.SegmentNumber -eq $consumerResult.SegmentNumber -and $htmlProjectedOutput.SegmentCount -eq $consumerResult.SegmentCount -and $htmlProjectedOutput.ExplicitContinuationRequired -eq $consumerResult.ExplicitContinuationRequired) 'HTML result projection retains only the candidate scan continuation, integrity and segment summary fields'
@@ -166,7 +166,7 @@ try {
     Check ($htmlToken -and $htmlToken.OperationId -ceq $cancelOperation -and $htmlToken.PlanHash -ceq $inventoryHash) 'HTML cancellation token binds the registered source operation to its verified inventory and operation ID'
     $null=Request-WsmCancellation -Token $htmlToken -Owner 'SourceCandidateDiscoveryTest' -Evidence 'Fixture HTML cancellation wiring'
     $cancelResult=& $registeredCommand -Workspace $workspace -Jobs $sourceJobs -OperationId $cancelOperation -CancellationToken $htmlToken
-    $htmlCancelArtifact=Get-Content -LiteralPath $cancelResult.CandidatePath -Raw | ConvertFrom-Json
+    $htmlCancelArtifact=Get-Content -LiteralPath $cancelResult.CandidatePath -Raw -Encoding UTF8 | ConvertFrom-Json
     Check ($cancelResult.ContinuationRequired -and @($htmlCancelArtifact.Gaps|Where-Object Reason -CEQ 'CancelledAtSafeBoundary').Count -eq 1 -and [IO.File]::Exists($cancelResult.ReportPath)) 'registered operation observes HTML cancellation token and publishes a resumable review report'
 
     $originalCore=& $module { (Get-Item Function:\Invoke-WsmSourceCandidateScanCore).ScriptBlock }
@@ -181,7 +181,7 @@ try {
     $noCatalogInventory=& $module { param($source) New-WsmInventory $source 1 @() } $scanSource
     $noCatalogHash=& $module { param($value) Get-WsmHashText ($value|ConvertTo-Json -Depth 30 -Compress) } $noCatalogInventory
     $noCatalog=& $module { param($workspace,$profile,$inventory,$hash,$root) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root '' $null 1 10 } $scanWorkspace $scanProfile $noCatalogInventory $noCatalogHash $fixtureRoot
-    $noCatalogArtifact=Get-Content -LiteralPath $noCatalog.CandidatePath -Raw | ConvertFrom-Json
+    $noCatalogArtifact=Get-Content -LiteralPath $noCatalog.CandidatePath -Raw -Encoding UTF8 | ConvertFrom-Json
     Check ($noCatalogArtifact.Coverage.SoftwareRootCoverageStatus -ceq 'Unavailable' -and @($noCatalogArtifact.Coverage.SoftwareRootCoverageGaps).Count -gt 0 -and $noCatalog.ReportPath) 'missing SoftwareCatalog is disclosed as incomplete installed-software root coverage in review output'
 
     # A persisted queue can be attacked by replacing an ancestor after the first run.
@@ -194,7 +194,7 @@ try {
     Remove-Item -LiteralPath $resumeParent -Recurse -Force
     New-Item -ItemType Junction -Path $resumeParent -Target $outside | Out-Null
     $junctionResume=& $module { param($workspace,$profile,$inventory,$hash,$root,$scanId) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root $scanId $null 10 10 } $scanWorkspace $scanProfile $scanInventory $scanHash $fixtureRoot $junctionStart.ScanId
-    $junctionArtifact=Get-Content -LiteralPath $junctionResume.CandidatePath -Raw | ConvertFrom-Json
+    $junctionArtifact=Get-Content -LiteralPath $junctionResume.CandidatePath -Raw -Encoding UTF8 | ConvertFrom-Json
     Check (@($junctionArtifact.Gaps|Where-Object {$_.Path -ieq $resumeChild -and $_.Reason -ceq 'ReparsePointNotFollowed'}).Count -eq 1 -and @($junctionArtifact.Candidates|Where-Object Path -IEQ $outsideMarker).Count -eq 0) 'resume rejects a queued directory whose ancestor was replaced by a junction and never scans its target'
 
     $missingParent=Join-Path $fixtureRoot 'resume-missing';$missingChild=Join-Path $missingParent 'child';[void][IO.Directory]::CreateDirectory($missingChild)
@@ -204,14 +204,14 @@ try {
     & $module { param($path,$data) Write-WsmJson $path $data } $missingCheckpointPath $missingCheckpoint
     Remove-Item -LiteralPath $missingParent -Recurse -Force
     $missingResume=& $module { param($workspace,$profile,$inventory,$hash,$root,$scanId) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root $scanId $null 10 10 } $scanWorkspace $scanProfile $scanInventory $scanHash $fixtureRoot $missingStart.ScanId
-    $missingArtifact=Get-Content -LiteralPath $missingResume.CandidatePath -Raw | ConvertFrom-Json
+    $missingArtifact=Get-Content -LiteralPath $missingResume.CandidatePath -Raw -Encoding UTF8 | ConvertFrom-Json
     Check (@($missingArtifact.Gaps|Where-Object {$_.Path -ieq $missingChild -and $_.Reason -ceq 'DirectoryUnavailable'}).Count -eq 1 -and $missingResume.ScanStatus -ceq 'Succeeded') 'missing queued directory becomes a durable coverage gap and does not abort the scan'
 
     $stale=& $module { param($workspace,$profile,$inventory,$hash,$root) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root '' $null 1 10 } $scanWorkspace $scanProfile $scanInventory $scanHash $fixtureRoot
     ExpectFailure { & $module { param($workspace,$profile,$inventory,$hash,$root,$scanId) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory ('b'*64) $root $scanId $null 1 10 } $scanWorkspace $scanProfile $scanInventory $scanHash $fixtureRoot $stale.ScanId } 'resume rejects a changed source inventory hash'
 
     $capped=& $module { param($workspace,$profile,$inventory,$hash,$root) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root '' $null 4000 10 2 } $scanWorkspace $scanProfile $scanInventory $scanHash $fixtureRoot
-    $capArtifact=Get-Content -LiteralPath $capped.CandidatePath -Raw | ConvertFrom-Json
+    $capArtifact=Get-Content -LiteralPath $capped.CandidatePath -Raw -Encoding UTF8 | ConvertFrom-Json
     Check ($capped.ScannedEntryCount -le 2 -and $capped.ScanStatus -ceq 'BudgetExhausted' -and @($capArtifact.Gaps|Where-Object Reason -CEQ 'CumulativeEntryBudgetExceeded').Count -eq 1) 'cumulative entry cap stops at its fixed maximum and records a durable coverage gap'
     $capReport=[IO.File]::ReadAllText($capped.ReportPath)
     Check ($capReport.Contains('本掃描分段已達項目數上限') -and $capReport.Contains('明確啟動下一個有界分段') -and $capReport.Contains('剩餘路徑')) 'budget-exhausted report offers only explicit bounded continuation and keeps remaining paths visible'
@@ -303,8 +303,8 @@ try {
 
     $cancelId=[Guid]::NewGuid().ToString('D');$cancelToken=New-WsmCancellationToken -StateDirectory (Join-Path $scanWorkspace 'hosts') -PairId $scanProfile.HostId -PlanHash $scanHash -OperationId $cancelId
     $cancelled=& $module { param($workspace,$profile,$inventory,$hash,$root,$token,$hook) Invoke-WsmSourceCandidateScanCore $workspace $profile $inventory $hash $root '' $token 3 10 50000 $hook } $scanWorkspace $scanProfile $scanInventory $scanHash $fixtureRoot $cancelToken ({param($checkpoint,$token)if([long]$checkpoint.ScannedEntryCount -ge 1){$null=Request-WsmCancellation -Token $token -Owner 'SourceCandidateDiscoveryTest' -Evidence 'Fixture cancellation after first enumerated child'}})
-    $cancelArtifact=Get-Content -LiteralPath $cancelled.CandidatePath -Raw | ConvertFrom-Json
-    $cancelCheckpoint=Get-Content -LiteralPath (Join-Path (Split-Path $cancelled.CandidatePath -Parent) 'checkpoint.json') -Raw | ConvertFrom-Json
+    $cancelArtifact=Get-Content -LiteralPath $cancelled.CandidatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $cancelCheckpoint=Get-Content -LiteralPath (Join-Path (Split-Path $cancelled.CandidatePath -Parent) 'checkpoint.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     Check ($cancelled.Status -ceq 'ReviewRequired' -and $cancelled.ContinuationRequired -and @($cancelArtifact.Gaps|Where-Object Reason -CEQ 'CancelledAtSafeBoundary').Count -eq 1) 'cancellation stops at a durable boundary and preserves a resumable partial checkpoint'
     Check ($cancelCheckpoint.CurrentDirectory -and @($cancelCheckpoint.CurrentDirectorySeen).Count -eq 1 -and @($cancelCheckpoint.VisitedDirectories|Where-Object {$_ -ieq $fixtureRoot}).Count -eq 0 -and $cancelArtifact.Coverage.RemainingDirectoryPaths -contains $cancelCheckpoint.CurrentDirectory) 'mid-directory cancellation retains its exact seen cursor and visibly lists the remaining directory path'
 

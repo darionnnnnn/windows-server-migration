@@ -245,6 +245,15 @@ function Assert-WsmAssistiveTargetScopeTopology {
         if($Kind -eq 'Root'){if([IO.Path]::GetFullPath($Path) -ine $root){throw 'ExactMembers root check is not bound to its sealed TargetPath.'};Assert-WsmFileScopeGuard -Path $Path -Mode Root -AllowDriveRoot;Assert-WsmFileScopeGuard -Path (Get-WsmPhysicalPath $Path) -Mode Root -AllowDriveRoot;Assert-WsmNoReparse $Path;return}
         if($null -eq $Artifact -or -not $Artifact.PSObject.Properties['RelativePath']){throw 'ExactMembers target operation requires a validated package artifact row.'}
         $relative=[string]$Artifact.RelativePath;Assert-WsmRelativePath $relative;$members=@($Spec.Members|Where-Object {[string]$_.RelativePath -ceq $relative})
+        $directoryMember=($members.Count -eq 1 -and (Test-WsmExactDirectoryMember $members[0]))
+        if($directoryMember -or [bool]$Artifact.Directory){
+            # A directory artifact must be exactly one sealed leaf Directory member and may only be checked as a Directory.
+            if(-not $directoryMember -or -not [bool]$Artifact.Directory -or $Kind -ne 'Directory'){throw 'ExactMembers directory artifact is not exactly one sealed directory member.'}
+            $expected=[IO.Path]::GetFullPath((Join-Path $root $relative));$destPath=if($Destination){[IO.Path]::GetFullPath($Destination)}else{$expected}
+            if($destPath -ine $expected){throw 'ExactMembers destination differs from the exact reviewed target-relative member.'}
+            if([IO.Path]::GetFullPath($Path).TrimEnd('\') -ine $expected.TrimEnd('\')){throw 'ExactMembers directory member check is not bound to its reviewed target-relative path.'}
+            Assert-WsmNoReparse $Path;Assert-WsmFileScopeGuard -Path $Path -Mode ExactMembers -SourceRoot $root -RelativePath $relative -IsDirectory -PathOnly -CheckPhysicalAlias;Assert-WsmAssistiveFileTopology $Path;return
+        }
         if($members.Count -ne 1 -or $Artifact.Directory -or -not $Artifact.Data -or [string]$Artifact.Data.Hash -cne [string]$members[0].SHA256){throw 'ExactMembers artifact is not exactly one hash-bound sealed member.'}
         $expected=[IO.Path]::GetFullPath((Join-Path $root $relative));$destPath=if($Destination){[IO.Path]::GetFullPath($Destination)}else{$expected}
         if($destPath -ine $expected){throw 'ExactMembers destination differs from the exact reviewed target-relative member.'}

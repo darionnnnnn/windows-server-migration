@@ -913,6 +913,33 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 磁碟滿是在接縫丟出替身例外，不在 `[IO.File]::Copy` 內部。
   - 中斷擷取留下的孤兒 blob 會留在套件工作區供檢視，不會被引用或交付。
 
+### 17.64 B6 ExactMembers 支援空目錄（C 槽／CV2）
+
+- Sonnet 5.5 subagent 實作，主代理審查並補上白名單外的消費端，再獨立重跑。
+- 目錄成員格式為 `{RelativePath, SHA256='', EntryType='Directory'}`；檔案成員不帶 EntryType，所以舊確認與舊計畫的雜湊不變。SHA256 保留空字串，是因為 StrictMode 下既有消費端會直接讀這個欄位。
+- 候選確認：不再因含空目錄而拒絕，只列葉端空目錄（巢狀只列最深一層）；根目錄完全為空仍拒絕。目錄成員要通過 FileScope guard，並納入成員集合雜湊、審閱投影與綁定雜湊。
+- 契約（MigrationContracts）：
+  - 欄位白名單加入 EntryType；只允許 `Directory`，檔案不得帶 EntryType。
+  - 目錄成員不得帶雜湊，且必須是葉端（不得包含其他成員）。
+  - 相對路徑、重複、大小寫碰撞、guard 等既有檢查一律照走；非 C 的 ExactMembers 仍被拒絕。
+- 封裝：
+  - 封裝時目錄必須仍存在且仍為空，否則拒絕。
+  - 產生 `Directory=$true` 的 artifact，不帶 Data。
+  - 封存檢查要求目錄 artifact 與目錄成員一一對應。
+- 還原：沿用既有目錄處理。新建的目錄記入 `OwnedDirectories`，readback 為 DirectoryVerified；既有的同名外部目錄為 DirectoryPreserved，不接管。沒有新增 journal 動作。
+- 主代理補修白名單外的消費端：
+  - `WizardDetails`：檔案明細把目錄成員當目錄列出，不再當成缺檔而判為 Partial；靜態明細投影標為 `ReviewedExactDirectory`。
+  - `AssistiveReports` 與 `AssistiveReviewForms`：摘要文字分開列出檔案數與空目錄數。
+- 同段順帶修正（本輪發現、本輪修）：`Test-SourceCandidateDiscovery` 在 HEAD 已經失敗。根因是 PS 5.1 的 `Get-Content -Raw` 沒指定編碼，以 CP950 讀取產品寫出的 UTF-8 JSON，中文 Windows 的系統錯誤訊息因此被讀壞。測試 11 處讀檔改為 `-Encoding UTF8`；產品端沒有問題。
+- 驗證（WinPS 5.1）：見提交說明。
+- 突變（皆轉紅）：
+  - 確認時略過目錄成員。
+  - 封裝不產生目錄 artifact。
+  - 還原不建立目錄成員。
+  - 檔案明細不辨識目錄成員（主代理）。
+- 限制：
+  - 中介父目錄（例如 `tree\level1`）不記擁有權，與檔案成員的父目錄一致。
+  - 候選確認不檢查目錄名稱的被擋副檔名，所以可能「確認過但匯入被拒」，這與檔案成員的既有行為一致。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

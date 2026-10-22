@@ -41,6 +41,9 @@ try{
     [void][IO.Directory]::CreateDirectory($fixtureC)
     $business=Join-Path $fixtureC 'Business Data';$nested=Join-Path $business 'nested';$emptyRoot=Join-Path $fixtureC 'Empty Scope';$emptyChild=Join-Path $emptyRoot 'empty-child';$driftRoot=Join-Path $fixtureC 'Drift Scope'
     foreach($dir in @($nested,$emptyChild,$driftRoot)){[void][IO.Directory]::CreateDirectory($dir)}
+    $deepRoot=Join-Path $fixtureC 'Deep Empty Scope';$deepLeaf=Join-Path $deepRoot 'l1\l2\l3';$deepSibling=Join-Path $deepRoot 'other-empty';$voidRoot=Join-Path $fixtureC 'Void Scope'
+    foreach($dir in @($deepLeaf,$deepSibling,$voidRoot)){[void][IO.Directory]::CreateDirectory($dir)}
+    [IO.File]::WriteAllText((Join-Path $deepRoot 'l1\keep.txt'),'deep keep fixture')
     $fileOne=Join-Path $business 'customers.dat';$fileTwo=Join-Path $nested 'index.db';$driftFile=Join-Path $driftRoot 'change.bin';$rootLooseFile=Join-Path $fixtureC 'loose-root.txt'
     [IO.File]::WriteAllText($fileOne,'customer data fixture');[IO.File]::WriteAllText($fileTwo,'index fixture');[IO.File]::WriteAllText($driftFile,'before')
     [IO.File]::WriteAllText($rootLooseFile,'root exact-file fixture')
@@ -52,6 +55,9 @@ try{
     $emptyCandidate=@($artifact.Candidates|Where-Object {$_.CandidateType -ceq 'DirectoryRoot' -and $_.Path -ieq $emptyRoot})[0]
     $driftCandidate=@($artifact.Candidates|Where-Object {$_.CandidateType -ceq 'DirectoryRoot' -and $_.Path -ieq $driftRoot})[0]
     $looseCandidate=@($artifact.Candidates|Where-Object {$_.CandidateType -ceq 'ExactFile' -and $_.Path -ieq $rootLooseFile})[0]
+    $deepCandidate=@($artifact.Candidates|Where-Object {$_.CandidateType -ceq 'DirectoryRoot' -and $_.Path -ieq $deepRoot})[0]
+    $voidCandidate=@($artifact.Candidates|Where-Object {$_.CandidateType -ceq 'DirectoryRoot' -and $_.Path -ieq $voidRoot})[0]
+    Check ($deepCandidate -and $voidCandidate) 'fixture scan discovered the nested-empty and the completely empty directory roots'
     Check ($businessCandidate -and $emptyCandidate -and $driftCandidate -and $looseCandidate) 'fixture scan discovered separate business, empty-directory, content-drift and C-root loose-file candidates'
     $confirmed=Export-WsmSourceCandidateConfirmation -Workspace $sourceWorkspace -ScanId $scan.ScanId -ExpectedCandidateHash $scan.CandidateHash -CandidateId $businessCandidate.CandidateId -Jobs @($job)
     Check ($confirmed.Status -ceq 'Confirmed' -and $confirmed.MemberCount -eq 2 -and $confirmed.ConfirmationHash -match '^[a-f0-9]{64}$') 'source confirmation freshly enumerates and hashes exactly the selected business-directory members'
@@ -70,7 +76,22 @@ try{
 
     Reject {Export-WsmSourceCandidateConfirmation -Workspace $sourceWorkspace -ScanId $scan.ScanId -ExpectedCandidateHash ('0'*64) -CandidateId $businessCandidate.CandidateId -Jobs @($job)} 'stale candidate artifact hash is rejected at the source boundary'
     Reject {Export-WsmSourceCandidateConfirmation -Workspace $sourceWorkspace -ScanId $scan.ScanId -ExpectedCandidateHash $scan.CandidateHash -CandidateId ('f'*64) -Jobs @($job)} 'unknown candidate ID cannot be confirmed'
-    Reject {Export-WsmSourceCandidateConfirmation -Workspace $sourceWorkspace -ScanId $scan.ScanId -ExpectedCandidateHash $scan.CandidateHash -CandidateId $emptyCandidate.CandidateId -Jobs @($job)} 'empty directories block a DirectoryRoot confirmation instead of disappearing from ExactMembers'
+    $emptyConfirmed=Export-WsmSourceCandidateConfirmation -Workspace $sourceWorkspace -ScanId $scan.ScanId -ExpectedCandidateHash $scan.CandidateHash -CandidateId $emptyCandidate.CandidateId -Jobs @($job)
+    $emptyConfirmation=Get-Content -LiteralPath $emptyConfirmed.ConfirmationPath -Raw|ConvertFrom-Json
+    Check ($emptyConfirmed.Status -ceq 'Confirmed' -and $emptyConfirmed.MemberCount -eq 1 -and $emptyConfirmation.Selection.Members.Count -eq 1 -and $emptyConfirmation.Selection.Members[0].EntryType -ceq 'Directory' -and $emptyConfirmation.Selection.Members[0].RelativePath -ceq 'empty-child' -and $emptyConfirmation.Selection.Members[0].SHA256 -ceq '' -and $emptyConfirmation.Selection.Members[0].CandidateId -match '^[a-f0-9]{64}$') 'a directory containing only an empty directory now confirms with that empty directory as a Directory member'
+    $deepConfirmed=Export-WsmSourceCandidateConfirmation -Workspace $sourceWorkspace -ScanId $scan.ScanId -ExpectedCandidateHash $scan.CandidateHash -CandidateId $deepCandidate.CandidateId -Jobs @($job)
+    $deepConfirmation=Get-Content -LiteralPath $deepConfirmed.ConfirmationPath -Raw|ConvertFrom-Json
+    $deepDirectories=@($deepConfirmation.Selection.Members|Where-Object {$_.PSObject.Properties['EntryType'] -and $_.EntryType -ceq 'Directory'}|ForEach-Object RelativePath|Sort-Object)
+    $deepFiles=@($deepConfirmation.Selection.Members|Where-Object {-not $_.PSObject.Properties['EntryType']}|ForEach-Object RelativePath)
+    Check ($deepConfirmed.MemberCount -eq 3 -and ($deepDirectories -join '|') -ceq 'l1\l2\l3|other-empty' -and ($deepFiles -join '|') -ceq 'l1\keep.txt') 'nested empty directories list only the deepest leaf (l1 and l1\l2 are implied) and file members carry no EntryType'
+    Check (@($deepConfirmation.Selection.Members|Where-Object {$_.PSObject.Properties['EntryType']}|Where-Object {$_.Length -ne 0 -or $_.SHA256 -cne ''}).Count -eq 0) 'directory members have an empty hash and zero length'
+    $legacyHash=& $module {param($members) Get-WsmHashText ((@($members|ForEach-Object {[pscustomobject][ordered]@{RelativePath=([string]$_.RelativePath).Replace('/','\').ToLowerInvariant();SHA256=([string]$_.SHA256).ToLowerInvariant();Length=[long]$_.Length}}|Sort-Object RelativePath))|ConvertTo-Json -Depth 12 -Compress)} @($confirmation.Selection.Members)
+    $currentHash=& $module {param($members) Get-WsmSourceCandidateMemberSetHash $members} @($confirmation.Selection.Members)
+    Check ($legacyHash -ceq $currentHash -and -not @($confirmation.Selection.Members|Where-Object {$_.PSObject.Properties['EntryType']}).Count) 'an older confirmation without directory members keeps the exact legacy member-set hash'
+    $withDirectoryHash=& $module {param($members) Get-WsmSourceCandidateMemberSetHash $members} @($deepConfirmation.Selection.Members)
+    $withoutDirectoryHash=& $module {param($members) Get-WsmSourceCandidateMemberSetHash $members} @($deepConfirmation.Selection.Members|Where-Object {-not $_.PSObject.Properties['EntryType']})
+    Check ($withDirectoryHash -cne $withoutDirectoryHash) 'directory members are part of the member-set hash'
+    Reject {Export-WsmSourceCandidateConfirmation -Workspace $sourceWorkspace -ScanId $scan.ScanId -ExpectedCandidateHash $scan.CandidateHash -CandidateId $voidCandidate.CandidateId -Jobs @($job)} 'a completely empty root directory is still rejected because there is nothing to preserve'
     [IO.File]::WriteAllText((Join-Path $business 'new-neighbor.dat'),'new after scan')
     Reject {Export-WsmSourceCandidateConfirmation -Workspace $sourceWorkspace -ScanId $scan.ScanId -ExpectedCandidateHash $scan.CandidateHash -CandidateId $businessCandidate.CandidateId -Jobs @($job)} 'a new neighbor after discovery is rejected and never added to an old candidate confirmation'
     [IO.File]::Delete((Join-Path $business 'new-neighbor.dat'))

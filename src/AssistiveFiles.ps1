@@ -140,10 +140,21 @@ function Get-WsmExactMemberEntries {
     $physicalRoot=Get-WsmPhysicalPath $root;Assert-WsmFileScopeGuard -Path $physicalRoot -Mode Root -AllowDriveRoot;$packageFull=[IO.Path]::GetFullPath($PackageRoot);$seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     foreach($member in $members){
         Assert-WsmCancellationBoundary $CancellationToken 'ExactMemberFile'
-        Assert-WsmFields $member @('RelativePath','SHA256') @('RelativePath','SHA256');$relative=[string]$member.RelativePath;Assert-WsmRelativePath $relative
+        Assert-WsmFields $member @('RelativePath','SHA256','EntryType') @('RelativePath','SHA256');$isDirectoryMember=Test-WsmExactDirectoryMember $member;if($member.PSObject.Properties['EntryType'] -and -not $isDirectoryMember){throw 'ExactMembers member EntryType is unsupported.'};$relative=[string]$member.RelativePath;Assert-WsmRelativePath $relative
         if($relative -cne $relative.Replace('/','\') -or $relative.Trim() -cne $relative -or -not $seen.Add($relative)){throw 'ExactMembers contains a noncanonical or duplicate member path.'}
-        if([string]$member.SHA256 -cnotmatch '^[a-f0-9]{64}$'){throw 'ExactMembers member has no canonical SHA256 baseline.'}
+        if($isDirectoryMember){if([string]$member.SHA256 -cne ''){throw 'ExactMembers directory member carries no content hash.'}}elseif([string]$member.SHA256 -cnotmatch '^[a-f0-9]{64}$'){throw 'ExactMembers member has no canonical SHA256 baseline.'}
         $path=[IO.Path]::GetFullPath((Join-Path $root $relative));if($path.Length -gt 239){throw 'Exact member exceeds the verified path limit.'}
+        if($isDirectoryMember){
+            # Same path, reparse, physical-alias and package-overlap checks as file members, then require a still-empty real directory.
+            Assert-WsmNoReparse $path;Assert-WsmFileScopeGuard -Path $path -Mode ExactMembers -SourceRoot $root -RelativePath $relative -IsDirectory -PathOnly -CheckPhysicalAlias
+            Assert-WsmAssistiveFileTopology -Path $path
+            if(-not [IO.Directory]::Exists($path)){throw ('Approved exact directory member is absent: '+$relative)}
+            $physical=Get-WsmPhysicalPath $path;if($physical -ine $physicalRoot -and -not $physical.StartsWith($physicalRoot.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Exact member resolves outside the reviewed physical source root.'}
+            if(Test-WsmPathOverlap $physical (Get-WsmPhysicalPath $packageFull)){throw 'Exact member overlaps package workspace.'}
+            if(@([IO.Directory]::EnumerateFileSystemEntries($path)|Select-Object -First 1).Count){throw ('Approved exact directory member is no longer empty: '+$relative)}
+            [pscustomobject]@{SourcePath=$path;RelativePath=$relative;Directory=$true}
+            continue
+        }
         Assert-WsmNoReparse $path;Assert-WsmFileScopeGuard -Path $path -Mode ExactMembers -SourceRoot $root -RelativePath $relative -CheckPhysicalAlias
         Assert-WsmAssistiveFileTopology -Path $path
         if(-not [IO.File]::Exists($path)){throw ('Approved exact member is absent: '+$relative)}
