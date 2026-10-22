@@ -860,6 +860,11 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 取消與接管端點沒有自己重綁：它們要求 job 為 WaitingForInput，而 job 只會在 worker 完成並同步 hash 後才回到等待，所以不存在「hash 已重綁但 job 未同步」的可操作窗口（主代理判斷）。
 - 驗證（WinPS 5.1）：TargetRestoreContinuation 133、HtmlConsole 175、WizardRestore 85、ServiceCredentialChallenge 46、CredentialDeferral 68、AssistiveRestore 140、RecoveryContracts、JournalAppendFailure 22、HtmlRouteMatches 9、ActionExports 194、WizardRuntime 161、ScriptEncoding、Node CredentialDialogUi、真實 Edge NativeWizardRuntimeHandler 兩次通過。突變：不更新 challenge 的 hash、判定為假仍重綁（專屬斷言）、HTML 不寫回 job hash（既有守門擋下）皆轉紅。
 
+### 17.59 G-D8 重新盤點後 Target 快照被判「不唯一」
+
+- G 旅程（R8「補裝後重新盤點」）發現：Target 有兩份成功的盤點作業時（補裝後依畫面指示重新盤點就會如此），`Get-WsmWizardTargetSnapshot` 與 `WizardTargetPackage` 取盤點時沒有帶入精靈狀態中已綁定的盤點（`SourceInventoryHash`／`InventoryJobId`），一律回 `Ambiguous` 並拒絕，之後本機比較、收據、預覽全部失敗。其他 9 個呼叫端都已帶入綁定，只有這兩處漏了；既有設計本來就是「多份盤點時由畫面要求明確選擇（綁定）」。主代理親自修：兩處改為讀取 Target 精靈狀態的綁定作為偏好；沒有綁定時行為不變（仍拒絕）。
+- 驗證：Test-WizardFlow 46（新增：兩份 Target 盤點綁定第 2 份後，快照不再因不唯一被拒）、WizardRestore 85、WizardRuntime 161、WizardReceivedPlan、TargetRestoreContinuation 133、HtmlConsole 175、ScriptEncoding 通過。突變：拿掉綁定偏好即轉紅。完整的「重新盤點→本機比較→新收據」由 G 旅程驗證。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

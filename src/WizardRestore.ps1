@@ -63,7 +63,8 @@ function Get-WsmWizardTargetPackage([string]$Workspace,[string]$PairId,$Context,
 }
 
 function Get-WsmWizardTargetSnapshot([string]$Workspace,$Context,[object[]]$Jobs) {
-    $inventory=Get-WsmWizardInventoryFromJobs $Workspace $Context.Profile $Jobs
+    # Prefer the inventory this Target explicitly bound in its wizard state, as every other caller does; several successful inventory jobs (a re-inventory after installing software) are normal and must not be ambiguous.
+    $boundState=Get-WsmWizardState $Workspace '' Target;$inventory=Get-WsmWizardInventoryFromJobs $Workspace $Context.Profile $Jobs ([string]$boundState.SourceInventoryHash) ([string]$boundState.InventoryJobId)
     if(-not $inventory -or $inventory.Ambiguous){throw 'A unique successful current Target inventory job is required; refresh Target inventory before continuing.'}
     if($inventory.Inventory.Source.HostId -cne $Context.Profile.HostId -or $inventory.Inventory.Source.Fingerprint -ine $Context.Profile.Fingerprint){throw 'Current Target inventory does not match the enrolled local host identity.'}
     if(-not $inventory.Inventory.PSObject.Properties['SoftwareCatalog']){throw 'Target inventory has no native software catalog; do not infer software absence.'}

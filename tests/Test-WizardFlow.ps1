@@ -87,6 +87,9 @@ try {
     $targetBinding=Private {param($workspace,$jobId,$revision,$jobs) Set-WsmWizardInventoryBinding $workspace Target $jobId $revision $jobs} $targetRoot $targetJob2.jobId 0 $targetJobs
     $targetSelected=Private {param($workspace,$jobs) Get-WsmWizardProjection $workspace '' Target $jobs} $targetRoot $targetJobs
     Check ($targetBinding.InventoryRevision -eq 2 -and $targetSelected.inventory.jobId -ceq $targetJob2.jobId -and $targetSelected.scan.hasResult) 'Explicit target inventory binding did not persist the selected durable result.'
+    # D8: after an explicit binding, the Target snapshot must use the bound inventory instead of refusing two successful inventories as ambiguous (the fixture has no software catalog, so a later, different check stops it).
+    $snapshotError='';try{Private {param($workspace,$jobs) Get-WsmWizardTargetSnapshot $workspace ([pscustomobject]@{Profile=(Read-WsmOutputProfile $workspace)}) $jobs} $targetRoot $targetJobs|Out-Null}catch{$snapshotError=$_.Exception.Message}
+    Check ($snapshotError -notmatch 'unique successful current Target inventory' -and $snapshotError -match 'software catalog') ('Bound Target inventory was still refused as ambiguous: '+$snapshotError)
     $plainSource=[pscustomobject]@{HostId=[Guid]::NewGuid().ToString('D');Fingerprint=('b'*64);Name='plain-catalog-source'}
     $plainInventory=New-WsmInventory $plainSource 1 @((New-WsmItem $plainSource.HostId Services Service 'Plain service' 'PlainSvc' @{Name='PlainSvc'}))
     $plainPath=Join-Path $workspaceRoot 'plain-inventory.json';SaveJson $plainInventory $plainPath|Out-Null
