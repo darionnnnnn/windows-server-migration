@@ -247,7 +247,21 @@ function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[b
     @($rows.ToArray() | Sort-Object -Property @{Expression={if($_.Status -ceq 'BackedUp'){0}else{1}}},@{Expression={([string]$_.Name).ToLowerInvariant()}})
 }
 
-function Get-WsmBackupSoftwareRows($Plan,$Inventory) {
+# Software tab rows (B4). Grouping and association use only recorded relations, never names or paths.
+#   linked ItemIds             Entry.ItemIds plus the ConsumerItemIds of every GeneralHost Requirement whose ProviderSoftwareId
+#                              is this entry (a Requirement still a Candidate and decided NotNeeded is not evidence of need)
+#   HasLinkEvidence            at least one linked ItemId exists; an empty list means "no evidence", never "not needed"
+#   RequiredBySelectedWorkload at least one linked ItemId is a Plan item whose Decision is Include
+#   Workloads                  workload names of the linked Include items, taken from the rows of Get-WsmBackupItemResultRows
+#                              (same Dependencies/References walk and $workloadKinds as the item tabs; nothing is walked here)
+#   ChosenVersion              the saved choice when it still matches the source version; otherwise the source version
+#                              labelled as such (no choice, or a stale choice whose SourceVersion no longer matches)
+#   ManualNote                 decision Reason/Evidence and the choice Reason, redacted; empty when none was recorded
+#   DecisionState              Unreviewed (no decision) / Reviewed / Stale (the recorded SoftwareHash no longer matches the entry)
+# Rows are ordered required-first, then by name and version. FeatureRows carry the workloads of their inventory item.
+# CatalogState says whether a software catalog existed at all, so an empty list can be told from a missing one.
+function Get-WsmBackupSoftwareRows($Plan,$Inventory,[object[]]$SoftwareChoices=@(),[object[]]$ItemRows=$null) {
+    $get={param($o,$n) if($null -eq $o){return $null};if($o -is [Collections.IDictionary]){if($o.Contains($n)){return $o[$n]};return $null};if($o.PSObject.Properties[$n]){return $o.$n};return $null}
     $dispositionText=@{Reinstall='新機重新安裝';Portable='可攜版，隨資料搬移';KeepCompatible='保留相容版本';External='由外部處理';NotNeeded='新機不需要';SpecialProduct='特殊產品，人工處理';Unknown='尚未決定';Undecided='尚未決定'}
     $general=$(if($Plan.PSObject.Properties['GeneralHost']){$Plan.GeneralHost}else{$null})
     $catalog=$null
@@ -255,18 +269,60 @@ function Get-WsmBackupSoftwareRows($Plan,$Inventory) {
     elseif($Inventory -and $Inventory.PSObject.Properties['SoftwareCatalog'] -and $Inventory.SoftwareCatalog -and $Inventory.SoftwareCatalog.PSObject.Properties['Entries']){$catalog=$Inventory.SoftwareCatalog}
     $decisionById=@{}
     if($general -and $general.PSObject.Properties['SoftwareDecisions']){foreach($decision in @($general.SoftwareDecisions)){if($decision){$decisionById[[string]$decision.SoftwareId]=$decision}}}
+    $includedIds=@{}
+    foreach($planItem in @(& $get $Plan 'Items')){if($planItem -and [string](& $get $planItem 'Decision') -ceq 'Include'){$includedIds[[string](& $get $planItem 'ItemId')]=$true}}
+    if($null -eq $ItemRows){$ItemRows=@();try{$ItemRows=@(Get-WsmBackupItemResultRows $Plan $Inventory @() $false)}catch{$ItemRows=@()}}
+    $workloadsById=@{}
+    foreach($itemRow in @($ItemRows)){if($itemRow -and $itemRow.PSObject.Properties['Workloads']){$workloadsById[[string]$itemRow.ItemId]=@($itemRow.Workloads)}}
+    $choiceById=@{}
+    foreach($choice in @(@($SoftwareChoices)+@(& $get (& $get $Plan 'Assistive') 'SoftwareChoices'))){if($choice){$choiceId=[string](& $get $choice 'SoftwareId');if($choiceId -and -not $choiceById.ContainsKey($choiceId)){$choiceById[$choiceId]=$choice}}}
+    $requirementConsumers=@{}
+    foreach($requirement in @(& $get $general 'Requirements')){
+        if(-not $requirement){continue}
+        $provider=[string](& $get $requirement 'ProviderSoftwareId');if(-not $provider){continue}
+        if([string](& $get $requirement 'Certainty') -ceq 'Candidate' -and [string](& $get $requirement 'Decision') -ceq 'NotNeeded'){continue}
+        if(-not $requirementConsumers.ContainsKey($provider)){$requirementConsumers[$provider]=New-Object 'System.Collections.Generic.List[string]'}
+        foreach($consumerId in @(& $get $requirement 'ConsumerItemIds')){if($consumerId){$requirementConsumers[$provider].Add([string]$consumerId)}}
+    }
     $softwareRows=New-Object 'System.Collections.Generic.List[object]'
     if($catalog){
         foreach($entry in @($catalog.Entries)){
             $softwareId=[string]$entry.SoftwareId
-            $disposition=$(if($decisionById.ContainsKey($softwareId)){[string]$decisionById[$softwareId].Disposition}else{'Undecided'})
+            $decision=$null;if($decisionById.ContainsKey($softwareId)){$decision=$decisionById[$softwareId]}
+            $disposition=$(if($decision){[string]$decision.Disposition}else{'Undecided'})
             if(-not $dispositionText.ContainsKey($disposition)){$disposition='Unknown'}
-            $version=[string]$entry.Version;if([string]::IsNullOrWhiteSpace($version)){$version='未知'}
-            $softwareRows.Add([pscustomobject][ordered]@{SoftwareId=$softwareId;Name=[string]$entry.Name;Version=$version;Publisher=[string]$entry.Publisher;Architecture=[string]$entry.Architecture;Scope=[string]$entry.Scope;Location=[string]$entry.Location;SourceKind=[string]$entry.SourceKind;Disposition=$disposition;DispositionText=$dispositionText[$disposition]})
+            $rawVersion=[string]$entry.Version
+            $version=$rawVersion;if([string]::IsNullOrWhiteSpace($version)){$version='未知'}
+            $linkedIds=New-Object 'System.Collections.Generic.List[string]'
+            $requirementIds=@();if($requirementConsumers.ContainsKey($softwareId)){$requirementIds=$requirementConsumers[$softwareId].ToArray()}
+            foreach($linkedId in @(@(& $get $entry 'ItemIds')+@($requirementIds))){if($linkedId -and -not $linkedIds.Contains([string]$linkedId)){$linkedIds.Add([string]$linkedId)}}
+            $selectedLinks=@($linkedIds.ToArray() | Where-Object {$includedIds.ContainsKey($_)})
+            $workloadNames=New-Object 'System.Collections.Generic.List[string]'
+            foreach($selectedId in $selectedLinks){if($workloadsById.ContainsKey($selectedId)){foreach($workloadName in $workloadsById[$selectedId]){if($workloadName -and -not $workloadNames.Contains([string]$workloadName)){$workloadNames.Add([string]$workloadName)}}}}
+            $decisionState='Unreviewed'
+            if($decision){
+                $decisionState='Reviewed'
+                $recordedHash=[string](& $get $decision 'SoftwareHash')
+                if($recordedHash){$currentHash='';try{$currentHash=[string](Get-WsmGeneralHostSoftwareFactsHash $entry)}catch{$currentHash=''};if(-not $currentHash -or $recordedHash -cne $currentHash){$decisionState='Stale'}}
+            }
+            $choiceRecord=$null;if($choiceById.ContainsKey($softwareId)){$choiceRecord=$choiceById[$softwareId]}
+            $chosenBasis='SameAsSource';$chosenVersion=$version+'（同來源）'
+            if($choiceRecord){
+                $choiceSource=[string](& $get $choiceRecord 'SourceVersion');$choiceVersion=[string](& $get $choiceRecord 'ChosenVersion')
+                if($choiceSource -cne $rawVersion){$chosenBasis='StaleChoice';$chosenVersion=$version+'（同來源；原選用版本已過期，需重新選擇）'}
+                elseif($choiceVersion -and $choiceVersion -cne $rawVersion){$chosenBasis='Choice';$chosenVersion=$choiceVersion}
+            }
+            $noteParts=New-Object 'System.Collections.Generic.List[string]'
+            if($decision){
+                $decisionReason=ConvertTo-WsmProgressText (& $get $decision 'Reason');if($decisionReason){$noteParts.Add('決策理由：'+$decisionReason)}
+                $decisionEvidence=ConvertTo-WsmProgressText (& $get $decision 'Evidence');if($decisionEvidence){$noteParts.Add('證據：'+$decisionEvidence)}
+            }
+            if($chosenBasis -ceq 'Choice'){$choiceReason=ConvertTo-WsmProgressText (& $get $choiceRecord 'Reason');if($choiceReason){$noteParts.Add('選用版本理由：'+$choiceReason)}}
+            $softwareRows.Add([pscustomobject][ordered]@{SoftwareId=$softwareId;Name=[string]$entry.Name;Version=$version;Publisher=[string]$entry.Publisher;Architecture=[string]$entry.Architecture;Scope=[string]$entry.Scope;Location=[string]$entry.Location;SourceKind=[string]$entry.SourceKind;Disposition=$disposition;DispositionText=$dispositionText[$disposition];AccountContext=[string](& $get $entry 'AccountContext');Workloads=@($workloadNames.ToArray() | Sort-Object);RequiredBySelectedWorkload=[bool]($selectedLinks.Count -gt 0);HasLinkEvidence=[bool]($linkedIds.Count -gt 0);DecisionState=$decisionState;ChosenVersion=$chosenVersion;ChosenVersionBasis=$chosenBasis;ManualNote=($noteParts.ToArray() -join '；')})
         }
     }
     $featureRows=New-Object 'System.Collections.Generic.List[object]'
-    if($Inventory){foreach($inventoryItem in @($Inventory.Items)){if($inventoryItem.Category -ceq 'Roles' -and $inventoryItem.Kind -ceq 'WindowsFeature'){$featureRows.Add([pscustomobject][ordered]@{Name=[string]$inventoryItem.Name;FeatureName=[string]$inventoryItem.NaturalKey})}}}
+    if($Inventory){foreach($inventoryItem in @($Inventory.Items)){if($inventoryItem.Category -ceq 'Roles' -and $inventoryItem.Kind -ceq 'WindowsFeature'){$featureId=[string](& $get $inventoryItem 'ItemId');$featureWorkloads=@();if($featureId -and $workloadsById.ContainsKey($featureId)){$featureWorkloads=@($workloadsById[$featureId])};$featureRows.Add([pscustomobject][ordered]@{Name=[string]$inventoryItem.Name;FeatureName=[string]$inventoryItem.NaturalKey;ItemId=$featureId;Workloads=@($featureWorkloads | Sort-Object)})}}}
     $coverageGaps=New-Object 'System.Collections.Generic.List[object]'
     if($catalog -and $catalog.PSObject.Properties['Coverage']){
         foreach($coverage in @($catalog.Coverage)){
@@ -278,9 +334,10 @@ function Get-WsmBackupSoftwareRows($Plan,$Inventory) {
         }
     }
     [pscustomobject]@{
-        SoftwareRows=@($softwareRows.ToArray() | Sort-Object -Property @{Expression={([string]$_.Name).ToLowerInvariant()}},@{Expression={([string]$_.Version).ToLowerInvariant()}})
+        SoftwareRows=@($softwareRows.ToArray() | Sort-Object -Property @{Expression={if($_.RequiredBySelectedWorkload){0}else{1}}},@{Expression={([string]$_.Name).ToLowerInvariant()}},@{Expression={([string]$_.Version).ToLowerInvariant()}})
         FeatureRows=@($featureRows.ToArray())
         CoverageGaps=@($coverageGaps.ToArray())
+        CatalogState=$(if($catalog){'Present'}else{'Unavailable'})
     }
 }
 
@@ -289,7 +346,11 @@ function Export-WsmBackupItemResults([string]$Path,[object[]]$Rows,$Meta) {
     $backedUp=@($allRows | Where-Object Status -CEQ 'BackedUp').Count
     $counts=[ordered]@{Total=$allRows.Count;BackedUp=$backedUp;NotBackedUp=($allRows.Count-$backedUp);Software=@($Meta.Software.SoftwareRows).Count;Features=@($Meta.Software.FeatureRows).Count}
     $coverageRegions=$(if($Meta.PSObject.Properties['CoverageRegions'] -and $null -ne $Meta.CoverageRegions){@($Meta.CoverageRegions)}else{@(Get-WsmBackupCoverageRegions ([string]$Meta.InventorySource) @($Meta.Software.CoverageGaps))})
-    $document=[pscustomobject][ordered]@{SchemaVersion=2;ToolVersion=$script:ToolVersion;Kind='BackupItemResults';PairId=[string]$Meta.PairId;AttemptId=[string]$Meta.AttemptId;PlanHash=[string]$Meta.PlanHash;ManifestHash=[string]$Meta.ManifestHash;InventorySource=[string]$Meta.InventorySource;GeneratedUtc=(Get-WsmUtc);Counts=[pscustomobject]$counts;Software=[pscustomobject][ordered]@{SoftwareRows=@($Meta.Software.SoftwareRows);FeatureRows=@($Meta.Software.FeatureRows);CoverageGaps=@($Meta.Software.CoverageGaps)};CoverageRegions=@($coverageRegions);Rows=$allRows}
+    # CatalogState (Present / Unavailable) is only written when the caller knows it; older callers leave it out and the views say "not recorded".
+    $softwareDocument=[ordered]@{SoftwareRows=@($Meta.Software.SoftwareRows);FeatureRows=@($Meta.Software.FeatureRows);CoverageGaps=@($Meta.Software.CoverageGaps)}
+    if($Meta.Software.PSObject.Properties['CatalogState'] -and [string]$Meta.Software.CatalogState){$softwareDocument['CatalogState']=[string]$Meta.Software.CatalogState}
+    $softwareDocument=[pscustomobject]$softwareDocument
+    $document=[pscustomobject][ordered]@{SchemaVersion=2;ToolVersion=$script:ToolVersion;Kind='BackupItemResults';PairId=[string]$Meta.PairId;AttemptId=[string]$Meta.AttemptId;PlanHash=[string]$Meta.PlanHash;ManifestHash=[string]$Meta.ManifestHash;InventorySource=[string]$Meta.InventorySource;GeneratedUtc=(Get-WsmUtc);Counts=[pscustomobject]$counts;Software=$softwareDocument;CoverageRegions=@($coverageRegions);Rows=$allRows}
     Write-WsmJson $Path $document
     [pscustomobject]@{Path=[IO.Path]::GetFullPath($Path);SHA256=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant();Counts=[pscustomobject]$counts;InventorySource=[string]$Meta.InventorySource}
 }
@@ -312,10 +373,10 @@ function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha
     $isV2=($schemaVersion -ge 2)
     # A cell is plain text, or a hashtable @{Text;Icon;Class} rendered as a text badge (status never relies on colour alone).
     $buildTable={
-        param([string]$Id,[string]$Caption,[string]$SearchColumns,[string[]]$Headers,[object[]]$RowCells,[string]$Filters='',[string]$CsvName='',[string[]]$RowAttrs=@())
-        if(@($RowCells).Count -eq 0){return '<p class="empty">沒有項目</p>'}
+        param([string]$Id,[string]$Caption,[string]$SearchColumns,[string[]]$Headers,[object[]]$RowCells,[string]$Filters='',[string]$CsvName='',[string[]]$RowAttrs=@(),[string]$CsvMeta='1',[string]$EmptyText='沒有項目')
+        if(@($RowCells).Count -eq 0){return '<p class="empty">'+(& $encode $EmptyText)+'</p>'}
         $sb=New-Object Text.StringBuilder
-        $tableAttrs=' id="'+$Id+'"';if($SearchColumns){$tableAttrs+=' data-search="'+$SearchColumns+'"'};if($Filters){$tableAttrs+=' data-filters="'+(& $encode $Filters)+'"'};if($CsvName){$tableAttrs+=' data-csv="'+(& $encode $CsvName)+'"'};if(@($RowAttrs).Count){$tableAttrs+=' data-csv-meta="1"'}
+        $tableAttrs=' id="'+$Id+'"';if($SearchColumns){$tableAttrs+=' data-search="'+$SearchColumns+'"'};if($Filters){$tableAttrs+=' data-filters="'+(& $encode $Filters)+'"'};if($CsvName){$tableAttrs+=' data-csv="'+(& $encode $CsvName)+'"'};if(@($RowAttrs).Count){$tableAttrs+=' data-csv-meta="'+$CsvMeta+'"'}
         [void]$sb.Append('<div class="table-wrap" tabindex="0" role="region" aria-label="'+(& $encode $Caption)+'表格"><table'+$tableAttrs+'><caption>'+(& $encode $Caption)+'，共 '+@($RowCells).Count+' 筆</caption><thead><tr>')
         foreach($header in $Headers){[void]$sb.Append('<th scope="col">'+(& $encode $header)+'</th>')}
         [void]$sb.Append('</tr></thead><tbody>')
@@ -360,8 +421,62 @@ function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha
     $backedAttrs=@(foreach($row in $backedRows){& $rowAttr $row})
     $pendingCells=@(foreach($row in $pendingRows){,@([string]$row.Name,[string]$row.Kind,(& $workloadText $row),[string]$row.Location,[string]$row.Reason,[string]$row.NextStep,[string]$row.DiscoveryStatus,$pendingBadge)})
     $pendingAttrs=@(foreach($row in $pendingRows){& $rowAttr $row})
-    $softwareCells=@(foreach($row in $softwareRows){,@([string]$row.Name,[string]$row.Version,[string]$row.Publisher,[string]$row.Architecture,[string]$row.Scope,[string]$row.Location,[string]$row.DispositionText)})
-    $featureCells=@(foreach($row in $featureRows){,@([string]$row.Name,[string]$row.FeatureName)})
+    # Software tab (B4). Every new field is read only when the result set recorded it; a missing field is shown as 未記錄, never as an empty value.
+    $has={param($Row,[string]$Name)[bool]$Row.PSObject.Properties[$Name]}
+    $softwareText={param($Row,[string]$Name)if(& $has $Row $Name){[string]$Row.$Name}else{'未記錄'}}
+    $scopeText={param($Row)$t=[string]$Row.Scope;if((& $has $Row 'AccountContext') -and [string]$Row.AccountContext){$t+=' · '+[string]$Row.AccountContext};$t}
+    $softwareGroupCell={param($Row)
+        if(-not (& $has $Row 'RequiredBySelectedWorkload')){return @{Text='未記錄';Icon='?';Class='neutral'}}
+        if([bool]$Row.RequiredBySelectedWorkload){return @{Text='已選工作負載必需';Icon='●';Class='ok'}}
+        @{Text='其他已發現軟體';Icon='○';Class='neutral'}
+    }
+    $softwareWorkloadText={param($Row)
+        if(-not (& $has $Row 'Workloads') -or $null -eq $Row.Workloads){return '未記錄'}
+        $names=@($Row.Workloads | Where-Object {[string]$_})
+        if($names.Count){return ($names -join '、')}
+        if(& $has $Row 'RequiredBySelectedWorkload'){
+            if([bool]$Row.RequiredBySelectedWorkload){return '已選項目使用（沒有工作負載名稱）'}
+            if((& $has $Row 'HasLinkEvidence') -and [bool]$Row.HasLinkEvidence){return '關聯項目未選入'}
+            return '無關聯證據'
+        }
+        '未關聯'
+    }
+    $stateCell={param($Row)
+        $state=$(if(& $has $Row 'DecisionState'){[string]$Row.DecisionState}else{''})
+        switch($state){'Reviewed'{@{Text='已審閱';Icon='✓';Class='ok'}}'Unreviewed'{@{Text='未審閱';Icon='○';Class='warn'}}'Stale'{@{Text='已過期，需重新審閱';Icon='!';Class='bad'}}default{@{Text='未記錄';Icon='?';Class='neutral'}}}
+    }
+    $softwareCells=@(foreach($row in $softwareRows){,@((& $softwareGroupCell $row),[string]$row.Name,[string]$row.Version,(& $softwareText $row 'ChosenVersion'),[string]$row.Publisher,[string]$row.Architecture,(& $scopeText $row),[string]$row.Location,(& $softwareWorkloadText $row),[string]$row.DispositionText,(& $stateCell $row),(& $softwareText $row 'ManualNote'))})
+    $softwareAttrs=@(foreach($row in $softwareRows){'data-sid="'+(& $encode $row.SoftwareId)+'"'})
+    $featureCells=@(foreach($row in $featureRows){,@([string]$row.Name,[string]$row.FeatureName,(& $workloadText $row))})
+    $catalogState=$(if($document.Software.PSObject.Properties['CatalogState']){[string]$document.Software.CatalogState}else{''})
+    $softwareEmptyText=switch($catalogState){'Present'{'沒有發現已安裝軟體'}'Unavailable'{'此備份沒有軟體清單（來源軟體盤點不可用），無法列出已安裝軟體'}default{'沒有項目（此結果集未記錄軟體清單狀態）'}}
+    $softwareGrouped=(@($softwareRows | Where-Object {-not (& $has $_ 'RequiredBySelectedWorkload')}).Count -eq 0)
+    $requiredSoftware=@($softwareRows | Where-Object {$softwareGrouped -and [bool]$_.RequiredBySelectedWorkload})
+    $otherSoftware=@($softwareRows | Where-Object {$softwareGrouped -and -not [bool]$_.RequiredBySelectedWorkload})
+    # Printable checklist: built from the full row set (no paging, no row cap); hidden on screen, shown only while the checklist print mode is on.
+    $checklistSoftwareTable={param([object[]]$Rows)
+        if(-not @($Rows).Count){return '<p class="empty">沒有項目</p>'}
+        $sb=New-Object Text.StringBuilder
+        [void]$sb.Append('<table class="check-table"><thead><tr><th scope="col">完成</th><th scope="col">名稱</th><th scope="col">選用版本</th><th scope="col">架構</th><th scope="col">範圍</th><th scope="col">決策</th><th scope="col">工作負載</th><th scope="col">人工備註</th></tr></thead><tbody>')
+        foreach($r in $Rows){[void]$sb.Append('<tr data-sid="'+(& $encode $r.SoftwareId)+'"><td><span class="check-box" aria-hidden="true"></span></td><td>'+(& $encode $r.Name)+'</td><td>'+(& $encode (& $softwareText $r 'ChosenVersion'))+'</td><td>'+(& $encode $r.Architecture)+'</td><td>'+(& $encode (& $scopeText $r))+'</td><td>'+(& $encode $r.DispositionText)+'</td><td>'+(& $encode (& $softwareWorkloadText $r))+'</td><td>'+(& $encode (& $softwareText $r 'ManualNote'))+'</td></tr>')}
+        [void]$sb.Append('</tbody></table>')
+        $sb.ToString()
+    }
+    $checklist=New-Object Text.StringBuilder
+    [void]$checklist.Append('<section id="checklist" class="checklist" aria-label="新機安裝檢查表"><h1>新機安裝檢查表</h1><p>配對 ID：'+(& $encode $document.PairId)+'；Attempt ID：'+(& $encode $document.AttemptId)+'；產生時間：'+(& $encode $document.GeneratedUtc)+'</p><p>這是舊機上發現的軟體清單，請在新機逐項安裝並勾選。工具不會自動安裝，也不保證新版相容。</p>')
+    if(-not $softwareRows.Count){[void]$checklist.Append('<h2>安裝軟體</h2><p class="empty">'+(& $encode $softwareEmptyText)+'</p>')}
+    elseif($softwareGrouped){
+        [void]$checklist.Append('<h2>已選工作負載必需（'+$requiredSoftware.Count+'）</h2>'+(& $checklistSoftwareTable $requiredSoftware))
+        [void]$checklist.Append('<h2>其他已發現軟體（'+$otherSoftware.Count+'）</h2>'+(& $checklistSoftwareTable $otherSoftware))
+    }else{[void]$checklist.Append('<h2>已發現軟體（'+$softwareRows.Count+'；此結果集未記錄分組）</h2>'+(& $checklistSoftwareTable $softwareRows))}
+    [void]$checklist.Append('<h2>Windows 角色與功能（'+$featureRows.Count+'）</h2>')
+    if(-not $featureRows.Count){[void]$checklist.Append('<p class="empty">沒有發現已安裝的 Windows 角色或功能</p>')}
+    else{
+        [void]$checklist.Append('<table class="check-table"><thead><tr><th scope="col">完成</th><th scope="col">顯示名稱</th><th scope="col">Install-WindowsFeature 名稱</th><th scope="col">關聯工作負載</th></tr></thead><tbody>')
+        foreach($r in $featureRows){[void]$checklist.Append('<tr><td><span class="check-box" aria-hidden="true"></span></td><td>'+(& $encode $r.Name)+'</td><td><code>'+(& $encode $r.FeatureName)+'</code></td><td>'+(& $encode (& $workloadText $r))+'</td></tr>')}
+        [void]$checklist.Append('</tbody></table>')
+    }
+    [void]$checklist.Append('</section>')
     $sourceTexts=@{PackageControls='封裝內的來源盤點';TrustedInventory='已核驗的來源盤點';Unavailable='無法取得來源盤點'}
     $inventorySource=[string]$document.InventorySource
     $sourceText=$(if($sourceTexts.ContainsKey($inventorySource)){$sourceTexts[$inventorySource]}else{$inventorySource})
@@ -418,6 +533,8 @@ th{background:#eef2f7}
 .b-warn{background:#fff6d6;color:#5c4300}
 .b-bad{background:#fdecec;color:#7a1010}
 .b-neutral{background:#eef2f7;color:#172033}
+.check-box{display:inline-block;width:1rem;height:1rem;border:2px solid #172033;vertical-align:middle}
+.checklist{display:none}
 [hidden]{display:none!important}
 .tabs{display:flex;flex-wrap:wrap;gap:.25rem;border-bottom:2px solid #172033;margin-top:1rem}
 .tabs button{font:inherit;padding:.5rem .9rem;border:1px solid #172033;border-bottom:0;background:#eef2f7;color:#172033;cursor:pointer}
@@ -431,6 +548,11 @@ th{background:#eef2f7}
 @media (max-width:480px){main{padding:.5rem}dl.meta{grid-template-columns:minmax(0,1fr)}.toolbar input{min-width:0;width:100%}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 @media print{
+body.print-checklist main{display:none!important}
+body.print-checklist .checklist{display:block}
+.check-table{font-size:11pt}
+.check-table th{white-space:nowrap}
+.checklist h2{break-after:avoid}
 .tabs,.toolbar,.pager,.js-note,noscript{display:none!important}
 main > section[hidden]{display:block!important}
 tbody tr[hidden]{display:table-row!important}
@@ -460,10 +582,18 @@ a{color:#000}
     [void]$page.Append('<section id="backed" data-tab="已備份（'+$backedRows.Count+'）"><h2>已備份（'+$backedRows.Count+'）</h2>'+"`n"+$noJsNote+"`n"+(& $buildTable 'tbl-backed' '已備份項目' '0,3' @('名稱','類型','工作負載','原位置','通道','檔案數','大小','狀態','可還原條件') $backedCells '1:類型;8:可還原條件' 'backup-backed-up.csv' $backedAttrs)+"`n</section>`n")
     [void]$page.Append('<section id="pending" data-tab="未備份（'+$pendingRows.Count+'）"><h2>未備份（'+$pendingRows.Count+'）</h2>'+"`n"+$noJsNote+"`n"+(& $buildTable 'tbl-pending' '未備份項目' '0,3' @('名稱','類型','工作負載','原位置','原因','下一步','盤點狀態','狀態') $pendingCells '1:類型;4:原因' 'backup-not-backed-up.csv' $pendingAttrs)+"`n"+'<h3>探索未涵蓋區域（以區域列出，不是項目）</h3>'+"`n"+$coverageHtml+"`n</section>`n")
     [void]$page.Append('<section id="software" data-tab="安裝軟體（'+$softwareRows.Count+'）"><h2>安裝軟體（'+$softwareRows.Count+'）</h2>'+"`n"+$noJsNote+"`n"+'<p>這是舊機上發現的軟體清單，供您在新機自行安裝。工具不會自動安裝，也不保證新版相容。</p>'+"`n")
-    if($gapCount -gt 0){[void]$page.Append('<p class="callout">軟體盤點有 '+$gapCount+' 個範圍未完整取得，清單可能不完整。</p>'+"`n")}
-    [void]$page.Append('<h3>安裝軟體清單</h3>'+"`n"+(& $buildTable 'tbl-software' '安裝軟體' '0,1,5' @('名稱','版本','發行者','架構','範圍','安裝位置','新機決策') $softwareCells '' 'installed-software.csv')+"`n"+'<h3>Windows 角色與功能</h3>'+"`n"+(& $buildTable 'tbl-features' 'Windows 角色與功能' '0,1' @('顯示名稱','Install-WindowsFeature 名稱') $featureCells '' 'windows-features.csv')+"`n</section>`n")
-    [void]$page.Append(@'
-</main>
+    if($gapCount -gt 0){
+        [void]$page.Append('<p class="callout">軟體盤點有 '+$gapCount+' 個範圍未完整取得，清單可能不完整。</p>'+"`n"+'<ul class="software-gaps">')
+        $gapStatusText=@{Partial='只取得部分資料';Failed='取得失敗';PermissionDenied='權限不足';Unsupported='此環境不支援';NotInstalled='未安裝'}
+        foreach($gap in @($document.Software.CoverageGaps | Where-Object {$null -ne $_})){
+            $gapParts=@(foreach($field in @('Probe','Scope','SID','View')){if($gap.PSObject.Properties[$field] -and [string]$gap.$field){[string]$gap.$field}})
+            $gapStatus=[string]$gap.Status
+            [void]$page.Append('<li>'+(& $encode $(if($gapStatusText.ContainsKey($gapStatus)){$gapStatusText[$gapStatus]}else{$gapStatus}))+'：'+(& $encode $(if($gapParts.Count){$gapParts -join ' / '}else{'範圍未記錄'}))+'</li>')
+        }
+        [void]$page.Append('</ul>'+"`n")
+    }
+    [void]$page.Append('<h3>安裝軟體清單</h3>'+"`n"+$(if($softwareGrouped){'<p>分組：已選工作負載必需 '+$requiredSoftware.Count+' 筆排在前面，其他已發現軟體 '+$otherSoftware.Count+' 筆在後；沒有關聯證據不等於不需要。</p>'+"`n"}else{'<p>此結果集未記錄工作負載分組。</p>'+"`n"})+(& $buildTable 'tbl-software' '安裝軟體' '1,2,4,7' @('分組','名稱','版本','選用版本','發行者','架構','範圍','安裝位置','工作負載','決策','審閱狀態','人工備註') $softwareCells '0:分組;9:決策;5:架構' 'installed-software.csv' $softwareAttrs 'software' $softwareEmptyText)+"`n"+'<h3>Windows 角色與功能</h3>'+"`n"+(& $buildTable 'tbl-features' 'Windows 角色與功能' '0,1' @('顯示名稱','Install-WindowsFeature 名稱','關聯工作負載') $featureCells '' 'windows-features.csv' @() '1' '沒有發現已安裝的 Windows 角色或功能')+"`n</section>`n")
+    [void]$page.Append("</main>`n"+$checklist.ToString()+"`n"+@'
 <script>
 (function(){
 var doc=document,PAGE=100;
@@ -493,7 +623,7 @@ function enhanceTable(table){
   vals.forEach(function(v){var o=doc.createElement('option');o.value=v;o.textContent=v;sel.appendChild(o);});
   bar.appendChild(lab);bar.appendChild(sel);return sel;
  });
- var csvName=table.getAttribute('data-csv'),csvMeta=table.getAttribute('data-csv-meta')==='1',exportButton=null;
+ var csvName=table.getAttribute('data-csv'),csvMeta=table.getAttribute('data-csv-meta')||'',exportButton=null;
  if(csvName){exportButton=mk('button','匯出 CSV');exportButton.type='button';bar.appendChild(exportButton);}
  var count=mk('div','','count');count.setAttribute('role','status');count.setAttribute('aria-atomic','true');bar.appendChild(count);
  var none=mk('p','沒有符合搜尋條件的項目','empty');none.hidden=true;
@@ -526,10 +656,10 @@ function enhanceTable(table){
  next.addEventListener('click',function(){page++;draw();});
  if(exportButton)exportButton.addEventListener('click',function(){
   var headers=[].slice.call(table.tHead.rows[0].cells).map(function(c){return c.textContent;});
-  if(csvMeta)headers=headers.concat(['項目 ID','狀態碼','原因碼']);
+  if(csvMeta==='1')headers=headers.concat(['項目 ID','狀態碼','原因碼']);else if(csvMeta==='software')headers=headers.concat(['SoftwareId']);
   var out=matched.map(function(i){
    var r=rows[i],cells=[].slice.call(r.cells).map(function(c){return c.textContent;});
-   if(csvMeta)cells=cells.concat([r.getAttribute('data-id'),r.getAttribute('data-status'),r.getAttribute('data-reason')]);
+   if(csvMeta==='1')cells=cells.concat([r.getAttribute('data-id'),r.getAttribute('data-status'),r.getAttribute('data-reason')]);else if(csvMeta==='software')cells=cells.concat([r.getAttribute('data-sid')]);
    return cells;
   });
   downloadCsv(csvName,headers,out);
@@ -537,6 +667,14 @@ function enhanceTable(table){
  draw();
 }
 [].slice.call(doc.querySelectorAll('table[data-search]')).forEach(enhanceTable);
+var checklist=doc.getElementById('checklist'),softwareSection=doc.getElementById('software');
+if(checklist&&softwareSection){
+ var tools=mk('div','','toolbar checklist-tools'),printButton=mk('button','列印新機安裝檢查表'),printHint=mk('span','產生含勾選方框的列印版面（全部列、不分頁）；工具不會安裝軟體。'),anchor=softwareSection.querySelector('h3');
+ printButton.type='button';tools.appendChild(printButton);tools.appendChild(printHint);
+ if(anchor)anchor.parentNode.insertBefore(tools,anchor);else softwareSection.appendChild(tools);
+ printButton.addEventListener('click',function(){if(!/(^|\s)print-checklist(\s|$)/.test(doc.body.className))doc.body.className+=' print-checklist';window.print();});
+ window.addEventListener('afterprint',function(){doc.body.className=doc.body.className.replace(/(^|\s)print-checklist(?=\s|$)/g,'');});
+}
 var sections=[].slice.call(doc.querySelectorAll('main > section[data-tab]'));
 if(!sections.length)return;
 var list=mk('div','','tabs'),tabs=[];

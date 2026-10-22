@@ -126,6 +126,55 @@ function Get-WsmWizardTargetComparisonRecord([string]$Workspace,[string]$PairId,
     $best
 }
 
+# 新機安裝檢查：把已存在的比較列（Comparison.Rows）對應成四態，唯讀、不重新盤點。判定表（先符合先用）：
+#   TargetOnly                                         -> 不進四態，另列在 TargetOnlyRows（新機獨有，只呈現觀測事實）
+#   ChosenVersionObserved                              -> Installed  已安裝
+#   DifferentFromChosenVersion                         -> Different  版本不同
+#   TargetMissing 且 TargetCoverageComplete 為 true    -> Missing    未安裝
+#   TargetMissing 但 Coverage 不完整或未記錄           -> Unknown    未知（沒看到不等於不存在）
+#   其餘來源列狀態（TargetUnknown、Ambiguous、VersionUnknown…）-> Unknown 未知
+function Get-WsmWizardSoftwareCheckState([string]$Status,$TargetCoverageComplete) {
+    $reasons=@{
+        ChosenVersionObserved='新機觀測到選用版本；這不代表相容。'
+        DifferentFromChosenVersion='新機觀測版本與選用版本不同，需負責人準備並驗證。'
+        TargetUnknown='新機盤點涵蓋不完整，無法判斷是否已安裝。'
+        Ambiguous='有多個軟體實例的身分欄位相同，需人工比對。'
+        TargetEvidenceIncomplete='新機上比對到的軟體證據不完整（部分或人工），版本不能作為依據。'
+        SourceEvidenceIncomplete='舊機的軟體證據不完整，需負責人確認。'
+        VersionUnknown='來源版本、選用版本或新機觀測版本未知。'
+        VersionEvidenceMismatch='舊機與新機的版本證據種類不同，不能當作同一種版本事實比較。'
+        StaleChosenVersion='選用版本是依舊的來源版本保存的，需重新確認。'
+    }
+    $code='Unknown';$reason='狀態「'+$Status+'」無法歸類，視為未知。'
+    if($Status -ceq 'ChosenVersionObserved'){$code='Installed';$reason=$reasons[$Status]}
+    elseif($Status -ceq 'DifferentFromChosenVersion'){$code='Different';$reason=$reasons[$Status]}
+    elseif($Status -ceq 'TargetMissing'){
+        if($TargetCoverageComplete -is [bool] -and $TargetCoverageComplete){$code='Missing';$reason='新機盤點涵蓋完整，沒有觀測到這個軟體。'}
+        else{$reason='新機盤點涵蓋不完整或未記錄，不能由「沒看到」推論未安裝。'}
+    }
+    elseif($reasons.ContainsKey($Status)){$reason=$reasons[$Status]}
+    $text=@{Installed='已安裝';Different='版本不同';Missing='未安裝';Unknown='未知'}
+    [pscustomobject][ordered]@{Code=$code;Text=$text[$code];Reason=$reason}
+}
+
+# 從比較材料紀錄（Get-WsmWizardTargetComparisonRecord 的結果，雜湊與計畫綁定已由它核對）投影逐列清單。
+# 沒有紀錄或沒有 Rows 時回傳 $null，呼叫端不得拿假值頂替。
+function Get-WsmWizardTargetSoftwareCheck($ComparisonRecord) {
+    if(-not $ComparisonRecord -or -not $ComparisonRecord.PSObject.Properties['Comparison'] -or -not $ComparisonRecord.Comparison -or -not $ComparisonRecord.Comparison.PSObject.Properties['Rows']){return $null}
+    $field={param($Row,[string]$Name)if($Row -and $Row.PSObject.Properties[$Name]){$Row.$Name}else{$null}}
+    $rows=New-Object 'System.Collections.Generic.List[object]';$targetOnly=New-Object 'System.Collections.Generic.List[object]';$coverageKnown=$false;$coverageComplete=$true
+    foreach($row in @($ComparisonRecord.Comparison.Rows)){
+        if($null -eq $row){continue}
+        $status=[string](& $field $row 'Status');$coverage=& $field $row 'TargetCoverageComplete'
+        if($coverage -is [bool]){$coverageKnown=$true;if(-not $coverage){$coverageComplete=$false}}else{$coverageComplete=$false}
+        if($status -ceq 'TargetOnly'){$targetOnly.Add([pscustomobject][ordered]@{Name=[string](& $field $row 'Name');Publisher=[string](& $field $row 'Publisher');Architecture=[string](& $field $row 'Architecture');Scope=[string](& $field $row 'Scope');ObservedTargetVersion=[string](& $field $row 'ObservedTargetVersion')});continue}
+        $state=Get-WsmWizardSoftwareCheckState $status $coverage
+        $rows.Add([pscustomobject][ordered]@{SoftwareId=[string](& $field $row 'SoftwareId');Name=[string](& $field $row 'Name');Publisher=[string](& $field $row 'Publisher');Architecture=[string](& $field $row 'Architecture');Scope=[string](& $field $row 'Scope');SourceVersion=[string](& $field $row 'SourceVersion');ChosenVersion=[string](& $field $row 'ChosenVersion');ObservedTargetVersion=[string](& $field $row 'ObservedTargetVersion');CheckState=$state.Code;CheckStateText=$state.Text;CheckReason=$state.Reason;SourceStatus=$status})
+    }
+    $revision=$null;if($ComparisonRecord.PSObject.Properties['Document'] -and $ComparisonRecord.Document -and $ComparisonRecord.Document.PSObject.Properties['ComparisonRevision']){$revision=[int]$ComparisonRecord.Document.ComparisonRevision}
+    [pscustomobject][ordered]@{available=$true;ComparisonRevision=$revision;CoverageComplete=$(if($coverageKnown){$coverageComplete}else{$null});Rows=@($rows.ToArray() | Sort-Object -Property @{Expression={([string]$_.Name).ToLowerInvariant()}},@{Expression={([string]$_.SourceVersion).ToLowerInvariant()}});TargetOnlyRows=@($targetOnly.ToArray() | Sort-Object -Property @{Expression={([string]$_.Name).ToLowerInvariant()}})}
+}
+
 function Get-WsmWizardTargetPreviewHash($Preview,[string]$PairId,[string]$PlanHash,[string]$ManifestHash,[long]$Generation,[string]$ReceiptHash,[string]$TargetSnapshotHash,[string]$ComparisonHash,[int]$ComparisonRevision,[int]$SelectionRevision,[string]$Decision) {
     $binding=[ordered]@{PairId=$PairId;PlanHash=$PlanHash;ManifestHash=$ManifestHash;Generation=$Generation;ReceiptHash=$ReceiptHash;TargetSnapshotHash=$TargetSnapshotHash;ComparisonHash=$ComparisonHash;ComparisonRevision=$ComparisonRevision;SelectionRevision=$SelectionRevision;Decision=$Decision;SelectedItemIds=@($Preview.SelectedItemIds);Rows=@(ConvertTo-WsmWizardHtmlValue @($Preview.Rows));Problems=@(ConvertTo-WsmWizardHtmlValue @($Preview.Problems));GeneralHostIssues=@(ConvertTo-WsmWizardHtmlValue @($Preview.GeneralHostIssues));Blocked=[bool]$Preview.Blocked;CanRestoreIndependentItems=[bool]$Preview.CanRestoreIndependentItems}
     foreach($name in @('NonCTransferPlanHash','NonCResultHash','WizardNonCEvidenceIssue')){$binding[$name]=if($Preview.PSObject.Properties[$name]){[string]$Preview.$name}else{''}}

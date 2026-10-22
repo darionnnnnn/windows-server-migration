@@ -18,7 +18,7 @@ function ConvertTo-WsmWizardHtmlValue($Value,[int]$Depth=0) {
     $allowed+=@('IndependentCopy','offlineReadiness','OfflineReadiness','Availability','MediaClass','CopyRoot','ReceiptSHA256','VerifiedUtc','BackupOperationId','DestinationRoot')
     $allowed+=@('TargetLocalComparison','Provenance')
     $allowed+=@('group','restorable','restorableReason','restored','statusSummary')
-    $allowed+=@('RelativePath','Sha256Prefix','IsDirectory','TotalCount','DirectoryCount','Page','PageSize','PageCount')
+    $allowed+=@('RelativePath','Sha256Prefix','IsDirectory','TotalCount','DirectoryCount','Page','PageSize','PageCount');$allowed+=@('softwareCheck','TargetOnlyRows','SoftwareId','Publisher','Architecture','SourceVersion','ChosenVersion','ObservedTargetVersion','CheckState','CheckStateText','CheckReason','SourceStatus')
     $safe=[ordered]@{}
     if($Value -is [Collections.IDictionary]){$properties=@(foreach($key in $Value.Keys){[pscustomobject]@{Name=[string]$key;Value=$Value[$key]}})}else{$properties=@($Value.PSObject.Properties)}
     foreach($property in $properties){

@@ -575,7 +575,7 @@
   function targetRuntimeFieldLabel(name){return({Path:'可信材料位置',ExpectedHash:'獨立可信來源提供的預期 SHA-256',TransportPath:'收到的 ZIP 材料位置',SummaryPath:'收到的 Directory 摘要位置',ExpectedSummaryHash:'獨立可信來源提供的摘要 SHA-256',SourceDirectory:'收到的封裝資料夾',Owner:'本次決策負責人',Reason:'決策理由',CutoverPlanPath:'已核准的 CutoverPlan 位置',CutoverPlanHash:'獨立可信來源提供的 CutoverPlan SHA-256',Acknowledgement:'精確啟用確認'}[name]||name);}
   function renderTargetRuntime(content,projection){const identity=runtimeIdentity(projection),card=el('article','wizard-action-card wizard-runtime-target');card.appendChild(el('h2','','新主機材料、決策與還原'));if(state.wizardRuntimeIdentity!==identity||!state.wizardRuntimeProjection){wizardMessage(card,state.wizardRuntimeUnavailableIdentity===identity?'無法核驗這份執行畫面；請明確重新讀取後再操作。':'正在讀取與目前新主機、封裝世代及盤點綁定的執行狀態…',state.wizardRuntimeUnavailableIdentity===identity?'callout':'wizard-loading');content.appendChild(card);loadRuntimeCard(card,projection,identity);return;}const response=state.wizardRuntimeProjection,runtime=response.runtime||response.Runtime||{},target=runtime.target||runtime.Target||runtime,actions=Array.isArray(response.actions)?response.actions:[],actionById=id=>wizardRuntimeAction(response,id),job=String(state.wizardRuntimeJobId||'')&&state.jobs.get(String(state.wizardRuntimeJobId)),jobAction=String(job&&(job.action||job.Action)||''),jobStatus=String(job&&(job.status||job.Status)||'');
     appendSummaryRows(card,[['目前階段',statusName(target.status||response.status||'Unknown')],['已核准計畫 SHA-256',target.plan&&(target.plan.hash||target.plan.Hash)],['封裝 manifest SHA-256',target.package&&(target.package.ManifestHash||target.package.manifestHash)],['Target 盤點 SHA-256',target.inventory&&(target.inventory.SHA256||target.inventory.sha256)],['Comparison 狀態',target.comparison&&(target.comparison.Status||target.comparison.status||'已匯入並綁定最新盤點')],['決策收據',target.decision?'已核驗':'尚未建立']]);const statusSummary=runtimeScalar(target.statusSummary||target.StatusSummary||runtime.statusSummary);if(statusSummary)wizardMessage(card,statusSummary,'callout');const decision=target.decision||target.Decision||{},receipt=decision.Receipt||decision.receipt||null;if(receipt&&typeof receipt==='object'){const owner=runtimeScalar(receipt.Owner||receipt.owner),reason=runtimeScalar(receipt.Reason||receipt.reason);appendSummaryRows(card,[['決策負責人宣告',owner||'未知'],['決策理由宣告',reason||'未知']]);wizardMessage(card,'此為收據中的責任宣告，系統未驗證負責人的企業身分。','wizard-provenance');}
-    const previewRecord=target.restorePreview||target.RestorePreview||null,nonCEvidenceIssue=runtimeScalar(previewRecord&&(previewRecord.NonCEvidenceIssue||previewRecord.nonCEvidenceIssue||previewRecord.WizardNonCEvidenceIssue||previewRecord.wizardNonCEvidenceIssue));if(nonCEvidenceIssue)wizardMessage(card,`非 C 證據提示：${nonCEvidenceIssue}。請依核心逐項預覽的狀態與原因判斷 C 項目；此提示不會取代逐項結果。`,'callout');const previewRows=previewRecord&&(previewRecord.Rows||previewRecord.rows);if(Array.isArray(previewRows))previewRows.forEach(row=>{if(!row||typeof row!=='object')return;const item=runtimeScalar(row.Name||row.ItemName||row.ItemId||row.itemId)||'核准項目',status=runtimeScalar(row.Status||row.status)||'Unknown',reason=runtimeScalar(row.Reason||row.reason),summary=`${item} · ${statusName(status)}${reason?`：${reason}`:''}`;wizardMessage(card,summary,statusClass(status)==='danger'?'callout':'inline-note');});const issues=target.issues||target.Issues||[];issues.forEach(issue=>wizardMessage(card,String(issue),'callout'));const warning=el('p','wizard-field-hint','每個材料都由目前角色與配對綁定；預期 hash 必須從畫面外的可信來源取得。系統不會由觀察到的 hash 自動填入預期值。');card.appendChild(warning);
+    const previewRecord=target.restorePreview||target.RestorePreview||null,nonCEvidenceIssue=runtimeScalar(previewRecord&&(previewRecord.NonCEvidenceIssue||previewRecord.nonCEvidenceIssue||previewRecord.WizardNonCEvidenceIssue||previewRecord.wizardNonCEvidenceIssue));if(nonCEvidenceIssue)wizardMessage(card,`非 C 證據提示：${nonCEvidenceIssue}。請依核心逐項預覽的狀態與原因判斷 C 項目；此提示不會取代逐項結果。`,'callout');const previewRows=previewRecord&&(previewRecord.Rows||previewRecord.rows);if(Array.isArray(previewRows))previewRows.forEach(row=>{if(!row||typeof row!=='object')return;const item=runtimeScalar(row.Name||row.ItemName||row.ItemId||row.itemId)||'核准項目',status=runtimeScalar(row.Status||row.status)||'Unknown',reason=runtimeScalar(row.Reason||row.reason),summary=`${item} · ${statusName(status)}${reason?`：${reason}`:''}`;wizardMessage(card,summary,statusClass(status)==='danger'?'callout':'inline-note');});const issues=target.issues||target.Issues||[];issues.forEach(issue=>wizardMessage(card,String(issue),'callout'));renderTargetSoftwareCheck(card,target);const warning=el('p','wizard-field-hint','每個材料都由目前角色與配對綁定；預期 hash 必須從畫面外的可信來源取得。系統不會由觀察到的 hash 自動填入預期值。');card.appendChild(warning);
     if(state.pendingOperation){wizardMessage(card,'上一筆 Target 操作尚未確認；只查詢原作業，不會重新提交。','callout');const query=el('button','secondary-button','查詢原作業狀態');query.type='button';query.addEventListener('click',async()=>{const record=await recoverPendingOperation();if(record){await refreshWizardRuntime(true);await refreshWizard({force:true});renderWizard(state.wizard);}else fail('仍無法確認原作業結果。請稍後查詢同一作業，不要重新提交。');});card.appendChild(query);content.appendChild(card);return;}
     if(job){wizardMessage(card,`最近送出的 ${jobAction} 作業：${statusName(jobStatus||'Unknown')} · ${String(job.jobId||job.operationId||'')}`,'notice');if(['Failed','Cancelled','Interrupted','Blocked','ReviewRequired','Deferred'].includes(jobStatus))wizardMessage(card,'結果已保留。系統不會自動重送、還原或啟用；請先讀取目前執行狀態，再由操作者明確決定下一步。','callout');const output=(job.outputs||job.Outputs||[])[0];if(output){if(output.Kind==='WizardTargetRestoreResult'||output.Kind==='WizardTargetValidation'||output.Kind==='WizardTargetAcceptance'||output.Kind==='WizardTargetActivationResult'){appendSummaryRows(card,[['逐項作業結果',output.Status||output.status],['機械驗證',output.MechanicalStatus||output.mechanicalStatus],['業務接受',output.AcceptanceStatus||output.acceptanceStatus],['啟用狀態',output.ActivationStatus||output.activationStatus]]);}}
     }
@@ -1406,7 +1406,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     const defs = [
       { key: 'backed', label: `已備份（${counts.BackedUp == null ? 0 : counts.BackedUp}）`, render: panel => { views.backed = renderBackupRowsPanel(panel, allRows.filter(r => r.Status === 'BackedUp'), 'backed', data, initialFor('backed')); } },
       { key: 'pending', label: `未備份（${counts.NotBackedUp == null ? 0 : counts.NotBackedUp}）`, render: panel => { views.pending = renderBackupRowsPanel(panel, allRows.filter(r => r.Status === 'NotBackedUp'), 'pending', data, initialFor('pending')); } },
-      { key: 'software', label: `安裝軟體（${counts.Software == null ? 0 : counts.Software}）`, render: panel => renderSoftwarePanel(panel, data.software || {}) }
+      { key: 'software', label: `安裝軟體（${counts.Software == null ? 0 : counts.Software}）`, render: panel => renderSoftwarePanel(panel, data.software || {}, data) }
     ];
     const current = defs.some(d => d.key === hashState.tab) ? hashState.tab : defs.some(d => d.key === state.backupResultsTab) ? state.backupResultsTab : 'backed';
     state.backupResultsTab = current;
@@ -1497,24 +1497,143 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     if (!backed) renderBackupCoverageRegions(panel, data);
     return view;
   }
-  function renderSoftwarePanel(panel, software) {
+  // ---- B4: 安裝軟體分頁（分組、決策與選用版本、列印檢查表）與 Target 端新機安裝檢查 ----
+  // 欄位來自結果集；舊結果集沒有的欄位一律顯示「未記錄」，不推算、不當成空值。
+  const SOFTWARE_STATE_INFO = { Reviewed: { text: '已審閱', icon: '✓', cls: 'ok' }, Unreviewed: { text: '未審閱', icon: '○', cls: 'warn' }, Stale: { text: '已過期，需重新審閱', icon: '!', cls: 'bad' } };
+  const SOFTWARE_GAP_TEXT = { Partial: '只取得部分資料', Failed: '取得失敗', PermissionDenied: '權限不足', Unsupported: '此環境不支援', NotInstalled: '未安裝' };
+  function softwareRecorded(r, name) { return !!r && Object.prototype.hasOwnProperty.call(r, name) && r[name] != null; }
+  function softwareField(r, name) { return softwareRecorded(r, name) ? backupPlain(r[name]) : '未記錄'; }
+  function softwareGroupInfo(r) {
+    if (!softwareRecorded(r, 'RequiredBySelectedWorkload')) return { code: 'Unrecorded', text: '未記錄', icon: '?', cls: 'neutral' };
+    return r.RequiredBySelectedWorkload === true ? { code: 'Required', text: '已選工作負載必需', icon: '●', cls: 'ok' } : { code: 'Other', text: '其他已發現軟體', icon: '○', cls: 'neutral' };
+  }
+  function softwareWorkloadText(r) {
+    if (!softwareRecorded(r, 'Workloads')) return '未記錄';
+    const names = (Array.isArray(r.Workloads) ? r.Workloads : [r.Workloads]).map(backupPlain).filter(Boolean);
+    if (names.length) return names.join('、');
+    if (softwareRecorded(r, 'RequiredBySelectedWorkload')) { if (r.RequiredBySelectedWorkload === true) return '已選項目使用（沒有工作負載名稱）'; return r.HasLinkEvidence === true ? '關聯項目未選入' : '無關聯證據'; }
+    return '未關聯';
+  }
+  function softwareScopeText(r) { const account = softwareRecorded(r, 'AccountContext') ? backupPlain(r.AccountContext) : ''; return backupPlain(r.Scope) + (account ? ` · ${account}` : ''); }
+  function softwareStateInfo(r) {
+    const code = softwareRecorded(r, 'DecisionState') ? backupPlain(r.DecisionState) : '';
+    return Object.prototype.hasOwnProperty.call(SOFTWARE_STATE_INFO, code) ? Object.assign({ code }, SOFTWARE_STATE_INFO[code]) : { code: 'Unrecorded', text: '未記錄', icon: '?', cls: 'neutral' };
+  }
+  function softwareEmptyText(catalogState) {
+    if (catalogState === 'Present') return '沒有發現已安裝軟體';
+    if (catalogState === 'Unavailable') return '此備份沒有軟體清單（來源軟體盤點不可用），無法列出已安裝軟體';
+    return '沒有項目（此結果集未記錄軟體清單狀態）';
+  }
+  function softwareColumns() {
+    return [
+      { h: '分組', nowrap: true, text: r => softwareGroupInfo(r).text, badge: softwareGroupInfo },
+      { h: '名稱', text: r => backupPlain(r.Name) }, { h: '版本', text: r => backupPlain(r.Version) }, { h: '選用版本', text: r => softwareField(r, 'ChosenVersion') },
+      { h: '發行者', text: r => backupPlain(r.Publisher) }, { h: '架構', nowrap: true, text: r => backupPlain(r.Architecture) }, { h: '範圍', text: softwareScopeText }, { h: '安裝位置', text: r => backupPlain(r.Location) },
+      { h: '工作負載', text: softwareWorkloadText }, { h: '決策', text: r => backupPlain(r.DispositionText) },
+      { h: '審閱狀態', nowrap: true, text: r => softwareStateInfo(r).text, badge: softwareStateInfo }, { h: '人工備註', text: r => softwareField(r, 'ManualNote') }
+    ];
+  }
+  function softwareFilters(rows) {
+    const unique = (valueOf, textOf) => { const seen = new Map(); rows.forEach(r => { const value = valueOf(r); if (!seen.has(value)) seen.set(value, textOf(r)); }); return [...seen.entries()].map(([value, text]) => ({ value, text })); };
+    const groupOrder = ['Required', 'Other', 'Unrecorded'];
+    return [
+      { key: 'group', label: '分組', options: unique(r => softwareGroupInfo(r).code, r => softwareGroupInfo(r).text).sort((a, b) => groupOrder.indexOf(a.value) - groupOrder.indexOf(b.value)), match: (r, value) => softwareGroupInfo(r).code === value },
+      { key: 'decision', label: '決策', options: unique(r => backupPlain(r.Disposition) || '__none__', r => backupPlain(r.DispositionText) || '未記錄'), match: (r, value) => (backupPlain(r.Disposition) || '__none__') === value },
+      { key: 'arch', label: '架構', options: unique(r => backupPlain(r.Architecture) || '__none__', r => backupPlain(r.Architecture) || '未標示'), match: (r, value) => (backupPlain(r.Architecture) || '__none__') === value }
+    ];
+  }
+  // 列印檢查表：全部列、不分頁、不截斷；畫面上隱藏，只在列印模式（body.printing-checklist）顯示。
+  function buildPrintChecklist(title, intro, sections) {
+    const root = el('section', 'print-checklist'); root.id = 'print-checklist'; root.setAttribute('aria-label', title);
+    root.appendChild(el('h1', '', title)); intro.forEach(line => root.appendChild(el('p', '', line)));
+    sections.forEach(s => {
+      root.appendChild(el('h2', '', s.title));
+      if (!s.rows.length) { root.appendChild(el('p', 'empty', s.empty || '沒有項目')); return; }
+      const table = el('table', 'check-table'), head = el('tr');
+      (s.check ? ['完成'] : []).concat(s.headers).forEach(h => { const th = el('th', '', h); th.scope = 'col'; head.appendChild(th); }); table.appendChild(el('thead')).appendChild(head);
+      const body = el('tbody');
+      s.rows.forEach(cells => {
+        const tr = el('tr');
+        if (s.check) { const td = el('td'), box = el('span', 'check-box'); box.setAttribute('aria-hidden', 'true'); td.appendChild(box); tr.appendChild(td); }
+        cells.forEach(text => tr.appendChild(el('td', '', text === '' ? '—' : text))); body.appendChild(tr);
+      });
+      table.appendChild(body); root.appendChild(table);
+    });
+    return root;
+  }
+  function printChecklist(title, intro, sections) {
+    document.querySelectorAll('.print-checklist').forEach(node => node.remove());
+    const root = buildPrintChecklist(title, intro, sections); document.body.appendChild(root); document.body.classList.add('printing-checklist');
+    const finish = () => { window.removeEventListener('afterprint', finish); document.body.classList.remove('printing-checklist'); root.remove(); };
+    window.addEventListener('afterprint', finish); window.print();
+  }
+  function softwareChecklistSections(softwareRows, featureRows, emptyText) {
+    const headers = ['名稱', '選用版本', '架構', '範圍', '決策', '工作負載', '人工備註'], cells = r => [backupPlain(r.Name), softwareField(r, 'ChosenVersion'), backupPlain(r.Architecture), softwareScopeText(r), backupPlain(r.DispositionText), softwareWorkloadText(r), softwareField(r, 'ManualNote')];
+    const make = (title, list) => ({ title: `${title}（${list.length}）`, headers, check: true, empty: '沒有項目', rows: list.map(cells) });
+    const grouped = softwareRows.length > 0 && softwareRows.every(r => softwareRecorded(r, 'RequiredBySelectedWorkload'));
+    let sections;
+    if (!softwareRows.length) sections = [{ title: '安裝軟體', headers, check: true, rows: [], empty: emptyText }];
+    else if (grouped) sections = [make('已選工作負載必需', softwareRows.filter(r => r.RequiredBySelectedWorkload === true)), make('其他已發現軟體', softwareRows.filter(r => r.RequiredBySelectedWorkload !== true))];
+    else sections = [make('已發現軟體，此結果集未記錄分組', softwareRows)];
+    sections.push({ title: `Windows 角色與功能（${featureRows.length}）`, headers: ['顯示名稱', 'Install-WindowsFeature 名稱', '關聯工作負載'], check: true, empty: '沒有發現已安裝的 Windows 角色或功能', rows: featureRows.map(r => [backupPlain(r.Name), backupPlain(r.FeatureName), backupWorkloadText(r)]) });
+    return sections;
+  }
+  function renderSoftwarePanel(panel, software, data) {
     const softwareRows = Array.isArray(software.SoftwareRows) ? software.SoftwareRows : [], featureRows = Array.isArray(software.FeatureRows) ? software.FeatureRows : [], gaps = Array.isArray(software.CoverageGaps) ? software.CoverageGaps : [];
+    const catalogState = softwareRecorded(software, 'CatalogState') ? backupPlain(software.CatalogState) : '', emptyText = softwareEmptyText(catalogState);
     wizardMessage(panel, '這是舊機上發現的軟體清單，供您在新機自行安裝。工具不會自動安裝，也不保證新版相容。');
-    if (gaps.length) wizardMessage(panel, `軟體盤點有 ${gaps.length} 個範圍未完整取得，清單可能不完整。`, 'callout');
+    if (gaps.length) {
+      wizardMessage(panel, `軟體盤點有 ${gaps.length} 個範圍未完整取得，清單可能不完整。`, 'callout');
+      const list = el('ul', 'software-gaps'); gaps.forEach(g => list.appendChild(el('li', '', `${Object.prototype.hasOwnProperty.call(SOFTWARE_GAP_TEXT, backupPlain(g.Status)) ? SOFTWARE_GAP_TEXT[backupPlain(g.Status)] : backupPlain(g.Status)}：${['Probe', 'Scope', 'SID', 'View'].map(k => backupPlain(g[k])).filter(Boolean).join(' / ') || '範圍未記錄'}`))); panel.appendChild(list);
+    }
+    const tools = el('div', 'backup-toolbar software-tools'), printButton = el('button', 'secondary-button', '列印新機安裝檢查表'); printButton.type = 'button';
+    printButton.addEventListener('click', () => printChecklist('新機安裝檢查表', [`配對 ID：${currentBackupPair()}；Attempt ID：${backupPlain(data && data.attemptId)}；產生時間：${backupPlain(data && data.generatedUtc)}`, '這是舊機上發現的軟體清單，請在新機逐項安裝並勾選。工具不會自動安裝，也不保證新版相容。'], softwareChecklistSections(softwareRows, featureRows, emptyText)));
+    tools.append(printButton, el('span', 'inline-note', '產生含勾選方框的列印版面（全部列、不分頁）；工具不會安裝軟體。')); panel.appendChild(tools);
     panel.appendChild(el('h3', '', '安裝軟體清單'));
-    renderBackupPagedTable(panel, { id: 'backup-software', name: '安裝軟體', caption: '安裝軟體', rows: softwareRows, search: r => [r.Name, r.Publisher, r.Location], csvName: 'installed-software.csv',
-      columns: [{ h: '名稱', text: r => safeText(r.Name) }, { h: '版本', text: r => safeText(r.Version) }, { h: '發行者', text: r => safeText(r.Publisher) }, { h: '架構', text: r => safeText(r.Architecture) }, { h: '範圍', text: r => safeText(r.Scope) }, { h: '安裝位置', text: r => safeText(r.Location) }, { h: '新機決策', text: r => safeText(r.DispositionText) }] });
+    if (!softwareRows.length) { const empty = wizardMessage(panel, emptyText, 'inline-note software-empty'); empty.dataset.catalogState = catalogState || 'unrecorded'; }
+    else {
+      const grouped = softwareRows.every(r => softwareRecorded(r, 'RequiredBySelectedWorkload')), required = softwareRows.filter(r => r.RequiredBySelectedWorkload === true).length;
+      wizardMessage(panel, grouped ? `分組：已選工作負載必需 ${required} 筆排在前面，其他已發現軟體 ${softwareRows.length - required} 筆在後；沒有關聯證據不等於不需要。` : '此結果集未記錄工作負載分組。');
+      renderBackupPagedTable(panel, { id: 'backup-software', name: '安裝軟體', caption: '安裝軟體', rows: softwareRows, filters: softwareFilters(softwareRows), search: r => [r.Name, r.Publisher, r.Location, r.Version], csvName: 'installed-software.csv', csvExtra: { headers: ['SoftwareId'], cells: r => [backupPlain(r.SoftwareId)] }, columns: softwareColumns() });
+    }
     panel.appendChild(el('h3', '', 'Windows 角色與功能'));
     if (!featureRows.length) { wizardMessage(panel, '沒有發現已安裝的 Windows 角色或功能'); return; }
     renderBackupPagedTable(panel, { id: 'backup-features', name: 'Windows 角色與功能', caption: 'Windows 角色與功能', rows: featureRows, search: r => [r.Name, r.FeatureName], csvName: 'windows-features.csv',
-      columns: [{ h: '顯示名稱', text: r => safeText(r.Name) }, { h: 'Install-WindowsFeature 名稱', text: r => safeText(r.FeatureName), code: true }] });
+      columns: [{ h: '顯示名稱', text: r => safeText(r.Name) }, { h: 'Install-WindowsFeature 名稱', text: r => safeText(r.FeatureName), code: true }, { h: '關聯工作負載', text: backupWorkloadText }] });
+  }
+  // Target 端「新機安裝檢查」：只顯示伺服端已核驗綁定的比較材料投影（target.softwareCheck），不自行盤點、不由前端重新判定狀態。
+  const TARGET_CHECK_INFO = { Installed: { text: '已安裝', icon: '✓', cls: 'ok' }, Different: { text: '版本不同', icon: '≠', cls: 'warn' }, Missing: { text: '未安裝', icon: '✕', cls: 'bad' }, Unknown: { text: '未知', icon: '?', cls: 'neutral' } };
+  function targetCheckInfo(r) { const code = backupPlain(r && r.CheckState); return Object.assign({ code: Object.prototype.hasOwnProperty.call(TARGET_CHECK_INFO, code) ? code : 'Unknown' }, TARGET_CHECK_INFO[Object.prototype.hasOwnProperty.call(TARGET_CHECK_INFO, code) ? code : 'Unknown']); }
+  function renderTargetSoftwareCheck(card, target) {
+    const check = target && (target.softwareCheck || target.SoftwareCheck), hasCheck = !!(check && check.available === true && Array.isArray(check.Rows));
+    if (!hasCheck && String(target && target.status || '') !== 'NeedsComparison') return;
+    const section = el('section', 'software-check'); section.id = 'software-check'; section.setAttribute('aria-labelledby', 'software-check-title');
+    const heading = el('h3', '', '新機安裝檢查'); heading.id = 'software-check-title'; section.appendChild(heading); card.appendChild(section);
+    if (!hasCheck) { wizardMessage(section, '尚未產生新機比較。匯入 Manager 的比較結果，或在本機產生比較後，這裡會逐項列出軟體在新機上的狀態。', 'inline-note software-check-empty'); return; }
+    const rows = check.Rows, targetOnly = Array.isArray(check.TargetOnlyRows) ? check.TargetOnlyRows : [];
+    wizardMessage(section, '資料來自已匯入的比較材料，這裡不重新盤點。「已安裝」只表示觀測到選用版本，不代表相容。', 'inline-note');
+    if (check.CoverageComplete !== true) wizardMessage(section, '新機盤點涵蓋不完整或未記錄：不會顯示「未安裝」，沒看到的軟體一律標為未知。', 'callout');
+    const counts = { Installed: 0, Different: 0, Missing: 0, Unknown: 0 }; rows.forEach(r => { counts[targetCheckInfo(r).code]++; });
+    wizardMessage(section, `已安裝 ${counts.Installed} · 版本不同 ${counts.Different} · 未安裝 ${counts.Missing} · 未知 ${counts.Unknown}${targetOnly.length ? ` · 新機獨有 ${targetOnly.length}（另列）` : ''}`, 'inline-note software-check-summary');
+    const columns = [{ h: '名稱', text: r => backupPlain(r.Name) }, { h: '來源版本', text: r => backupPlain(r.SourceVersion) }, { h: '選用版本', text: r => backupPlain(r.ChosenVersion) }, { h: '新機觀測版本', text: r => backupPlain(r.ObservedTargetVersion) }, { h: '新機目前狀態', nowrap: true, text: r => targetCheckInfo(r).text, badge: targetCheckInfo }, { h: '原因', text: r => backupPlain(r.CheckReason) }];
+    const printSections = () => { const sections = [{ title: `新機安裝檢查（${rows.length}）`, headers: columns.map(c => c.h), check: true, empty: '比較材料中沒有軟體列', rows: rows.map(r => columns.map(c => c.text(r))) }]; if (targetOnly.length) sections.push({ title: `新機獨有（${targetOnly.length}）`, headers: ['名稱', '發行者', '架構', '範圍', '新機觀測版本'], check: false, rows: targetOnly.map(r => [backupPlain(r.Name), backupPlain(r.Publisher), backupPlain(r.Architecture), backupPlain(r.Scope), backupPlain(r.ObservedTargetVersion)]) }); return sections; };
+    const printButton = el('button', 'secondary-button', '列印新機安裝檢查表'); printButton.type = 'button';
+    printButton.addEventListener('click', () => printChecklist('新機安裝檢查表（新機目前狀態）', ['狀態來自已匯入的比較材料，列印時未重新盤點；「已安裝」只表示觀測到選用版本，不代表相容。'], printSections()));
+    const tools = el('div', 'backup-toolbar software-tools'); tools.appendChild(printButton); section.appendChild(tools);
+    if (!rows.length) wizardMessage(section, '比較材料中沒有來源軟體列。', 'inline-note software-check-empty');
+    else renderBackupPagedTable(section, { id: 'target-software', name: '新機安裝檢查', caption: '新機軟體安裝狀態', rows, searchLabel: '搜尋名稱或發行者', search: r => [r.Name, r.Publisher], csvName: 'target-software-check.csv', columns,
+      filters: [{ key: 'state', label: '新機狀態', options: ['Installed', 'Different', 'Missing', 'Unknown'].map(code => ({ value: code, text: TARGET_CHECK_INFO[code].text })), match: (r, value) => targetCheckInfo(r).code === value }] });
+    if (targetOnly.length) {
+      section.appendChild(el('h4', '', '新機獨有（只在新機上觀測到，不屬於搬移來源，不計入上方四種狀態）'));
+      appendBackupSimpleTable(section, '新機獨有軟體', '新機獨有軟體', ['名稱', '發行者', '架構', '範圍', '新機觀測版本'], targetOnly.map(r => [backupPlain(r.Name), backupPlain(r.Publisher), backupPlain(r.Architecture), backupPlain(r.Scope), backupPlain(r.ObservedTargetVersion)]));
+    }
   }
   function renderBackupPagedTable(panel, cfg) {
     const pageSize = 100, rows = cfg.rows, filterDefs = cfg.filters || [], view = { query: '', page: 0 };
     filterDefs.forEach(f => { view[f.key] = ''; });
     const init = cfg.initial;
     if (init) { view.query = String(init.query || ''); filterDefs.forEach(f => { const value = String(init[f.key] || ''); if (f.options.some(o => o.value === value)) view[f.key] = value; }); view.page = Math.max(0, (Number(init.page) || 1) - 1); }
-    const bar = el('div', 'backup-toolbar'), searchId = `${cfg.id}-search`, label = el('label', '', '搜尋名稱或位置'); label.htmlFor = searchId;
+    const bar = el('div', 'backup-toolbar'), searchId = `${cfg.id}-search`, label = el('label', '', cfg.searchLabel || '搜尋名稱或位置'); label.htmlFor = searchId;
     const input = el('input'); input.type = 'search'; input.id = searchId; input.autocomplete = 'off'; input.value = view.query; bar.append(label, input);
     filterDefs.forEach(f => {
       const id = `${cfg.id}-${f.key}`, group = el('span', 'backup-filter'), filterLabel = el('label', '', f.label), select = el('select'); filterLabel.htmlFor = id; select.id = id; select.appendChild(new Option('全部', ''));
@@ -1569,7 +1688,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       headers.forEach(h => { const th = el('th', '', h); th.scope = 'col'; head.appendChild(th); }); table.appendChild(el('thead')).appendChild(head);
       const body = el('tbody');
       list.slice(view.page * pageSize, (view.page + 1) * pageSize).forEach(r => {
-        const tr = el('tr'); if (r.ItemId != null) { tr.dataset.id = String(r.ItemId); tr.dataset.status = backupPlain(r.Status); tr.dataset.reason = backupPlain(r.ReasonCode); }
+        const tr = el('tr'); if (r.ItemId != null) { tr.dataset.id = String(r.ItemId); tr.dataset.status = backupPlain(r.Status); tr.dataset.reason = backupPlain(r.ReasonCode); } else if (r.SoftwareId != null) tr.dataset.sid = String(r.SoftwareId);
         cfg.columns.forEach(c => {
           const td = el('td', c.nowrap ? 'backup-nowrap' : '');
           if (c.badge) { td.appendChild(backupBadge(c.badge(r))); const extra = c.extra ? c.extra(r) : ''; if (extra) td.appendChild(el('small', 'backup-badge-extra', extra)); }
@@ -1599,8 +1718,8 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     };
     input.addEventListener('input', () => { view.query = input.value.trim(); view.page = 0; draw(true); });
     exportButton.addEventListener('click', () => {
-      const headers = csvColumns.map(c => c.h).concat(cfg.csvMeta ? ['項目 ID', '狀態碼', '原因碼'] : []);
-      downloadCsv(cfg.csvName, headers, filtered().map(r => csvColumns.map(c => c.text(r)).concat(cfg.csvMeta ? [backupPlain(r.ItemId), backupPlain(r.Status), backupPlain(r.ReasonCode)] : [])));
+      const headers = csvColumns.map(c => c.h).concat(cfg.csvMeta ? ['項目 ID', '狀態碼', '原因碼'] : cfg.csvExtra ? cfg.csvExtra.headers : []);
+      downloadCsv(cfg.csvName, headers, filtered().map(r => csvColumns.map(c => c.text(r)).concat(cfg.csvMeta ? [backupPlain(r.ItemId), backupPlain(r.Status), backupPlain(r.ReasonCode)] : cfg.csvExtra ? cfg.csvExtra.cells(r) : [])));
     });
     draw(false);
     return view;

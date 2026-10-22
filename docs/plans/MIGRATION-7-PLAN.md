@@ -1005,6 +1005,31 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 瀏覽器測試用 mock API 搭配真實的 `src/ui`；後端整合由 PowerShell 測試與 NativeWizardRuntimeHandler（真實 HTTP 路由下鑽）覆蓋。
   - 寬表格在桌面捲到右側時，下鑽面板會跟著表格一起捲動。
   - `Test-HtmlBridge`（ECONNRESET）與 `Test-WizardRuntimeUi`（TimeoutError）在 HEAD 就已經失敗，另段處理。
+### 17.67 B4 安裝軟體分頁（工作負載分組、決策、選用版本、列印檢查表）與 Target 端新機安裝檢查
+
+- Sonnet 5.5 subagent 實作，主代理審查並獨立重跑。設計依 ui-ux-pro-max 準則。
+- Source 端（工作台與離線報告共用結果集，SchemaVersion 維持 2，欄位為累加）：
+  - 新增欄位：`Workloads`、`RequiredBySelectedWorkload`、`DecisionState`（Unreviewed／Reviewed／Stale）、`ChosenVersion`／`ChosenVersionBasis`、`ManualNote`（遮蔽秘密字樣）、`AccountContext`、`HasLinkEvidence`、`CatalogState`。
+  - 角色與功能也加上工作負載。
+  - 分組：只要軟體的 `ItemIds` 或 GeneralHost Requirement 的 `ConsumerItemIds` 對到已納入（Include）的項目，就列為「已選工作負載必需」並排在前面。沒有關聯證據的列標「無關聯證據」，不依名稱推測。Candidate 且 NotNeeded 的 Requirement 不算證據。
+  - 呈現：單一表格加「分組」欄，可依分組、決策、架構篩選，篩選可與搜尋疊加。
+  - 匯出：工作台與報告的軟體 CSV 完全一致，尾端附 SoftwareId。
+  - 「新機安裝檢查表」：工作台與報告都可列印，有勾選方框，不截斷。
+  - 空盤點顯示「沒有發現已安裝軟體」，不是錯誤。
+- 偏離 18.5：
+  - 決策沿用現有六值加「尚未決定」，沒有壓成「新機安裝／不裝／待定」三值。
+  - 選用版本在正式備份流程中一律顯示「（同來源）」，因為封存計畫不含 SoftwareChoices，而比較端的 ChosenVersion 預設也等於來源版本。
+- Target 端新機安裝檢查：
+  - 讀已匯入的比較材料（與 `$result.comparison` 同一份紀錄），不重新盤點。
+  - 四態判定在伺服端：已安裝＝ChosenVersionObserved；版本不同＝DifferentFromChosenVersion；未安裝＝TargetMissing 且新機盤點涵蓋完整；其餘為未知（涵蓋不完整的 TargetMissing 也算未知）。
+  - TargetOnly 另列在「新機獨有」區段，不計入四態。
+  - 沒有比較材料時不顯示狀態欄，只提示「尚未產生新機比較」與既有入口。
+- 驗證：WinPS 5.1 與真實 Edge，細節見提交說明。截圖在 `work/r7/screens/b4-*.png`。
+- 突變（皆轉紅，含主代理獨立重做的涵蓋不完整判定）：Requirement 關聯不納入分組、涵蓋不完整的 TargetMissing 判成未安裝、沒有材料仍回傳狀態、PowerShell 報告端與 JS 工作台端列印截斷。
+- 限制：
+  - 沒有真實 Target 端到端的軟體檢查測試：NativeWizardRuntimeHandler 的比較材料 Rows 為空；接線改由單元測試、`$allowed` 投影與瀏覽器 fixture 間接驗證。
+  - 列印以 stub `window.print` 搭配 `emulateMedia('print')` 驗證，沒有走真實的列印對話框。
+  - `Test-WizardNonCTargetHandoff` 在 HEAD 就因 `.wsm.lock` IOException 失敗，併入 M7。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
