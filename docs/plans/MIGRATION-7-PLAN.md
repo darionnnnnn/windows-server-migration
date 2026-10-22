@@ -877,6 +877,14 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 突變：續作改為重送新的 TargetRestore（6 項判定轉紅）、把秘密寫進 workspace 檔（哨兵掃描轉紅）。
 - 限制：帳號 consumer 為窄型替身（使用者定案）；新機盤點為預置 fixture；崩潰點固定在第 2 個檔案、Service 排在檔案之後；只有 WinPS 5.1。
 
+### 17.61 J1 journal 重播涵蓋所有寫入的動作
+
+- `Add-WsmJournal` 先寫 journal 再寫 state；若在兩者之間崩潰，恢復時以 `Restore-WsmJournalCheckpoint` 重播，但重播 switch 沒有登記的動作一律丟「Unknown recovery event」而失敗關閉、需要人工。以 AST 掃描 `src/*.ps1` 全部 78 個寫入動作，有 28 個未登記：本輪 F4a／E3b 新增的 16 個（含經變數傳入、單純 grep 找不到的 `AssistiveServiceCredentialRejected`／`Reprompt`），以及既有的 `AssistiveRestoreCancelled`、`AssistiveNonCFileResultsImported`、7 個 `AssistiveRollback*`、5 個 `SettingTransition*`。
+- Sonnet 5.5 subagent 實作，主代理審查並補一處。每個動作都改為：照寫入當時的 state 變更重建（Detail 不足者在寫入點補上重建所需的非秘密資料，例如 challenge／attempt 快照、`ItemResults`、`Transition`、`ActualHash`）；或明確 no-op 並註明理由（只寫記憶體清單或只是原生動作證據的動作）；或維持失敗關閉但訊息指名動作與原因（舊版缺快照的列、找不到對應 challenge／attempt／pending）。`AssistiveFileCompleted` 重播一併重建 `AssistivePartialOwnership`，`AssistiveItemCompleted` 一併清除。另修三個既有重播缺陷：`AssistiveFileCompleted` 對新紀錄寫不存在的 `Error` 屬性（StrictMode 丟錯）、`AssistiveRestoreCompleted` 沒有重建 `ItemResults` 與 challenge 完成狀態、`SettingTransitionRollbackReceipt` 存取不存在的 `Recovery` 屬性。主代理另修：既有 `RollbackCompleted` 重播沒有像三個寫入點那樣清除 `CreatedByTool`／`UpdatedByTool`，重播後回滾過的物件仍被視為工具所有。
+- 新增 `tests/Test-JournalReplayCoverage.ps1`：守門（所有寫入動作都必須已登記重播或明列在「刻意失敗關閉」清單並附理由，新增動作忘了登記就轉紅）與 39 個重播等價情境（寫入後把 state 回滾到前一個 checkpoint，重播後比對欄位；每個情境必須有欄位改變或明確標示 no-op）。
+- 驗證（WinPS 5.1）：JournalReplayCoverage 413 項、JournalAppendFailure 22、JournalDiagnostics 6、RecoveryContracts、AssistiveRecoveryBoundaries 6、AssistiveRollback 16、SettingTransitionRecovery、SettingTransitions、TargetRestoreContinuation 133、ServiceCredentialChallenge 46、CredentialDeferral 68、AssistiveRestore 140、WizardRestore 85、TaskFolderJournal、RollbackRecovery、CutoverActivationWorkflow、ScriptEncoding 通過。突變：subagent 7 個（含在 src 暫加未登記動作使守門轉紅）、主代理 1 個（舊 RollbackCompleted handler）皆轉紅。
+- 限制：本次建立的目錄的進行中擁有權在下一個 journal 事件才落盤，重播無法重建（在該窄窗崩潰時保守判為衝突，不會誤授擁有權）；部分 challenge 動作的等價測試是照寫入點寫法模擬，不是呼叫完整大流程的寫入函式。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

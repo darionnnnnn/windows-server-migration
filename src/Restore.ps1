@@ -132,7 +132,7 @@ function Invoke-WsmSettingTransitionForPhase($Item,$Package,$Paths,$State,[Valid
     $pending=[pscustomobject]@{ItemId=$Item.ItemId;Phase='SettingTransition';ManifestHash=$Package.SHA256;TransitionHash=$transition.TransitionHash;Transition=$transition;Intent=$null;Receipt=$null;AppliedPhase=$Phase;RequiredPhase=$transition.RequiredPhase}
     $State.PendingOperations=@($State.PendingOperations | Where-Object ItemId -CNE $Item.ItemId)+@($pending)
     $intent=Get-WsmSettingTransitionIntent $transition $Package.Manifest.Target.Fingerprint;$pending.Intent=$intent
-    Add-WsmJournal $Paths $State 'SettingTransitionIntent' $Item.ItemId ([pscustomobject]@{ManifestHash=$Package.SHA256;TransitionHash=$transition.TransitionHash;Intent=$intent;AppliedPhase=$Phase;RequiredPhase=$transition.RequiredPhase})
+    Add-WsmJournal $Paths $State 'SettingTransitionIntent' $Item.ItemId ([pscustomobject]@{ManifestHash=$Package.SHA256;TransitionHash=$transition.TransitionHash;Intent=$intent;Transition=$transition;AppliedPhase=$Phase;RequiredPhase=$transition.RequiredPhase})
     $receipt=Invoke-WsmSettingTransitionApply -Transition $transition -Intent $intent -TargetFingerprint $Package.Manifest.Target.Fingerprint -JournalHash $State.JournalHash
     $pending.Receipt=$receipt;Add-WsmJournal $Paths $State 'SettingTransitionReceipt' $Item.ItemId ([pscustomobject]@{ManifestHash=$Package.SHA256;TransitionHash=$transition.TransitionHash;Receipt=$receipt;AppliedPhase=$Phase;RequiredPhase=$transition.RequiredPhase})
     $State.PendingOperations=@($State.PendingOperations | Where-Object ItemId -CNE $Item.ItemId)

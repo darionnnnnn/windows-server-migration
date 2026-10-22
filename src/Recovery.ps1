@@ -160,7 +160,7 @@ function Complete-WsmSettingTransitionRecovery($Item,$Operation,$Paths,$State) {
     $result=[pscustomobject]@{ItemId=$Item.ItemId;Status='Succeeded';CreatedByTool=($transition.Action -eq 'CreateNew');UpdatedByTool=($transition.Action -eq 'UpdateReviewed');ActualHash=(Get-WsmHashText ($receipt | ConvertTo-Json -Depth 20 -Compress));Backup='';Target='';Error='';NativeCode=0;SettingTransitionDeferred=$false;SettingTransitionIntent=$Operation.Intent;SettingTransitionReceipt=$receipt}
     $State.Items=@($State.Items | Where-Object ItemId -CNE $Item.ItemId)+@($result)
     $State.PendingOperations=@($State.PendingOperations | Where-Object ItemId -CNE $Item.ItemId)
-    Add-WsmJournal $Paths $State 'SettingTransitionRecovered' $Item.ItemId ([pscustomobject]@{TransitionHash=$transition.TransitionHash;IntentId=$Operation.Intent.IntentId;Receipt=$receipt})
+    Add-WsmJournal $Paths $State 'SettingTransitionRecovered' $Item.ItemId ([pscustomobject]@{TransitionHash=$transition.TransitionHash;IntentId=$Operation.Intent.IntentId;Receipt=$receipt;ActualHash=$result.ActualHash})
 }
 
 function Complete-WsmAssistiveFileRollback($Item,$Operation,$Paths,$State) {

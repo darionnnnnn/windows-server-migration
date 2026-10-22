@@ -391,7 +391,7 @@ function Revoke-WsmWizardTargetRestoreParent {
         if($ContinuationId){
             $records=@();if($currentAttempt.PSObject.Properties['Continuations']){$records=@($currentAttempt.Continuations)}
             $currentAttempt|Add-Member NoteProperty Continuations (@($records)+@([pscustomobject][ordered]@{ContinuationId=$ContinuationId;StartedUtc=(Get-WsmUtc);Actor=$Actor;SessionId=$SessionId;Result=$ContinuationResult})) -Force
-            Add-WsmJournal $paths $current 'AssistiveRestoreContinuation' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;ContinuationId=$ContinuationId;Phase='Superseded';Reason=$Reason})
+            Add-WsmJournal $paths $current 'AssistiveRestoreContinuation' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;ContinuationId=$ContinuationId;Phase='Superseded';Reason=$Reason;Actor=$Actor;SessionId=$SessionId;Result=$ContinuationResult})
         }else{
             Add-WsmJournal $paths $current 'AssistiveRestoreParentSuperseded' '' ([pscustomobject]@{ParentOperationId=$ParentOperationId;Reason=$Reason})
         }
