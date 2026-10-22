@@ -23,10 +23,65 @@ function Get-WsmHtmlActionMap {
         @('PairPlan','Set-WsmPairPlan'),@('CrossHostDependency','Set-WsmCrossHostDependency'),@('Report','Export-WsmReport'),
         @('FleetReport','Export-WsmFleetReport'),@('SaveSelection','Set-WsmHtmlSelection'),@('SetRestoreChoice','Set-WsmHtmlRestoreChoice')
     )){$map[$entry[0]]=$entry[1]}
-    foreach($entry in @(@('BulkPreparationPreview','Get-WsmWizardBulkPreparationPreview'),@('BulkPreparationSave','Save-WsmWizardBulkPreparationReview'),@('ExportTargetHandoff','Export-WsmWizardTargetHandoff'),@('GetTargetHandoffPreview','Get-WsmWizardTargetHandoffPreview'),@('CommitTargetHandoff','Commit-WsmWizardTargetHandoff'),@('GetPreparationReview','Get-WsmWizardPreparationReview'),@('SavePreparationReview','Save-WsmWizardPreparationReview'),@('SpecReview','Get-WsmAssistiveSpecReview'),@('SaveSpecReview','Submit-WsmAssistiveSpecReview'),@('TargetReceipt','Export-WsmAssistiveTargetDecisionReceipt'),@('AssistiveReport','Export-WsmAssistiveReport'),@('SetSoftwareVersion','Set-WsmAssistiveSoftwareVersion'),@('TargetSnapshot','Update-WsmAssistiveTargetSnapshot'),@('PublishComparison','Update-WsmAssistiveComparison'),@('EnvironmentProbe','Export-WsmAssistiveEnvironmentProbe'),@('ProbeImport','Import-WsmAssistiveEnvironmentProbe'),@('DeveloperProbe','Export-WsmDeveloperProbe'),@('BackupItemFiles','Get-WsmWizardBackupItemFiles'))){
+    foreach($entry in @(@('BulkPreparationPreview','Get-WsmWizardBulkPreparationPreview'),@('BulkPreparationSave','Save-WsmWizardBulkPreparationReview'),@('ExportTargetHandoff','Export-WsmWizardTargetHandoff'),@('GetTargetHandoffPreview','Get-WsmWizardTargetHandoffPreview'),@('CommitTargetHandoff','Commit-WsmWizardTargetHandoff'),@('GetPreparationReview','Get-WsmWizardPreparationReview'),@('SavePreparationReview','Save-WsmWizardPreparationReview'),@('SpecReview','Get-WsmAssistiveSpecReview'),@('SaveSpecReview','Submit-WsmAssistiveSpecReview'),@('TargetReceipt','Export-WsmAssistiveTargetDecisionReceipt'),@('AssistiveReport','Export-WsmAssistiveReport'),@('SetSoftwareVersion','Set-WsmAssistiveSoftwareVersion'),@('TargetSnapshot','Update-WsmAssistiveTargetSnapshot'),@('PublishComparison','Update-WsmAssistiveComparison'),@('EnvironmentProbe','Export-WsmAssistiveEnvironmentProbe'),@('ProbeImport','Import-WsmAssistiveEnvironmentProbe'),@('DeveloperProbe','Export-WsmDeveloperProbe'),@('BackupItemFiles','Get-WsmWizardBackupItemFiles'),@('SourceCandidateList','Get-WsmHtmlSourceCandidateList'))){
         if(Get-Command $entry[1] -CommandType Function -ErrorAction SilentlyContinue){$map[$entry[0]]=$entry[1]}
     }
     $map
+}
+
+# ---- B5: C2 software-disposition review and D2 source-candidate confirmation/mapping entry points -------------------------------
+# Reads go through /api/view and writes through /api/operations only. The role of each action is Get-WsmTextActionGroup (single source);
+# the functions themselves still enforce their own checks (Export requires the enrolled Source profile, the others need the Manager pair catalog).
+function Get-WsmHtmlC2D2ActionRoutes {
+    [ordered]@{
+        SourceCandidateList='view';SourceCandidateConfirmExport='operation'
+        SourceCandidateConfirmImport='operation';SourceCandidateConfirmReview='view'
+        SourceCandidateMappingReview='view';SourceCandidateMappingSubmit='operation'
+        SoftwareDispositionReview='view';SoftwareDispositionReviewSubmit='operation'
+    }
+}
+function Test-WsmHtmlC2D2ReadAction([string]$Action) {
+    $routes=Get-WsmHtmlC2D2ActionRoutes
+    $routes.Contains($Action) -and [string]$routes[$Action] -ceq 'view'
+}
+function Assert-WsmHtmlC2D2ActionAccess([string]$Action,[string]$Role,[string]$PairId,[string]$Route) {
+    $routes=Get-WsmHtmlC2D2ActionRoutes
+    if(-not $routes.Contains($Action)){return}
+    $kind=[string]$routes[$Action]
+    if(($kind -ceq 'view' -and $Route -cne '/api/view') -or ($kind -ceq 'operation' -and $Route -cne '/api/operations')){throw 'Unsupported operation route for this action: reads use the view endpoint and writes use the operation endpoint.'}
+    $required=Get-WsmTextActionGroup $Action
+    if($Role -cne $required){throw ('Unsupported operation role: this action requires the '+$required+' role.')}
+    if($required -ceq 'Manager' -and -not $PairId){throw 'Unsupported operation context: this action requires a selected Manager pair.'}
+}
+function Get-WsmHtmlSourceCandidateList {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$ScanId)
+    $profile=Read-WsmOutputProfile $Workspace
+    if(-not $profile -or $profile.Role -cne 'Source'){throw 'The candidate list is available only in the enrolled Source workspace.'}
+    $scanDirectory=Get-WsmSourceCandidateScanDirectory $Workspace $profile $ScanId
+    $path=Join-Path $scanDirectory 'candidates.json'
+    Assert-WsmNoReparse $path
+    if(-not [IO.File]::Exists($path)){throw 'The candidate scan result was not found for this ScanId.'}
+    $hash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $artifact=Read-WsmJson $path
+    $all=@($artifact.Candidates)
+    $rows=@($all|Select-Object -First 2000|ForEach-Object {
+        [pscustomobject][ordered]@{CandidateId=[string]$_.CandidateId;CandidateType=[string]$_.CandidateType;Path=[string]$_.Path;Length=$(if($null -ne $_.Length){[long]$_.Length}else{$null});LastWriteUtc=[string]$_.LastWriteUtc;WorkloadReferenceCount=$(if($_.PSObject.Properties['WorkloadReferenceCount']){[int]$_.WorkloadReferenceCount}else{0})}
+    })
+    [pscustomobject][ordered]@{Kind='SourceCandidateList';ScanId=[string]$ScanId;ScanStatus=[string]$artifact.Status;CandidateHash=$hash;CandidateCount=$all.Count;CandidatesShown=$rows.Count;CandidatesTruncated=($all.Count -gt $rows.Count);Candidates=$rows;AuthoritativeApproval=$false}
+}
+function ConvertTo-WsmHtmlC2D2View($Result,[string]$Action,[int]$Revision) {
+    # Closed projection through the shared allow-list. The confirmation member list can reach 40,000 rows, so only the first page is returned
+    # together with exact file/directory counts; the counts come from the full list before truncation.
+    $copy=[ordered]@{};foreach($property in $Result.PSObject.Properties){$copy[$property.Name]=$property.Value}
+    if($Action -ceq 'SourceCandidateConfirmReview'){
+        $members=@($Result.Members);$directoryCount=@($members|Where-Object {Test-WsmExactDirectoryMember $_}).Count
+        $copy.FileMemberCount=$members.Count-$directoryCount;$copy.DirectoryMemberCount=$directoryCount
+        $copy.Members=@($members|Select-Object -First 500);$copy.MembersShown=@($copy.Members).Count;$copy.MembersTruncated=($members.Count -gt 500)
+    }
+    $view=ConvertTo-WsmWizardHtmlValue ([pscustomobject]$copy)
+    $view|Add-Member NoteProperty viewRevision $Revision -Force
+    $view
 }
 
 function Get-WsmHtmlWizardJobs([hashtable]$Jobs,[string]$Workspace) {
@@ -133,6 +188,8 @@ function Get-WsmHtmlObjectSchema([string]$Name) {
     $schemas.Fields.IisConfigChanges=@{type='objectArray';schema=@{properties=@{FieldPointer=@{type='string';required=$true};Operation=@{type='enum';required=$true;options=@('SetAttribute','AddElement','RemoveElement')};ElementName=@{type='string';required=$true};KeyAttributes=@{type='objectArray';schema=@{properties=@{Name=@{type='string';required=$true};Value=@{type='string';required=$true;sensitive=$true;allowEmpty=$true}}}};AttributeName=@{type='string';required=$true;allowEmpty=$true};BeforeValue=@{type='string';required=$true;sensitive=$true;allowEmpty=$true};AfterValue=@{type='string';required=$true;sensitive=$true;allowEmpty=$true}}}}
     $schemas.WindowsSettingDecisions=@{SettingId=@{type='string';required=$true};Action=@{type='enum';required=$true;options=@('KeepTarget','External','ReviewedMigration')};Owner=@{type='string'};Reason=@{type='string'};Evidence=@{type='string'}}
     $schemas.DispositionDecisions=@{ItemId=@{type='string'};SoftwareId=@{type='string'};ScopeDisposition=@{type='enum';required=$true;options=@('Migrate','Prepare','External','NotNeeded','Reinstall','Portable','KeepCompatible')};Owner=@{type='string';required=$true};Reason=@{type='string';required=$true};Evidence=@{type='string';required=$true}}
+    $schemas.SoftwareDispositionBatch=[ordered]@{SoftwareId=@{type='string';required=$true};Disposition=@{type='enum';required=$true;options=@('Reinstall','Portable','KeepCompatible','External','NotNeeded','Unknown')};Owner=@{type='string';required=$true};Reason=@{type='string';required=$true};Evidence=@{type='string';required=$true}}
+    $schemas.WorkloadMappingDecisions=[ordered]@{ReferenceId=@{type='string';required=$true};Decision=@{type='enum';required=$true;options=@('Include','Exclude','Manual')};FileScopeItemId=@{type='string';required=$true;allowEmpty=$true};DependencyType=@{type='enum';required=$true;options=@('None','Mandatory','Optional')}}
     $schemas.TargetRequirements=@{}
     foreach($field in @('RequirementId','Type','ProviderSoftwareId','ProviderItemId','ExternalId','Certainty','RequiredPhase','ExpectedVersion','Architecture','Owner','Decision','DecisionReason','DecisionEvidence')){$schemas.TargetRequirements[$field]=@{type='string';required=$true;allowEmpty=($field -in @('ProviderSoftwareId','ProviderItemId','ExternalId','DecisionReason','DecisionEvidence'))}}
     $schemas.TargetRequirements.ConsumerItemIds=@{type='stringArray';required=$true}
@@ -149,7 +206,7 @@ function Get-WsmHtmlActionMetadata {
     $common=@('Verbose','Debug','ErrorAction','ErrorVariable','OutVariable','OutBuffer','PipelineVariable','InformationAction','InformationVariable','WarningAction','WarningVariable','Confirm','WhatIf','ProgressAction')
     foreach($entry in (Get-WsmHtmlActionMap).GetEnumerator()){
         $command=Get-Command $entry.Value -CommandType Function
-        $registryCas=$command.Name -in @('Submit-WsmAssistiveWindowsSettingsReview','Submit-WsmAssistiveGeneralHostDispositions','Submit-WsmAssistiveGeneralHostRequirements','Submit-WsmAssistiveGeneralHostRequirementDecisions','Reserve-WsmAssistiveResource','Set-WsmAssistiveResourceEvidence','Release-WsmAssistiveResource','Set-WsmAssistiveMaterialClosed','Invoke-WsmAssistiveCleanup')
+        $registryCas=$command.Name -in @('Submit-WsmAssistiveWindowsSettingsReview','Submit-WsmAssistiveGeneralHostDispositions','Submit-WsmAssistiveGeneralHostRequirements','Submit-WsmAssistiveGeneralHostRequirementDecisions','Submit-WsmAssistiveSoftwareDispositionReview','Import-WsmSourceCandidateConfirmation','Submit-WsmSourceCandidateWorkloadMappingReview','Reserve-WsmAssistiveResource','Set-WsmAssistiveResourceEvidence','Release-WsmAssistiveResource','Set-WsmAssistiveMaterialClosed','Invoke-WsmAssistiveCleanup')
         $parameters=@(foreach($p in $command.Parameters.Values){
             if($p.ParameterType -eq [scriptblock] -or @($p.Attributes | Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.DontShow}).Count -or $p.Name -in $common -or $p.Name -in @('CancellationToken','Workspace','PairId','Jobs','OperationId') -or ($p.Name -eq 'ExpectedRevision' -and -not $registryCas)){continue}
             $required=@($p.Attributes | Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.Mandatory}).Count -gt 0
@@ -161,7 +218,7 @@ function Get-WsmHtmlActionMetadata {
             elseif($p.ParameterType -in @([double],[decimal])){$type='number'}
             elseif($p.ParameterType -eq [string[]]){$type='stringArray'}
             elseif($p.Name -ceq 'Secrets'){$type='objectArray';$schema=Get-WsmHtmlObjectSchema Secrets}
-            elseif($p.Name -ceq 'Decisions'){$type='objectArray';$schema=Get-WsmHtmlObjectSchema $(if($command.Name -ceq 'Submit-WsmAssistiveGeneralHostDispositions'){'DispositionDecisions'}elseif($command.Name -ceq 'Submit-WsmAssistiveGeneralHostRequirementDecisions'){'RequirementDecisions'}else{'WindowsSettingDecisions'})}
+            elseif($p.Name -ceq 'Decisions'){$type='objectArray';$schema=Get-WsmHtmlObjectSchema $(if($command.Name -ceq 'Submit-WsmAssistiveGeneralHostDispositions'){'DispositionDecisions'}elseif($command.Name -ceq 'Submit-WsmAssistiveGeneralHostRequirementDecisions'){'RequirementDecisions'}elseif($command.Name -ceq 'Submit-WsmAssistiveSoftwareDispositionReview'){'SoftwareDispositionBatch'}elseif($command.Name -ceq 'Submit-WsmSourceCandidateWorkloadMappingReview'){'WorkloadMappingDecisions'}else{'WindowsSettingDecisions'})}
             elseif($p.Name -ceq 'Requirements' -and $command.Name -ceq 'Submit-WsmAssistiveGeneralHostRequirements'){$type='objectArray';$schema=Get-WsmHtmlObjectSchema TargetRequirements}
             elseif($p.Name -ceq 'Fields'){$type='object';$schema=Get-WsmHtmlObjectSchema Fields}
             elseif($p.ParameterType -eq [hashtable] -or $p.ParameterType -eq [Collections.IDictionary]){$type='map'}
@@ -589,7 +646,7 @@ function Get-WsmHtmlSafeError([string]$ExceptionMessage,[string]$ExceptionType='
         return $error
     }
     if($ExceptionMessage -match 'WorkRoot initialization exceeds supported Windows PowerShell 5.1 path limits'){return (New-WsmHtmlError 'The fixed workspace path is too long for the supported Windows PowerShell workflow.' 'workroot_path_too_long' 'Choose a shorter dedicated WorkRoot separate from the tool installation directory; no workspace files were created.')}
-    if($ExceptionMessage -match 'Review changed|Context changed') { return (New-WsmHtmlError 'The reviewed context or data changed.' 'stale_context' 'Refresh the context and view, then review the operation again.') }
+    if($ExceptionMessage -match 'Review changed|Context changed|bound to another (source inventory|candidate confirmation)') { return (New-WsmHtmlError 'The reviewed context or data changed.' 'stale_context' 'Refresh the context and view, then review the operation again.') }
     if($ExceptionMessage -match 'Interrupted workspace transaction|workspace.*requires? repair|Repair-WsmWorkspace') { return (New-WsmHtmlError 'The workspace needs recovery before it can be used.' 'workspace_recovery_required' 'Use the text menu or CLI Repair-WsmWorkspace workflow, and retain controlled materials until recovery is complete.') }
     if($ExceptionMessage -match 'RejectedToken') { return (New-WsmHtmlError 'This request was not accepted by the local console.' 'invalid_token' 'Refresh the console page to renew its local session, then try again.') }
     if($ExceptionMessage -match 'RejectedOrigin') { return (New-WsmHtmlError 'This request came from an unrecognized page origin.' 'rejected_origin' 'Use the console at its current local URL and retry from that page.') }
@@ -1365,6 +1422,7 @@ function Start-WsmHtmlConsole {
                                 $profile=Read-WsmOutputProfile $Workspace
                                 if($Role -cne 'Manager' -or -not $PairId -or -not $profile -or $profile.Role -cne 'Manager'){throw 'Preparation review requires the enrolled Manager workspace and a current pair.'}
                             }
+                            Assert-WsmHtmlC2D2ActionAccess ([string]$body.action) $Role $PairId $route
                             if($body.action -ceq 'DeveloperProbe'){
                                 if(@($body.args.PSObject.Properties).Count -gt 0){throw 'Developer probe accepts no caller-supplied arguments; role and local origin are supplied by this console.'}
                                 $body.args | Add-Member NoteProperty Workspace $Workspace;$body.args | Add-Member NoteProperty Role $Role;$body.args | Add-Member NoteProperty Origin $origin;$body.args | Add-Member NoteProperty PairId ''
@@ -1386,7 +1444,7 @@ function Start-WsmHtmlConsole {
                             if($command.Parameters.ContainsKey('ExpectedRevision') -and -not $body.args.PSObject.Properties['ExpectedRevision']){
                                 if($command.Name -in @('Reserve-WsmAssistiveResource','Set-WsmAssistiveResourceEvidence','Release-WsmAssistiveResource','Set-WsmAssistiveMaterialClosed','Invoke-WsmAssistiveCleanup')){throw 'Resource registry revision from the reviewed preview is required.'}
                                 $nativeRevision=$revision
-                                if($PairId -and ($command.Name -notmatch 'Assistive|Set-WsmHtml' -or $command.Name -in @('Submit-WsmAssistiveWindowsSettingsReview','Submit-WsmAssistiveGeneralHostDispositions','Submit-WsmAssistiveGeneralHostRequirements','Submit-WsmAssistiveGeneralHostRequirementDecisions'))){$nativeRevision=[int]$currentVector.decisionRevision}
+                                if($PairId -and ($command.Name -notmatch 'Assistive|Set-WsmHtml' -or $command.Name -in @('Submit-WsmAssistiveWindowsSettingsReview','Submit-WsmAssistiveGeneralHostDispositions','Submit-WsmAssistiveGeneralHostRequirements','Submit-WsmAssistiveGeneralHostRequirementDecisions','Submit-WsmAssistiveSoftwareDispositionReview'))){$nativeRevision=[int]$currentVector.decisionRevision}
                                 $body.args | Add-Member NoteProperty ExpectedRevision $nativeRevision
                             }
                             if($body.action -ceq 'BackupItemFiles'){if($route -cne '/api/view'){throw 'Backup file details are read-only and are only available as a view request.'};if($Role -cne 'Source' -or -not $PairId){throw 'Backup file details require the Source role and a selected pair.'};Assert-WsmFields $body.args @('ItemId','Page','Workspace','PairId') @('ItemId');if(-not $body.args.PSObject.Properties['Workspace'] -or [IO.Path]::GetFullPath([string]$body.args.Workspace) -ine [IO.Path]::GetFullPath($Workspace) -or -not $body.args.PSObject.Properties['PairId'] -or [string]$body.args.PairId -cne [string]$PairId){throw 'Backup file details are bound to the enrolled workspace and the selected pair.'}}
@@ -1414,7 +1472,7 @@ function Start-WsmHtmlConsole {
                                     foreach($key in $arguments.Keys){if($previewCommand.Parameters.ContainsKey($key)){$previewArgs[$key]=$arguments[$key]}}
                                     $result=& $previewCommand @previewArgs;$kind='ResourcePreview'
                                 }elseif($command.Name -match '^(Get|Test|Assert|Read)-'){$result=& $command @arguments;$kind='ResourcePreview'}
-                                if($body.action -ceq 'BackupItemFiles'){$response=ConvertTo-WsmWizardHtmlValue $result}else{$response=ConvertTo-WsmHtmlPreview $result $body.action $revision $kind}
+                                if($body.action -ceq 'BackupItemFiles'){$response=ConvertTo-WsmWizardHtmlValue $result}elseif(Test-WsmHtmlC2D2ReadAction ([string]$body.action)){$response=ConvertTo-WsmHtmlC2D2View $result ([string]$body.action) $revision}else{$response=ConvertTo-WsmHtmlPreview $result $body.action $revision $kind}
                             }
                             else{
                                 Assert-WsmId ([string]$body.operationId);Assert-WsmId ([string]$body.idempotencyKey)

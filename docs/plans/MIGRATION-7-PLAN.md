@@ -1099,6 +1099,43 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 「此工作負載將停止」只是顯示文案，沒有改變還原語意。
   - 新欄位沒有另做真實 HTTP 端到端驗證。
   - 測試替身封裝沒有 ArtifactsHash 時，預覽略過計數。
+### 17.70 B5 C2 軟體處置審閱與 D2 候選確認／工作負載對應的 HTML 入口
+
+- 由 Sonnet 5.5 subagent 實作（派出時模型規則尚未變更），主代理審查並獨立重跑測試。設計依 ui-ux-pro-max 準則。
+- 登記的 action（角色以函式內部檢查為準）：
+  - Source 端：
+    - `SourceCandidateList`：唯讀。新增 `Get-WsmHtmlSourceCandidateList`，只讀已掃描的 `candidates.json` 並回傳檔案雜湊，上限 2000 列；匯出時後端會重驗雜湊。
+    - `SourceCandidateConfirmExport`。
+  - Manager 端：
+    - `SourceCandidateConfirmImport`、`SourceCandidateConfirmReview`、`SourceCandidateMappingReview`、`SourceCandidateMappingSubmit`。
+    - `SoftwareDispositionReview`、`SoftwareDispositionReviewSubmit`。
+  - 路由與 CAS：
+    - 寫入類走 `/api/operations`，帶 CAS／ExpectedRevision；讀取類走 `/api/view`。
+    - 路由層的 `Assert-WsmHtmlC2D2ActionAccess` 會拒絕：角色錯誤、讀寫走錯端點、Manager action 沒有 pair。
+    - 路徑參數沿用既有 import 的檢查。
+- 畫面：
+  - Source：從候選清單挑一筆，匯出確認材料。
+  - Manager 依序三步：匯入確認材料（需填負責人與證據）、檢視確認內容（含 B6 的空目錄成員）、逐項審閱工作負載對應後送出。
+  - C2 軟體處置審閱：
+    - 可批次選取並套用處置。
+    - 特殊產品只能選 External／NotNeeded；就算前端限制被移除，後端仍會擋。
+    - 送出前需勾選 Ack 並看過確認摘要，送出時帶 ExpectedRevision 與 ExpectedPreviewHash。
+  - 過期時提示重新讀取，不會自動重送。
+- 「不完整」顯示：C2 審閱投影沒有「已選工作負載的必要產品尚未決定」這類欄位，所以只列出「尚未決定」（Unreviewed／Stale）的筆數與清單，並註明這不是阻擋核准的判定，沒有自創規則。
+- `Get-WsmHtmlSafeError` 改為把「bound to another source inventory／candidate confirmation」歸類為 stale_context。
+- 驗證（WinPS 5.1、真實 Edge 搭配 mock API）：見提交說明。截圖在 `work/r7/screens/b5-*.png`。
+- 突變（皆轉紅）：
+  - action 角色錯誤；
+  - C2 送出不帶 ExpectedPreviewHash；
+  - 前端過期時自動重送；
+  - 主代理另做一個獨立突變：把 SourceCandidateMappingSubmit 移到 Source 群組，轉紅。
+- 限制：
+  - 沒有「真實瀏覽器加真實 listener」的整合測試；後端路由與 worker 由 PowerShell 測試的真實 listener 覆蓋。
+  - Source 匯出只在函式層測試。
+  - Manager 的已匯入清單取自作業歷史；歷史被清除後，沒有手動輸入項目 ID 的備援。
+  - 面板掛在既有精靈步驟上，實機出現時機需要確認。
+  - 審閱送出的輸出狀態（如 SubmittedReviewRequired）會讓 job 終態成為 ReviewRequired，這是既有退出碼語意，前端以輸出 Status 判斷成功。
+  - `Test-BackupProgressBrowser`（B1）在本段整批循序重跑時失敗一次，單獨連跑 8 次都通過，判定為負載下的時序不穩，併入 M7 追查。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

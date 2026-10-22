@@ -245,3 +245,56 @@ body.printing-checklist .print-checklist{display:block;margin:0;padding:0;color:
 .connection-banner .connection-steps{margin:4px 0 10px;padding-left:22px}
 @media(max-width:600px){.progress-facts{grid-template-columns:1fr;gap:2px}.progress-facts dd{margin-bottom:6px}.progress-bar-row{flex-wrap:wrap}.progress-percent{min-width:0}.progress-actions .danger-button{width:100%}}
 @media(prefers-reduced-motion:reduce){.progress-card *,.connection-banner *{animation:none!important;transition:none!important}.progress-meter{animation:none!important}}
+
+/* B5: C2 software disposition review and D2 source-candidate confirmation / workload mapping. Existing tokens only; status is always text plus icon. */
+.b5-panels{display:grid;gap:18px;margin-top:20px;min-width:0}
+.b5-panel{min-width:0;padding:18px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+.b5-panel>h2{margin:0 0 6px;font-size:20px;color:var(--navy)}
+.b5-intro{margin:0 0 12px;color:var(--muted);font-size:15px;line-height:1.6}
+.b5-step{min-width:0;margin:14px 0 0;padding:14px;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft)}
+.b5-heading{margin:0 0 8px;font-size:17px;color:#244b60}
+.b5-status{display:flex;align-items:flex-start;gap:8px;margin:10px 0;font-size:15px;line-height:1.5;overflow-wrap:anywhere}
+.b5-icon{flex:0 0 auto;font-weight:700}
+.b5-ok{color:var(--success)}.b5-warn{color:var(--warn)}.b5-error{color:var(--danger)}.b5-busy,.b5-info{color:var(--muted)}
+.b5-hint{margin:4px 0;color:var(--muted);font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.b5-summary{margin:10px 0;font-weight:650;font-size:15px}
+.b5-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px}
+.b5-field{display:flex;flex-direction:column;gap:4px;min-width:0;margin:8px 0}
+.b5-field label{font-size:15px;font-weight:650;color:var(--ink)}
+.b5-field input,.b5-field select,.b5-field textarea{box-sizing:border-box;width:100%;min-height:44px;padding:8px 10px;border:1px solid #8aa0b0;border-radius:6px;background:#fff;color:var(--ink);font:inherit;font-size:15px}
+.b5-field input[aria-invalid=true],.b5-field select[aria-invalid=true],.b5-field textarea[aria-invalid=true]{border-color:var(--danger);border-width:2px}
+.b5-required{margin-left:6px;color:var(--danger);font-size:13px;font-weight:600}
+.b5-field-error{margin:0;color:var(--danger);font-size:14px;font-weight:650;overflow-wrap:anywhere}
+.b5-panel button:focus-visible,.b5-panel input:focus-visible,.b5-panel select:focus-visible,.b5-panel textarea:focus-visible,.b5-panel summary:focus-visible,.b5-dialog button:focus-visible,.b5-dialog input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.b5-facts{display:grid;grid-template-columns:minmax(120px,.3fr) minmax(0,1fr);gap:4px 14px;margin:10px 0;font-size:15px}
+.b5-facts dt{color:var(--muted)}.b5-facts dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.b5-hash{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin:6px 0;min-width:0}
+.b5-hash-label{color:var(--muted);font-size:14px}
+.b5-hash code,.b5-code,.b5-path{overflow-wrap:anywhere;word-break:break-all;font:13px/1.5 ui-monospace,Consolas,monospace}
+.b5-choice-list{margin:12px 0;padding:10px 12px;border:1px solid var(--line);border-radius:9px;min-width:0}
+.b5-choice-list legend{padding:0 6px;font-weight:650}
+.b5-choice{display:flex;align-items:flex-start;gap:10px;padding:8px 4px;min-height:44px;cursor:pointer}
+.b5-choice input{flex:0 0 auto;width:22px;height:22px;margin-top:3px}
+.b5-choice-copy{display:flex;flex-direction:column;min-width:0;overflow-wrap:anywhere}
+.b5-result{margin-top:12px;padding:12px;border:1px solid #b9d9cd;border-left:4px solid var(--success);border-radius:8px;background:#f2faf6;min-width:0}
+.b5-table{width:100%;min-width:560px;border-collapse:collapse;font-size:14px}
+.b5-table caption{padding:6px 0;text-align:left;font-weight:650;color:#244b60}
+.b5-table th,.b5-table td{padding:8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;overflow-wrap:anywhere}
+.b5-table th{background:var(--surface-soft);font-weight:650}
+.b5-table input[type=checkbox]{width:22px;height:22px}
+.b5-special,.b5-special-note{margin:4px 0;padding:6px 8px;border-left:4px solid var(--warn);background:#fff7e8;color:#5c4107;font-size:14px}
+.b5-incomplete{margin:12px 0;padding:12px;border:1px solid #f1d7a5;border-left:4px solid var(--warn);border-radius:8px;background:#fffaf0}
+.b5-incomplete-list{margin:6px 0;padding-left:22px}
+.b5-coverage{margin:10px 0;font-size:14px}.b5-coverage summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:650}
+.b5-toolbar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end;margin:10px 0}
+.b5-toolbar .b5-field{flex:1 1 220px;margin:0}
+.b5-table-box{min-width:0;max-width:100%}
+.b5-batch,.b5-footer{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft)}
+.b5-batch .b5-field{max-width:520px}
+.b5-mapping-list{display:grid;gap:10px;margin:10px 0}
+.b5-mapping-row{display:flex;flex-direction:column;gap:3px;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:#fff}
+.b5-mapping-row .b5-field{max-width:520px}
+.b5-ack{display:flex;align-items:flex-start;gap:10px;margin:12px 0;font-weight:650}
+.b5-ack input{flex:0 0 auto;width:22px;height:22px}
+.b5-panel button{min-height:44px}
+@media(max-width:700px){.b5-form{grid-template-columns:1fr}.b5-panel{padding:12px}.b5-step{padding:10px}.b5-facts{grid-template-columns:1fr;gap:2px}.b5-facts dd{margin-bottom:6px}.b5-panel>h2{font-size:18px}}

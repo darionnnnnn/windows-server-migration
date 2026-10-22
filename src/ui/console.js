@@ -504,13 +504,13 @@
   }
   function emptyRow(cols, message) { const tr = el('tr'), td = el('td', 'empty-state', message); td.colSpan = cols; tr.appendChild(td); return tr; }
   const actionTerms = { Source:'來源', Snapshot:'快照', Inventory:'盤點', Target:'目標', Preparation:'準備', Restore:'還原', Preview:'預覽', Rollback:'回復', Save:'保存', Spec:'規格', Review:'審閱', Assistive:'輔助流程', Report:'報告', Check:'檢查', Comparison:'比較', Publish:'發布', Software:'軟體', Version:'版本', File:'檔案', Placement:'放置', Non:'非', C:'C 檔案', Peer:'同端', Share:'共享', Proof:'證明', Physical:'實體', Plan:'計畫', Transfer:'傳輸', Import:'匯入', Export:'匯出', Reserve:'保留', Reservation:'保留', Resource:'資源', Evidence:'佐證', Release:'釋放', Register:'登錄', Material:'材料', Close:'結案', Job:'工作', Lock:'鎖定', Cleanup:'清理', Environment:'環境', Probe:'檢查', Enable:'啟用', Selections:'選取', Selection:'選取', Decision:'決策', Receipt:'收據', Workspace:'工作區', Delivery:'交付', Document:'文件', Windows:'Windows', Settings:'設定', Apply:'套用', Qualification:'資格', Signing:'簽署', Request:'申請', Complete:'完成', Tool:'工具', Delta:'差異', Directory:'目錄', General:'一般', Host:'主機', Disposition:'處置', Requirement:'需求', SoftwareCatalog:'軟體目錄', Output:'輸出', Initialize:'初始化', Resolve:'解析', Pair:'配對', Confirm:'確認', State:'狀態', Preferences:'偏好設定', Enrolled:'已納管', Package:'套件', Oracle:'Oracle', Binding:'繫結', Config:'設定', Draft:'草稿', Confirmation:'確認', Volumes:'磁碟區', Lab:'實驗室', Validation:'驗證', Raw:'原始', Artifact:'產物', Manifest:'清單', Zip:'ZIP', Repair:'修復', Cancellation:'取消', Token:'代碼', Group:'群組', Barrier:'屏障', Record:'記錄', Add:'新增', Revoke:'撤銷', Lookup:'查詢', Matrix:'矩陣', Task:'工作排程', Resume:'續跑', Bundle:'套件', RegisterTarget:'登錄目標', Identity:'身分', Map:'對應', Configure:'設定', Approve:'核准', Estimate:'估算', Freeze:'凍結', Acceptance:'驗收', Stage:'階段', Cutover:'切換', Journal:'日誌', Fleet:'主機群', Dependencies:'相依項目', Mapping:'映射', Manual:'人工', Item:'項目', Issue:'議題', Metadata:'中繼資料', Template:'範本', SaveSelection:'保存選取', SelectionReason:'未選原因', DirectoryDelivery:'目錄交付', Migration:'搬移', Operation:'操作', Result:'結果', Imported:'匯入', WindowsSettings:'Windows 設定', TargetReceipt:'目標收據', SourceResult:'來源結果', IdentityMap:'身分對應', SoftwareVersion:'軟體版本', PackageEstimate:'套件估算', TargetSnapshot:'目標快照', SpecBundle:'規格套件', WorkspaceTransfer:'工作區傳輸', NonCPlan:'非 C 檔案計畫', FilePlacement:'檔案放置', CancellationToken:'取消權杖', RequestCancellation:'要求取消', AssistiveReportCheck:'輔助流程報告檢查' };
-  const actionOverrides = { BackupItemFiles:'查看已備份項目的封存檔案清單', NonCTargetHandoffExport:'匯出非 C 槽新主機交接材料', NonCTargetHandoffPreview:'預覽非 C 槽新主機交接材料', NonCTargetHandoffImport:'匯入非 C 槽新主機交接材料', BackupImpactPreview:'預覽一鍵備份的範圍與停寫影響', TargetLocalComparison:'在新機本機產生軟體比較（離線）', CreateNonCTransferPlan:'建立非 C 槽傳輸計畫', CreateTargetDecisionReceipt:'建立明確的新主機決策收據', NonCAccountObservation:'記錄非 C 槽帳戶觀察結果', StartBackup:'開始一鍵備份', IndependentCopy:'建立並驗證獨立備份副本', StartNonCTransfer:'開始非 C 槽傳輸', TargetActivation:'獨立啟用／Cutover gate', WizardRuntimeProjection:'讀取精靈目前執行狀態', BulkPreparationPreview:'預覽批次準備變更', BulkPreparationSave:'儲存批次準備變更', ExportTargetHandoff:'交回新主機盤點供 Manager 建立比較', GetTargetHandoffPreview:'預覽新主機交接材料', CommitTargetHandoff:'確認並套用新主機交接材料', GetPreparationReview:'讀取準備審閱內容', OsProvidedCapture:'擷取 OS 提供排程工作證據', OsProvidedBaseline:'建立 OS 提供排程工作可信基準', OsProvidedReview:'比對 OS 提供排程工作證據', OsProvidedSubmit:'提交 OS 提供排程工作審閱', SourceSnapshot:'來源主機快照', SourceInventory:'來源主機盤點', TargetSnapshot:'目標現況快照', TargetPreparation:'目標環境準備', Restore:'執行還原', RestorePreview:'還原範圍預覽', Rollback:'執行回復', RollbackPreview:'回復範圍預覽', SaveSpecReview:'保存規格審閱', SpecReview:'查看規格審閱', AssistiveReport:'匯出管理報告', AssistiveReportCheck:'檢查管理報告', HttpIntegrityProbe:'檢查本機頁面傳輸完整性', MaterialJobStatus:'查看中斷作業材料鎖', WindowsSettingsPreviewExport:'匯出 Windows 設定審閱預覽', WindowsSettingsSubmit:'提交 Windows 設定審閱', DispositionSubmit:'提交一般主機處置審閱', RequirementReview:'預覽一般主機需求審閱', RequirementDecisionSubmit:'提交一般主機需求決策', RequirementSubmit:'提交一般主機需求審閱（進階）', PreparationPreview:'預覽目標準備需求', PreparationEvidence:'匯出準備佐證', Report:'匯出審核報告', FleetReport:'匯出主機群報告', Inventory:'匯出本機盤點', SaveSelection:'保存項目選取', ConfigScopeDraft:'匯出設定檔範圍草稿', DeltaVolumeImport:'匯入磁碟區差異', GeneralHostMode:'設定一般主機模式', QualificationKey:'查詢資格記錄索引鍵', SetSoftwareVersion:'設定軟體版本', SoftwareAttach:'附加一般主機軟體目錄', Validate:'執行驗證', CrossHostDependency:'登錄跨主機相依關係', SetRestoreChoice:'設定還原處置選擇', ExportSourceReviewHandoff:'匯出來源盤點與審閱選擇', ImportSourceReviewHandoff:'匯入來源盤點與審閱選擇', ImportApprovedPlan:'匯入核准搬移計畫', InspectWizardFiles:'列出已核准範圍的檔案資訊', DeveloperProbe:'產生本機工具診斷報告' };
+  const actionOverrides = { SourceCandidateList:'列出來源候選掃描結果', SourceCandidateConfirmExport:'匯出來源候選確認材料', SourceCandidateConfirmImport:'匯入來源候選確認材料', SourceCandidateConfirmReview:'檢視來源候選確認內容', SourceCandidateMappingReview:'檢視工作負載對應審閱', SourceCandidateMappingSubmit:'送出工作負載對應審閱', SoftwareDispositionReview:'檢視軟體處置審閱', SoftwareDispositionReviewSubmit:'批次送出軟體處置', BackupItemFiles:'查看已備份項目的封存檔案清單', NonCTargetHandoffExport:'匯出非 C 槽新主機交接材料', NonCTargetHandoffPreview:'預覽非 C 槽新主機交接材料', NonCTargetHandoffImport:'匯入非 C 槽新主機交接材料', BackupImpactPreview:'預覽一鍵備份的範圍與停寫影響', TargetLocalComparison:'在新機本機產生軟體比較（離線）', CreateNonCTransferPlan:'建立非 C 槽傳輸計畫', CreateTargetDecisionReceipt:'建立明確的新主機決策收據', NonCAccountObservation:'記錄非 C 槽帳戶觀察結果', StartBackup:'開始一鍵備份', IndependentCopy:'建立並驗證獨立備份副本', StartNonCTransfer:'開始非 C 槽傳輸', TargetActivation:'獨立啟用／Cutover gate', WizardRuntimeProjection:'讀取精靈目前執行狀態', BulkPreparationPreview:'預覽批次準備變更', BulkPreparationSave:'儲存批次準備變更', ExportTargetHandoff:'交回新主機盤點供 Manager 建立比較', GetTargetHandoffPreview:'預覽新主機交接材料', CommitTargetHandoff:'確認並套用新主機交接材料', GetPreparationReview:'讀取準備審閱內容', OsProvidedCapture:'擷取 OS 提供排程工作證據', OsProvidedBaseline:'建立 OS 提供排程工作可信基準', OsProvidedReview:'比對 OS 提供排程工作證據', OsProvidedSubmit:'提交 OS 提供排程工作審閱', SourceSnapshot:'來源主機快照', SourceInventory:'來源主機盤點', TargetSnapshot:'目標現況快照', TargetPreparation:'目標環境準備', Restore:'執行還原', RestorePreview:'還原範圍預覽', Rollback:'執行回復', RollbackPreview:'回復範圍預覽', SaveSpecReview:'保存規格審閱', SpecReview:'查看規格審閱', AssistiveReport:'匯出管理報告', AssistiveReportCheck:'檢查管理報告', HttpIntegrityProbe:'檢查本機頁面傳輸完整性', MaterialJobStatus:'查看中斷作業材料鎖', WindowsSettingsPreviewExport:'匯出 Windows 設定審閱預覽', WindowsSettingsSubmit:'提交 Windows 設定審閱', DispositionSubmit:'提交一般主機處置審閱', RequirementReview:'預覽一般主機需求審閱', RequirementDecisionSubmit:'提交一般主機需求決策', RequirementSubmit:'提交一般主機需求審閱（進階）', PreparationPreview:'預覽目標準備需求', PreparationEvidence:'匯出準備佐證', Report:'匯出審核報告', FleetReport:'匯出主機群報告', Inventory:'匯出本機盤點', SaveSelection:'保存項目選取', ConfigScopeDraft:'匯出設定檔範圍草稿', DeltaVolumeImport:'匯入磁碟區差異', GeneralHostMode:'設定一般主機模式', QualificationKey:'查詢資格記錄索引鍵', SetSoftwareVersion:'設定軟體版本', SoftwareAttach:'附加一般主機軟體目錄', Validate:'執行驗證', CrossHostDependency:'登錄跨主機相依關係', SetRestoreChoice:'設定還原處置選擇', ExportSourceReviewHandoff:'匯出來源盤點與審閱選擇', ImportSourceReviewHandoff:'匯入來源盤點與審閱選擇', ImportApprovedPlan:'匯入核准搬移計畫', InspectWizardFiles:'列出已核准範圍的檔案資訊', DeveloperProbe:'產生本機工具診斷報告' };
   const safeJobOutputFields = new Set(['Status','Stage','Path','SHA256','Hash','ReportPath','HtmlPath','ManifestPath','ManifestHash','Archive','ArchiveSHA256','RunId','PairId','Generation','Revision','ObservedChecks','PendingChecks','SpecPath','SpecHash','SourceSnapshotHash','ReceiptPath','ReceiptHash','DecisionRevision','AssistiveRevision','SelectionRevision','TargetPhysicalId','RegistryRevision','ResourceKey','DocumentManifestPath','DocumentManifestHash','DocumentId','BundlePath','MemberCount','Valid','ProbeStatus','IndexPath','Kind','ExpectedRevision','PreviewPath','PreviewFileHash','PreviewHash','ReviewHash','ReviewWindowsSettings','RowCount','SourceInventoryPath','ConfirmedChoiceCount','IncludedChoiceCount','ExcludedChoiceCount','AppliedChoiceCount','TargetInventoryPath','TargetInventoryHash','GeneratedDecisionsPath','GeneratedDecisionsHash','GeneratedRequirementsPath','GeneratedRequirementsHash','FailureCode','HandoffStatus','AuthoritativeApproval','ProductionVerified','ContentRead','ScanId','CandidateCount','CandidatePath','CandidateHash','ScannedEntryCount','VisitedDirectoryCount','GapCount','ExcludedAreaCount','RemainingDirectoryCount','SegmentNumber','SegmentCount','ExplicitContinuationRequired','ContinuationRequired','ContinuationScanId','ParentOperationId','NoTargetWrites','ResumeRequired','RequiredSecretRefs']);
   function jobOutputFieldLabel(key){const labels={Status:'材料狀態',Stage:'作業階段',Path:'交接材料檔案位置',SHA256:'交接材料指紋（SHA-256）',SourceInventoryPath:'來源盤點檔案位置',ConfirmedChoiceCount:'已確認的項目數',IncludedChoiceCount:'選擇納入的項目數',ExcludedChoiceCount:'選擇排除的項目數',AppliedChoiceCount:'已帶入審閱的項目數',HandoffStatus:'交接結果',AuthoritativeApproval:'是否為正式核准',ProductionVerified:'是否已完成正式環境驗證',ContentRead:'是否讀取檔案內容',ManifestPath:'備份清單位置',ManifestHash:'備份清單指紋',Archive:'封裝位置',ArchiveSHA256:'封裝指紋（SHA-256）',Generation:'備份世代'};return labels[key]||key;}
   function jobOutputFieldValue(key,value){if(['Status','HandoffStatus'].includes(key))return statusName(value);if(typeof value==='boolean'){if(key==='AuthoritativeApproval')return value?'是':'否；交接本身不代表正式核准';if(key==='ProductionVerified')return value?'是':'否';if(key==='ContentRead')return value?'是':'否';return value?'是':'否';}return typeof value==='string'||typeof value==='number'?String(value).trim():'未知';}
   function translatedWords(value) { return String(value || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2').split(/[^A-Za-z0-9]+/).filter(Boolean).map(word => actionTerms[word] || (/s$/i.test(word) ? actionTerms[word.slice(0, -1)] : '') || '').filter(Boolean).join(''); }
   function actionLabel(action, fallbackOrOrdinal) { if (actionOverrides[action]) return actionOverrides[action]; const tokens = String(action || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2').split(/[^A-Za-z0-9]+/).filter(Boolean), words = translatedWords(action); if (tokens.length && tokens.every(word => actionTerms[word] || (/s$/i.test(word) && actionTerms[word.slice(0, -1)]))) return words; if (typeof fallbackOrOrdinal === 'string' && /[\u3400-\u9fff]/.test(fallbackOrOrdinal)) return fallbackOrOrdinal; return `其他進階操作（第 ${typeof fallbackOrOrdinal === 'number' ? fallbackOrOrdinal : 1} 項）`; }
-  function actionGroup(action, metadata) { const declared = String(metadata && metadata.requiredRole || ''); if (['Source','Manager','Target'].includes(declared)) return declared; const name = String(action || ''); if (name === 'OsProvidedCapture' || /^(Source|Inventory|FreezeSource|SourceResult|SourceTask|SourceResume|NonCPeer)/i.test(name) || name === 'EnrolledInventory') return 'Source'; if (name === 'BackupItemFiles') return 'Source'; if (name === 'TargetSnapshot' || name === 'NonCPlan' || name === 'ImportInventory') return 'Manager'; if (name === 'MaterialJobStatus' || /(Target|Preparation|Restore|Rollback|Cutover|Validation|Resource|Reservation|Reserve|Release|Cleanup|NonCPhysical|NonCTransfer|TargetReceipt|WorkspaceTransferRestore)/i.test(name)) return 'Target'; return 'Manager'; }
+  function actionGroup(action, metadata) { const declared = String(metadata && metadata.requiredRole || ''); if (['Source','Manager','Target'].includes(declared)) return declared; const name = String(action || ''); if (['SourceCandidateList', 'SourceCandidateConfirmExport'].includes(name)) return 'Source'; if (['SourceCandidateConfirmImport', 'SourceCandidateConfirmReview', 'SourceCandidateMappingReview', 'SourceCandidateMappingSubmit', 'SoftwareDispositionReview', 'SoftwareDispositionReviewSubmit'].includes(name)) return 'Manager'; if (name === 'OsProvidedCapture' || /^(Source|Inventory|FreezeSource|SourceResult|SourceTask|SourceResume|NonCPeer)/i.test(name) || name === 'EnrolledInventory') return 'Source'; if (name === 'BackupItemFiles') return 'Source'; if (name === 'TargetSnapshot' || name === 'NonCPlan' || name === 'ImportInventory') return 'Manager'; if (name === 'MaterialJobStatus' || /(Target|Preparation|Restore|Rollback|Cutover|Validation|Resource|Reservation|Reserve|Release|Cleanup|NonCPhysical|NonCTransfer|TargetReceipt|WorkspaceTransferRestore)/i.test(name)) return 'Target'; return 'Manager'; }
   const actionGroupLabels = { Source:'來源端｜盤點與來源材料', Manager:'管理端｜審閱、交付與協調', Target:'目標端｜準備、套用與驗證' };
   const wizardStepLabels = { start:'開始這次搬移', prepare:'準備搬移資料', scan:'掃描可處理內容', review:'審閱搬移項目', backup:'產生已核准備份', handoff:'交接與新主機準備', restore:'選擇並還原內容', validate:'檢查還原結果', result:'查看目前結果' };
   const roleName = value => ({ Source:'舊主機', Target:'新主機', Manager:'整理搬移資料的電腦' })[String(value || '')] || safeText(value);
@@ -686,6 +686,7 @@
     if (step === 'review') { renderWizardReview(content, projection); renderNonCWizardPanel(content, projection); return; }
     renderWizardStep(content, projection);
     renderNonCWizardPanel(content, projection);
+    renderB5Panels(content, projection);
     if (state.wizardPreparationReviewJobId) {
       const reviewJob = state.jobs.get(String(state.wizardPreparationReviewJobId));
       if (reviewJob && reviewJob.action === 'GetPreparationReview') renderWizardPreparationReviewJob(reviewJob);
@@ -2042,7 +2043,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
   }
   async function openJobReport(id, index, SHA256) { try { await endpoint(`/api/jobs/${encodeURIComponent(id)}/reports/${index}/open`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ SHA256 }) }); announce('已要求本機開啟驗證過的 HTML 報告。'); } catch (e) { if (e.message !== 'session expired') fail(`無法開啟報告：${e.message}`); } }
   async function refreshJobs(options){if(state.jobsRefreshing)return;state.jobsRefreshing=true;try{return await refreshJobsCore(options);}finally{state.jobsRefreshing=false;}}
-  async function refreshJobsCore(options) { const background = !!(options && options.background), identity = viewIdentity(), previous = new Map([...state.jobs.entries()].map(([id, job]) => [id, JSON.stringify(job)])), previousStatuses = new Map([...state.jobs.entries()].map(([id, job]) => [id, job.status])); try { const data = await endpoint('/api/jobs'); if (identity !== viewIdentity()) return; const next = new Map(), changedIds = []; let completed = false; rowsOf(data).forEach(j => { const id = j.jobId || j.id || j.operationId; if (!id) return; const before = previousStatuses.get(id); if (before && before !== j.status && ['Succeeded','Failed','Cancelled','Interrupted','Completed','Saved','Blocked','ReviewRequired','Deferred'].includes(j.status)) completed = true; next.set(id, j); if (previous.get(id) !== JSON.stringify(j)) changedIds.push(id); }); if (next.size !== state.jobs.size || [...next.keys()].some(id => !state.jobs.has(id))) changedIds.push('history'); if (changedIds.length) { state.jobs.clear(); next.forEach((job,id) => state.jobs.set(id,job)); changedIds.forEach(id=>{const job=state.jobs.get(id);if(job)acknowledgeWizardActionDraft(job);}); if (completed) { invalidateViews();state.wizardRuntimeIdentity='';state.wizardRuntimeProjection=null; await refreshSession(false); const ownHandoffImport=state.wizardSourceHandoffImportJobId&&changedIds.includes(state.wizardSourceHandoffImportJobId);if(!ownHandoffImport&&location.hash !== '#jobs') await refreshActiveData(); } renderJobs(); if(state.wizardSourceHandoffExportJobId&&changedIds.includes(state.wizardSourceHandoffExportJobId))renderSourceHandoffOutput(document.createElement('div')); if (background) announce('作業狀態已更新，已重新整理作業清單。'); } if (state.jobPollError) { state.jobPollError = ''; if (background) announce('作業狀態背景連線已恢復。'); } if(state.wizardPreparationReviewJobId&&location.hash==='#wizard'){const reviewJob=state.jobs.get(String(state.wizardPreparationReviewJobId));if(reviewJob&&(!document.querySelector('.wizard-preparation-review-card')||changedIds.includes(String(state.wizardPreparationReviewJobId))))renderWizardPreparationReviewJob(reviewJob);}if(state.wizardPreparationSaveJobId){const saveJob=state.jobs.get(String(state.wizardPreparationSaveJobId));if(saveJob)await followPreparationReviewSave(saveJob);}if(state.wizardBulkPreparationPreviewJobId){const previewJob=state.jobs.get(String(state.wizardBulkPreparationPreviewJobId));if(previewJob&&['Failed','Cancelled','Interrupted','Blocked'].includes(String(previewJob.status||previewJob.Status||''))){state.wizardBulkPreparationPreviewJobId='';state.wizardBulkPreparationPreview=null;}}if(state.wizardBulkPreparationSaveJobId){const bulkSave=state.jobs.get(String(state.wizardBulkPreparationSaveJobId)),bulkStatus=String(bulkSave&&(bulkSave.status||bulkSave.Status)||'');if(bulkSave&&['Succeeded','Saved','Completed'].includes(bulkStatus)){state.wizardBulkPreparationDirty=false;state.wizardBulkPreparationInputs.clear();}}if(state.wizardTargetHandoffPreviewJobId){const previewJob=state.jobs.get(String(state.wizardTargetHandoffPreviewJobId));if(previewJob&&['Failed','Cancelled','Interrupted','Blocked'].includes(String(previewJob.status||previewJob.Status||''))){state.wizardTargetHandoffPreviewJobId='';state.wizardTargetHandoffPreview=null;}}if(state.wizardTargetHandoffCommitJobId){const commitJob=state.jobs.get(String(state.wizardTargetHandoffCommitJobId));if(commitJob&&['Failed','Cancelled','Interrupted','Blocked'].includes(String(commitJob.status||commitJob.Status||''))){state.wizardTargetHandoffCommitJobId='';state.wizardTargetHandoffPreviewJobId='';state.wizardTargetHandoffPreview=null;}}if(state.wizardBulkPreparationSaveJobId||state.wizardBulkPreparationPreviewJobId||state.wizardTargetHandoffPreviewJobId||state.wizardTargetHandoffExportJobId||state.wizardTargetHandoffCommitJobId)renderWizardPanels();if(state.wizardRuntimeJobId&&changedIds.includes(String(state.wizardRuntimeJobId))&&state.wizardRuntimeContextKey===runtimeIdentity(state.wizard||{})){const runtimeJob=state.jobs.get(String(state.wizardRuntimeJobId));if(runtimeJob&&['Succeeded','Failed','Cancelled','Interrupted','ReviewRequired','Deferred','Blocked'].includes(String(runtimeJob.status||''))){await refreshWizardRuntime(false);if(location.hash==='#wizard')renderWizard(state.wizard);}}if(state.wizardInventoryJobId)await bindRequestedWizardInventory();if(state.wizardPlanImportJobId){const importJob=state.jobs.get(state.wizardPlanImportJobId);if(importJob)await followImportedPlanJob(importJob);}if(state.wizardSourceHandoffImportJobId){const handoffJob=state.jobs.get(state.wizardSourceHandoffImportJobId);if(handoffJob)await followSourceReviewHandoffJob(handoffJob);} } catch (e) { if (e.message === 'session expired') return; const message = `背景讀取作業狀態暫時失敗：${e.message}。可稍後重新連線。`; if (background) { if (state.jobPollError !== message) { state.jobPollError = message; announce(message); } } else fail(`無法讀取作業狀態：${e.message}。可稍後重新連線。`); } }
+  async function refreshJobsCore(options) { const background = !!(options && options.background), identity = viewIdentity(), previous = new Map([...state.jobs.entries()].map(([id, job]) => [id, JSON.stringify(job)])), previousStatuses = new Map([...state.jobs.entries()].map(([id, job]) => [id, job.status])); try { const data = await endpoint('/api/jobs'); if (identity !== viewIdentity()) return; const next = new Map(), changedIds = []; let completed = false; rowsOf(data).forEach(j => { const id = j.jobId || j.id || j.operationId; if (!id) return; const before = previousStatuses.get(id); if (before && before !== j.status && ['Succeeded','Failed','Cancelled','Interrupted','Completed','Saved','Blocked','ReviewRequired','Deferred'].includes(j.status)) completed = true; next.set(id, j); if (previous.get(id) !== JSON.stringify(j)) changedIds.push(id); }); if (next.size !== state.jobs.size || [...next.keys()].some(id => !state.jobs.has(id))) changedIds.push('history'); if (changedIds.length) { state.jobs.clear(); next.forEach((job,id) => state.jobs.set(id,job)); changedIds.forEach(id=>{const job=state.jobs.get(id);if(job)acknowledgeWizardActionDraft(job);}); if (completed) { invalidateViews();state.wizardRuntimeIdentity='';state.wizardRuntimeProjection=null; await refreshSession(false); const ownHandoffImport=state.wizardSourceHandoffImportJobId&&changedIds.includes(state.wizardSourceHandoffImportJobId);if(!ownHandoffImport&&location.hash !== '#jobs') await refreshActiveData(); } renderJobs(); b5OnJobsChanged(); if(state.wizardSourceHandoffExportJobId&&changedIds.includes(state.wizardSourceHandoffExportJobId))renderSourceHandoffOutput(document.createElement('div')); if (background) announce('作業狀態已更新，已重新整理作業清單。'); } if (state.jobPollError) { state.jobPollError = ''; if (background) announce('作業狀態背景連線已恢復。'); } if(state.wizardPreparationReviewJobId&&location.hash==='#wizard'){const reviewJob=state.jobs.get(String(state.wizardPreparationReviewJobId));if(reviewJob&&(!document.querySelector('.wizard-preparation-review-card')||changedIds.includes(String(state.wizardPreparationReviewJobId))))renderWizardPreparationReviewJob(reviewJob);}if(state.wizardPreparationSaveJobId){const saveJob=state.jobs.get(String(state.wizardPreparationSaveJobId));if(saveJob)await followPreparationReviewSave(saveJob);}if(state.wizardBulkPreparationPreviewJobId){const previewJob=state.jobs.get(String(state.wizardBulkPreparationPreviewJobId));if(previewJob&&['Failed','Cancelled','Interrupted','Blocked'].includes(String(previewJob.status||previewJob.Status||''))){state.wizardBulkPreparationPreviewJobId='';state.wizardBulkPreparationPreview=null;}}if(state.wizardBulkPreparationSaveJobId){const bulkSave=state.jobs.get(String(state.wizardBulkPreparationSaveJobId)),bulkStatus=String(bulkSave&&(bulkSave.status||bulkSave.Status)||'');if(bulkSave&&['Succeeded','Saved','Completed'].includes(bulkStatus)){state.wizardBulkPreparationDirty=false;state.wizardBulkPreparationInputs.clear();}}if(state.wizardTargetHandoffPreviewJobId){const previewJob=state.jobs.get(String(state.wizardTargetHandoffPreviewJobId));if(previewJob&&['Failed','Cancelled','Interrupted','Blocked'].includes(String(previewJob.status||previewJob.Status||''))){state.wizardTargetHandoffPreviewJobId='';state.wizardTargetHandoffPreview=null;}}if(state.wizardTargetHandoffCommitJobId){const commitJob=state.jobs.get(String(state.wizardTargetHandoffCommitJobId));if(commitJob&&['Failed','Cancelled','Interrupted','Blocked'].includes(String(commitJob.status||commitJob.Status||''))){state.wizardTargetHandoffCommitJobId='';state.wizardTargetHandoffPreviewJobId='';state.wizardTargetHandoffPreview=null;}}if(state.wizardBulkPreparationSaveJobId||state.wizardBulkPreparationPreviewJobId||state.wizardTargetHandoffPreviewJobId||state.wizardTargetHandoffExportJobId||state.wizardTargetHandoffCommitJobId)renderWizardPanels();if(state.wizardRuntimeJobId&&changedIds.includes(String(state.wizardRuntimeJobId))&&state.wizardRuntimeContextKey===runtimeIdentity(state.wizard||{})){const runtimeJob=state.jobs.get(String(state.wizardRuntimeJobId));if(runtimeJob&&['Succeeded','Failed','Cancelled','Interrupted','ReviewRequired','Deferred','Blocked'].includes(String(runtimeJob.status||''))){await refreshWizardRuntime(false);if(location.hash==='#wizard')renderWizard(state.wizard);}}if(state.wizardInventoryJobId)await bindRequestedWizardInventory();if(state.wizardPlanImportJobId){const importJob=state.jobs.get(state.wizardPlanImportJobId);if(importJob)await followImportedPlanJob(importJob);}if(state.wizardSourceHandoffImportJobId){const handoffJob=state.jobs.get(state.wizardSourceHandoffImportJobId);if(handoffJob)await followSourceReviewHandoffJob(handoffJob);} } catch (e) { if (e.message === 'session expired') return; const message = `背景讀取作業狀態暫時失敗：${e.message}。可稍後重新連線。`; if (background) { if (state.jobPollError !== message) { state.jobPollError = message; announce(message); } } else fail(`無法讀取作業狀態：${e.message}。可稍後重新連線。`); } }
   async function reconnectJob(id) { try { const job = await endpoint(`/api/jobs/${encodeURIComponent(id)}`); const record = job && (job.job || job); if (!record || ![record.jobId,record.id,record.operationId].includes(id)) { fail(`服務回傳的識別碼與查詢值不相符；請核對工作 ${id}。`); return; } state.jobs.set(id, record); if (!record.pairId || String(record.pairId) !== String(state.session && (state.session.pairId || state.session.waveId) || '')) state.showAllJobs = true; renderJobs(); announce(`已重新連線工作 ${id}。歷史配對／角色只依工作紀錄欄位顯示；空白代表未知。`); } catch (e) { if (e.message !== 'session expired') fail(`無法重新連線工作 ${id}：${e.message}`); } }
   async function lookupJob() { const id = String($('job-id-lookup').value || '').trim(); if (!id) { fail('請貼上已知的工作識別碼。'); $('job-id-lookup').focus(); return; } await reconnectJob(id); }
   async function cancelJob(id) { try { const previous = state.jobs.get(id), job = await endpoint(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }), record = job.job || job; if (previous && previous.progress && record && !record.progress) record.progress = previous.progress; state.jobs.set(id, record); renderJobs(); announce(`已送出工作 ${id} 的取消要求。實際停止狀態會在安全邊界更新。`); return true; } catch (e) { if (e.message !== 'session expired') fail(`取消要求未完成：${e.message}`); return false; } }
@@ -2071,6 +2072,501 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     $('select-all').addEventListener('click', () => { const ids = currentVisibleIds(); ids.forEach(id => { state.selected.add(id); state.selectionReasons.delete(id); }); state.selectionGeneration++; state.selectionDirty = true; paintInventory(); announce(`已選取目前篩選的 ${ids.length} 個項目；其他頁面與篩選項目未變更。`); }); $('clear-selection').addEventListener('click', () => { const ids = currentVisibleIds(); ids.forEach(id => state.selected.delete(id)); state.selectionGeneration++; state.selectionDirty = true; paintInventory(); announce(`已取消目前篩選的 ${ids.length} 個項目；其他頁面與篩選項目未變更。`); }); $('resolve-selection-conflict').addEventListener('click', resolveSelectionConflicts); $('save-selection').addEventListener('click', saveSelection); $('refresh-software').addEventListener('click', () => loadView('software', true)); $('update-target-inventory').addEventListener('click', startTargetSnapshot); $('refresh-files').addEventListener('click', () => loadView('files', true)); $('wait-install').addEventListener('click', () => setRestoreChoice('WaitForInstall')); $('restore-now').addEventListener('click', openRestorePreview); $('apply-context').addEventListener('click', applyContext); $('action-search').addEventListener('input', filterActionCatalog);
     $('operation-form').addEventListener('input', event => { if (event.target.id !== 'operation-confirm') captureDraft(); }); $('operation-form').addEventListener('change', event => { if (event.target.id !== 'operation-confirm') captureDraft(); }); $('action-picker').addEventListener('change', event => setAction(event.target.value)); $('operation-form').addEventListener('submit', submitOperation); $('preview-operation').addEventListener('click', previewOperation); $('operation-confirm').addEventListener('change', () => { $('submit-operation').disabled = !$('operation-confirm').checked || !state.preview; }); $('reconnect-jobs').addEventListener('click', refreshJobs); $('lookup-job').addEventListener('click', lookupJob); $('job-id-lookup').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); lookupJob(); } }); window.addEventListener('hashchange', routeFromLocation); window.addEventListener('popstate', routeFromLocation); window.addEventListener('focus', () => { if (state.session && !state.sessionReconnectRequired) refreshSession(true); }); window.addEventListener('beforeunload', event => { if (!hasUnsavedDrafts()) return; event.preventDefault(); event.returnValue = ''; }); renderDocumentationGroups(); init();
   });
+  // ---- B5: C2 軟體處置審閱與 D2 來源候選確認／工作負載對應 -----------------------------------------------------------------------
+  // 讀取走 POST /api/view，寫入走 POST /api/operations（持久作業、CAS）。任何過期（revision／hash）只提示重新讀取，絕不自動重送。
+  // 狀態一律「文字加圖示」；不新增 role=status（沿用頁面唯一的全域 #notice）；確認流程只用原生 <dialog> 與 button，鍵盤可完成。
+  const b5 = {
+    source: { scanId:'', list:null, loading:false, error:'', attempted:'', picked:'', busy:false, exported:null, exportError:'' },
+    imp: { values:{ Path:'', ExpectedHash:'', TargetPath:'', Owner:'', Evidence:'' }, busy:false, result:null, error:'' },
+    review: { itemId:'', data:null, loading:false, error:'', stale:false },
+    mapping: { data:null, loading:false, error:'', stale:false, choices:new Map(), deps:new Map(), busy:false, result:null, submitError:'', open:false },
+    c2: { data:null, loading:false, error:'', stale:false, attempted:'', selected:new Set(), nameFilter:'', stateFilter:'all', pending:new Map(), form:{ disposition:'', owner:'', reason:'', evidence:'' }, busy:false, result:null, submitError:'' }
+  };
+  const b5StaleCodes = new Set(['stale_context','stale_revision','stale-view','context-changed']);
+  const b5Dispositions = { Reinstall:'重新安裝', Portable:'可攜（免安裝）', KeepCompatible:'保留相容版本', External:'外部處理（工具不處理）', NotNeeded:'不需要搬移', Unknown:'尚未確認（Unknown）' };
+  const b5ReferenceKinds = { TaskCommand:'排程工作的執行檔', TaskWorkingDirectory:'排程工作的起始資料夾', TaskArgumentPath:'排程工作參數中的路徑', TaskArguments:'排程工作參數（內容不透明）' };
+  const b5HashPattern = /^[a-f0-9]{64}$/;
+  function b5IsStale(error) { return !!error && (error.status === 409 || b5StaleCodes.has(String(error.code || ''))); }
+  function b5Icon(kind) { return { ok:'✔', warn:'⚠', error:'✖', busy:'…', info:'ℹ' }[kind] || 'ℹ'; }
+  function b5Status(kind, text, extraClass) { const n = el('p', `b5-status b5-${kind}${extraClass ? ` ${extraClass}` : ''}`), icon = el('span', 'b5-icon', b5Icon(kind)); icon.setAttribute('aria-hidden', 'true'); n.append(icon, el('span', '', text)); return n; }
+  function b5Button(label, cls, handler, focusKey) { const b = el('button', cls || 'secondary-button', label); b.type = 'button'; if (focusKey) b.dataset.b5Focus = focusKey; if (handler) b.addEventListener('click', event => handler(b, event)); return b; }
+  function b5Heading(text, level) { return el(level || 'h3', 'b5-heading', text); }
+  function b5Short(value) { const text = String(value == null ? '' : value); return text.length > 14 ? `${text.slice(0, 12)}…` : text; }
+  function b5Hash(label, value) { const row = el('div', 'b5-hash'); row.append(el('span', 'b5-hash-label', label), el('code', '', safeText(value))); return row; }
+  function b5Context() { const s = state.session || {}; return { role:String(s.role || ''), pairId:String(s.pairId || s.waveId || '') }; }
+  function b5FriendlyError(error, fallback) { if (!error) return fallback; if (error.body && typeof error.body === 'object') return apiError(error.body, error.status || 0, fallback).message; return String(error.message || fallback); }
+  function b5SetFieldError(input, message) {
+    const error = document.getElementById(`${input.id}-error`), hint = document.getElementById(`${input.id}-hint`);
+    const ids = []; if (hint) ids.push(hint.id);
+    if (message) { error.textContent = `⚠ 錯誤：${message}`; error.hidden = false; ids.push(error.id); input.setAttribute('aria-invalid', 'true'); } else { error.textContent = ''; error.hidden = true; input.removeAttribute('aria-invalid'); }
+    if (ids.length) input.setAttribute('aria-describedby', ids.join(' ')); else input.removeAttribute('aria-describedby');
+  }
+  function b5Field(id, labelText, value, options) {
+    options = options || {};
+    const wrap = el('div', 'b5-field'), label = el('label', '', labelText), input = document.createElement(options.multiline ? 'textarea' : 'input');
+    label.htmlFor = id; input.id = id; if (!options.multiline) input.type = options.type || 'text'; else input.rows = 2; input.value = value || ''; input.autocomplete = 'off'; input.spellcheck = false;
+    if (options.required) { label.append(el('span', 'b5-required', '（必填）')); input.setAttribute('aria-required', 'true'); }
+    wrap.append(label, input);
+    if (options.hint) { const hint = el('p', 'b5-hint', options.hint); hint.id = `${id}-hint`; wrap.appendChild(hint); }
+    const error = el('p', 'b5-field-error'); error.id = `${id}-error`; error.hidden = true; wrap.appendChild(error);
+    if (options.hint) input.setAttribute('aria-describedby', `${id}-hint`);
+    input.addEventListener('input', () => { if (options.onInput) options.onInput(input.value); if (input.getAttribute('aria-invalid')) b5SetFieldError(input, ''); });
+    return { wrap, input };
+  }
+  function b5Select(id, labelText, options, value, onChange, hint) {
+    const wrap = el('div', 'b5-field'), label = el('label', '', labelText), select = document.createElement('select');
+    label.htmlFor = id; select.id = id;
+    options.forEach(option => { const o = new Option(option.label, option.value); o.disabled = !!option.disabled; select.appendChild(o); });
+    select.value = value || '';
+    wrap.append(label, select);
+    if (hint) { const h = el('p', 'b5-hint', hint); h.id = `${id}-hint`; wrap.appendChild(h); select.setAttribute('aria-describedby', h.id); }
+    const error = el('p', 'b5-field-error'); error.id = `${id}-error`; error.hidden = true; wrap.appendChild(error);
+    select.addEventListener('change', () => { if (onChange) onChange(select.value); if (select.getAttribute('aria-invalid')) b5SetFieldError(select, ''); });
+    return { wrap, select };
+  }
+  // ---- 讀寫共用 ---------------------------------------------------------------------------------------------------------------
+  function b5ReadBody(action, args) { const s = state.session; return { action, args:args || {}, expectedRevision:s.revision, expectedDecisionRevision:s.decisionRevision, expectedSelectionRevision:s.selectionRevision, expectedDataVersion:s.dataVersion, contextId:s.contextId }; }
+  function b5Read(action, args) { return endpoint('/api/view', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(b5ReadBody(action, args)) }); }
+  async function b5FollowJob(id, first) {
+    const terminal = new Set(['Succeeded','Completed','Saved','Failed','Cancelled','Interrupted','Blocked','ReviewRequired','Deferred']);
+    let job = first;
+    for (let attempt = 0; attempt < 400 && !(job && terminal.has(String(job.status))); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, attempt < 5 ? 120 : 350));
+      const reply = await endpoint(`/api/jobs/${encodeURIComponent(id)}`);
+      job = reply && (reply.job || reply);
+    }
+    if (!job || !terminal.has(String(job.status))) { const error = new Error(`作業 ${id} 仍在執行或狀態未知；請到「作業與交接」查詢原作業，不要重送。`); error.code = 'write-uncertain'; throw error; }
+    state.jobs.set(id, job);
+    await refreshJobs(); await refreshSession(false);
+    return state.jobs.get(id) || job;
+  }
+  async function b5Write(action, args) {
+    const request = buildOperationRequest(action, args, state.session.revision);
+    const accepted = await endpoint('/api/operations', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(request) });
+    const job = accepted && (accepted.job || accepted), id = job && (job.jobId || job.id || job.operationId);
+    if (!id) { const error = new Error('伺服端沒有回傳作業識別碼；結果待確認，請到「作業與交接」查詢，不要重送。'); error.code = 'write-uncertain'; throw error; }
+    return b5FollowJob(id, job);
+  }
+  function b5JobOutput(job) { const outputs = Array.isArray(job && job.outputs) ? job.outputs : []; return outputs.find(row => row && typeof row === 'object') || null; }
+  // 成功只看「作業終態 + 輸出的 Status」：匯出為 Confirmed、匯入為 ImportedReviewRequired、對應為 SubmittedReviewRequired、處置為 Applied。
+  // 這些狀態對 CLI 退出碼而言是「需後續審閱」，因此作業狀態可能是 ReviewRequired，不代表失敗。
+  function b5Outcome(job, okOutputStatus) {
+    const status = String(job && job.status || ''), output = b5JobOutput(job), outputStatus = String(output && output.Status || '');
+    if (['Succeeded','Completed','ReviewRequired'].includes(status) && outputStatus === okOutputStatus) return { ok:true, output };
+    const error = job && job.error && typeof job.error === 'object' ? job.error : {}, code = String(error.code || '');
+    const text = code ? apiError(error, 0, '作業未完成').message : `作業${statusName(status) || status}，沒有取得可核對的結果。`;
+    return { ok:false, stale:b5StaleCodes.has(code), message:text, code, output };
+  }
+  function b5Repaint(kind) { const panel = document.querySelector(`[data-b5-panel="${kind}"]`); if (panel) b5Paint(kind); }
+  function b5Paint(kind) {
+    const panel = document.querySelector(`[data-b5-panel="${kind}"]`); if (!panel) return;
+    const focused = document.activeElement && panel.contains(document.activeElement) ? document.activeElement.dataset.b5Focus : '', scrollY = window.scrollY;
+    panel.replaceChildren();
+    if (kind === 'source') b5RenderSource(panel); else if (kind === 'd2') b5RenderD2(panel); else if (kind === 'c2') b5RenderC2(panel);
+    if (focused) { const next = panel.querySelector(`[data-b5-focus="${focused}"]`); if (next) next.focus({ preventScroll:true }); }
+    if (typeof window.scrollTo === 'function' && window.scrollY !== scrollY) window.scrollTo(0, scrollY);
+  }
+  function b5Confirm(config) {
+    let dialog = document.getElementById('b5-confirm-dialog');
+    if (!dialog) { dialog = document.createElement('dialog'); dialog.id = 'b5-confirm-dialog'; dialog.className = 'credential-dialog b5-dialog'; document.body.appendChild(dialog); }
+    const heading = el('h2', '', config.title); heading.id = 'b5-confirm-title';
+    const children = [heading]; if (config.intro) children.push(el('p', '', config.intro)); (config.nodes || []).forEach(node => children.push(node));
+    let ack = null;
+    if (config.ackLabel) { const label = el('label', 'b5-ack'); ack = document.createElement('input'); ack.type = 'checkbox'; ack.id = 'b5-confirm-ack'; label.append(ack, el('span', '', config.ackLabel)); children.push(label); }
+    const row = el('div', 'credential-actions'), yes = el('button', 'primary-button', config.confirmLabel), no = el('button', 'secondary-button', config.backLabel || '返回'); yes.type = 'button'; no.type = 'button';
+    yes.dataset.b5Confirm = 'accept'; no.dataset.b5Confirm = 'back'; if (ack) { yes.disabled = true; ack.addEventListener('change', () => { yes.disabled = !ack.checked; }); }
+    const opener = config.opener, key = opener && opener.dataset ? opener.dataset.b5Focus : '';
+    const focusBack = () => { const target = opener && opener.isConnected ? opener : (key ? document.querySelector(`[data-b5-focus="${key}"]`) : null); if (target && typeof target.focus === 'function') target.focus({ preventScroll:true }); };
+    dialog.addEventListener('close', focusBack, { once:true });
+    no.addEventListener('click', () => dialog.close());
+    yes.addEventListener('click', () => { if (yes.disabled) return; yes.disabled = true; dialog.close(); config.onConfirm(); });
+    row.append(yes, no); children.push(row);
+    dialog.replaceChildren(...children); dialog.setAttribute('aria-labelledby', 'b5-confirm-title');
+    if (!dialog.open) dialog.showModal(); (ack || no).focus();
+  }
+  // ---- Source：挑選候選、匯出確認材料 -----------------------------------------------------------------------------------------
+  function b5LatestScan() {
+    let best = null;
+    state.jobs.forEach(job => {
+      if (!job || job.action !== 'SourceCandidateScan' || !['Succeeded','ReviewRequired','Completed'].includes(String(job.status))) return;
+      const out = b5JobOutput(job); if (!out || !/^[A-Za-z0-9-]{8,64}$/.test(String(out.ScanId || ''))) return;
+      const when = String(job.CompletedUtc || job.completedUtc || job.StartedUtc || '');
+      if (!best || when >= best.when) best = { scanId:String(out.ScanId), when, status:String(out.Status || job.status), candidateCount:out.CandidateCount };
+    });
+    return best;
+  }
+  async function b5LoadSourceList(force) {
+    const src = b5.source, scan = b5LatestScan(); if (!scan || src.loading) return;
+    const marker = `${scan.scanId}|${viewIdentity()}`;
+    if (!force && (src.attempted === marker || (src.list && src.scanId === scan.scanId))) return;
+    src.attempted = marker; src.scanId = scan.scanId; src.loading = true; src.error = ''; b5Repaint('source');
+    try { src.list = await b5Read('SourceCandidateList', { ScanId:scan.scanId }); if (src.picked && !(src.list.Candidates || []).some(row => row.CandidateId === src.picked)) src.picked = ''; }
+    catch (error) { if (error.message !== 'session expired') { src.list = null; src.error = b5FriendlyError(error, '無法讀取候選清單。'); } }
+    finally { src.loading = false; b5Repaint('source'); }
+  }
+  function b5RenderSource(panel) {
+    const src = b5.source, scan = b5LatestScan();
+    const title = el('h2', '', '來源候選確認（挑一個候選並匯出）'); title.id = 'b5-source-title'; panel.setAttribute('aria-labelledby', title.id);
+    panel.append(title, el('p', 'b5-intro', '從候選掃描結果挑選一個候選，匯出確認材料交給管理端。匯出會逐檔讀取內容並計算雜湊，但不核准、也不建立檔案範圍。'));
+    if (!scan) { panel.append(b5Status('info', '尚無資料：還沒有完成的候選掃描。請先在上方執行「探索來源 C 槽候選與覆蓋缺口」，完成後再回到這裡。'), b5Button('重新檢查掃描結果', 'secondary-button', () => { src.attempted = ''; b5LoadSourceList(true); b5Repaint('source'); }, 'source-recheck')); return; }
+    if (src.loading) { panel.append(b5Status('busy', '讀取中：正在讀取候選清單…')); return; }
+    if (src.error) { panel.append(b5Status('error', `錯誤：${src.error}`), b5Button('重新讀取候選清單', 'secondary-button', () => b5LoadSourceList(true), 'source-reload')); return; }
+    const list = src.list; if (!list) { panel.append(b5Button('讀取候選清單', 'secondary-button', () => b5LoadSourceList(true), 'source-load')); return; }
+    const rows = Array.isArray(list.Candidates) ? list.Candidates : [];
+    const summary = el('dl', 'b5-facts');
+    [['掃描識別', b5Short(list.ScanId)], ['掃描狀態', safeText(list.ScanStatus)], ['候選數量', `${list.CandidateCount} 筆${list.CandidatesTruncated ? `（僅列出前 ${list.CandidatesShown} 筆）` : ''}`]].forEach(([k, v]) => summary.append(el('dt', '', k), el('dd', '', v)));
+    panel.appendChild(summary); panel.appendChild(b5Hash('候選清單雜湊（SHA-256）', list.CandidateHash));
+    if (!rows.length) { panel.append(b5Status('info', '尚無資料：這次掃描沒有找到候選。')); return; }
+    const fieldset = el('fieldset', 'b5-choice-list'); fieldset.appendChild(el('legend', '', '選擇一個候選'));
+    rows.forEach((row, index) => {
+      const label = el('label', 'b5-choice'), radio = document.createElement('input'); radio.type = 'radio'; radio.name = 'b5-candidate'; radio.value = row.CandidateId; radio.checked = src.picked === row.CandidateId; radio.dataset.b5Focus = `candidate-${index}`;
+      radio.addEventListener('change', () => { src.picked = row.CandidateId; src.exported = null; src.exportError = ''; b5Repaint('source'); });
+      const copy = el('span', 'b5-choice-copy'); const kind = row.CandidateType === 'DirectoryRoot' ? '資料夾' : '單一檔案';
+      copy.append(el('strong', '', row.Path), el('span', '', `${kind}${row.Length != null ? ` · ${formatByteCount ? formatByteCount(row.Length) : row.Length}` : ''} · 工作負載引用 ${row.WorkloadReferenceCount || 0} 筆`));
+      label.append(radio, copy); fieldset.appendChild(label);
+    });
+    panel.appendChild(fieldset);
+    const exportButton = b5Button(src.busy ? '正在匯出…' : '匯出確認材料', 'primary-button', async button => {
+      if (!src.picked || src.busy) return;
+      src.busy = true; src.exportError = ''; src.exported = null; b5Repaint('source');
+      try {
+        const job = await b5Write('SourceCandidateConfirmExport', { ScanId:String(list.ScanId), ExpectedCandidateHash:String(list.CandidateHash), CandidateId:String(src.picked) });
+        const outcome = b5Outcome(job, 'Confirmed');
+        if (outcome.ok) { src.exported = outcome.output; announce('已匯出候選確認材料。請把檔案位置與 SHA-256 交給管理端。'); }
+        else { src.exportError = outcome.message; if (outcome.stale) { src.attempted = ''; src.exportError += ' 資料可能已過期，請重新讀取候選清單後再匯出。'; } }
+      } catch (error) { if (error.message !== 'session expired') src.exportError = b5FriendlyError(error, '匯出未完成。'); }
+      finally { src.busy = false; b5Repaint('source'); }
+    }, 'source-export');
+    exportButton.disabled = !src.picked || src.busy;
+    panel.appendChild(exportButton);
+    if (!src.picked) panel.appendChild(el('p', 'b5-hint', '先選擇一個候選，才能匯出。'));
+    if (src.exportError) { panel.appendChild(b5Status('error', `錯誤：${src.exportError}`)); panel.appendChild(b5Button('重新讀取候選清單', 'secondary-button', () => b5LoadSourceList(true), 'source-reload')); }
+    if (src.exported) {
+      const out = src.exported, card = el('div', 'b5-result');
+      card.append(b5Status('ok', '完成：確認材料已匯出，內容不可變更。'), b5Hash('確認材料位置', out.ConfirmationPath), b5Hash('確認材料雜湊（SHA-256）', out.ConfirmationHash), b5Hash('成員數', out.MemberCount));
+      card.appendChild(el('p', 'b5-hint', '下一步：以可信管道把這個檔案與上面的 SHA-256 交給管理端匯入；雜湊必須由你另外告知，不要只靠檔案本身。'));
+      panel.appendChild(card);
+    }
+  }
+  // ---- Manager D2：匯入、檢視確認內容、工作負載對應審閱 ---------------------------------------------------------------------------
+  function b5ImportedItems() {
+    const pairId = b5Context().pairId, found = new Map();
+    state.jobs.forEach(job => {
+      if (!job || job.action !== 'SourceCandidateConfirmImport' || String(job.pairId || '') !== pairId || !['Succeeded','ReviewRequired','Completed'].includes(String(job.status))) return;
+      const out = b5JobOutput(job); if (!out || out.Status !== 'ImportedReviewRequired' || !b5HashPattern.test(String(out.ItemId || ''))) return;
+      found.set(out.ItemId, { itemId:out.ItemId, memberCount:out.MemberCount, when:String(job.CompletedUtc || job.completedUtc || job.StartedUtc || '') });
+    });
+    return [...found.values()].sort((a, b) => b.when.localeCompare(a.when));
+  }
+  function b5ValidateImport(fields) {
+    const v = b5.imp.values, errors = {};
+    if (!v.Path.trim()) errors.Path = '請填入確認材料檔案位置。';
+    if (!b5HashPattern.test(v.ExpectedHash.trim().toLowerCase())) errors.ExpectedHash = '請填入來源端另外提供的 64 碼 SHA-256。';
+    if (!v.TargetPath.trim()) errors.TargetPath = '請填入來源上的原始路徑（不可改寫）。';
+    if (!v.Owner.trim()) errors.Owner = '請填入負責人。';
+    if (!v.Evidence.trim()) errors.Evidence = '請填入證據參考（例如變更單編號）。';
+    Object.keys(fields).forEach(name => b5SetFieldError(fields[name].input, errors[name] || ''));
+    const first = Object.keys(fields).find(name => errors[name]);
+    if (first) { fields[first].input.focus(); return false; }
+    return true;
+  }
+  function b5RenderImportForm(box) {
+    const imp = b5.imp; box.appendChild(b5Heading('步驟 1：匯入確認材料'));
+    box.appendChild(el('p', 'b5-hint', '匯入只建立待審項目，不會核准；原始路徑不可改寫。'));
+    const form = el('div', 'b5-form'), fields = {};
+    const spec = [
+      ['Path', '確認材料檔案位置', { required:true, hint:'來源端匯出後交給你的 confirmation.json 位置。' }],
+      ['ExpectedHash', '確認材料雜湊（SHA-256）', { required:true, hint:'由來源端另外告知的 64 碼雜湊，用來核對檔案沒有被更換。' }],
+      ['TargetPath', '原始路徑（與來源相同）', { required:true, hint:'必須與來源候選的原始位置完全相同，匯入不會重新對映。' }],
+      ['Owner', '負責人', { required:true }],
+      ['Evidence', '證據參考', { required:true, hint:'例如變更單或核對紀錄編號。' }]
+    ];
+    spec.forEach(([name, label, options]) => { const field = b5Field(`b5-import-${name}`, label, imp.values[name], Object.assign({ onInput:value => { imp.values[name] = value; } }, options)); fields[name] = field; form.appendChild(field.wrap); });
+    box.appendChild(form);
+    const submit = b5Button(imp.busy ? '正在匯入…' : '匯入確認材料', 'primary-button', async () => {
+      if (imp.busy || !b5ValidateImport(fields)) return;
+      imp.busy = true; imp.error = ''; imp.result = null; b5Repaint('d2');
+      try {
+        const v = imp.values, session = state.session;
+        const job = await b5Write('SourceCandidateConfirmImport', { Path:v.Path.trim(), ExpectedHash:v.ExpectedHash.trim().toLowerCase(), TargetPath:v.TargetPath.trim(), Owner:v.Owner.trim(), Evidence:v.Evidence.trim(), ExpectedRevision:Number(session.decisionRevision) });
+        const outcome = b5Outcome(job, 'ImportedReviewRequired');
+        if (outcome.ok) { imp.result = outcome.output; b5.review.itemId = String(outcome.output.ItemId || ''); b5.review.data = null; b5.mapping.data = null; b5.mapping.open = false; announce('已匯入候選確認材料；項目待審閱，尚未核准。'); }
+        else { imp.error = outcome.message; if (outcome.stale) imp.error += ' 請確認材料與目前管理端版本，必要時重新讀取後再填寫；不會自動重送。'; }
+      } catch (error) { if (error.message !== 'session expired') imp.error = b5FriendlyError(error, '匯入未完成。'); }
+      finally { imp.busy = false; b5Repaint('d2'); if (imp.result) b5LoadReview(true); }
+    }, 'import-submit');
+    submit.disabled = imp.busy; box.appendChild(submit);
+    if (imp.error) box.appendChild(b5Status('error', `錯誤：${imp.error}`));
+    if (imp.result) box.appendChild(b5Status('ok', `完成：已匯入，項目 ${b5Short(imp.result.ItemId)}，成員 ${safeText(imp.result.MemberCount)} 個。項目仍待你審閱，尚未核准。`));
+  }
+  async function b5LoadReview(force) {
+    const rv = b5.review; if (!rv.itemId || rv.loading) return;
+    rv.loading = true; rv.error = ''; rv.stale = false; b5Repaint('d2');
+    try { if (force && state.sessionReconnectRequired !== true) await refreshSession(false); rv.data = await b5Read('SourceCandidateConfirmReview', { ItemId:rv.itemId }); }
+    catch (error) { if (error.message !== 'session expired') { rv.data = null; rv.stale = b5IsStale(error); rv.error = b5FriendlyError(error, '無法讀取確認內容。'); } }
+    finally { rv.loading = false; b5Repaint('d2'); }
+  }
+  function b5MembersTable(data) {
+    const wrap = el('div', 'table-wrap'), table = el('table', 'b5-table'), caption = el('caption', '', `確認成員（顯示 ${data.MembersShown != null ? data.MembersShown : (data.Members || []).length} / ${data.MemberCount}）`);
+    const head = el('tr'); ['類型', '相對路徑', '大小', 'SHA-256（前 12 碼）'].forEach(text => { const th = el('th', '', text); th.scope = 'col'; head.appendChild(th); });
+    const thead = el('thead'); thead.appendChild(head); const body = el('tbody');
+    (data.Members || []).forEach(member => { const directory = member.EntryType === 'Directory', tr = el('tr'); tr.append(el('td', '', directory ? '📁 空目錄' : '📄 檔案'), el('td', 'b5-path', member.RelativePath || '（範圍根目錄）'), el('td', '', directory ? '—' : (formatByteCount ? formatByteCount(member.Length) : String(member.Length))), el('td', 'b5-code', directory ? '—' : String(member.SHA256 || '').slice(0, 12))); body.appendChild(tr); });
+    table.append(caption, thead, body); wrap.appendChild(table); return wrap;
+  }
+  function b5RenderReview(box) {
+    const rv = b5.review; box.appendChild(b5Heading('步驟 2：檢視確認內容'));
+    const items = b5ImportedItems();
+    if (!items.length && !rv.itemId) { box.appendChild(b5Status('info', '尚無資料：還沒有已匯入的候選確認材料。請先完成步驟 1。')); return; }
+    const options = items.map(row => ({ value:row.itemId, label:`項目 ${b5Short(row.itemId)}（${row.memberCount != null ? `${row.memberCount} 個成員` : '成員數未知'}）` }));
+    if (rv.itemId && !options.some(option => option.value === rv.itemId)) options.unshift({ value:rv.itemId, label:`項目 ${b5Short(rv.itemId)}` });
+    const picker = b5Select('b5-review-item', '已匯入的候選項目', options, rv.itemId, value => { rv.itemId = value; rv.data = null; rv.error = ''; b5.mapping.data = null; b5.mapping.open = false; b5Repaint('d2'); });
+    box.appendChild(picker.wrap);
+    if (!rv.data && !rv.loading && !rv.error) { box.appendChild(b5Button('檢視確認內容', 'secondary-button', () => b5LoadReview(true), 'review-load')); return; }
+    if (rv.loading) { box.appendChild(b5Status('busy', '讀取中：正在讀取確認內容…')); return; }
+    if (rv.error) { box.append(b5Status(rv.stale ? 'warn' : 'error', `${rv.stale ? '資料已過期' : '錯誤'}：${rv.error}${rv.stale ? ' 請重新讀取後再檢視；不會自動重送。' : ''}`), b5Button('重新讀取', 'secondary-button', () => b5LoadReview(true), 'review-reload')); return; }
+    const data = rv.data, facts = el('dl', 'b5-facts');
+    [['成員總數', `${data.MemberCount} 個`], ['其中檔案', `${data.FileMemberCount} 個`], ['其中空目錄', `${data.DirectoryMemberCount} 個`], ['工作負載引用', `${(data.WorkloadReferences || []).length} 筆`], ['目前決策', safeText(data.Decision)], ['候選類型', data.CandidateType === 'DirectoryRoot' ? '資料夾' : '單一檔案'], ['範圍根目錄', safeText(data.ScopeRoot)]].forEach(([k, v]) => facts.append(el('dt', '', k), el('dd', '', v)));
+    box.appendChild(facts); box.appendChild(b5Hash('確認材料雜湊（SHA-256）', data.ConfirmationHash)); box.appendChild(b5Hash('盤點雜湊（SHA-256）', data.InventoryHash));
+    if (data.MembersTruncated) box.appendChild(b5Status('warn', `注意：成員很多，這裡只列出前 ${data.MembersShown} 個；總數與雜湊仍是完整確認內容的值。`));
+    box.appendChild(b5MembersTable(data));
+    const open = b5Button('進入工作負載對應審閱', 'primary-button', () => { b5.mapping.open = true; b5LoadMapping(true); }, 'mapping-open'); box.appendChild(open);
+  }
+  async function b5LoadMapping(force) {
+    const mp = b5.mapping, rv = b5.review; if (!rv.itemId || mp.loading) return;
+    mp.loading = true; mp.error = ''; mp.stale = false; b5Repaint('d2');
+    try { if (force) await refreshSession(false); mp.data = await b5Read('SourceCandidateMappingReview', { CandidateItemId:rv.itemId }); }
+    catch (error) { if (error.message !== 'session expired') { mp.data = null; mp.stale = b5IsStale(error); mp.error = b5FriendlyError(error, '無法讀取工作負載對應審閱。'); } }
+    finally { mp.loading = false; b5Repaint('d2'); }
+  }
+  function b5MappingChoiceOptions(row) {
+    const canInclude = row.DiscoveryStatus === 'Mapped' && b5HashPattern.test(String(row.SuggestedFileScopeItemId || '')) && !row.Opaque;
+    return [
+      { value:'', label:'請選擇…' },
+      { value:'Include', label:canInclude ? '對應到已確認的範圍' : '對應（工具找不到唯一涵蓋此路徑的範圍，無法選）', disabled:!canInclude },
+      { value:'Exclude', label:'不對應（此路徑不屬於已確認範圍）' },
+      { value:'Manual', label:'人工處理（稍後自行處理）' }
+    ];
+  }
+  function b5MappingSummary() {
+    const mp = b5.mapping, rows = (mp.data && mp.data.References) || [], counts = { Include:0, Exclude:0, Manual:0, none:0 };
+    rows.forEach(row => { const choice = mp.choices.get(row.ReferenceId); if (choice) counts[choice]++; else counts.none++; });
+    return counts;
+  }
+  function b5RenderMapping(box) {
+    const mp = b5.mapping; box.appendChild(b5Heading('步驟 3：工作負載對應審閱'));
+    if (mp.loading) { box.appendChild(b5Status('busy', '讀取中：正在讀取工作負載引用…')); return; }
+    if (mp.error) { box.append(b5Status(mp.stale ? 'warn' : 'error', `${mp.stale ? '資料已過期' : '錯誤'}：${mp.error}${mp.stale ? ' 請重新讀取；你已選的項目會保留，但不會自動重送。' : ''}`), b5Button('重新讀取', 'secondary-button', () => b5LoadMapping(true), 'mapping-reload')); return; }
+    const data = mp.data; if (!data) { box.appendChild(b5Status('info', '尚未開始：在步驟 2 按「進入工作負載對應審閱」。')); return; }
+    const rows = data.References || [];
+    box.appendChild(el('p', 'b5-hint', '每一筆工作負載路徑都必須明確選擇：對應、不對應或人工處理。需先把這個候選項目納入並審閱後，才能送出。'));
+    if (!rows.length) { box.appendChild(b5Status('info', '尚無資料：這份確認沒有任何工作負載路徑引用。')); return; }
+    const list = el('div', 'b5-mapping-list');
+    rows.forEach((row, index) => {
+      const card = el('div', 'b5-mapping-row'); card.dataset.referenceId = row.ReferenceId;
+      const kind = b5ReferenceKinds[row.ReferenceKind] || row.ReferenceKind;
+      card.append(el('strong', 'b5-mapping-kind', kind), el('span', 'b5-path', row.Opaque ? '（內容不透明，只能人工處理）' : safeText(row.Path)));
+      const advice = row.DiscoveryStatus === 'Mapped' ? `工具建議：可對應到項目 ${b5Short(row.SuggestedFileScopeItemId)}` : `工具建議：${row.DiscoveryStatus === 'Unmapped' ? '找不到對應' : safeText(row.DiscoveryStatus)}${row.DiscoveryReason ? `（${row.DiscoveryReason}）` : ''}`;
+      card.appendChild(el('span', 'b5-hint', `${row.Required ? '必要引用' : '選用引用'} · ${advice}${row.StoredStatus === 'Recorded' ? ` · 已記錄：${row.Decision}` : ''}`));
+      if (!mp.choices.has(row.ReferenceId) && row.StoredStatus === 'Recorded' && ['Include','Exclude','Manual'].includes(row.Decision)) { mp.choices.set(row.ReferenceId, row.Decision); mp.deps.set(row.ReferenceId, row.DependencyType || 'None'); }
+      const select = b5Select(`b5-map-${index}`, `${kind}：你的選擇`, b5MappingChoiceOptions(row), mp.choices.get(row.ReferenceId) || '', value => { if (value) mp.choices.set(row.ReferenceId, value); else mp.choices.delete(row.ReferenceId); b5Repaint('d2'); });
+      select.select.dataset.b5Focus = `map-${index}`; card.appendChild(select.wrap);
+      if (mp.choices.get(row.ReferenceId) === 'Include') {
+        const dep = b5Select(`b5-dep-${index}`, '與此工作負載的依賴關係', [{ value:'None', label:'不建立依賴' }, { value:'Mandatory', label:'必要依賴（缺少則工作負載停止）' }, { value:'Optional', label:'選用依賴' }], mp.deps.get(row.ReferenceId) || 'None', value => { mp.deps.set(row.ReferenceId, value); });
+        card.appendChild(dep.wrap);
+      }
+      list.appendChild(card);
+    });
+    box.appendChild(list);
+    const counts = b5MappingSummary();
+    box.appendChild(el('p', 'b5-summary', `已選：對應 ${counts.Include}、不對應 ${counts.Exclude}、人工處理 ${counts.Manual}；尚未選擇 ${counts.none} 筆。`));
+    const submit = b5Button(mp.busy ? '正在送出…' : '檢視並送出對應審閱', 'primary-button', button => {
+      if (mp.busy) return;
+      const remaining = rows.filter(row => !mp.choices.get(row.ReferenceId));
+      if (remaining.length) { mp.submitError = `還有 ${remaining.length} 筆沒有選擇；每一筆都必須明確選擇。`; b5Repaint('d2'); const first = document.querySelector(`[data-reference-id="${remaining[0].ReferenceId}"] select`); if (first) { b5SetFieldError(first, '請選擇對應、不對應或人工處理。'); first.focus(); } return; }
+      mp.submitError = '';
+      const final = b5MappingSummary();
+      const list = el('ul', 'wizard-runtime-confirm-list'); [`對應：${final.Include} 筆`, `不對應：${final.Exclude} 筆`, `人工處理：${final.Manual} 筆`].forEach(text => list.appendChild(el('li', '', text)));
+      b5Confirm({ title:'確認送出工作負載對應審閱', intro:'送出後，使用這些路徑的相依項目會回到「待審閱」，需要重新審閱並重新核准。', nodes:[list, el('p', 'credential-warning', '若盤點、確認雜湊或版本已被更新，系統會拒絕並要求重新讀取，不會自動重送。')], confirmLabel:'確認送出', backLabel:'返回修改', opener:button, onConfirm:() => b5SubmitMapping() });
+    }, 'mapping-submit');
+    submit.disabled = mp.busy; box.appendChild(submit);
+    if (mp.submitError) box.appendChild(b5Status('error', `錯誤：${mp.submitError}`));
+    if (mp.result) box.appendChild(b5Status('ok', mp.result));
+  }
+  async function b5SubmitMapping() {
+    const mp = b5.mapping, data = mp.data; if (!data || mp.busy) return;
+    mp.busy = true; mp.submitError = ''; mp.result = null; b5Repaint('d2');
+    try {
+      const decisions = (data.References || []).map(row => { const decision = mp.choices.get(row.ReferenceId); return { ReferenceId:row.ReferenceId, Decision:decision, FileScopeItemId:decision === 'Include' ? String(row.SuggestedFileScopeItemId) : '', DependencyType:decision === 'Include' ? (mp.deps.get(row.ReferenceId) || 'None') : 'None' }; });
+      const job = await b5Write('SourceCandidateMappingSubmit', { CandidateItemId:String(data.CandidateItemId), ExpectedInventoryHash:String(data.InventoryHash), ExpectedConfirmationHash:String(data.ConfirmationHash), ExpectedRevision:Number(data.DecisionRevision), Decisions:decisions });
+      const outcome = b5Outcome(job, 'SubmittedReviewRequired');
+      if (outcome.ok) { mp.result = `完成：已記錄 ${safeText(outcome.output.MappingCount)} 筆對應。相依項目已回到待審閱，需重新審閱並重新核准。`; announce('已送出工作負載對應審閱；相依項目需重新審閱並重新核准。'); }
+      else { mp.submitError = outcome.message; if (outcome.stale) { mp.stale = true; mp.submitError = '資料已過期（盤點、確認雜湊或版本已變更）。請按「重新讀取」確認最新內容後再決定是否送出；不會自動重送。'; } }
+    } catch (error) { if (error.message !== 'session expired') { mp.submitError = b5FriendlyError(error, '送出未完成。'); if (b5IsStale(error)) { mp.stale = true; mp.submitError = '資料已過期。請按「重新讀取」確認最新內容後再決定是否送出；不會自動重送。'; } } }
+    finally { mp.busy = false; b5Repaint('d2'); if (mp.result) b5LoadMapping(false); }
+  }
+  function b5RenderD2(panel) {
+    const title = el('h2', '', '來源候選確認與工作負載對應（管理端）'); title.id = 'b5-d2-title'; panel.setAttribute('aria-labelledby', title.id);
+    panel.append(title, el('p', 'b5-intro', '依序：匯入來源端交付的確認材料 → 檢視確認內容 → 逐項審閱工作負載路徑的對應。每一步都只建立待審結果，不代表核准。'));
+    const sections = ['import', 'review', 'mapping'].map(name => { const box = el('section', `b5-step b5-step-${name}`); box.dataset.b5Step = name; return box; });
+    b5RenderImportForm(sections[0]); b5RenderReview(sections[1]);
+    if (b5.mapping.open || b5.mapping.data) b5RenderMapping(sections[2]);
+    else { sections[2].appendChild(b5Heading('步驟 3：工作負載對應審閱')); sections[2].appendChild(b5Status('info', '尚未開始：在步驟 2 檢視確認內容後，按「進入工作負載對應審閱」。')); }
+    sections.forEach(section => panel.appendChild(section));
+  }
+  // ---- Manager C2：軟體處置審閱 -------------------------------------------------------------------------------------------------
+  async function b5LoadC2(force) {
+    const c2 = b5.c2, ctx = b5Context(); if (ctx.role !== 'Manager' || !ctx.pairId || c2.loading) return;
+    const marker = viewIdentity(); if (!force && (c2.attempted === marker || (c2.data && !c2.stale))) return;
+    c2.attempted = marker; c2.loading = true; c2.error = ''; b5Repaint('c2');
+    try { if (force) await refreshSession(false); c2.data = await b5Read('SoftwareDispositionReview', {}); c2.stale = false; const ids = new Set((c2.data.Rows || []).map(row => row.SoftwareId)); [...c2.selected].forEach(id => { if (!ids.has(id)) c2.selected.delete(id); }); [...c2.pending.keys()].forEach(id => { if (!ids.has(id)) c2.pending.delete(id); }); }
+    catch (error) { if (error.message !== 'session expired') { c2.data = null; c2.error = b5FriendlyError(error, '無法讀取軟體處置審閱。'); } }
+    finally { c2.loading = false; b5Repaint('c2'); }
+  }
+  function b5C2Rows() { return (b5.c2.data && b5.c2.data.Rows) || []; }
+  function b5C2StateText(row) { return row.DecisionState === 'Reviewed' ? `✔ 已審閱：${b5Dispositions[row.Disposition] || row.Disposition}` : row.DecisionState === 'Stale' ? '⚠ 證據已變更，需重新審閱' : '○ 尚未審閱'; }
+  function b5C2Filtered() {
+    const c2 = b5.c2, text = c2.nameFilter.trim().toLowerCase();
+    return b5C2Rows().filter(row => (!text || `${row.Name} ${row.Publisher} ${row.Version}`.toLowerCase().includes(text)) && (c2.stateFilter === 'all' || (c2.stateFilter === 'undecided' ? row.DecisionState !== 'Reviewed' : row.DecisionState === 'Reviewed')));
+  }
+  function b5C2AllowedForSelection() {
+    const rows = b5C2Rows().filter(row => b5.c2.selected.has(row.SoftwareId)); if (!rows.length) return [];
+    return Object.keys(b5Dispositions).filter(name => rows.every(row => (row.AllowedDispositions || []).includes(name)));
+  }
+  function b5RenderC2Table(container) {
+    const c2 = b5.c2, filtered = b5C2Filtered(), shown = filtered.slice(0, 300);
+    container.replaceChildren();
+    if (!filtered.length) { container.appendChild(b5Status('info', '尚無資料：沒有符合篩選條件的軟體。')); return; }
+    const wrap = el('div', 'table-wrap'), table = el('table', 'b5-table'); table.appendChild(el('caption', '', `軟體清單（顯示 ${shown.length} / 符合 ${filtered.length} / 全部 ${b5C2Rows().length}）`));
+    const head = el('tr'); ['選取', '軟體', '範圍', '目前處置', '待送出'].forEach(text => { const th = el('th', '', text); th.scope = 'col'; head.appendChild(th); });
+    const thead = el('thead'); thead.appendChild(head); const body = el('tbody');
+    shown.forEach(row => {
+      const tr = el('tr'), checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = c2.selected.has(row.SoftwareId); checkbox.dataset.softwareId = row.SoftwareId; checkbox.setAttribute('aria-label', `選取 ${row.Name}`);
+      checkbox.addEventListener('change', () => { if (checkbox.checked) c2.selected.add(row.SoftwareId); else c2.selected.delete(row.SoftwareId); b5RenderC2Batch(); });
+      const pick = el('td'); pick.appendChild(checkbox);
+      const name = el('td'); name.appendChild(el('strong', '', row.Name)); name.appendChild(el('div', 'b5-hint', [row.Version, row.Publisher].filter(value => value && value !== 'Unknown').join(' · ') || '版本／發行者未知'));
+      if (row.SpecialProduct) name.appendChild(el('div', 'b5-special', '🔒 套裝本體（特殊產品）：只能選「外部處理」或「不需要搬移」，因為工具不重裝或搬移這類產品本體。'));
+      const consumers = (row.ConsumerItems || []).length; if (consumers) name.appendChild(el('div', 'b5-hint', `被 ${consumers} 個搬移項目使用`));
+      const scope = el('td', '', `${row.Scope === 'User' ? '使用者' : row.Scope === 'Portable' ? '可攜' : '電腦'}${row.Architecture ? ` · ${row.Architecture}` : ''}`);
+      const pending = c2.pending.get(row.SoftwareId);
+      tr.append(pick, name, scope, el('td', '', b5C2StateText(row)), el('td', '', pending ? `➜ ${b5Dispositions[pending.disposition]}` : '—')); body.appendChild(tr);
+    });
+    table.append(thead, body); wrap.appendChild(table); container.appendChild(wrap);
+    if (filtered.length > shown.length) container.appendChild(b5Status('info', `注意：只顯示前 ${shown.length} 筆；請用上方篩選縮小範圍。`));
+  }
+  function b5RenderC2Batch() {
+    const c2 = b5.c2, box = document.querySelector('[data-b5-c2-batch]'); if (!box) return;
+    box.replaceChildren();
+    const selectedRows = b5C2Rows().filter(row => c2.selected.has(row.SoftwareId)), special = selectedRows.filter(row => row.SpecialProduct), allowed = b5C2AllowedForSelection();
+    if (!allowed.includes(c2.form.disposition)) c2.form.disposition = '';
+    box.appendChild(b5Heading('批次套用處置'));
+    box.appendChild(el('p', 'b5-summary', `已選 ${selectedRows.length} 筆軟體。`));
+    if (special.length) box.appendChild(b5Status('warn', `限制：已選項目含 ${special.length} 個套裝本體（特殊產品），這類產品只能選「外部處理」或「不需要搬移」；工具不會重裝或搬移套裝本體。`, 'b5-special-note'));
+    const options = [{ value:'', label:selectedRows.length ? '請選擇處置…' : '先選取軟體' }].concat(allowed.map(name => ({ value:name, label:b5Dispositions[name] })));
+    const select = b5Select('b5-c2-disposition', '處置', options, c2.form.disposition, value => { c2.form.disposition = value; }, '只列出所有已選項目都允許的處置。'); select.select.disabled = !selectedRows.length; box.appendChild(select.wrap);
+    const fields = {};
+    [['owner', '負責人', 'b5-c2-owner'], ['reason', '原因', 'b5-c2-reason'], ['evidence', '證據參考', 'b5-c2-evidence']].forEach(([key, label, id]) => { const field = b5Field(id, label, c2.form[key], { required:true, onInput:value => { c2.form[key] = value; } }); fields[key] = field; box.appendChild(field.wrap); });
+    const apply = b5Button('套用到已選項目（暫存）', 'secondary-button', () => {
+      const errors = {};
+      if (!selectedRows.length) errors.disposition = '請先在清單勾選軟體。'; else if (!c2.form.disposition) errors.disposition = '請選擇處置。';
+      ['owner', 'reason', 'evidence'].forEach(key => { if (!c2.form[key].trim()) errors[key] = '此欄位必填。'; });
+      b5SetFieldError(select.select, errors.disposition || ''); Object.keys(fields).forEach(key => b5SetFieldError(fields[key].input, errors[key] || ''));
+      const firstKey = ['disposition', 'owner', 'reason', 'evidence'].find(key => errors[key]);
+      if (firstKey) { (firstKey === 'disposition' ? select.select : fields[firstKey].input).focus(); return; }
+      selectedRows.forEach(row => c2.pending.set(row.SoftwareId, { disposition:c2.form.disposition, owner:c2.form.owner.trim(), reason:c2.form.reason.trim(), evidence:c2.form.evidence.trim() }));
+      c2.selected.clear(); c2.result = null; c2.submitError = ''; announce(`已暫存 ${selectedRows.length} 筆處置；尚未送出。`); b5Repaint('c2');
+    }, 'c2-apply');
+    box.appendChild(apply);
+  }
+  function b5RenderC2Footer(box) {
+    const c2 = b5.c2; box.replaceChildren();
+    box.appendChild(el('p', 'b5-summary', `待送出的處置：${c2.pending.size} 筆。`));
+    const submit = b5Button(c2.busy ? '正在送出…' : '檢視確認摘要並送出', 'primary-button', button => {
+      if (c2.busy || !c2.pending.size || c2.stale) return;
+      const counts = new Map(), rows = b5C2Rows(), index = new Map(rows.map(row => [row.SoftwareId, row]));
+      c2.pending.forEach(value => counts.set(value.disposition, (counts.get(value.disposition) || 0) + 1));
+      const specialCount = [...c2.pending.keys()].filter(id => index.get(id) && index.get(id).SpecialProduct).length;
+      const list = el('ul', 'wizard-runtime-confirm-list'); counts.forEach((count, name) => list.appendChild(el('li', '', `${b5Dispositions[name]}：${count} 筆`)));
+      const names = el('ul', 'wizard-runtime-confirm-list'); [...c2.pending.keys()].slice(0, 8).forEach(id => names.appendChild(el('li', '', index.get(id) ? index.get(id).Name : id))); if (c2.pending.size > 8) names.appendChild(el('li', '', `…另 ${c2.pending.size - 8} 筆`));
+      const nodes = [el('h3', '', '處置統計'), list, el('h3', '', '項目（最多列 8 筆）'), names];
+      if (specialCount) nodes.push(el('p', 'b5-special-note', `其中 ${specialCount} 筆為套裝本體（特殊產品），僅採外部處理或不需要。`));
+      nodes.push(el('p', 'b5-hint', `預覽雜湊 ${b5Short(c2.data.PreviewHash)}，決策 revision ${c2.data.DecisionRevision}；若期間資料被更新，系統會拒絕並要求重新讀取。`));
+      b5Confirm({ title:'確認送出軟體處置', intro:'送出會把下列處置記錄到管理端；處置不代表就緒或核准。', nodes, ackLabel:'我已核對上述內容，確認送出（Ack）', confirmLabel:'確認送出', backLabel:'返回修改', opener:button, onConfirm:() => b5SubmitC2() });
+    }, 'c2-submit');
+    submit.disabled = c2.busy || !c2.pending.size || c2.stale; box.appendChild(submit);
+    if (c2.pending.size) box.appendChild(b5Button('清除暫存', 'quiet-button', () => { c2.pending.clear(); b5Repaint('c2'); }, 'c2-clear'));
+    if (c2.stale) box.appendChild(b5Status('warn', '資料已過期：軟體清單或版本已被更新。請先重新讀取，核對暫存項目後再送出；不會自動重送。'));
+    if (c2.submitError) box.appendChild(b5Status('error', `錯誤：${c2.submitError}`));
+    if (c2.result) box.appendChild(b5Status('ok', c2.result));
+  }
+  async function b5SubmitC2() {
+    const c2 = b5.c2, data = c2.data; if (!data || c2.busy) return;
+    c2.busy = true; c2.submitError = ''; c2.result = null; b5Repaint('c2');
+    let sent = false;
+    try {
+      const decisions = [...c2.pending.entries()].map(([id, value]) => ({ SoftwareId:id, Disposition:value.disposition, Owner:value.owner, Reason:value.reason, Evidence:value.evidence }));
+      sent = true;
+      const job = await b5Write('SoftwareDispositionReviewSubmit', { ExpectedRevision:Number(data.DecisionRevision), ExpectedPreviewHash:String(data.PreviewHash), Ack:true, Decisions:decisions });
+      const outcome = b5Outcome(job, 'Applied');
+      if (outcome.ok) { c2.result = `完成：已套用 ${safeText(outcome.output.SubmittedCount)} 筆處置，決策 revision 更新為 ${safeText(outcome.output.DecisionRevision)}。`; c2.pending.clear(); announce('已套用軟體處置。'); }
+      else { c2.submitError = outcome.message; if (outcome.stale) { c2.stale = true; c2.submitError = '預覽已過期（雜湊或 revision 已變更），這次沒有套用任何處置。請按「重新讀取」，核對暫存項目後再決定是否送出。'; } }
+    } catch (error) { if (error.message !== 'session expired') { c2.submitError = b5FriendlyError(error, '送出未完成。'); if (b5IsStale(error)) { c2.stale = true; c2.submitError = '預覽已過期，這次沒有套用任何處置。請按「重新讀取」，核對暫存項目後再決定是否送出；不會自動重送。'; } } }
+    finally { c2.busy = false; if (sent && c2.result) { c2.attempted = ''; await b5LoadC2(true); } else b5Repaint('c2'); }
+  }
+  function b5RenderC2(panel) {
+    const c2 = b5.c2;
+    const title = el('h2', '', '軟體處置審閱（管理端）'); title.id = 'b5-c2-title'; panel.setAttribute('aria-labelledby', title.id);
+    panel.append(title, el('p', 'b5-intro', '列出來源主機的全部軟體與目前處置。可批次選取後套用處置，送出前會顯示確認摘要，並需明確勾選確認。'));
+    if (c2.loading) { panel.appendChild(b5Status('busy', '讀取中：正在讀取軟體處置審閱…')); return; }
+    if (c2.error) { panel.append(b5Status('error', `錯誤：${c2.error}（此配對可能尚未啟用一般主機模式，或沒有可用的來源軟體清單。）`), b5Button('重新讀取', 'secondary-button', () => { c2.attempted = ''; b5LoadC2(true); }, 'c2-reload')); return; }
+    if (!c2.data) { panel.appendChild(b5Button('讀取軟體處置審閱', 'secondary-button', () => { c2.attempted = ''; b5LoadC2(true); }, 'c2-load')); return; }
+    const rows = b5C2Rows(); if (!rows.length) { panel.appendChild(b5Status('info', '尚無資料：來源軟體清單是空的。')); return; }
+    const undecided = rows.filter(row => row.DecisionState !== 'Reviewed');
+    const incomplete = el('section', 'b5-incomplete'); incomplete.setAttribute('aria-labelledby', 'b5-incomplete-title');
+    const incompleteTitle = el('h3', 'b5-heading', `尚未決定的軟體：${undecided.length} 筆`); incompleteTitle.id = 'b5-incomplete-title'; incomplete.appendChild(incompleteTitle);
+    if (undecided.length) { const list = el('ul', 'b5-incomplete-list'); undecided.slice(0, 12).forEach(row => list.appendChild(el('li', '', `${row.Name} — ${row.DecisionState === 'Stale' ? '⚠ 證據已變更' : '○ 尚未審閱'}`))); if (undecided.length > 12) list.appendChild(el('li', '', `…另 ${undecided.length - 12} 筆`)); incomplete.appendChild(list); incomplete.appendChild(el('p', 'b5-hint', '這份審閱資料不含「哪些工作負載會因此無法核准」的判定，工具在此只列出尚無有效處置的軟體；是否阻擋核准以核准時的核心檢查為準。')); }
+    else incomplete.appendChild(b5Status('ok', '完成：每一筆軟體都已有有效處置。'));
+    panel.appendChild(incomplete);
+    const coverageGaps = (c2.data.Coverage || []).filter(row => row.Status !== 'Success');
+    if (coverageGaps.length) { const details = el('details', 'b5-coverage'); details.appendChild(el('summary', '', `⚠ 涵蓋範圍缺口：${coverageGaps.length} 項（可能有軟體沒被盤點到）`)); const list = el('ul'); coverageGaps.forEach(row => list.appendChild(el('li', '', `${row.Probe} / ${row.Scope}${row.SID ? ` / ${row.SID}` : ''} / ${row.View}：${row.Status}${row.ErrorKind ? `（${row.ErrorKind}）` : ''}`))); details.appendChild(list); panel.appendChild(details); }
+    if (c2.stale) panel.appendChild(b5Status('warn', '資料已過期：請重新讀取。', 'b5-stale'));
+    const toolbar = el('div', 'b5-toolbar');
+    const nameFilter = b5Field('b5-c2-filter', '篩選軟體名稱', c2.nameFilter, { type:'search', onInput:value => { c2.nameFilter = value; b5RenderC2Table(document.querySelector('[data-b5-c2-table]')); } });
+    const stateFilter = b5Select('b5-c2-state', '處置狀態', [{ value:'all', label:'全部' }, { value:'undecided', label:'尚未決定' }, { value:'reviewed', label:'已決定' }], c2.stateFilter, value => { c2.stateFilter = value; b5RenderC2Table(document.querySelector('[data-b5-c2-table]')); });
+    toolbar.append(nameFilter.wrap, stateFilter.wrap); panel.appendChild(toolbar);
+    const bulk = el('div', 'b5-toolbar');
+    bulk.append(b5Button('全選目前顯示的項目', 'quiet-button', () => { b5C2Filtered().slice(0, 300).forEach(row => c2.selected.add(row.SoftwareId)); b5RenderC2Table(document.querySelector('[data-b5-c2-table]')); b5RenderC2Batch(); }, 'c2-select-all'), b5Button('全不選', 'quiet-button', () => { c2.selected.clear(); b5RenderC2Table(document.querySelector('[data-b5-c2-table]')); b5RenderC2Batch(); }, 'c2-select-none'), b5Button('重新讀取', 'quiet-button', () => { c2.attempted = ''; b5LoadC2(true); }, 'c2-refresh'));
+    panel.appendChild(bulk);
+    const table = el('div', 'b5-table-box'); table.dataset.b5C2Table = 'true'; panel.appendChild(table);
+    const batch = el('section', 'b5-batch'); batch.dataset.b5C2Batch = 'true'; panel.appendChild(batch);
+    const footer = el('section', 'b5-footer'); panel.appendChild(footer);
+    b5RenderC2Table(table); b5RenderC2Batch(); b5RenderC2Footer(footer);
+    panel.dataset.b5Ready = 'true';
+  }
+  // ---- 掛載到精靈 ------------------------------------------------------------------------------------------------------------
+  function b5CreatePanel(kind) { const panel = el('section', `b5-panel b5-panel-${kind}`); panel.dataset.b5Panel = kind; return panel; }
+  // 作業清單更新後，只有「最新掃描」或「已匯入項目」這兩個由作業衍生的資料變了，才重畫對應面板（避免打斷使用者輸入）。
+  function b5JobSignature() { const scan = b5LatestScan(); return `${scan ? scan.scanId : ''}|${b5ImportedItems().map(row => row.itemId).join(',')}`; }
+  function b5OnJobsChanged() {
+    if (!document.querySelector('[data-b5-panel]')) return;
+    const signature = b5JobSignature(); if (signature === b5.jobSignature) return;
+    b5.jobSignature = signature;
+    ['source', 'd2'].forEach(kind => b5Repaint(kind));
+    if (document.querySelector('[data-b5-panel="source"]')) b5LoadSourceList(false);
+  }
+  function renderB5Panels(content, projection) {
+    if (!content || !projection) return;
+    content.querySelectorAll('[data-b5-panel]').forEach(node => node.remove());
+    const role = String(projection.workspaceRole || projection.role || (state.session && state.session.role) || ''), step = String(projection.currentStep || ''), pairId = String(projection.pairId || b5Context().pairId || '');
+    const kinds = [];
+    if (role === 'Source' && ['scan', 'backup', 'handoff'].includes(step)) kinds.push('source');
+    if (role === 'Manager' && pairId && ['prepare', 'handoff'].includes(step)) kinds.push('d2', 'c2');
+    if (!kinds.length) return;
+    b5.jobSignature = b5JobSignature();
+    const wrap = el('div', 'b5-panels'); kinds.forEach(kind => wrap.appendChild(b5CreatePanel(kind))); content.appendChild(wrap);
+    kinds.forEach(kind => b5Paint(kind));
+    if (kinds.includes('source')) b5LoadSourceList(false);
+    if (kinds.includes('c2')) b5LoadC2(false);
+  }
   // Exposed only for the repository's dependency-free mocked DOM contract test.
-  window.WsmConsole = { statusName, statusClass, isSensitive, collectArgs, collectControl, state, navigate, init, refreshActiveData, renderInventory, renderSoftware, renderFiles, renderJobs, renderActions, renderOverview, renderTaskGuide, renderWizard, renderWizardPreparationReviewJob, refreshWizard, saveWizardState, startDeveloperProbe, setAction, parseResponse, endpoint, ensureFreshContext, getView, loadView, applyContext, refreshSession, refreshJobs, recoverPendingOperation, startTargetSnapshot, openJobReport, classifyConnectionFailure, syncProgressCards, formatElapsed, openCancelConfirm, openSpecReview, prefillSpecReview, prefillWindowsSettingsReview, createWindowsSettingsReviewDraft, createRequirementDecisionDraft, prefillRequirementDecisionReview, credentialUi:credUi, showCredentialDialog, openResumeDialog, safeTypedFields, actionLabel, actionGroup, actionGuidance, parameterLabel, buildOperationRequest, buildSelectionArgs, stripSensitiveArguments, invalidateForConflict, saveSoftwareChoice, viewIdentity };
+  window.WsmConsole = { renderB5Panels, b5, statusName, statusClass, isSensitive, collectArgs, collectControl, state, navigate, init, refreshActiveData, renderInventory, renderSoftware, renderFiles, renderJobs, renderActions, renderOverview, renderTaskGuide, renderWizard, renderWizardPreparationReviewJob, refreshWizard, saveWizardState, startDeveloperProbe, setAction, parseResponse, endpoint, ensureFreshContext, getView, loadView, applyContext, refreshSession, refreshJobs, recoverPendingOperation, startTargetSnapshot, openJobReport, classifyConnectionFailure, syncProgressCards, formatElapsed, openCancelConfirm, openSpecReview, prefillSpecReview, prefillWindowsSettingsReview, createWindowsSettingsReviewDraft, createRequirementDecisionDraft, prefillRequirementDecisionReview, credentialUi:credUi, showCredentialDialog, openResumeDialog, safeTypedFields, actionLabel, actionGroup, actionGuidance, parameterLabel, buildOperationRequest, buildSelectionArgs, stripSensitiveArguments, invalidateForConflict, saveSoftwareChoice, viewIdentity };
 }());
