@@ -1,0 +1,70 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "E0",
+  "verifiedUtc": "2026-10-22T21:56:46Z",
+  "verifier": "M3 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "dce88403d1a52cddc8e66e3acfafe8047cda8e17",
+  "snapshotDirectory": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/MigrationWizard.ps1",
+      "sha256": "C15CC4DD5B222058BCEAFFDA268985E55626310973A430A1749EA19E2C3BD51E"
+    },
+    {
+      "path": "src/WorkloadDiscovery.ps1",
+      "sha256": "0C09F27A7CBEF8A7A170643B91C9C2D2B823709D7A66242E0C0CB5C2539FE15D"
+    },
+    {
+      "path": "tests/Test-WorkloadActionIndex.ps1",
+      "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+    },
+    {
+      "path": "tests/Test-WorkloadDiscovery.ps1",
+      "sha256": "BCD76D15934C7ED03C9F561FFFEE69A04BA63659272968AD170340F32E4124EF"
+    },
+    {
+      "path": "tests/Test-WorkloadPathCoverage.ps1",
+      "sha256": "C10FABC7D3B8256D5479A4FEF585BF7E1ABA5B036FB781731D632075EAB837DF"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 47,
+  "result": "Rebound to HEAD bytes. WorkloadActionIndex 28 assertions and WorkloadPathCoverage 18 checks passed; the public WorkloadDiscovery regression passed. The earlier binding of src/MigrationWizard.ps1 (c95b8d6) recorded bytes from an uncommitted working tree that match no committed revision, which is why it could never verify on a clean copy.",
+  "logs": [
+    {
+      "name": "Test-WorkloadActionIndex.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WorkloadActionIndex.ps1 </dev/null",
+      "sha256": "55831B0736ED3EE2FA579FD2F669A22AA1F8E5F84879E3940389B140045C3B8D",
+      "exitCode": 0,
+      "seconds": 4,
+      "countedAs": "assertions",
+      "text": "PASS: E0 original action indices, typed draft consumer, opaque argument redaction, Exec-only and same-location regression, and ambiguous/unsupported action handling. Assertions: 28\r\n"
+    },
+    {
+      "name": "Test-WorkloadDiscovery.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WorkloadDiscovery.ps1 </dev/null",
+      "sha256": "6E3E2502B5D7694A0C1DB9CE3949C902D59EFA73095F2E85E6CA3992A3A75C7E",
+      "exitCode": 0,
+      "seconds": 5,
+      "countedAs": "one public-regression suite (no count printed)",
+      "text": "PASS: R3-B workload graph and schema3 public draft consumer. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-workload-3c9152efd264497aa8385f1d6d7e3499\r\n"
+    },
+    {
+      "name": "Test-WorkloadPathCoverage.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WorkloadPathCoverage.ps1 </dev/null",
+      "sha256": "5DBEED1AF9B396D944F5628C15B64F4B384D1417BC04B1EC9CF7545017C78D06",
+      "exitCode": 0,
+      "seconds": 3,
+      "countedAs": "checks",
+      "text": "PASS: 18 workload path coverage checks; unresolved Source context remains manual.\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Fixture XML/draft tests; no live task registration or execution.",
+    "WorkloadDiscovery prints no assertion count and is counted once."
+  ],
+  "openIssues": []
+}

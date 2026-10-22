@@ -1,0 +1,111 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "G",
+  "verifiedUtc": "2026-10-22T21:56:46Z",
+  "verifier": "M3 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "dce88403d1a52cddc8e66e3acfafe8047cda8e17",
+  "snapshotDirectory": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "0D7B9B49E3183622AB9E042D6B373BC5AD550BBE2F3DFFC4E16C452888E67235"
+    },
+    {
+      "path": "src/MigrationContracts.ps1",
+      "sha256": "9015DF2FA626CF979679A748C6B89A2A0E9AFE1639582F70CE6A29F34DDA10C7"
+    },
+    {
+      "path": "src/WindowsServerMigration.psd1",
+      "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+    },
+    {
+      "path": "src/WizardBackup.ps1",
+      "sha256": "8A698F592F6B122DD8F934DABBE0A4207906A6850D63528088A2E0AD40E94684"
+    },
+    {
+      "path": "src/WizardFlow.ps1",
+      "sha256": "5221E5F5D9F469F96F54DE7E7346402B00DD098A75A87E0F332C6363D50D473A"
+    },
+    {
+      "path": "src/WizardRuntime.ps1",
+      "sha256": "C37EE5885069B5D702E0686A222328A2733029698E46C5A50A63785AEF31DBE7"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+    },
+    {
+      "path": "tests/G-JourneyHost.ps1",
+      "sha256": "A20D6FBE7CF514062C4205D1A02EFFC0C1B115BBFB55DDA670C6FEB2003B1E90"
+    },
+    {
+      "path": "tests/G-JourneyOverrides.ps1",
+      "sha256": "08E0C951BD3297C977AB8502F116E7BB9EA5C3FE0985CC586BC3BBFED2DBB5FA"
+    },
+    {
+      "path": "tests/G-RuntimeOverlay.ps1",
+      "sha256": "2B200DEB41902578C39CA36FE8A2932D7432638F925C35832B58A8B115B40450"
+    },
+    {
+      "path": "tests/Test-ActionExports.ps1",
+      "sha256": "4DCD36168922C389BF2E418786B7AA1F073C0C99B573568BA169722FA0BFD582"
+    },
+    {
+      "path": "tests/Test-OfflineFullSetSeparateSource.ps1",
+      "sha256": "9FE04083E7E3CC06CCAC00029A73349ACF6F70BCC599E520D8FC533FA922BF62"
+    },
+    {
+      "path": "tests/Test-OfflineRestoreJourney.ps1",
+      "sha256": "224713A957EE2D20CD570AFC8FEC0155F39AD47D475F1EAA2568D5EE7F544814"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 271,
+  "result": "Offline restore journey passed at HEAD on WinPS 5.1 (run m3gj01, 48 machine-judged checks, 0 HTTP retries, about 225 s; first attempt with the default 14-character RunId failed only because the longer workspace path pushed a 69-character blob file name past MAX_PATH, so it was rerun with a 6-character RunId as the earlier official runs did). Chain: Target HTTP enrollment, Manager OfflineFullSet approval with snapshot attachment, Source import and one-click backup, independent copy (media-class double), Source/Manager workspaces denied, fresh Target import from the copy, local comparison, select-all receipt, preview, credential wait, console killed after the second file, restart as Interrupted/resumable, explicit resume, preview rebind, credential re-prompt, new session, Succeeded, original-location readback, with the secret canary absent in 380 scanned files. OfflineFullSetSeparateSource 20 checks and ActionExports 203 commands also passed in the snapshot. The stage stays in-progress because section 10 deliverables are not covered.",
+  "logs": [
+    {
+      "name": "Test-OfflineRestoreJourney.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineRestoreJourney.ps1 </dev/null",
+      "sha256": "432E83B6E5405655A539827A08AF580D95C23C7EE19DEBB57AE64FC045B5EA14",
+      "exitCode": 0,
+      "seconds": 225,
+      "countedAs": "48 machine-judged journey checks (verdict.json, run m3gj01; verdict sha256 F6EDD2241D6DB0E56728FDFD982A1E22A0FBAE657E77F548DEBF86C2B92D2C9B)",
+      "text": "Overall: Passed (verdict: C:\\Users\\eldar\\Claude\\Project\\windows-server-migration\\work\\r7\\g-journey\\m3gj01\\verdict.json)\r\nPASS: offline restore journey (run m3gj01, 48 checks, http retries 0)\r\n"
+    },
+    {
+      "name": "Test-OfflineFullSetSeparateSource.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineFullSetSeparateSource.ps1 </dev/null",
+      "sha256": "ADEEA398F6789CA617A54E64C2B71EA354ED9DC92786332C1E4CB4386F3C7443",
+      "exitCode": 0,
+      "seconds": 17,
+      "countedAs": "checks",
+      "text": "PASS: CV2 snapshot attachment emitted by Manager, verified and placed by a separate Source, one-click backup succeeded (20 checks).\r\n"
+    },
+    {
+      "name": "Test-ActionExports.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ActionExports.ps1 </dev/null",
+      "sha256": "AB04A7C2F1AD66D6E8CFD5F7FB8DA8ACF763800259CF200DF38065FB2AE62A1A",
+      "exitCode": 0,
+      "seconds": 3,
+      "countedAs": "action commands resolved",
+      "text": "PASS: 203 action commands resolve to exported functions (inline console handlers excluded).\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Account consumer is a narrow double; the new-machine inventory is a pre-seeded fixture, not a live full capture.",
+    "The crash point is fixed at the second file and the Service item is ordered after files.",
+    "The journey ran from the working tree of the repository (it builds its own immutable snapshot and checks src bytes before and after), not from the git-archive snapshot used for the other suites, because it needs git and untracked work/ helpers; run outputs are written under the git-ignored work/r7/g-journey.",
+    "src bytes in the journey are the working-tree (CRLF) bytes; the journey's own HEAD digest (LF blobs) differs from its working-tree digest by line endings only, and the journey asserts the first of them stayed unchanged."
+  ],
+  "openIssues": [
+    "Only one of the five G journeys (Target restore with resume) is automated; item-by-item backup, automatic backup, Manager approval and the independent Probe journeys are covered by separate suites only.",
+    "The mixed case (unlinked C data, D-volume IIS, E-volume task, package body not moved) is not covered.",
+    "Release payload, hashes, tool fingerprint, HTML references and the README/AGENTS/OPERATIONS update (section 10) are not part of this record.",
+    "The 16.6 failure table is only partly covered; 202-lost-response, C/NonC partial generations and media-swap rows are not in the journey.",
+    "Real-machine and enterprise acceptance stay NotTested.",
+    "Tests that already fail at the round-six baseline 6a2329c and at HEAD (PLAN 17.71) are not caused by round seven and are not repaired here: AssistiveWorkloadIntegration, FleetExecutionBindings, FullDirectoryImport, ObservationWorkflow, ShareSourceWorkflow, WorkspaceWorkerIsolation, ZipColdStart, and WorkspaceLockContention (needs pwsh.exe, absent on this host). Test-HtmlBridge also fails at the baseline and at HEAD with an unexplained ECONNRESET."
+  ]
+}

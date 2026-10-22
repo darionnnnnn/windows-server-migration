@@ -51,46 +51,71 @@
       "signatureStatus": "not-required",
       "consumers": [
         {
-          "name": "tools/Test-PlanEvidence.ps1",
-          "path": "tools/Test-PlanEvidence.ps1"
-        },
-        {
           "name": "tests/Test-PlanEvidence.ps1",
           "path": "tests/Test-PlanEvidence.ps1"
+        },
+        {
+          "name": "tests/Test-ScriptEncoding.ps1",
+          "path": "tests/Test-ScriptEncoding.ps1"
         }
       ],
       "environment": {
-        "engine": "Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
-        "runtime": "Windows isolated immutable snapshot",
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
         "scope": "isolated"
       },
       "inputs": [
         {
-          "path": "tools/Test-PlanEvidence.ps1",
-          "sha256": "B719B5C2A32E8CAB39E2D1BC2BB61B63A9CC13C56AD36469FB706985607B1C89"
+          "path": "tests/Test-PlanEvidence.ps1",
+          "sha256": "BB34EDA3414ED345CADA91C61F84199EA47C3618EF8A3DA9EB054936BE88B278"
         },
         {
-          "path": "tests/Test-PlanEvidence.ps1",
-          "sha256": "768DDB77E3CF435A688246D302990FFEAC5F6F4470244592F60B21AC33EB66B7"
+          "path": "tests/Test-ScriptEncoding.ps1",
+          "sha256": "2873FDF3BADD12EAAD338300253AB1C8652CCAC8F02CB4A31EA8B68FE5560A02"
+        },
+        {
+          "path": "tools/Test-PlanEvidence.ps1",
+          "sha256": "8F63690939DFF8D5BD3D04B60E25C86E22F2680885FD87278C44C0B31FDBBA4E"
         }
       ],
       "evidence": [
         {
-          "path": "docs/plans/evidence/MIGRATION-7-A1.json",
-          "sha256": "4EB13B575E1BACFC21E1286F447E822FE544D073818C451568571F1BFA680D67"
+          "path": "docs/plans/evidence/MIGRATION-7-A1-line-ending-rebind.json",
+          "sha256": "8B37394688F7E553CEB5BFC81F5C621B1C2071AE8DEE9CB165623EFEEA2E9B96"
         }
       ],
       "evidenceLog": {
-        "path": "docs/plans/evidence/MIGRATION-7-A1.json",
-        "sha256": "4EB13B575E1BACFC21E1286F447E822FE544D073818C451568571F1BFA680D67"
+        "path": "docs/plans/evidence/MIGRATION-7-A1-line-ending-rebind.json",
+        "sha256": "8B37394688F7E553CEB5BFC81F5C621B1C2071AE8DEE9CB165623EFEEA2E9B96"
       },
-      "casesExecuted": 38,
-      "result": "19 fixture cases passed independently on each engine, including missing-evidence mutation, duplicate IDs, stale hashes, zero cases and historical-signature rejection.",
+      "casesExecuted": 28,
+      "result": "27 fixture cases passed on WinPS 5.1: the 19 earlier cases plus 8 new line-ending cases (an LF-bound hash verifies both the LF snapshot and a CRLF checkout; a hash recorded from raw CRLF bytes still verifies the same checkout; one changed byte, an appended line and an extra blank line all fail). The validator now accepts a recorded hash equal to the CRLF-folded form or to the raw bytes of the checkout, so the same committed content verifies in a git archive snapshot and in a core.autocrlf=true working tree. Test-ScriptEncoding passed over 296 files.",
       "limitations": [
-        "Evidence validator only; no migration product or external environment acceptance."
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "Evidence validator only; no migration product or external environment acceptance.",
+        "The PowerShell 7 half of the original dual-engine A1 evidence (MIGRATION-7-A1.json) is historical and was not re-run.",
+        "A hash recorded from raw CRLF bytes is still accepted for compatibility, so a pure line-ending change of a bound file is not detected; any content byte change is."
       ],
       "openIssues": [],
-      "historicalEvidence": []
+      "historicalEvidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-A1.json",
+          "sha256": "981D0A28CE05C936399B59586374807C8653E5CAB3B1C07F9A971CC7F2F8B8C0",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-A1-line-ending-rebind.json",
+          "recordedInputs": [
+            {
+              "path": "tools/Test-PlanEvidence.ps1",
+              "sha256": "B719B5C2A32E8CAB39E2D1BC2BB61B63A9CC13C56AD36469FB706985607B1C89"
+            },
+            {
+              "path": "tests/Test-PlanEvidence.ps1",
+              "sha256": "768DDB77E3CF435A688246D302990FFEAC5F6F4470244592F60B21AC33EB66B7"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        }
+      ]
     },
     {
       "id": "B1",
@@ -150,16 +175,16 @@
       "evidence": [
         {
           "path": "docs/plans/evidence/MIGRATION-7-B1.json",
-          "sha256": "F49F26AC26DABD2D15F44C7DC7CCE209A907DC7E30FE51BEE81C985CF4B5D860"
+          "sha256": "1D202D52AACED6963D8219113B5CCE5138F0DA85F7B56C84DC15FB2CBF3755F6"
         },
         {
           "path": "docs/plans/evidence/MIGRATION-7-B1-journal-step-recheck.json",
-          "sha256": "EA3CD5BA75653E368E81B1440020CDC401A06D76AEB4E99285B043DA4496831B"
+          "sha256": "1300C77FE5ACEE08FE872C943D6DAFD2928EFB06EEC0CADF953DDD393400DDDD"
         }
       ],
       "evidenceLog": {
         "path": "docs/plans/evidence/MIGRATION-7-B1-journal-step-recheck.json",
-        "sha256": "EA3CD5BA75653E368E81B1440020CDC401A06D76AEB4E99285B043DA4496831B"
+        "sha256": "1300C77FE5ACEE08FE872C943D6DAFD2928EFB06EEC0CADF953DDD393400DDDD"
       },
       "casesExecuted": 248,
       "result": "Current workflow/selector binding revalidated after journal CI step: 124 checks per engine and YAML step binding; historical evidence retained.",
@@ -388,10 +413,6 @@
       "signatureStatus": "not-required",
       "consumers": [
         {
-          "name": "src/SoftwareInventory.ps1",
-          "path": "src/SoftwareInventory.ps1"
-        },
-        {
           "name": "src/AssistiveComparison.ps1",
           "path": "src/AssistiveComparison.ps1"
         },
@@ -404,8 +425,8 @@
           "path": "src/EnvironmentConfirmation.ps1"
         },
         {
-          "name": "tests/Test-R7SoftwareAssessment.ps1",
-          "path": "tests/Test-R7SoftwareAssessment.ps1"
+          "name": "src/SoftwareInventory.ps1",
+          "path": "src/SoftwareInventory.ps1"
         },
         {
           "name": "tests/Test-AssistiveComparison.ps1",
@@ -414,64 +435,140 @@
         {
           "name": "tests/Test-EnvironmentConfirmation.ps1",
           "path": "tests/Test-EnvironmentConfirmation.ps1"
+        },
+        {
+          "name": "tests/Test-R7SoftwareAssessment.ps1",
+          "path": "tests/Test-R7SoftwareAssessment.ps1"
         }
       ],
       "environment": {
-        "engine": "Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
-        "runtime": "Windows isolated immutable snapshot",
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
         "scope": "isolated"
       },
       "inputs": [
         {
-          "path": "src/SoftwareInventory.ps1",
-          "sha256": "BD80FD70BD814F60B14AA7E58355E068FC0EE78528F7387BA4264B601102EC1C"
-        },
-        {
           "path": "src/AssistiveComparison.ps1",
-          "sha256": "E1C8879005A05683494132986AF8D7AC9524A25BF3BD5BBDE9A8EE4726689131"
+          "sha256": "6B5C7D9616190A19549EB8FC3DA5330C37FF901724F102848274F4C37FDD2487"
         },
         {
           "path": "src/AssistiveReports.ps1",
-          "sha256": "797212F7ED9DD1F69B34FDC61CA09520CB9D09B2CD03DE6C9DED094A44ACC384"
+          "sha256": "D0AC1943519A4277EE102A2360AEDF8C4F51811B1FAD63B6B944525F81DFF578"
         },
         {
           "path": "src/EnvironmentConfirmation.ps1",
-          "sha256": "AF6EC3B685475F5F39FE23B28D6EC3D37C510130EF83BF8F336770EB4775C87D"
+          "sha256": "2F98E08CECD0F543A00F97CB4C9D2D2A98FF7415362FB7B136EA53DC29B74F3A"
+        },
+        {
+          "path": "src/SoftwareInventory.ps1",
+          "sha256": "E4C1268AD94D605A7E0B9DCF03D87E0F07859CA2EC225DCF4136FBE7A116015E"
+        },
+        {
+          "path": "tests/Test-AssistiveComparison.ps1",
+          "sha256": "599F49903393B6DE543EA441C647D22EFFDA94B3E5D711F10F6D592AB7302F0F"
+        },
+        {
+          "path": "tests/Test-EnvironmentConfirmation.ps1",
+          "sha256": "B76AC30AB5785A88695414589632E7E3FBF7D1D5F3645C32FD1D7C330C8900D0"
         },
         {
           "path": "tests/Test-R7SoftwareAssessment.ps1",
           "sha256": "E760B4E6EAFCC8E25C83C742636A7C17BADF5B9B10E1530C342701FA3C0930E1"
-        },
-        {
-          "path": "tests/Test-AssistiveComparison.ps1",
-          "sha256": "F53AC2375BA291EEBEA57C6216B794BA7BE98F8A2EE4DCCFB48E86AB20205DD7"
-        },
-        {
-          "path": "tests/Test-EnvironmentConfirmation.ps1",
-          "sha256": "140902B0CAA1465DF2DCF26A79BC305690A2150D9807E497735655C47B07FE28"
         }
       ],
       "evidence": [
         {
-          "path": "docs/plans/evidence/MIGRATION-7-C1.json",
-          "sha256": "5DF40BE84334D57CB0E68E2ABC3323D6278736A51A3BE6FCACEC50A69D308ED9"
-        },
-        {
-          "path": "docs/plans/evidence/MIGRATION-7-D2.json",
-          "sha256": "DA6B33BF32909F8EA8749A69993546EC84B1CEAF159953C212BEB4B1C223EDB6"
+          "path": "docs/plans/evidence/MIGRATION-7-C1-rebind-dce8840.json",
+          "sha256": "343FF8950C19A614E9E437B09CA4FBA9BF36B4332294656DC1C2850AE682FA43"
         }
       ],
       "evidenceLog": {
-        "path": "docs/plans/evidence/MIGRATION-7-C1.json",
-        "sha256": "5DF40BE84334D57CB0E68E2ABC3323D6278736A51A3BE6FCACEC50A69D308ED9"
+        "path": "docs/plans/evidence/MIGRATION-7-C1-rebind-dce8840.json",
+        "sha256": "343FF8950C19A614E9E437B09CA4FBA9BF36B4332294656DC1C2850AE682FA43"
       },
-      "casesExecuted": 68,
-      "result": "13 cross-consumer assertions per engine plus 42 existing comparison checks; environment confirmation export regression passed with 6 rows; script encoding/parser passed. Preserves all discovered source rows and bound target evidence with explicit unknown/coverage gaps. D2 core snapshot reverified changed consumers: software projection 13 per engine; workload mapping 28 per engine plus public discovery regression.",
+      "casesExecuted": 56,
+      "result": "Rebound to HEAD bytes (src/AssistiveComparison.ps1 and src/AssistiveReports.ps1 had changed since the earlier binding). R7SoftwareAssessment 13 assertions and AssistiveComparison 42 checks passed; the 2501-row EnvironmentConfirmation suite passed (851 s, counted once).",
       "limitations": [
-        "Registry snapshots are controlled fixtures, not a live full-server software inventory. 68 counts assertions, not native migrations. Full 2501-row baseline passed before this change; not represented as post-change acceptance."
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "Registry snapshots are controlled fixtures, not a live full-server software inventory.",
+        "casesExecuted counts assertions printed by the suites; the 2501-row EnvironmentConfirmation suite prints no count and is counted once."
       ],
       "openIssues": [],
-      "historicalEvidence": []
+      "historicalEvidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-C1.json",
+          "sha256": "66F4F7C5C6C80BF8B6921DC0C826D5F093901B01C31D6422A020B5101BA78B22",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-C1-rebind-dce8840.json",
+          "recordedInputs": [
+            {
+              "path": "src/SoftwareInventory.ps1",
+              "sha256": "BD80FD70BD814F60B14AA7E58355E068FC0EE78528F7387BA4264B601102EC1C"
+            },
+            {
+              "path": "src/AssistiveComparison.ps1",
+              "sha256": "E1C8879005A05683494132986AF8D7AC9524A25BF3BD5BBDE9A8EE4726689131"
+            },
+            {
+              "path": "src/AssistiveReports.ps1",
+              "sha256": "797212F7ED9DD1F69B34FDC61CA09520CB9D09B2CD03DE6C9DED094A44ACC384"
+            },
+            {
+              "path": "src/EnvironmentConfirmation.ps1",
+              "sha256": "AF6EC3B685475F5F39FE23B28D6EC3D37C510130EF83BF8F336770EB4775C87D"
+            },
+            {
+              "path": "tests/Test-R7SoftwareAssessment.ps1",
+              "sha256": "E760B4E6EAFCC8E25C83C742636A7C17BADF5B9B10E1530C342701FA3C0930E1"
+            },
+            {
+              "path": "tests/Test-AssistiveComparison.ps1",
+              "sha256": "F53AC2375BA291EEBEA57C6216B794BA7BE98F8A2EE4DCCFB48E86AB20205DD7"
+            },
+            {
+              "path": "tests/Test-EnvironmentConfirmation.ps1",
+              "sha256": "140902B0CAA1465DF2DCF26A79BC305690A2150D9807E497735655C47B07FE28"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2.json",
+          "sha256": "F0E01C0F696E58B8DE525FE106CE73DF9A9D82F2AA61FE10471E2B82D88BA2E9",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-C1-rebind-dce8840.json",
+          "recordedInputs": [
+            {
+              "path": "src/SoftwareInventory.ps1",
+              "sha256": "BD80FD70BD814F60B14AA7E58355E068FC0EE78528F7387BA4264B601102EC1C"
+            },
+            {
+              "path": "src/AssistiveComparison.ps1",
+              "sha256": "E1C8879005A05683494132986AF8D7AC9524A25BF3BD5BBDE9A8EE4726689131"
+            },
+            {
+              "path": "src/AssistiveReports.ps1",
+              "sha256": "797212F7ED9DD1F69B34FDC61CA09520CB9D09B2CD03DE6C9DED094A44ACC384"
+            },
+            {
+              "path": "src/EnvironmentConfirmation.ps1",
+              "sha256": "AF6EC3B685475F5F39FE23B28D6EC3D37C510130EF83BF8F336770EB4775C87D"
+            },
+            {
+              "path": "tests/Test-R7SoftwareAssessment.ps1",
+              "sha256": "E760B4E6EAFCC8E25C83C742636A7C17BADF5B9B10E1530C342701FA3C0930E1"
+            },
+            {
+              "path": "tests/Test-AssistiveComparison.ps1",
+              "sha256": "F53AC2375BA291EEBEA57C6216B794BA7BE98F8A2EE4DCCFB48E86AB20205DD7"
+            },
+            {
+              "path": "tests/Test-EnvironmentConfirmation.ps1",
+              "sha256": "140902B0CAA1465DF2DCF26A79BC305690A2150D9807E497735655C47B07FE28"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        }
+      ]
     },
     {
       "id": "C2",
@@ -485,27 +582,154 @@
       "implementationStatus": "in-progress",
       "evidenceStatus": "implemented-unverified",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [
+      "consumers": [
         {
-          "path": "docs/plans/evidence/MIGRATION-7-C2-software-review.json",
-          "sha256": "6C80C51AEBA4CDD322E6AB77D676EB4D011ED29EF6AE8A9ADC014915707845A1"
+          "name": "src/HtmlConsole.ps1",
+          "path": "src/HtmlConsole.ps1"
+        },
+        {
+          "name": "src/OperationRequests.ps1",
+          "path": "src/OperationRequests.ps1"
+        },
+        {
+          "name": "src/SoftwareDispositionReview.ps1",
+          "path": "src/SoftwareDispositionReview.ps1"
+        },
+        {
+          "name": "src/WindowsServerMigration.psd1",
+          "path": "src/WindowsServerMigration.psd1"
+        },
+        {
+          "name": "src/WindowsServerMigration.psm1",
+          "path": "src/WindowsServerMigration.psm1"
+        },
+        {
+          "name": "src/WizardHtmlRuntime.ps1",
+          "path": "src/WizardHtmlRuntime.ps1"
+        },
+        {
+          "name": "src/ui/console.css",
+          "path": "src/ui/console.css"
+        },
+        {
+          "name": "src/ui/console.js",
+          "path": "src/ui/console.js"
+        },
+        {
+          "name": "src/ui/index.html",
+          "path": "src/ui/index.html"
+        },
+        {
+          "name": "tests/Start-C2D2TestServer.ps1",
+          "path": "tests/Start-C2D2TestServer.ps1"
+        },
+        {
+          "name": "tests/Test-C2D2Browser.js",
+          "path": "tests/Test-C2D2Browser.js"
+        },
+        {
+          "name": "tests/Test-C2D2HtmlActions.ps1",
+          "path": "tests/Test-C2D2HtmlActions.ps1"
+        },
+        {
+          "name": "tests/Test-SoftwareDispositionReview.ps1",
+          "path": "tests/Test-SoftwareDispositionReview.ps1"
         }
       ],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
-      "openIssues": [
-        "No browser or CLI menu wiring in this slice.",
-        "C2 is incomplete pending user-facing review integration and full capture/restore exclusion proof.",
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/HtmlConsole.ps1",
+          "sha256": "0D7B9B49E3183622AB9E042D6B373BC5AD550BBE2F3DFFC4E16C452888E67235"
+        },
+        {
+          "path": "src/OperationRequests.ps1",
+          "sha256": "E35A78A4DBE5960721EFD0EE57D1F9B2B5BD574E74FADA27E1018ABC7AA22DF8"
+        },
+        {
+          "path": "src/SoftwareDispositionReview.ps1",
+          "sha256": "A39B2425FD4A688942C4284F2B6E786C45C23E5B57A051D31C4448D9B65DA04C"
+        },
+        {
+          "path": "src/WindowsServerMigration.psd1",
+          "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+        },
+        {
+          "path": "src/WindowsServerMigration.psm1",
+          "sha256": "BB23A18D0662D8C2E507DBCE9CFC9AEFD4FADB93DC188F667506B7E757A28E88"
+        },
+        {
+          "path": "src/WizardHtmlRuntime.ps1",
+          "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+        },
+        {
+          "path": "src/ui/console.css",
+          "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+        },
+        {
+          "path": "src/ui/console.js",
+          "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+        },
+        {
+          "path": "src/ui/index.html",
+          "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+        },
+        {
+          "path": "tests/Start-C2D2TestServer.ps1",
+          "sha256": "F3F18857A9FF8D882FAF6C5C113BE39FE86A011C89799AAD9A1C6D24D1C9547F"
+        },
+        {
+          "path": "tests/Test-C2D2Browser.js",
+          "sha256": "A260D9007FE369DCE164FF54F2976CB0552975C4CC6E5EBA7586CD77559AE530"
+        },
+        {
+          "path": "tests/Test-C2D2HtmlActions.ps1",
+          "sha256": "15AFDB7167747B4450B3E08020F98D25B4EE0C04D9F64937CB394AF83EF1EAB4"
+        },
+        {
+          "path": "tests/Test-SoftwareDispositionReview.ps1",
+          "sha256": "D20119066E82B3CE0623611F2CC5E3FD9FCF5C2F7246EF43C56796C31685C000"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-C2-html-entry-rebind.json",
+          "sha256": "5224E6AF04D8A4AA3D795FFA68C8E4C527BEE7EDC07FFB26982F155BF1E21815"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-C2-html-entry-rebind.json",
+        "sha256": "5224E6AF04D8A4AA3D795FFA68C8E4C527BEE7EDC07FFB26982F155BF1E21815"
+      },
+      "casesExecuted": 203,
+      "result": "At HEAD: SoftwareDispositionReview 17 checks and C2D2HtmlActions 185 checks passed on WinPS 5.1, and the real-Edge C2D2Browser suite passed with the API replaced by a fixture. C2 software disposition review now has an HTML entry (B5, PLAN 17.70) with batch select, Ack, ExpectedRevision/ExpectedPreviewHash and stale handling. The stage stays in-progress.",
+      "limitations": [
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "C2D2Browser uses a fixture API; there is no real-browser plus real-listener integration test.",
+        "The 'incomplete' display lists only undecided (Unreviewed/Stale) software and is not an approval-blocking rule.",
         "Selected-dependency gate and root guard tests are isolated contract evidence, not actual Server product migration."
       ],
-      "historicalEvidence": []
+      "openIssues": [
+        "Full capture/restore exclusion proof for C2 dispositions is still pending.",
+        "Panel placement on existing wizard steps needs confirmation on a real machine.",
+        "The Manager's imported-candidate list is read from job history; there is no manual-entry fallback once the history is cleared."
+      ],
+      "historicalEvidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-C2-software-review.json",
+          "sha256": "E07EC7F7F46766329254B83305E716A346046619D23368D09A208E48420B5759",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-C2-html-entry-rebind.json",
+          "recordedInputs": [],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        }
+      ]
     },
     {
       "id": "D1",
@@ -683,150 +907,512 @@
       "signatureStatus": "not-required",
       "consumers": [
         {
-          "name": "src/MigrationContracts.ps1",
-          "path": "src/MigrationContracts.ps1"
-        },
-        {
           "name": "src/AssistiveFiles.ps1",
           "path": "src/AssistiveFiles.ps1"
-        },
-        {
-          "name": "src/AssistiveNonC.ps1",
-          "path": "src/AssistiveNonC.ps1"
-        },
-        {
-          "name": "src/AssistiveRestore.ps1",
-          "path": "src/AssistiveRestore.ps1"
-        },
-        {
-          "name": "src/Payload.ps1",
-          "path": "src/Payload.ps1"
-        },
-        {
-          "name": "src/FileScopeGuard.ps1",
-          "path": "src/FileScopeGuard.ps1"
-        },
-        {
-          "name": "src/WorkloadDiscovery.ps1",
-          "path": "src/WorkloadDiscovery.ps1"
-        },
-        {
-          "name": "src/WizardDetails.ps1",
-          "path": "src/WizardDetails.ps1"
         },
         {
           "name": "src/AssistiveReports.ps1",
           "path": "src/AssistiveReports.ps1"
         },
         {
+          "name": "src/AssistiveRestore.ps1",
+          "path": "src/AssistiveRestore.ps1"
+        },
+        {
+          "name": "src/AssistiveReviewForms.ps1",
+          "path": "src/AssistiveReviewForms.ps1"
+        },
+        {
+          "name": "src/HtmlConsole.ps1",
+          "path": "src/HtmlConsole.ps1"
+        },
+        {
+          "name": "src/MigrationContracts.ps1",
+          "path": "src/MigrationContracts.ps1"
+        },
+        {
+          "name": "src/OperationRequests.ps1",
+          "path": "src/OperationRequests.ps1"
+        },
+        {
+          "name": "src/Payload.ps1",
+          "path": "src/Payload.ps1"
+        },
+        {
+          "name": "src/SourceCandidateConfirmation.ps1",
+          "path": "src/SourceCandidateConfirmation.ps1"
+        },
+        {
+          "name": "src/SourceCandidateMapping.ps1",
+          "path": "src/SourceCandidateMapping.ps1"
+        },
+        {
+          "name": "src/WindowsServerMigration.psd1",
+          "path": "src/WindowsServerMigration.psd1"
+        },
+        {
+          "name": "src/WindowsServerMigration.psm1",
+          "path": "src/WindowsServerMigration.psm1"
+        },
+        {
+          "name": "src/WizardDetails.ps1",
+          "path": "src/WizardDetails.ps1"
+        },
+        {
+          "name": "src/WizardHtmlRuntime.ps1",
+          "path": "src/WizardHtmlRuntime.ps1"
+        },
+        {
+          "name": "src/ui/console.css",
+          "path": "src/ui/console.css"
+        },
+        {
+          "name": "src/ui/console.js",
+          "path": "src/ui/console.js"
+        },
+        {
+          "name": "src/ui/index.html",
+          "path": "src/ui/index.html"
+        },
+        {
+          "name": "tests/Start-C2D2TestServer.ps1",
+          "path": "tests/Start-C2D2TestServer.ps1"
+        },
+        {
+          "name": "tests/Test-C2D2Browser.js",
+          "path": "tests/Test-C2D2Browser.js"
+        },
+        {
+          "name": "tests/Test-C2D2HtmlActions.ps1",
+          "path": "tests/Test-C2D2HtmlActions.ps1"
+        },
+        {
+          "name": "tests/Test-ExactMemberDirectories.ps1",
+          "path": "tests/Test-ExactMemberDirectories.ps1"
+        },
+        {
           "name": "tests/Test-ExactMembers.ps1",
           "path": "tests/Test-ExactMembers.ps1"
         },
         {
-          "name": "tests/Test-AssistiveRestore.ps1",
-          "path": "tests/Test-AssistiveRestore.ps1"
+          "name": "tests/Test-SourceCandidateConfirmation.ps1",
+          "path": "tests/Test-SourceCandidateConfirmation.ps1"
         },
         {
-          "name": "tests/Test-WorkloadActionIndex.ps1",
-          "path": "tests/Test-WorkloadActionIndex.ps1"
+          "name": "tests/Test-SourceCandidateMapping.ps1",
+          "path": "tests/Test-SourceCandidateMapping.ps1"
         }
       ],
       "environment": {
-        "engine": "Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
-        "runtime": "Windows isolated immutable snapshot",
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
         "scope": "isolated"
       },
       "inputs": [
         {
-          "path": "src/MigrationContracts.ps1",
-          "sha256": "76A02B6E260E8401E93689B6C5EE27CDCA2B75CF8119FE016C959B795E249685"
-        },
-        {
           "path": "src/AssistiveFiles.ps1",
-          "sha256": "C680EB880D33CA8314DC11D02D147B2C54E24848501528A6F1735CB71CDF0A4B"
-        },
-        {
-          "path": "src/AssistiveNonC.ps1",
-          "sha256": "656FAE2E3A63068C88F384D0EF220D2AFF81F0939CE58A1050BF99AD8A3238D5"
-        },
-        {
-          "path": "src/AssistiveRestore.ps1",
-          "sha256": "C97AD3319BCE665A7C366254311425EDAA86018EF9FC8C3A4FB2EEA4CC938BC2"
-        },
-        {
-          "path": "src/Payload.ps1",
-          "sha256": "883FCE1A5B45863E4A755BFFBA87EEEBC6BE3FB7BAEB9FC1F77424DDD2AEC640"
-        },
-        {
-          "path": "src/FileScopeGuard.ps1",
-          "sha256": "52A847AFBFD6958216558D57211C1B319F636BEAB8F109EBCCC3F1C990F904B7"
-        },
-        {
-          "path": "src/WorkloadDiscovery.ps1",
-          "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
-        },
-        {
-          "path": "src/WizardDetails.ps1",
-          "sha256": "6A7C2524EFACD7BCF6328CD748DC1B405C195D9FDD8FF6987DED4D9C7D87348E"
+          "sha256": "9CF7551AD14B565672ED5C871A36BADC6715E0A82BD7E38DE2AA5A9EB57CB118"
         },
         {
           "path": "src/AssistiveReports.ps1",
-          "sha256": "797212F7ED9DD1F69B34FDC61CA09520CB9D09B2CD03DE6C9DED094A44ACC384"
+          "sha256": "D0AC1943519A4277EE102A2360AEDF8C4F51811B1FAD63B6B944525F81DFF578"
+        },
+        {
+          "path": "src/AssistiveRestore.ps1",
+          "sha256": "3ADE8E4FF9BFBB299954F6BB0D1312A5DD84FFF4353152E703855A713A2A7E07"
+        },
+        {
+          "path": "src/AssistiveReviewForms.ps1",
+          "sha256": "6539B22F3B78D8C0CA48E8357F328F947CB675B44845DED5D61B71F027581BEF"
+        },
+        {
+          "path": "src/HtmlConsole.ps1",
+          "sha256": "0D7B9B49E3183622AB9E042D6B373BC5AD550BBE2F3DFFC4E16C452888E67235"
+        },
+        {
+          "path": "src/MigrationContracts.ps1",
+          "sha256": "9015DF2FA626CF979679A748C6B89A2A0E9AFE1639582F70CE6A29F34DDA10C7"
+        },
+        {
+          "path": "src/OperationRequests.ps1",
+          "sha256": "E35A78A4DBE5960721EFD0EE57D1F9B2B5BD574E74FADA27E1018ABC7AA22DF8"
+        },
+        {
+          "path": "src/Payload.ps1",
+          "sha256": "0F6E0FA9843DF4CBD00C9B590C45CF9B7F3EA8D35982D90FEEFE36B6BF74BEE9"
+        },
+        {
+          "path": "src/SourceCandidateConfirmation.ps1",
+          "sha256": "850DCDE8128ADD5D99DBF09C887971E9D318FAF7EC377812B662E1D3A522F41B"
+        },
+        {
+          "path": "src/SourceCandidateMapping.ps1",
+          "sha256": "5353D467D5EEEB58407725D29E299FE1A656F2819C30DDFB791F93BC974FAAC3"
+        },
+        {
+          "path": "src/WindowsServerMigration.psd1",
+          "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+        },
+        {
+          "path": "src/WindowsServerMigration.psm1",
+          "sha256": "BB23A18D0662D8C2E507DBCE9CFC9AEFD4FADB93DC188F667506B7E757A28E88"
+        },
+        {
+          "path": "src/WizardDetails.ps1",
+          "sha256": "2AA4EDE9215AD9C0EB1D40EB3B137B90A980C7469057F41DA0102F30BC6D4606"
+        },
+        {
+          "path": "src/WizardHtmlRuntime.ps1",
+          "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+        },
+        {
+          "path": "src/ui/console.css",
+          "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+        },
+        {
+          "path": "src/ui/console.js",
+          "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+        },
+        {
+          "path": "src/ui/index.html",
+          "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+        },
+        {
+          "path": "tests/Start-C2D2TestServer.ps1",
+          "sha256": "F3F18857A9FF8D882FAF6C5C113BE39FE86A011C89799AAD9A1C6D24D1C9547F"
+        },
+        {
+          "path": "tests/Test-C2D2Browser.js",
+          "sha256": "A260D9007FE369DCE164FF54F2976CB0552975C4CC6E5EBA7586CD77559AE530"
+        },
+        {
+          "path": "tests/Test-C2D2HtmlActions.ps1",
+          "sha256": "15AFDB7167747B4450B3E08020F98D25B4EE0C04D9F64937CB394AF83EF1EAB4"
+        },
+        {
+          "path": "tests/Test-ExactMemberDirectories.ps1",
+          "sha256": "1068C2CEB3CE7C62357C9A3DBF19476A9D28967DC7307396119B0C83AE9C1312"
         },
         {
           "path": "tests/Test-ExactMembers.ps1",
           "sha256": "F8916C3FE95BC659286175A8216C8F9F7F4BAD50B52CB5EF0B62626CBABDA986"
         },
         {
-          "path": "tests/Test-AssistiveRestore.ps1",
-          "sha256": "55797997649699EA5B2324CD5CB1117F7152E9EC9618CBB46ABC1583BBC5DA3B"
+          "path": "tests/Test-SourceCandidateConfirmation.ps1",
+          "sha256": "A34C835A6DBAF568362CBE8E21C27B46EF8B46527AC84F9C624375BD24E5E938"
         },
         {
-          "path": "tests/Test-WorkloadActionIndex.ps1",
-          "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+          "path": "tests/Test-SourceCandidateMapping.ps1",
+          "sha256": "20A2F476EBF9EEB8B295C28C6B0C0E0683D4E8B85211A960844A9D0843BCE28C"
         }
       ],
       "evidence": [
         {
-          "path": "docs/plans/evidence/MIGRATION-7-D2.json",
-          "sha256": "DA6B33BF32909F8EA8749A69993546EC84B1CEAF159953C212BEB4B1C223EDB6"
-        },
-        {
-          "path": "docs/plans/evidence/MIGRATION-7-B2-native-d085097.json",
-          "sha256": "2792FA27032D510CD3F4A4663C47C03ABA46E891772BFB838FEF4B492412928D"
-        },
-        {
-          "path": "docs/plans/evidence/MIGRATION-7-D2-exact-review.json",
-          "sha256": "213C00B800290234B56A04B0EC922DC2D002D8F5F9F7D7360B36AEB1EDB44FF5"
-        },
-        {
-          "path": "docs/plans/evidence/MIGRATION-7-D2-candidate-confirmation.json",
-          "sha256": "BBF1FD985FAA6A7C2DBEFA83BAB511B93F1462DD5CB714CDD1C89EA12104740A"
-        },
-        {
-          "path": "docs/plans/evidence/MIGRATION-7-D2-workload-mapping.json",
-          "sha256": "55DFE1FFA073BCDD8D5C74D035A8945D6CC418BC59F5AC368B66CF91282238CC"
+          "path": "docs/plans/evidence/MIGRATION-7-D2-html-entry-empty-dirs.json",
+          "sha256": "881AFA024BC7A8886669D985CD1474629ED97E2413589F83D4F0E550833CA33B"
         }
       ],
       "evidenceLog": {
-        "path": "docs/plans/evidence/MIGRATION-7-D2.json",
-        "sha256": "DA6B33BF32909F8EA8749A69993546EC84B1CEAF159953C212BEB4B1C223EDB6"
+        "path": "docs/plans/evidence/MIGRATION-7-D2-html-entry-empty-dirs.json",
+        "sha256": "881AFA024BC7A8886669D985CD1474629ED97E2413589F83D4F0E550833CA33B"
       },
-      "casesExecuted": 58,
-      "result": "Source confirmation and durable E0 mapping core verified through public review, draft, approval and CV2 package reader; 19 mapping, 35 confirmation, 28 action-index and 18 path-coverage checks per engine plus workload discovery regression. HTML, empty-directory and offline restore integration remain incomplete.",
+      "casesExecuted": 300,
+      "result": "At HEAD: SourceCandidateConfirmation 41, SourceCandidateMapping 19, ExactMemberDirectories 25, ExactMembers 29 and C2D2HtmlActions 185 checks passed on WinPS 5.1, plus the real-Edge C2D2Browser suite (fixture API). Candidate confirmation, durable workload mapping, HTML entry (B5) and leaf empty-directory members (B6) now exist; the stage stays in-progress.",
       "limitations": [
-        "Candidate-to-human-confirmation-to-hash-bound-spec integration remains pending.",
-        "C-only contract; legacy NonC and delta explicitly rejected.",
-        "Files only; empty directories require other scope semantics.",
-        "Fixture machine identity/inventory and restore journal mocks; not full durable restore or production acceptance."
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "C-only contract; non-C ExactMembers are still rejected.",
+        "Fixture machine identity/inventory and restore journal mocks; not full durable restore or production acceptance.",
+        "Source-side candidate export is tested at function level only.",
+        "C2D2Browser uses a fixture API."
       ],
       "openIssues": [
-        "Complete HTML and one-click candidate/mapping review.",
-        "Preserve explicitly selected empty directories with a versioned exact-entry contract.",
         "Complete context-aware non-C offline full-set capture and Target restore.",
-        "Complete D2 integrated acceptance and original-location end-to-end verification."
+        "Complete D2 integrated acceptance and original-location end-to-end verification beyond the C-volume fixture journey.",
+        "Candidate confirmation does not check blocked extensions of directory names, so 'confirmed but rejected at import' is possible."
       ],
-      "historicalEvidence": []
+      "historicalEvidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2.json",
+          "sha256": "F0E01C0F696E58B8DE525FE106CE73DF9A9D82F2AA61FE10471E2B82D88BA2E9",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-D2-html-entry-empty-dirs.json",
+          "recordedInputs": [
+            {
+              "path": "src/MigrationContracts.ps1",
+              "sha256": "76A02B6E260E8401E93689B6C5EE27CDCA2B75CF8119FE016C959B795E249685"
+            },
+            {
+              "path": "src/AssistiveFiles.ps1",
+              "sha256": "C680EB880D33CA8314DC11D02D147B2C54E24848501528A6F1735CB71CDF0A4B"
+            },
+            {
+              "path": "src/AssistiveNonC.ps1",
+              "sha256": "656FAE2E3A63068C88F384D0EF220D2AFF81F0939CE58A1050BF99AD8A3238D5"
+            },
+            {
+              "path": "src/AssistiveRestore.ps1",
+              "sha256": "C97AD3319BCE665A7C366254311425EDAA86018EF9FC8C3A4FB2EEA4CC938BC2"
+            },
+            {
+              "path": "src/Payload.ps1",
+              "sha256": "883FCE1A5B45863E4A755BFFBA87EEEBC6BE3FB7BAEB9FC1F77424DDD2AEC640"
+            },
+            {
+              "path": "src/FileScopeGuard.ps1",
+              "sha256": "52A847AFBFD6958216558D57211C1B319F636BEAB8F109EBCCC3F1C990F904B7"
+            },
+            {
+              "path": "src/WorkloadDiscovery.ps1",
+              "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
+            },
+            {
+              "path": "src/WizardDetails.ps1",
+              "sha256": "6A7C2524EFACD7BCF6328CD748DC1B405C195D9FDD8FF6987DED4D9C7D87348E"
+            },
+            {
+              "path": "src/AssistiveReports.ps1",
+              "sha256": "797212F7ED9DD1F69B34FDC61CA09520CB9D09B2CD03DE6C9DED094A44ACC384"
+            },
+            {
+              "path": "tests/Test-ExactMembers.ps1",
+              "sha256": "F8916C3FE95BC659286175A8216C8F9F7F4BAD50B52CB5EF0B62626CBABDA986"
+            },
+            {
+              "path": "tests/Test-AssistiveRestore.ps1",
+              "sha256": "55797997649699EA5B2324CD5CB1117F7152E9EC9618CBB46ABC1583BBC5DA3B"
+            },
+            {
+              "path": "tests/Test-WorkloadActionIndex.ps1",
+              "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-B2-native-d085097.json",
+          "sha256": "94EE5BB7B3DD321D15700CFB30278ACBF322C2DD1EBA0CA5BB63861A12914984",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-D2-html-entry-empty-dirs.json",
+          "recordedInputs": [
+            {
+              "path": "src/MigrationContracts.ps1",
+              "sha256": "76A02B6E260E8401E93689B6C5EE27CDCA2B75CF8119FE016C959B795E249685"
+            },
+            {
+              "path": "src/AssistiveFiles.ps1",
+              "sha256": "C680EB880D33CA8314DC11D02D147B2C54E24848501528A6F1735CB71CDF0A4B"
+            },
+            {
+              "path": "src/AssistiveNonC.ps1",
+              "sha256": "656FAE2E3A63068C88F384D0EF220D2AFF81F0939CE58A1050BF99AD8A3238D5"
+            },
+            {
+              "path": "src/AssistiveRestore.ps1",
+              "sha256": "C97AD3319BCE665A7C366254311425EDAA86018EF9FC8C3A4FB2EEA4CC938BC2"
+            },
+            {
+              "path": "src/Payload.ps1",
+              "sha256": "883FCE1A5B45863E4A755BFFBA87EEEBC6BE3FB7BAEB9FC1F77424DDD2AEC640"
+            },
+            {
+              "path": "src/FileScopeGuard.ps1",
+              "sha256": "52A847AFBFD6958216558D57211C1B319F636BEAB8F109EBCCC3F1C990F904B7"
+            },
+            {
+              "path": "src/WorkloadDiscovery.ps1",
+              "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
+            },
+            {
+              "path": "src/WizardDetails.ps1",
+              "sha256": "6A7C2524EFACD7BCF6328CD748DC1B405C195D9FDD8FF6987DED4D9C7D87348E"
+            },
+            {
+              "path": "src/AssistiveReports.ps1",
+              "sha256": "797212F7ED9DD1F69B34FDC61CA09520CB9D09B2CD03DE6C9DED094A44ACC384"
+            },
+            {
+              "path": "tests/Test-ExactMembers.ps1",
+              "sha256": "F8916C3FE95BC659286175A8216C8F9F7F4BAD50B52CB5EF0B62626CBABDA986"
+            },
+            {
+              "path": "tests/Test-AssistiveRestore.ps1",
+              "sha256": "55797997649699EA5B2324CD5CB1117F7152E9EC9618CBB46ABC1583BBC5DA3B"
+            },
+            {
+              "path": "tests/Test-WorkloadActionIndex.ps1",
+              "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2-exact-review.json",
+          "sha256": "5CFB5AE60E67DB04DB057A738D673603F27DA2EBA2BA77B6AE64ADC745FD4A73",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-D2-html-entry-empty-dirs.json",
+          "recordedInputs": [
+            {
+              "path": "src/MigrationContracts.ps1",
+              "sha256": "76A02B6E260E8401E93689B6C5EE27CDCA2B75CF8119FE016C959B795E249685"
+            },
+            {
+              "path": "src/AssistiveFiles.ps1",
+              "sha256": "C680EB880D33CA8314DC11D02D147B2C54E24848501528A6F1735CB71CDF0A4B"
+            },
+            {
+              "path": "src/AssistiveNonC.ps1",
+              "sha256": "656FAE2E3A63068C88F384D0EF220D2AFF81F0939CE58A1050BF99AD8A3238D5"
+            },
+            {
+              "path": "src/AssistiveRestore.ps1",
+              "sha256": "C97AD3319BCE665A7C366254311425EDAA86018EF9FC8C3A4FB2EEA4CC938BC2"
+            },
+            {
+              "path": "src/Payload.ps1",
+              "sha256": "883FCE1A5B45863E4A755BFFBA87EEEBC6BE3FB7BAEB9FC1F77424DDD2AEC640"
+            },
+            {
+              "path": "src/FileScopeGuard.ps1",
+              "sha256": "52A847AFBFD6958216558D57211C1B319F636BEAB8F109EBCCC3F1C990F904B7"
+            },
+            {
+              "path": "src/WorkloadDiscovery.ps1",
+              "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
+            },
+            {
+              "path": "src/WizardDetails.ps1",
+              "sha256": "6A7C2524EFACD7BCF6328CD748DC1B405C195D9FDD8FF6987DED4D9C7D87348E"
+            },
+            {
+              "path": "src/AssistiveReports.ps1",
+              "sha256": "797212F7ED9DD1F69B34FDC61CA09520CB9D09B2CD03DE6C9DED094A44ACC384"
+            },
+            {
+              "path": "tests/Test-ExactMembers.ps1",
+              "sha256": "F8916C3FE95BC659286175A8216C8F9F7F4BAD50B52CB5EF0B62626CBABDA986"
+            },
+            {
+              "path": "tests/Test-AssistiveRestore.ps1",
+              "sha256": "55797997649699EA5B2324CD5CB1117F7152E9EC9618CBB46ABC1583BBC5DA3B"
+            },
+            {
+              "path": "tests/Test-WorkloadActionIndex.ps1",
+              "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2-candidate-confirmation.json",
+          "sha256": "79286AA0CD57852CB53A3F4AE80BF11983332A8B5847D0AB30CC8BA11A92C1EB",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-D2-html-entry-empty-dirs.json",
+          "recordedInputs": [
+            {
+              "path": "src/MigrationContracts.ps1",
+              "sha256": "76A02B6E260E8401E93689B6C5EE27CDCA2B75CF8119FE016C959B795E249685"
+            },
+            {
+              "path": "src/AssistiveFiles.ps1",
+              "sha256": "C680EB880D33CA8314DC11D02D147B2C54E24848501528A6F1735CB71CDF0A4B"
+            },
+            {
+              "path": "src/AssistiveNonC.ps1",
+              "sha256": "656FAE2E3A63068C88F384D0EF220D2AFF81F0939CE58A1050BF99AD8A3238D5"
+            },
+            {
+              "path": "src/AssistiveRestore.ps1",
+              "sha256": "C97AD3319BCE665A7C366254311425EDAA86018EF9FC8C3A4FB2EEA4CC938BC2"
+            },
+            {
+              "path": "src/Payload.ps1",
+              "sha256": "883FCE1A5B45863E4A755BFFBA87EEEBC6BE3FB7BAEB9FC1F77424DDD2AEC640"
+            },
+            {
+              "path": "src/FileScopeGuard.ps1",
+              "sha256": "52A847AFBFD6958216558D57211C1B319F636BEAB8F109EBCCC3F1C990F904B7"
+            },
+            {
+              "path": "src/WorkloadDiscovery.ps1",
+              "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
+            },
+            {
+              "path": "src/WizardDetails.ps1",
+              "sha256": "6A7C2524EFACD7BCF6328CD748DC1B405C195D9FDD8FF6987DED4D9C7D87348E"
+            },
+            {
+              "path": "src/AssistiveReports.ps1",
+              "sha256": "797212F7ED9DD1F69B34FDC61CA09520CB9D09B2CD03DE6C9DED094A44ACC384"
+            },
+            {
+              "path": "tests/Test-ExactMembers.ps1",
+              "sha256": "F8916C3FE95BC659286175A8216C8F9F7F4BAD50B52CB5EF0B62626CBABDA986"
+            },
+            {
+              "path": "tests/Test-AssistiveRestore.ps1",
+              "sha256": "55797997649699EA5B2324CD5CB1117F7152E9EC9618CBB46ABC1583BBC5DA3B"
+            },
+            {
+              "path": "tests/Test-WorkloadActionIndex.ps1",
+              "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2-workload-mapping.json",
+          "sha256": "BC6674A98B4207DBF1BE6CDA9E19D6DE7B2E52846C3CDAB416B14B1B7C809E2F",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-D2-html-entry-empty-dirs.json",
+          "recordedInputs": [
+            {
+              "path": "src/MigrationContracts.ps1",
+              "sha256": "76A02B6E260E8401E93689B6C5EE27CDCA2B75CF8119FE016C959B795E249685"
+            },
+            {
+              "path": "src/AssistiveFiles.ps1",
+              "sha256": "C680EB880D33CA8314DC11D02D147B2C54E24848501528A6F1735CB71CDF0A4B"
+            },
+            {
+              "path": "src/AssistiveNonC.ps1",
+              "sha256": "656FAE2E3A63068C88F384D0EF220D2AFF81F0939CE58A1050BF99AD8A3238D5"
+            },
+            {
+              "path": "src/AssistiveRestore.ps1",
+              "sha256": "C97AD3319BCE665A7C366254311425EDAA86018EF9FC8C3A4FB2EEA4CC938BC2"
+            },
+            {
+              "path": "src/Payload.ps1",
+              "sha256": "883FCE1A5B45863E4A755BFFBA87EEEBC6BE3FB7BAEB9FC1F77424DDD2AEC640"
+            },
+            {
+              "path": "src/FileScopeGuard.ps1",
+              "sha256": "52A847AFBFD6958216558D57211C1B319F636BEAB8F109EBCCC3F1C990F904B7"
+            },
+            {
+              "path": "src/WorkloadDiscovery.ps1",
+              "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
+            },
+            {
+              "path": "src/WizardDetails.ps1",
+              "sha256": "6A7C2524EFACD7BCF6328CD748DC1B405C195D9FDD8FF6987DED4D9C7D87348E"
+            },
+            {
+              "path": "src/AssistiveReports.ps1",
+              "sha256": "797212F7ED9DD1F69B34FDC61CA09520CB9D09B2CD03DE6C9DED094A44ACC384"
+            },
+            {
+              "path": "tests/Test-ExactMembers.ps1",
+              "sha256": "F8916C3FE95BC659286175A8216C8F9F7F4BAD50B52CB5EF0B62626CBABDA986"
+            },
+            {
+              "path": "tests/Test-AssistiveRestore.ps1",
+              "sha256": "55797997649699EA5B2324CD5CB1117F7152E9EC9618CBB46ABC1583BBC5DA3B"
+            },
+            {
+              "path": "tests/Test-WorkloadActionIndex.ps1",
+              "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        }
+      ]
     },
     {
       "id": "D3a",
@@ -873,23 +1459,179 @@
           "15.4 D3b：實際封存與獨立可恢復判準"
         ]
       },
-      "implementationStatus": "in-progress",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "implemented",
+      "evidenceStatus": "isolated-pass",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
+      "consumers": [
+        {
+          "name": "src/HtmlConsole.ps1",
+          "path": "src/HtmlConsole.ps1"
+        },
+        {
+          "name": "src/OperationRequests.ps1",
+          "path": "src/OperationRequests.ps1"
+        },
+        {
+          "name": "src/WizardBackup.ps1",
+          "path": "src/WizardBackup.ps1"
+        },
+        {
+          "name": "src/WizardHtmlRuntime.ps1",
+          "path": "src/WizardHtmlRuntime.ps1"
+        },
+        {
+          "name": "src/WizardRuntime.ps1",
+          "path": "src/WizardRuntime.ps1"
+        },
+        {
+          "name": "src/ui/console.css",
+          "path": "src/ui/console.css"
+        },
+        {
+          "name": "src/ui/console.js",
+          "path": "src/ui/console.js"
+        },
+        {
+          "name": "src/ui/index.html",
+          "path": "src/ui/index.html"
+        },
+        {
+          "name": "tests/Start-WizardRuntimeTestServer.ps1",
+          "path": "tests/Start-WizardRuntimeTestServer.ps1"
+        },
+        {
+          "name": "tests/Test-ActionExports.ps1",
+          "path": "tests/Test-ActionExports.ps1"
+        },
+        {
+          "name": "tests/Test-NativeWizardRuntimeHandler.js",
+          "path": "tests/Test-NativeWizardRuntimeHandler.js"
+        },
+        {
+          "name": "tests/Test-OfflineFullSet.ps1",
+          "path": "tests/Test-OfflineFullSet.ps1"
+        },
+        {
+          "name": "tests/Test-OfflineFullSetSeparateSource.ps1",
+          "path": "tests/Test-OfflineFullSetSeparateSource.ps1"
+        },
+        {
+          "name": "tests/Test-WizardBackup.ps1",
+          "path": "tests/Test-WizardBackup.ps1"
+        },
+        {
+          "name": "tests/Test-WizardBackupRecovery.ps1",
+          "path": "tests/Test-WizardBackupRecovery.ps1"
+        },
+        {
+          "name": "tests/native-diagnostics.js",
+          "path": "tests/native-diagnostics.js"
+        },
+        {
+          "name": "tests/native-evidence.js",
+          "path": "tests/native-evidence.js"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/HtmlConsole.ps1",
+          "sha256": "0D7B9B49E3183622AB9E042D6B373BC5AD550BBE2F3DFFC4E16C452888E67235"
+        },
+        {
+          "path": "src/OperationRequests.ps1",
+          "sha256": "E35A78A4DBE5960721EFD0EE57D1F9B2B5BD574E74FADA27E1018ABC7AA22DF8"
+        },
+        {
+          "path": "src/WizardBackup.ps1",
+          "sha256": "8A698F592F6B122DD8F934DABBE0A4207906A6850D63528088A2E0AD40E94684"
+        },
+        {
+          "path": "src/WizardHtmlRuntime.ps1",
+          "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+        },
+        {
+          "path": "src/WizardRuntime.ps1",
+          "sha256": "C37EE5885069B5D702E0686A222328A2733029698E46C5A50A63785AEF31DBE7"
+        },
+        {
+          "path": "src/ui/console.css",
+          "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+        },
+        {
+          "path": "src/ui/console.js",
+          "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+        },
+        {
+          "path": "src/ui/index.html",
+          "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+        },
+        {
+          "path": "tests/Start-WizardRuntimeTestServer.ps1",
+          "sha256": "9ACA722AECB95DAA244F812E90A31E2D352BC83289825FD0A71328B092D95B37"
+        },
+        {
+          "path": "tests/Test-ActionExports.ps1",
+          "sha256": "4DCD36168922C389BF2E418786B7AA1F073C0C99B573568BA169722FA0BFD582"
+        },
+        {
+          "path": "tests/Test-NativeWizardRuntimeHandler.js",
+          "sha256": "C9831C98DC8E08B29B0048A0E6965B21747D202EA9D93BFD4F9C8CB8E2F96904"
+        },
+        {
+          "path": "tests/Test-OfflineFullSet.ps1",
+          "sha256": "D6D403BA6DD16EE5841D0EF2E35375E0DE4EB29B6E2D204EA092FA211DD3D959"
+        },
+        {
+          "path": "tests/Test-OfflineFullSetSeparateSource.ps1",
+          "sha256": "9FE04083E7E3CC06CCAC00029A73349ACF6F70BCC599E520D8FC533FA922BF62"
+        },
+        {
+          "path": "tests/Test-WizardBackup.ps1",
+          "sha256": "0D01E234FC070875204372CDDC26A0385173845BF273F614E4C921D4823A2378"
+        },
+        {
+          "path": "tests/Test-WizardBackupRecovery.ps1",
+          "sha256": "D972EFE50BBB93FB48D0C9963D2D51881189872462BBB319B3655A5E1C7001D4"
+        },
+        {
+          "path": "tests/native-diagnostics.js",
+          "sha256": "C9F19CD7227AC4FCDE00FA859D7C6626B6DB17C1EED7392EDFE7E8A427631750"
+        },
+        {
+          "path": "tests/native-evidence.js",
+          "sha256": "F3BA88CC7290BFACD96125AF5DC56C126CFB05F3E9AAF19ADC2388B9763E81B9"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D3b-independent-copy.json",
+          "sha256": "0A065589D78D76624E7B04F3F3D39C983ED3BDFE1391176751F84919E0E305CC"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-D3b-independent-copy.json",
+        "sha256": "0A065589D78D76624E7B04F3F3D39C983ED3BDFE1391176751F84919E0E305CC"
+      },
+      "casesExecuted": 330,
+      "result": "Backup side of D3b at HEAD on WinPS 5.1 and real Edge: OfflineFullSet 67, WizardBackup 18 PASS sections (Directory/ZIP delivery, independent copy copy/verify-existing and tamper/missing/local-fixed/inside-workspace/overwrite rejections, B7 disk-full, short-write, medium-pulled and crash-retry cases), WizardBackupRecovery 21, OfflineFullSetSeparateSource 20, ActionExports 203 action commands, and the real-Edge NativeWizardRuntimeHandler suite (formal capture bridge) passed.",
+      "limitations": [
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "Removable and network media are classified through test doubles and subst-based media; no real removable-disk or UNC copy was verified.",
+        "Additional volumes are still simulated bindings; no native D:/E: capture or cold Target restore qualification.",
+        "NativeWizardRuntimeHandler ran with the formal writer capture bridge; native transport/origin is not asserted (AdGuard policy unchanged)."
+      ],
       "openIssues": [
-        "Uncommitted continuation slice is under completeness review; no stage acceptance yet.",
-        "Independent-copy verification and parent readiness remain unimplemented.",
-        "Historical attestation-before-seal bound and delivery independence from SourceResume are being corrected before formal tests."
+        "Real removable-disk and network-media independent copy on actual hardware.",
+        "Non-C ExactMembers and real D/E volume backup remain deferred.",
+        "Success path on the screen can only be completed in an environment with independent media."
       ],
       "historicalEvidence": []
     },
@@ -909,12 +1651,12 @@
       "signatureStatus": "not-required",
       "consumers": [
         {
-          "name": "src/WorkloadDiscovery.ps1",
-          "path": "src/WorkloadDiscovery.ps1"
-        },
-        {
           "name": "src/MigrationWizard.ps1",
           "path": "src/MigrationWizard.ps1"
+        },
+        {
+          "name": "src/WorkloadDiscovery.ps1",
+          "path": "src/WorkloadDiscovery.ps1"
         },
         {
           "name": "tests/Test-WorkloadActionIndex.ps1",
@@ -923,17 +1665,25 @@
         {
           "name": "tests/Test-WorkloadDiscovery.ps1",
           "path": "tests/Test-WorkloadDiscovery.ps1"
+        },
+        {
+          "name": "tests/Test-WorkloadPathCoverage.ps1",
+          "path": "tests/Test-WorkloadPathCoverage.ps1"
         }
       ],
       "environment": {
-        "engine": "Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.5",
-        "runtime": "Windows isolated immutable snapshot",
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
         "scope": "isolated"
       },
       "inputs": [
         {
+          "path": "src/MigrationWizard.ps1",
+          "sha256": "C15CC4DD5B222058BCEAFFDA268985E55626310973A430A1749EA19E2C3BD51E"
+        },
+        {
           "path": "src/WorkloadDiscovery.ps1",
-          "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
+          "sha256": "0C09F27A7CBEF8A7A170643B91C9C2D2B823709D7A66242E0C0CB5C2539FE15D"
         },
         {
           "path": "tests/Test-WorkloadActionIndex.ps1",
@@ -941,50 +1691,174 @@
         },
         {
           "path": "tests/Test-WorkloadDiscovery.ps1",
-          "sha256": "BB7F1D453396AA0BF7A7A54B9E147E1BDA7B20E9F7DB64930976DDC65E18655C"
+          "sha256": "BCD76D15934C7ED03C9F561FFFEE69A04BA63659272968AD170340F32E4124EF"
         },
         {
           "path": "tests/Test-WorkloadPathCoverage.ps1",
-          "sha256": "3DB27979B2FC7F99963A7E08FD8EFBE2E92D3FD289A92B64E1AC771CDB019455"
-        },
-        {
-          "path": "src/MigrationWizard.ps1",
-          "sha256": "8CE336C0102175CA9EB7E40ACD1361149541FF29EC92B0674370355A536564BD"
+          "sha256": "C10FABC7D3B8256D5479A4FEF585BF7E1ABA5B036FB781731D632075EAB837DF"
         }
       ],
       "evidence": [
         {
-          "path": "docs/plans/evidence/MIGRATION-7-E0-f4a-rebind.json",
-          "sha256": "53933E8CD0858B5F8935B459A6EF563C4ADB381C855FE99D58270DB6AE122A6D"
-        },
-        {
-          "path": "docs/plans/evidence/MIGRATION-7-E0.json",
-          "sha256": "CA17DC58988E8CBA6F55C422758DBCEB127F9E630DF631EF9CAA70C7091D69F8"
-        },
-        {
-          "path": "docs/plans/evidence/MIGRATION-7-D2.json",
-          "sha256": "DA6B33BF32909F8EA8749A69993546EC84B1CEAF159953C212BEB4B1C223EDB6"
-        },
-        {
-          "path": "docs/plans/evidence/MIGRATION-7-D1-path-coverage.json",
-          "sha256": "CCE01BF1340A92283BA4629D3AF3C0370AF52E78B1FBC994E0416146F6152E2A"
-        },
-        {
-          "path": "docs/plans/evidence/MIGRATION-7-D2-workload-mapping.json",
-          "sha256": "55DFE1FFA073BCDD8D5C74D035A8945D6CC418BC59F5AC368B66CF91282238CC"
+          "path": "docs/plans/evidence/MIGRATION-7-E0-rebind-dce8840.json",
+          "sha256": "0651EC13672CA325A96B88543F1CB206A4F42CB4B6D2257DE52930FE857544CE"
         }
       ],
       "evidenceLog": {
-        "path": "docs/plans/evidence/MIGRATION-7-E0.json",
-        "sha256": "CA17DC58988E8CBA6F55C422758DBCEB127F9E630DF631EF9CAA70C7091D69F8"
+        "path": "docs/plans/evidence/MIGRATION-7-E0-rebind-dce8840.json",
+        "sha256": "0651EC13672CA325A96B88543F1CB206A4F42CB4B6D2257DE52930FE857544CE"
       },
-      "casesExecuted": 38,
-      "result": "19 focused assertions passed independently per engine; existing public workload discovery regression also passed on WinPS5.1. Mixed unsupported actions remain manual, exact Exec indices and same-location mapping preserved. D2 core snapshot reverified changed consumers: software projection 13 per engine; workload mapping 28 per engine plus public discovery regression.",
+      "casesExecuted": 47,
+      "result": "Rebound to HEAD bytes. WorkloadActionIndex 28 assertions and WorkloadPathCoverage 18 checks passed; the public WorkloadDiscovery regression passed. The earlier binding of src/MigrationWizard.ps1 (c95b8d6) recorded bytes from an uncommitted working tree that match no committed revision, which is why it could never verify on a clean copy.",
       "limitations": [
-        "Fixture XML/draft tests; no live task registration or execution. Existing regression additional to 38 counted assertions."
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "Fixture XML/draft tests; no live task registration or execution.",
+        "WorkloadDiscovery prints no assertion count and is counted once."
       ],
       "openIssues": [],
-      "historicalEvidence": []
+      "historicalEvidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-E0-f4a-rebind.json",
+          "sha256": "168F0C34A79D05AD07A2CD48272096C71D9C262A5E82624F71B21C9FDC294564",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-E0-rebind-dce8840.json",
+          "recordedInputs": [
+            {
+              "path": "src/WorkloadDiscovery.ps1",
+              "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
+            },
+            {
+              "path": "tests/Test-WorkloadActionIndex.ps1",
+              "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+            },
+            {
+              "path": "tests/Test-WorkloadDiscovery.ps1",
+              "sha256": "BB7F1D453396AA0BF7A7A54B9E147E1BDA7B20E9F7DB64930976DDC65E18655C"
+            },
+            {
+              "path": "tests/Test-WorkloadPathCoverage.ps1",
+              "sha256": "3DB27979B2FC7F99963A7E08FD8EFBE2E92D3FD289A92B64E1AC771CDB019455"
+            },
+            {
+              "path": "src/MigrationWizard.ps1",
+              "sha256": "8CE336C0102175CA9EB7E40ACD1361149541FF29EC92B0674370355A536564BD"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-E0.json",
+          "sha256": "C7413B6F72861095DDCBA2AE6F4E8EDEF70B2CAD23D584402F3D6804F7F26E39",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-E0-rebind-dce8840.json",
+          "recordedInputs": [
+            {
+              "path": "src/WorkloadDiscovery.ps1",
+              "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
+            },
+            {
+              "path": "tests/Test-WorkloadActionIndex.ps1",
+              "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+            },
+            {
+              "path": "tests/Test-WorkloadDiscovery.ps1",
+              "sha256": "BB7F1D453396AA0BF7A7A54B9E147E1BDA7B20E9F7DB64930976DDC65E18655C"
+            },
+            {
+              "path": "tests/Test-WorkloadPathCoverage.ps1",
+              "sha256": "3DB27979B2FC7F99963A7E08FD8EFBE2E92D3FD289A92B64E1AC771CDB019455"
+            },
+            {
+              "path": "src/MigrationWizard.ps1",
+              "sha256": "8CE336C0102175CA9EB7E40ACD1361149541FF29EC92B0674370355A536564BD"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2.json",
+          "sha256": "F0E01C0F696E58B8DE525FE106CE73DF9A9D82F2AA61FE10471E2B82D88BA2E9",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-E0-rebind-dce8840.json",
+          "recordedInputs": [
+            {
+              "path": "src/WorkloadDiscovery.ps1",
+              "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
+            },
+            {
+              "path": "tests/Test-WorkloadActionIndex.ps1",
+              "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+            },
+            {
+              "path": "tests/Test-WorkloadDiscovery.ps1",
+              "sha256": "BB7F1D453396AA0BF7A7A54B9E147E1BDA7B20E9F7DB64930976DDC65E18655C"
+            },
+            {
+              "path": "tests/Test-WorkloadPathCoverage.ps1",
+              "sha256": "3DB27979B2FC7F99963A7E08FD8EFBE2E92D3FD289A92B64E1AC771CDB019455"
+            },
+            {
+              "path": "src/MigrationWizard.ps1",
+              "sha256": "8CE336C0102175CA9EB7E40ACD1361149541FF29EC92B0674370355A536564BD"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D1-path-coverage.json",
+          "sha256": "FCB9BA7C0A8DCF845F4C35BBD882EFFA28F29FD54F82637FADFB85E5D7527920",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-E0-rebind-dce8840.json",
+          "recordedInputs": [
+            {
+              "path": "src/WorkloadDiscovery.ps1",
+              "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
+            },
+            {
+              "path": "tests/Test-WorkloadActionIndex.ps1",
+              "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+            },
+            {
+              "path": "tests/Test-WorkloadDiscovery.ps1",
+              "sha256": "BB7F1D453396AA0BF7A7A54B9E147E1BDA7B20E9F7DB64930976DDC65E18655C"
+            },
+            {
+              "path": "tests/Test-WorkloadPathCoverage.ps1",
+              "sha256": "3DB27979B2FC7F99963A7E08FD8EFBE2E92D3FD289A92B64E1AC771CDB019455"
+            },
+            {
+              "path": "src/MigrationWizard.ps1",
+              "sha256": "8CE336C0102175CA9EB7E40ACD1361149541FF29EC92B0674370355A536564BD"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-D2-workload-mapping.json",
+          "sha256": "BC6674A98B4207DBF1BE6CDA9E19D6DE7B2E52846C3CDAB416B14B1B7C809E2F",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-E0-rebind-dce8840.json",
+          "recordedInputs": [
+            {
+              "path": "src/WorkloadDiscovery.ps1",
+              "sha256": "D010CBF176DCEBF3B57038F9E3C4427344D5B9F457F1093B6647304A73C68F66"
+            },
+            {
+              "path": "tests/Test-WorkloadActionIndex.ps1",
+              "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+            },
+            {
+              "path": "tests/Test-WorkloadDiscovery.ps1",
+              "sha256": "BB7F1D453396AA0BF7A7A54B9E147E1BDA7B20E9F7DB64930976DDC65E18655C"
+            },
+            {
+              "path": "tests/Test-WorkloadPathCoverage.ps1",
+              "sha256": "3DB27979B2FC7F99963A7E08FD8EFBE2E92D3FD289A92B64E1AC771CDB019455"
+            },
+            {
+              "path": "src/MigrationWizard.ps1",
+              "sha256": "8CE336C0102175CA9EB7E40ACD1361149541FF29EC92B0674370355A536564BD"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        }
+      ]
     },
     {
       "id": "E1",
@@ -995,20 +1869,97 @@
           "E1：原位置契約貫穿全鏈"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "implemented",
+      "evidenceStatus": "isolated-pass",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
-      "openIssues": [],
+      "consumers": [
+        {
+          "name": "src/AssistiveFiles.ps1",
+          "path": "src/AssistiveFiles.ps1"
+        },
+        {
+          "name": "src/AssistiveRestore.ps1",
+          "path": "src/AssistiveRestore.ps1"
+        },
+        {
+          "name": "src/WizardHtmlRuntime.ps1",
+          "path": "src/WizardHtmlRuntime.ps1"
+        },
+        {
+          "name": "src/WizardRestore.ps1",
+          "path": "src/WizardRestore.ps1"
+        },
+        {
+          "name": "tests/Test-AssistiveFiles.ps1",
+          "path": "tests/Test-AssistiveFiles.ps1"
+        },
+        {
+          "name": "tests/Test-AssistiveRestore.ps1",
+          "path": "tests/Test-AssistiveRestore.ps1"
+        },
+        {
+          "name": "tests/Test-OfflineFullSet.ps1",
+          "path": "tests/Test-OfflineFullSet.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/AssistiveFiles.ps1",
+          "sha256": "9CF7551AD14B565672ED5C871A36BADC6715E0A82BD7E38DE2AA5A9EB57CB118"
+        },
+        {
+          "path": "src/AssistiveRestore.ps1",
+          "sha256": "3ADE8E4FF9BFBB299954F6BB0D1312A5DD84FFF4353152E703855A713A2A7E07"
+        },
+        {
+          "path": "src/WizardHtmlRuntime.ps1",
+          "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+        },
+        {
+          "path": "src/WizardRestore.ps1",
+          "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+        },
+        {
+          "path": "tests/Test-AssistiveFiles.ps1",
+          "sha256": "C1ADCACE092394A5853A485C99443A3702EF25961C7A09818D1414BBA3DA74F0"
+        },
+        {
+          "path": "tests/Test-AssistiveRestore.ps1",
+          "sha256": "67C9BEA98826A9E9B36ABF97625E338F0ADAC6CDE0490C3F836E4458C7134DFB"
+        },
+        {
+          "path": "tests/Test-OfflineFullSet.ps1",
+          "sha256": "D6D403BA6DD16EE5841D0EF2E35375E0DE4EB29B6E2D204EA092FA211DD3D959"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-E1-original-location.json",
+          "sha256": "28CF54CBA148BC5F70C78696BA5EE2A71BB78B808604E6BB63DFBE2C87A6921B"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-E1-original-location.json",
+        "sha256": "28CF54CBA148BC5F70C78696BA5EE2A71BB78B808604E6BB63DFBE2C87A6921B"
+      },
+      "casesExecuted": 271,
+      "result": "Original-location contract at HEAD on WinPS 5.1: AssistiveRestore 169 checks (CV2 preview BlockedLocation for a TargetPath different from the original location, write-side assert, non-CV2 control), AssistiveFiles 35 and OfflineFullSet 67 passed.",
+      "limitations": [
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "File restore paths are exercised on a fixture C-volume; mount-point and other drive roots use test doubles.",
+        "The write-side check applies when the package carries a Plan (formal packages always do)."
+      ],
+      "openIssues": [
+        "Original-location restore on real non-C volumes is not verified."
+      ],
       "historicalEvidence": []
     },
     {
@@ -1020,20 +1971,99 @@
           "E2：目標缺口、衝突與續作"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "implemented",
+      "evidenceStatus": "isolated-pass",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
-      "openIssues": [],
+      "consumers": [
+        {
+          "name": "src/AssistiveFiles.ps1",
+          "path": "src/AssistiveFiles.ps1"
+        },
+        {
+          "name": "src/AssistiveRestore.ps1",
+          "path": "src/AssistiveRestore.ps1"
+        },
+        {
+          "name": "src/WizardHtmlRuntime.ps1",
+          "path": "src/WizardHtmlRuntime.ps1"
+        },
+        {
+          "name": "src/WizardRestore.ps1",
+          "path": "src/WizardRestore.ps1"
+        },
+        {
+          "name": "tests/Test-AssistiveFiles.ps1",
+          "path": "tests/Test-AssistiveFiles.ps1"
+        },
+        {
+          "name": "tests/Test-AssistiveRestore.ps1",
+          "path": "tests/Test-AssistiveRestore.ps1"
+        },
+        {
+          "name": "tests/Test-OfflineFullSet.ps1",
+          "path": "tests/Test-OfflineFullSet.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/AssistiveFiles.ps1",
+          "sha256": "9CF7551AD14B565672ED5C871A36BADC6715E0A82BD7E38DE2AA5A9EB57CB118"
+        },
+        {
+          "path": "src/AssistiveRestore.ps1",
+          "sha256": "3ADE8E4FF9BFBB299954F6BB0D1312A5DD84FFF4353152E703855A713A2A7E07"
+        },
+        {
+          "path": "src/WizardHtmlRuntime.ps1",
+          "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+        },
+        {
+          "path": "src/WizardRestore.ps1",
+          "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+        },
+        {
+          "path": "tests/Test-AssistiveFiles.ps1",
+          "sha256": "C1ADCACE092394A5853A485C99443A3702EF25961C7A09818D1414BBA3DA74F0"
+        },
+        {
+          "path": "tests/Test-AssistiveRestore.ps1",
+          "sha256": "67C9BEA98826A9E9B36ABF97625E338F0ADAC6CDE0490C3F836E4458C7134DFB"
+        },
+        {
+          "path": "tests/Test-OfflineFullSet.ps1",
+          "sha256": "D6D403BA6DD16EE5841D0EF2E35375E0DE4EB29B6E2D204EA092FA211DD3D959"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-E2-target-gaps.json",
+          "sha256": "545F348311519A5089B6D96755DA4752069F270E7FD18FD57DA1894555AAE339"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-E2-target-gaps.json",
+        "sha256": "545F348311519A5089B6D96755DA4752069F270E7FD18FD57DA1894555AAE339"
+      },
+      "casesExecuted": 271,
+      "result": "Target gaps, conflicts and capacity at HEAD on WinPS 5.1: AssistiveRestore 169 checks (missing disk -> Deferred/PrepareSameLocation, per-volume capacity aggregation -> Deferred/AddTargetCapacity, mount point -> Blocked/MountPointNotSupported, effective-access check -> Deferred/PermissionDenied, per-file conflict and ownership), AssistiveFiles 35 and OfflineFullSet 67 passed. Continuation after interruption is covered under E3b.",
+      "limitations": [
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "Volume mount points are verified with a test double only; creating a real mount point would change the system.",
+        "Writability checks cover create-file and create-subdirectory, not delete or rename.",
+        "Different disk roots in the capacity case use temporary subst drives."
+      ],
+      "openIssues": [
+        "Real mount point and real permission-denied targets are not verified.",
+        "UNC responsibility/evidence handling is not exercised by these suites."
+      ],
       "historicalEvidence": []
     },
     {
@@ -1046,20 +2076,147 @@
           "18.6 E3a-S：還原項目選擇，預設全選"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "implemented",
+      "evidenceStatus": "isolated-pass",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
-      "openIssues": [],
+      "consumers": [
+        {
+          "name": "src/AssistiveComparison.ps1",
+          "path": "src/AssistiveComparison.ps1"
+        },
+        {
+          "name": "src/AssistiveRestore.ps1",
+          "path": "src/AssistiveRestore.ps1"
+        },
+        {
+          "name": "src/OperationRequests.ps1",
+          "path": "src/OperationRequests.ps1"
+        },
+        {
+          "name": "src/WizardHtmlRuntime.ps1",
+          "path": "src/WizardHtmlRuntime.ps1"
+        },
+        {
+          "name": "src/WizardRestore.ps1",
+          "path": "src/WizardRestore.ps1"
+        },
+        {
+          "name": "src/WizardRuntime.ps1",
+          "path": "src/WizardRuntime.ps1"
+        },
+        {
+          "name": "src/ui/console.css",
+          "path": "src/ui/console.css"
+        },
+        {
+          "name": "src/ui/console.js",
+          "path": "src/ui/console.js"
+        },
+        {
+          "name": "src/ui/index.html",
+          "path": "src/ui/index.html"
+        },
+        {
+          "name": "tests/Test-RestoreSelectionBrowser.js",
+          "path": "tests/Test-RestoreSelectionBrowser.js"
+        },
+        {
+          "name": "tests/Test-WizardRestore.ps1",
+          "path": "tests/Test-WizardRestore.ps1"
+        },
+        {
+          "name": "tests/Test-WizardRuntime.ps1",
+          "path": "tests/Test-WizardRuntime.ps1"
+        },
+        {
+          "name": "tests/Test-WizardRuntimeTargetUi.js",
+          "path": "tests/Test-WizardRuntimeTargetUi.js"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/AssistiveComparison.ps1",
+          "sha256": "6B5C7D9616190A19549EB8FC3DA5330C37FF901724F102848274F4C37FDD2487"
+        },
+        {
+          "path": "src/AssistiveRestore.ps1",
+          "sha256": "3ADE8E4FF9BFBB299954F6BB0D1312A5DD84FFF4353152E703855A713A2A7E07"
+        },
+        {
+          "path": "src/OperationRequests.ps1",
+          "sha256": "E35A78A4DBE5960721EFD0EE57D1F9B2B5BD574E74FADA27E1018ABC7AA22DF8"
+        },
+        {
+          "path": "src/WizardHtmlRuntime.ps1",
+          "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+        },
+        {
+          "path": "src/WizardRestore.ps1",
+          "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+        },
+        {
+          "path": "src/WizardRuntime.ps1",
+          "sha256": "C37EE5885069B5D702E0686A222328A2733029698E46C5A50A63785AEF31DBE7"
+        },
+        {
+          "path": "src/ui/console.css",
+          "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+        },
+        {
+          "path": "src/ui/console.js",
+          "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+        },
+        {
+          "path": "src/ui/index.html",
+          "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+        },
+        {
+          "path": "tests/Test-RestoreSelectionBrowser.js",
+          "sha256": "3CE62DBB38FE408C000909402F6CF55FBDA09AD5D6D21D1853FE2E8A8C1234B1"
+        },
+        {
+          "path": "tests/Test-WizardRestore.ps1",
+          "sha256": "642E4795C262F981A4C026DB9CE03E3F2880909290BE9F5A177223567E2A7194"
+        },
+        {
+          "path": "tests/Test-WizardRuntime.ps1",
+          "sha256": "6F3AC64A7096C4C7F9B093E844FFE9DEF82BC3CF8C186731D2F691FF9DB77F49"
+        },
+        {
+          "path": "tests/Test-WizardRuntimeTargetUi.js",
+          "sha256": "28742A4102534C54C3BF91E656A1902045C5F4C712BA5F6BDB2A246F7AD21A1C"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-E3a-offline-target-start.json",
+          "sha256": "973B0DCC05EE2E712AE5861E14A60BDBD346A26404AF14EA2480D60B926DA825"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-E3a-offline-target-start.json",
+        "sha256": "973B0DCC05EE2E712AE5861E14A60BDBD346A26404AF14EA2480D60B926DA825"
+      },
+      "casesExecuted": 300,
+      "result": "Offline Target start at HEAD: WizardRestore 132 Target contract checks (including TargetLocalComparison), WizardRuntime 166 module contract checks, and the browser suites RestoreSelectionBrowser (R6 selection, default select-all, type filter, incomplete-dependency marking, re-restore confirmation, 390 px) and WizardRuntimeTargetUi passed. The full empty-Target chain is exercised by the G journey record.",
+      "limitations": [
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "Browser suites use API fixtures.",
+        "Target inventory in the journey is a pre-seeded fixture, not a live full capture.",
+        "Two comparison materials created in the same second were resolved by a Sequence field (PLAN 17.62) and are covered by WizardRestore only."
+      ],
+      "openIssues": [
+        "HTML-guided retrieval of an independent trusted hash/approval material (16.3 item 5) has no dedicated evidence in this record.",
+        "Real new-machine inventory and software installation are not verified."
+      ],
       "historicalEvidence": []
     },
     {
@@ -1071,20 +2228,147 @@
           "16.4 F4a／E3b／F4b：帳密、鎖與原生副作用"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "implemented",
+      "evidenceStatus": "isolated-pass",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
-      "openIssues": [],
+      "consumers": [
+        {
+          "name": "src/AssistiveRestore.ps1",
+          "path": "src/AssistiveRestore.ps1"
+        },
+        {
+          "name": "src/HtmlConsole.ps1",
+          "path": "src/HtmlConsole.ps1"
+        },
+        {
+          "name": "src/JournalRecovery.ps1",
+          "path": "src/JournalRecovery.ps1"
+        },
+        {
+          "name": "src/MigrationWizard.ps1",
+          "path": "src/MigrationWizard.ps1"
+        },
+        {
+          "name": "src/Recovery.ps1",
+          "path": "src/Recovery.ps1"
+        },
+        {
+          "name": "src/Restore.ps1",
+          "path": "src/Restore.ps1"
+        },
+        {
+          "name": "src/WizardRestore.ps1",
+          "path": "src/WizardRestore.ps1"
+        },
+        {
+          "name": "src/WizardRuntime.ps1",
+          "path": "src/WizardRuntime.ps1"
+        },
+        {
+          "name": "src/WizardTargetPackage.ps1",
+          "path": "src/WizardTargetPackage.ps1"
+        },
+        {
+          "name": "tests/Test-HtmlConsole.ps1",
+          "path": "tests/Test-HtmlConsole.ps1"
+        },
+        {
+          "name": "tests/Test-HtmlRouteMatches.ps1",
+          "path": "tests/Test-HtmlRouteMatches.ps1"
+        },
+        {
+          "name": "tests/Test-JournalReplayCoverage.ps1",
+          "path": "tests/Test-JournalReplayCoverage.ps1"
+        },
+        {
+          "name": "tests/Test-TargetRestoreContinuation.ps1",
+          "path": "tests/Test-TargetRestoreContinuation.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/AssistiveRestore.ps1",
+          "sha256": "3ADE8E4FF9BFBB299954F6BB0D1312A5DD84FFF4353152E703855A713A2A7E07"
+        },
+        {
+          "path": "src/HtmlConsole.ps1",
+          "sha256": "0D7B9B49E3183622AB9E042D6B373BC5AD550BBE2F3DFFC4E16C452888E67235"
+        },
+        {
+          "path": "src/JournalRecovery.ps1",
+          "sha256": "C77CFBC2632AF2DABA6A0BEC4726209723676F9DBA7CCB75920CE561E23B7EB6"
+        },
+        {
+          "path": "src/MigrationWizard.ps1",
+          "sha256": "C15CC4DD5B222058BCEAFFDA268985E55626310973A430A1749EA19E2C3BD51E"
+        },
+        {
+          "path": "src/Recovery.ps1",
+          "sha256": "2DA0C0BEFF86B12A70FF288BACD63CF41E247F99C650F468CEA3540FE0038CB5"
+        },
+        {
+          "path": "src/Restore.ps1",
+          "sha256": "DE008F8327D192A68F1ECEE27ECDC1F4A6697202851065B5E24A642C6256C128"
+        },
+        {
+          "path": "src/WizardRestore.ps1",
+          "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+        },
+        {
+          "path": "src/WizardRuntime.ps1",
+          "sha256": "C37EE5885069B5D702E0686A222328A2733029698E46C5A50A63785AEF31DBE7"
+        },
+        {
+          "path": "src/WizardTargetPackage.ps1",
+          "sha256": "9F5EAA8385E9E886E907895F1DB1EAE4201DC53E0A329C136A62FDA9D0EC2ECB"
+        },
+        {
+          "path": "tests/Test-HtmlConsole.ps1",
+          "sha256": "AFD75317FCB00B8B921461B362BCF3A022429289590C2F7E4AE0200380AB3E75"
+        },
+        {
+          "path": "tests/Test-HtmlRouteMatches.ps1",
+          "sha256": "E65E2F1E2883D4844848355498152B6C163339D6F6B8158B771A30AA5CD8C26E"
+        },
+        {
+          "path": "tests/Test-JournalReplayCoverage.ps1",
+          "sha256": "29735D1F89BCBDBFDB07AFC58054CB092F0872830224DB52205BB752F83BD24C"
+        },
+        {
+          "path": "tests/Test-TargetRestoreContinuation.ps1",
+          "sha256": "325F369D118912C62A928C069D4A6D39AECC6DA8309B3496DD3B11B5F533E322"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-E3b-resume-and-replay.json",
+          "sha256": "D61EE84E4A9BF68B59DC8425E70EAEB3E7E436F4854960405B8FB7C6949B05D4"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-E3b-resume-and-replay.json",
+        "sha256": "D61EE84E4A9BF68B59DC8425E70EAEB3E7E436F4854960405B8FB7C6949B05D4"
+      },
+      "casesExecuted": 730,
+      "result": "TargetRestore continuation at HEAD on WinPS 5.1: TargetRestoreContinuation 133 checks (interruption points, dependency blocking, ownership of finished files, preview drift/rebind, repeated ContinuationId, terminal/cancelled refusal), JournalReplayCoverage 413 checks (78 journal actions all replayable or listed fail-closed, 39 replay-equivalence scenarios), HtmlRouteMatches 9 route blocks and HtmlConsole 175 checks (resume, preview, cancel routes) passed. Process-kill resume over HTTP is recorded under G.",
+      "limitations": [
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "Resume-WsmWizardTargetRestore is tested with substitute projections/packages here; the real-package resume is only in the G journey.",
+        "Partial (including unknown items) is terminal and needs manual Repair or a new preview.",
+        "Native consumers for tasks and IIS pools are test doubles."
+      ],
+      "openIssues": [
+        "Ownership of an in-progress created directory is persisted at the next journal event, so a crash in that narrow window is judged conflict (safe, not repaired).",
+        "A ContinuationId whose attempt threw midway cannot be reused."
+      ],
       "historicalEvidence": []
     },
     {
@@ -1097,20 +2381,123 @@
           "18.3 F1-P：備份時顯示目前項目"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "in-progress",
+      "evidenceStatus": "implemented-unverified",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
-      "openIssues": [],
+      "consumers": [
+        {
+          "name": "src/Payload.ps1",
+          "path": "src/Payload.ps1"
+        },
+        {
+          "name": "src/WizardBackup.ps1",
+          "path": "src/WizardBackup.ps1"
+        },
+        {
+          "name": "src/WizardBackupProjection.ps1",
+          "path": "src/WizardBackupProjection.ps1"
+        },
+        {
+          "name": "src/WizardHtmlRuntime.ps1",
+          "path": "src/WizardHtmlRuntime.ps1"
+        },
+        {
+          "name": "src/ui/console.css",
+          "path": "src/ui/console.css"
+        },
+        {
+          "name": "src/ui/console.js",
+          "path": "src/ui/console.js"
+        },
+        {
+          "name": "src/ui/index.html",
+          "path": "src/ui/index.html"
+        },
+        {
+          "name": "tests/Test-BackupProgressBrowser.js",
+          "path": "tests/Test-BackupProgressBrowser.js"
+        },
+        {
+          "name": "tests/Test-WizardBackupProgress.ps1",
+          "path": "tests/Test-WizardBackupProgress.ps1"
+        },
+        {
+          "name": "tests/Test-WizardProgress.ps1",
+          "path": "tests/Test-WizardProgress.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/Payload.ps1",
+          "sha256": "0F6E0FA9843DF4CBD00C9B590C45CF9B7F3EA8D35982D90FEEFE36B6BF74BEE9"
+        },
+        {
+          "path": "src/WizardBackup.ps1",
+          "sha256": "8A698F592F6B122DD8F934DABBE0A4207906A6850D63528088A2E0AD40E94684"
+        },
+        {
+          "path": "src/WizardBackupProjection.ps1",
+          "sha256": "691437F2CB025EAB16645642604E5FA58324966780EB553C756D3CF24480AC71"
+        },
+        {
+          "path": "src/WizardHtmlRuntime.ps1",
+          "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+        },
+        {
+          "path": "src/ui/console.css",
+          "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+        },
+        {
+          "path": "src/ui/console.js",
+          "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+        },
+        {
+          "path": "src/ui/index.html",
+          "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+        },
+        {
+          "path": "tests/Test-BackupProgressBrowser.js",
+          "sha256": "92F10C30D35A86278CE80BE0CB91E32707611F4267B25E06DCB6CFFD9C2BF74B"
+        },
+        {
+          "path": "tests/Test-WizardBackupProgress.ps1",
+          "sha256": "527D1FD45E639348B2DE011100757B6CBCAAC8000BE1BFA17D73350369B49195"
+        },
+        {
+          "path": "tests/Test-WizardProgress.ps1",
+          "sha256": "E8EB8C644CF930C7E55274078589BB23932F42AD5F984BE176242EA3BF1D7AB1"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-F1-backup-progress.json",
+          "sha256": "11BFC2C3ABD724D192F7EC08BEF429DB366B3A378AC1F8959B0838CF8A3C43B4"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-F1-backup-progress.json",
+        "sha256": "11BFC2C3ABD724D192F7EC08BEF429DB366B3A378AC1F8959B0838CF8A3C43B4"
+      },
+      "casesExecuted": 158,
+      "result": "F1-P slice (backup progress: current item and file) at HEAD: WizardProgress 2 PASS sections, WizardBackupProgress 103 producer/projection checks and the 53 progress-card checks of BackupProgressBrowser (real Edge) passed. The wider F1 contract (one list carried to the next recoverable step across roles) is not implemented, so the stage stays in-progress.",
+      "limitations": [
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "Percentage is computed only during capture (capped at 99%); verification and delivery have no fine-grained data.",
+        "BytesTotal is known only after sealing.",
+        "BackupProgressBrowser uses a fixture API."
+      ],
+      "openIssues": [
+        "Journey from inventory through software assessment, scope confirmation, new-machine checks, backup/handoff, restore/continue and verification is not carried by one list.",
+        "Already-confirmed items are not yet carried over on re-inventory beyond the covered cases."
+      ],
       "historicalEvidence": []
     },
     {
@@ -1133,13 +2520,41 @@
           "path": "src/AssistiveHttpProbe.ps1"
         },
         {
+          "name": "src/WizardBackup.ps1",
+          "path": "src/WizardBackup.ps1"
+        },
+        {
+          "name": "src/WizardBackupProjection.ps1",
+          "path": "src/WizardBackupProjection.ps1"
+        },
+        {
+          "name": "src/WizardHtmlRuntime.ps1",
+          "path": "src/WizardHtmlRuntime.ps1"
+        },
+        {
+          "name": "src/ui/console.css",
+          "path": "src/ui/console.css"
+        },
+        {
+          "name": "src/ui/console.js",
+          "path": "src/ui/console.js"
+        },
+        {
+          "name": "src/ui/index.html",
+          "path": "src/ui/index.html"
+        },
+        {
           "name": "tests/Test-AssistiveHttpProbe.ps1",
           "path": "tests/Test-AssistiveHttpProbe.ps1"
+        },
+        {
+          "name": "tests/Test-BackupProgressBrowser.js",
+          "path": "tests/Test-BackupProgressBrowser.js"
         }
       ],
       "environment": {
-        "engine": "PS5.1 and PS7",
-        "runtime": "5.1.26100.9711 / 7.6.5",
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
         "scope": "isolated"
       },
       "inputs": [
@@ -1148,31 +2563,80 @@
           "sha256": "908CC9AC84007BBF5453BA0B42B7C491C5667D17B83A7BC3E0CEA58E34B083FE"
         },
         {
+          "path": "src/WizardBackup.ps1",
+          "sha256": "8A698F592F6B122DD8F934DABBE0A4207906A6850D63528088A2E0AD40E94684"
+        },
+        {
+          "path": "src/WizardBackupProjection.ps1",
+          "sha256": "691437F2CB025EAB16645642604E5FA58324966780EB553C756D3CF24480AC71"
+        },
+        {
+          "path": "src/WizardHtmlRuntime.ps1",
+          "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+        },
+        {
+          "path": "src/ui/console.css",
+          "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+        },
+        {
+          "path": "src/ui/console.js",
+          "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+        },
+        {
+          "path": "src/ui/index.html",
+          "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+        },
+        {
           "path": "tests/Test-AssistiveHttpProbe.ps1",
-          "sha256": "7647C6262A7721A53B7CF607DAB91ECB37B5D92AFCBEB7B70A9197ECEE24BE15"
+          "sha256": "692FB5643F2C84804F63001B40DFCAD9DD6BD1DB35E87BFA98BA3B00DBADCFA8"
+        },
+        {
+          "path": "tests/Test-BackupProgressBrowser.js",
+          "sha256": "92F10C30D35A86278CE80BE0CB91E32707611F4267B25E06DCB6CFFD9C2BF74B"
         }
       ],
       "evidence": [
         {
-          "path": "docs/plans/evidence/MIGRATION-7-F2-http-probe.json",
-          "sha256": "34DB39E767F928A4489C34466C3D4787D290B384EF7802D11C7A329389360944"
+          "path": "docs/plans/evidence/MIGRATION-7-F2-connection-failure-ui.json",
+          "sha256": "03AF85906E315D689C171AAD19CB608CF8F0C7DF736319698C93D0F1B4117876"
         }
       ],
       "evidenceLog": {
-        "path": "docs/plans/evidence/MIGRATION-7-F2-http-probe.json",
-        "sha256": "34DB39E767F928A4489C34466C3D4787D290B384EF7802D11C7A329389360944"
+        "path": "docs/plans/evidence/MIGRATION-7-F2-connection-failure-ui.json",
+        "sha256": "03AF85906E315D689C171AAD19CB608CF8F0C7DF736319698C93D0F1B4117876"
       },
-      "casesExecuted": 88,
-      "result": "44 checks each; real closed-loopback refusal plus controlled reset/aborted/timeout/session/integrity failures, bounded nested exceptions, secret canaries and actual HTML job projection.",
+      "casesExecuted": 50,
+      "result": "At HEAD: AssistiveHttpProbe 44 checks (WinPS 5.1) and the 6 F2 connection-prompt cases of BackupProgressBrowser (real Edge: session expired, incomplete assets, unknown write that is never resent, listener unreachable, reset/timeout) passed. Browser-side failure UX now exists; CLI-side locating and the seven external materials remain open.",
       "limitations": [
-        "Reset, abort, timeout and HTTP failure categories use controlled response/exception fixtures; only listener-refusal is an actual socket failure in this suite.",
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "Reset, abort, timeout and HTTP failure categories use controlled response/exception fixtures; only listener-refusal is an actual socket failure in the HTTP probe suite.",
         "No native browser transport claim; local AdGuard policy remains unchanged.",
-        "Browser-side failure UX and seven external materials remain open; F2 and whole round are incomplete."
+        "BackupProgressBrowser uses a fixture API."
       ],
       "openIssues": [
-        "Browser-side failure UX and seven external materials remain incomplete."
+        "CLI-side failure locating is not covered by this record.",
+        "Seven external acceptance material classes (host, version, workload, owner, material, result) are not assembled; real-machine qualification stays NotTested.",
+        "F2 and the whole round are incomplete."
       ],
-      "historicalEvidence": []
+      "historicalEvidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-F2-http-probe.json",
+          "sha256": "EC638573C4232B1DD08C2F0D12A46E15D665D9F3C8E1614F3F90571E1D754E76",
+          "supersededBy": "docs/plans/evidence/MIGRATION-7-F2-connection-failure-ui.json",
+          "recordedInputs": [
+            {
+              "path": "src/AssistiveHttpProbe.ps1",
+              "sha256": "908CC9AC84007BBF5453BA0B42B7C491C5667D17B83A7BC3E0CEA58E34B083FE"
+            },
+            {
+              "path": "tests/Test-AssistiveHttpProbe.ps1",
+              "sha256": "7647C6262A7721A53B7CF607DAB91ECB37B5D92AFCBEB7B70A9197ECEE24BE15"
+            }
+          ],
+          "note": "Original evidence file is kept unchanged; its recorded inputs no longer match HEAD bytes, so it is historical and not current acceptance."
+        }
+      ]
     },
     {
       "id": "F3",
@@ -1185,20 +2649,188 @@
           "18.5 F3-S：安裝軟體分頁與新機安裝檢查表"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "implemented",
+      "evidenceStatus": "isolated-pass",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
-      "openIssues": [],
+      "consumers": [
+        {
+          "name": "src/HtmlConsole.ps1",
+          "path": "src/HtmlConsole.ps1"
+        },
+        {
+          "name": "src/WindowsServerMigration.psd1",
+          "path": "src/WindowsServerMigration.psd1"
+        },
+        {
+          "name": "src/WizardBackup.ps1",
+          "path": "src/WizardBackup.ps1"
+        },
+        {
+          "name": "src/WizardBackupProjection.ps1",
+          "path": "src/WizardBackupProjection.ps1"
+        },
+        {
+          "name": "src/WizardHtmlRuntime.ps1",
+          "path": "src/WizardHtmlRuntime.ps1"
+        },
+        {
+          "name": "src/WizardRestore.ps1",
+          "path": "src/WizardRestore.ps1"
+        },
+        {
+          "name": "src/WizardRuntime.ps1",
+          "path": "src/WizardRuntime.ps1"
+        },
+        {
+          "name": "src/ui/console.css",
+          "path": "src/ui/console.css"
+        },
+        {
+          "name": "src/ui/console.js",
+          "path": "src/ui/console.js"
+        },
+        {
+          "name": "src/ui/index.html",
+          "path": "src/ui/index.html"
+        },
+        {
+          "name": "tests/New-OfflineReportFixture.ps1",
+          "path": "tests/New-OfflineReportFixture.ps1"
+        },
+        {
+          "name": "tests/New-SoftwareTabFixture.ps1",
+          "path": "tests/New-SoftwareTabFixture.ps1"
+        },
+        {
+          "name": "tests/Test-BackupResultSetV2.ps1",
+          "path": "tests/Test-BackupResultSetV2.ps1"
+        },
+        {
+          "name": "tests/Test-BackupWorkbenchBrowser.js",
+          "path": "tests/Test-BackupWorkbenchBrowser.js"
+        },
+        {
+          "name": "tests/Test-OfflineReportBrowser.js",
+          "path": "tests/Test-OfflineReportBrowser.js"
+        },
+        {
+          "name": "tests/Test-SoftwareTab.ps1",
+          "path": "tests/Test-SoftwareTab.ps1"
+        },
+        {
+          "name": "tests/Test-SoftwareTabBrowser.js",
+          "path": "tests/Test-SoftwareTabBrowser.js"
+        },
+        {
+          "name": "tests/Test-WizardHtmlRuntimeProjection.ps1",
+          "path": "tests/Test-WizardHtmlRuntimeProjection.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/HtmlConsole.ps1",
+          "sha256": "0D7B9B49E3183622AB9E042D6B373BC5AD550BBE2F3DFFC4E16C452888E67235"
+        },
+        {
+          "path": "src/WindowsServerMigration.psd1",
+          "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+        },
+        {
+          "path": "src/WizardBackup.ps1",
+          "sha256": "8A698F592F6B122DD8F934DABBE0A4207906A6850D63528088A2E0AD40E94684"
+        },
+        {
+          "path": "src/WizardBackupProjection.ps1",
+          "sha256": "691437F2CB025EAB16645642604E5FA58324966780EB553C756D3CF24480AC71"
+        },
+        {
+          "path": "src/WizardHtmlRuntime.ps1",
+          "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+        },
+        {
+          "path": "src/WizardRestore.ps1",
+          "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+        },
+        {
+          "path": "src/WizardRuntime.ps1",
+          "sha256": "C37EE5885069B5D702E0686A222328A2733029698E46C5A50A63785AEF31DBE7"
+        },
+        {
+          "path": "src/ui/console.css",
+          "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+        },
+        {
+          "path": "src/ui/console.js",
+          "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+        },
+        {
+          "path": "src/ui/index.html",
+          "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+        },
+        {
+          "path": "tests/New-OfflineReportFixture.ps1",
+          "sha256": "471F8A1A9D188EA89C1030492ABDF380F42E734EF8EBF5BC4F8360A958230EF3"
+        },
+        {
+          "path": "tests/New-SoftwareTabFixture.ps1",
+          "sha256": "EE1CFE97CA525597D43F8C7479EB9F8488DAFAAE21B5125F6A1CA45A50A7AE94"
+        },
+        {
+          "path": "tests/Test-BackupResultSetV2.ps1",
+          "sha256": "6A28495C0805E0F682971A81640F80754E740A51E8F97855FBD3BC7209073EF8"
+        },
+        {
+          "path": "tests/Test-BackupWorkbenchBrowser.js",
+          "sha256": "7AC7CDE2E0E6A86D1AECC2AF6A2E13DF4C54578116FAD89161D1192A4D2976D3"
+        },
+        {
+          "path": "tests/Test-OfflineReportBrowser.js",
+          "sha256": "DDD872A1CB3897A54F40DE84157C4FEDA6FB0945A44B64391A2E5F66A207DA05"
+        },
+        {
+          "path": "tests/Test-SoftwareTab.ps1",
+          "sha256": "6432959EE5E1AD90DD78C7B323B72B8893677D06D5AFC6FBAED2429715E6C093"
+        },
+        {
+          "path": "tests/Test-SoftwareTabBrowser.js",
+          "sha256": "27C38A0546425804A2FB4E2F4F6DB9F4AE3785D097B3D18201EC9DD9FC942048"
+        },
+        {
+          "path": "tests/Test-WizardHtmlRuntimeProjection.ps1",
+          "sha256": "8C8C5F515CC8E4AD295B48EA08C434CCB1A5AAB18389D085EB2E0D577403DC7A"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-F3-backup-result-views.json",
+          "sha256": "FB1507DDEC05FD035791B326B929B501D316C9CB979BB2E8983701E7CF14AE64"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-F3-backup-result-views.json",
+        "sha256": "FB1507DDEC05FD035791B326B929B501D316C9CB979BB2E8983701E7CF14AE64"
+      },
+      "casesExecuted": 234,
+      "result": "Backup-side F3 at HEAD: BackupResultSetV2 (8 PASS sections: union invariant, restore-condition table, reason codes, workload association, coverage regions, legacy results, JSON/HTML agreement per ItemId), SoftwareTab (9 PASS sections), WizardHtmlRuntimeProjection 214 checks, and three real-Edge suites (software tab with 129 rows, offline report opened over file:// with 301 rows, backup workbench with 301 rows) passed.",
+      "limitations": [
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "Browser suites use fixtures and mock APIs with the real src/ui; Target-side software checking has no real-Target end-to-end test.",
+        "Printing is verified with a stubbed window.print and print-media emulation, not the real print dialog.",
+        "Result set and offline report sit beside the delivery descriptor, not inside the sealed package (PLAN 17.47)."
+      ],
+      "openIssues": [
+        "BundleExcluded and CaptureFailed have no reliable data source and are not shown.",
+        "Pagination beyond 100 rows and search input in the offline report are not automated in a browser.",
+        "Software decision values keep the existing six plus 'undecided' instead of the three-value form in 18.5."
+      ],
       "historicalEvidence": []
     },
     {
@@ -1210,23 +2842,161 @@
           "16.4 F4a／E3b／F4b：帳密、鎖與原生副作用"
         ]
       },
-      "implementationStatus": "in-progress",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "implemented",
+      "evidenceStatus": "isolated-pass",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
+      "consumers": [
+        {
+          "name": "src/Adapters.ps1",
+          "path": "src/Adapters.ps1"
+        },
+        {
+          "name": "src/AssistiveResources.ps1",
+          "path": "src/AssistiveResources.ps1"
+        },
+        {
+          "name": "src/AssistiveRestore.ps1",
+          "path": "src/AssistiveRestore.ps1"
+        },
+        {
+          "name": "src/AssistiveReviewForms.ps1",
+          "path": "src/AssistiveReviewForms.ps1"
+        },
+        {
+          "name": "src/HtmlConsole.ps1",
+          "path": "src/HtmlConsole.ps1"
+        },
+        {
+          "name": "src/IisAdapter.ps1",
+          "path": "src/IisAdapter.ps1"
+        },
+        {
+          "name": "src/Inventory.ps1",
+          "path": "src/Inventory.ps1"
+        },
+        {
+          "name": "src/MigrationWizard.ps1",
+          "path": "src/MigrationWizard.ps1"
+        },
+        {
+          "name": "src/Restore.ps1",
+          "path": "src/Restore.ps1"
+        },
+        {
+          "name": "src/WizardPreparation.ps1",
+          "path": "src/WizardPreparation.ps1"
+        },
+        {
+          "name": "src/WizardRestore.ps1",
+          "path": "src/WizardRestore.ps1"
+        },
+        {
+          "name": "src/WizardRuntime.ps1",
+          "path": "src/WizardRuntime.ps1"
+        },
+        {
+          "name": "tests/Test-AssistiveRestore.ps1",
+          "path": "tests/Test-AssistiveRestore.ps1"
+        },
+        {
+          "name": "tests/Test-CredentialDeferral.ps1",
+          "path": "tests/Test-CredentialDeferral.ps1"
+        },
+        {
+          "name": "tests/Test-ServiceCredentialChallenge.ps1",
+          "path": "tests/Test-ServiceCredentialChallenge.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/Adapters.ps1",
+          "sha256": "F37FC2C77627AC3BE959BAB7A9FBF6B930F26450FD1119B5121DF91878AC0A6B"
+        },
+        {
+          "path": "src/AssistiveResources.ps1",
+          "sha256": "23F847B0386D025CF8F3DDF50A3CC11A211F0683549522A2CFBED5D107C2DF1D"
+        },
+        {
+          "path": "src/AssistiveRestore.ps1",
+          "sha256": "3ADE8E4FF9BFBB299954F6BB0D1312A5DD84FFF4353152E703855A713A2A7E07"
+        },
+        {
+          "path": "src/AssistiveReviewForms.ps1",
+          "sha256": "6539B22F3B78D8C0CA48E8357F328F947CB675B44845DED5D61B71F027581BEF"
+        },
+        {
+          "path": "src/HtmlConsole.ps1",
+          "sha256": "0D7B9B49E3183622AB9E042D6B373BC5AD550BBE2F3DFFC4E16C452888E67235"
+        },
+        {
+          "path": "src/IisAdapter.ps1",
+          "sha256": "BE048ED50CC7F882A95ADB4FEC651641287C03DE20C9263F01C91CEF6C1A2936"
+        },
+        {
+          "path": "src/Inventory.ps1",
+          "sha256": "90BC4D17F8A826F75867FBC80A1FA4CF4C5CCB09CC81EB1B92002C1C8780E94E"
+        },
+        {
+          "path": "src/MigrationWizard.ps1",
+          "sha256": "C15CC4DD5B222058BCEAFFDA268985E55626310973A430A1749EA19E2C3BD51E"
+        },
+        {
+          "path": "src/Restore.ps1",
+          "sha256": "DE008F8327D192A68F1ECEE27ECDC1F4A6697202851065B5E24A642C6256C128"
+        },
+        {
+          "path": "src/WizardPreparation.ps1",
+          "sha256": "33738AF94E904FE5417A1FAA1055E1503FEBD47E39CDD1100937369AD2DC1869"
+        },
+        {
+          "path": "src/WizardRestore.ps1",
+          "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+        },
+        {
+          "path": "src/WizardRuntime.ps1",
+          "sha256": "C37EE5885069B5D702E0686A222328A2733029698E46C5A50A63785AEF31DBE7"
+        },
+        {
+          "path": "tests/Test-AssistiveRestore.ps1",
+          "sha256": "67C9BEA98826A9E9B36ABF97625E338F0ADAC6CDE0490C3F836E4458C7134DFB"
+        },
+        {
+          "path": "tests/Test-CredentialDeferral.ps1",
+          "sha256": "402E7A7CA1432525699131741BAB7F78FC10EED8BD4C244ED1052AF4AFE2039C"
+        },
+        {
+          "path": "tests/Test-ServiceCredentialChallenge.ps1",
+          "sha256": "DCCB5E64B2A6BDDBCD423DF3A3AD6002ADD47B5873B1F2A89D4F67917538B562"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-F4a-credential-challenge.json",
+          "sha256": "D6D52502FB69AABA8543F65FAE68C40A63CCD9C985B91694A243C588D9F9D56B"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-F4a-credential-challenge.json",
+        "sha256": "D6D52502FB69AABA8543F65FAE68C40A63CCD9C985B91694A243C588D9F9D56B"
+      },
+      "casesExecuted": 283,
+      "result": "Credential backend at HEAD on WinPS 5.1: ServiceCredentialChallenge 46 checks (Service/task/IIS-pool requirements, durable challenge, approved-account binding), CredentialDeferral 68 checks (defer, rejected-versus-unknown split, retry limit of 3) and AssistiveRestore 169 checks passed.",
+      "limitations": [
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "Task and IIS pool native consumers are test doubles; no enterprise account was exercised.",
+        "Adapters, IisContracts and InventoryFixture suites were not re-run for this record.",
+        "The real registry state of a Service reservation after a rejected password is verified only through doubles."
+      ],
       "openIssues": [
-        "Uncommitted Service-only challenge implementation is checkpointed; formal route acceptance previously failed.",
-        "Legacy Service restore reservation compatibility and atomic cross-pair target mutation boundary require acceptance.",
-        "Other credential consumers and independent dependency-group progress remain incomplete."
+        "Real HTTP routes for defer and rejected flows are covered at parser level here; the dialog suites are recorded under F4b."
       ],
       "historicalEvidence": []
     },
@@ -1239,20 +3009,130 @@
           "16.4 F4a／E3b／F4b：帳密、鎖與原生副作用"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "implemented",
+      "evidenceStatus": "isolated-pass",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
-      "openIssues": [],
+      "consumers": [
+        {
+          "name": "src/MigrationWizard.ps1",
+          "path": "src/MigrationWizard.ps1"
+        },
+        {
+          "name": "src/OperationRequests.ps1",
+          "path": "src/OperationRequests.ps1"
+        },
+        {
+          "name": "src/WizardHtmlRuntime.ps1",
+          "path": "src/WizardHtmlRuntime.ps1"
+        },
+        {
+          "name": "src/WizardRuntime.ps1",
+          "path": "src/WizardRuntime.ps1"
+        },
+        {
+          "name": "src/ui/console.css",
+          "path": "src/ui/console.css"
+        },
+        {
+          "name": "src/ui/console.js",
+          "path": "src/ui/console.js"
+        },
+        {
+          "name": "src/ui/index.html",
+          "path": "src/ui/index.html"
+        },
+        {
+          "name": "tests/Test-CredentialDialogUi.js",
+          "path": "tests/Test-CredentialDialogUi.js"
+        },
+        {
+          "name": "tests/Test-OperationRequests.ps1",
+          "path": "tests/Test-OperationRequests.ps1"
+        },
+        {
+          "name": "tests/Test-WaitingConsistencyUi.js",
+          "path": "tests/Test-WaitingConsistencyUi.js"
+        },
+        {
+          "name": "tests/Test-WizardRuntimeTargetUi.js",
+          "path": "tests/Test-WizardRuntimeTargetUi.js"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+        "scope": "isolated"
+      },
+      "inputs": [
+        {
+          "path": "src/MigrationWizard.ps1",
+          "sha256": "C15CC4DD5B222058BCEAFFDA268985E55626310973A430A1749EA19E2C3BD51E"
+        },
+        {
+          "path": "src/OperationRequests.ps1",
+          "sha256": "E35A78A4DBE5960721EFD0EE57D1F9B2B5BD574E74FADA27E1018ABC7AA22DF8"
+        },
+        {
+          "path": "src/WizardHtmlRuntime.ps1",
+          "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+        },
+        {
+          "path": "src/WizardRuntime.ps1",
+          "sha256": "C37EE5885069B5D702E0686A222328A2733029698E46C5A50A63785AEF31DBE7"
+        },
+        {
+          "path": "src/ui/console.css",
+          "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+        },
+        {
+          "path": "src/ui/console.js",
+          "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+        },
+        {
+          "path": "src/ui/index.html",
+          "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+        },
+        {
+          "path": "tests/Test-CredentialDialogUi.js",
+          "sha256": "FBF28912ED224E898D6AE9CEF7AB3BD6E41DBD2CA9E8DB073972FC0A31D81FA7"
+        },
+        {
+          "path": "tests/Test-OperationRequests.ps1",
+          "sha256": "C2D05CA492E5CF8113F9C1B4246044ABA4BDFED435448472DE84871559D892B9"
+        },
+        {
+          "path": "tests/Test-WaitingConsistencyUi.js",
+          "sha256": "CCF03289A122CD3A48C7C7D60D442204523275107925FB028A1FA77FB47759AC"
+        },
+        {
+          "path": "tests/Test-WizardRuntimeTargetUi.js",
+          "sha256": "28742A4102534C54C3BF91E656A1902045C5F4C712BA5F6BDB2A246F7AD21A1C"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-F4b-credential-dialog-ui.json",
+          "sha256": "CE0839B9586D532F7966169ABA5359824A47972278FAF2E23DF5E5907B4CF06D"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-F4b-credential-dialog-ui.json",
+        "sha256": "CE0839B9586D532F7966169ABA5359824A47972278FAF2E23DF5E5907B4CF06D"
+      },
+      "casesExecuted": 5,
+      "result": "Credential dialog and resume UI at HEAD in real Edge: CredentialDialogUi (structure, focus, survival of 3 s redraws, validation, defer, rejection, 409 revoked, two-step cancel, legacy data, auto-open, resume, 320 px), WaitingConsistencyUi, WizardRuntimeTargetUi and OperationRequests (2 PASS sections) passed.",
+      "limitations": [
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "The dialog suite uses a fixture API; the HTTP credential route is covered by the G journey record and the native handler suite, not here.",
+        "Tab walk asserts at least 9 controls cycle inside the dialog; each control is not individually verified.",
+        "After a rejected password the dialog is already closed and must be reopened from the job card."
+      ],
+      "openIssues": [
+        "NativeWizardRuntimeHandler passed 4 of 5 runs during the original F4b slice (one unretained failure); this record has one passing run only."
+      ],
       "historicalEvidence": []
     },
     {
@@ -1265,20 +3145,152 @@
           "16.6 決定性跨段驗收與完成度"
         ]
       },
-      "implementationStatus": "not-started",
-      "evidenceStatus": "not-collected",
+      "implementationStatus": "in-progress",
+      "evidenceStatus": "implemented-unverified",
       "externalRequired": false,
-      "externalStatus": "not-assessed",
+      "externalStatus": "not-tested",
       "signatureStatus": "not-required",
-      "consumers": [],
-      "environment": null,
-      "inputs": [],
-      "evidence": [],
-      "evidenceLog": null,
-      "casesExecuted": 0,
-      "result": null,
-      "limitations": [],
-      "openIssues": [],
+      "consumers": [
+        {
+          "name": "src/HtmlConsole.ps1",
+          "path": "src/HtmlConsole.ps1"
+        },
+        {
+          "name": "src/MigrationContracts.ps1",
+          "path": "src/MigrationContracts.ps1"
+        },
+        {
+          "name": "src/WindowsServerMigration.psd1",
+          "path": "src/WindowsServerMigration.psd1"
+        },
+        {
+          "name": "src/WizardBackup.ps1",
+          "path": "src/WizardBackup.ps1"
+        },
+        {
+          "name": "src/WizardFlow.ps1",
+          "path": "src/WizardFlow.ps1"
+        },
+        {
+          "name": "src/WizardRuntime.ps1",
+          "path": "src/WizardRuntime.ps1"
+        },
+        {
+          "name": "src/ui/console.js",
+          "path": "src/ui/console.js"
+        },
+        {
+          "name": "tests/G-JourneyHost.ps1",
+          "path": "tests/G-JourneyHost.ps1"
+        },
+        {
+          "name": "tests/G-JourneyOverrides.ps1",
+          "path": "tests/G-JourneyOverrides.ps1"
+        },
+        {
+          "name": "tests/G-RuntimeOverlay.ps1",
+          "path": "tests/G-RuntimeOverlay.ps1"
+        },
+        {
+          "name": "tests/Test-ActionExports.ps1",
+          "path": "tests/Test-ActionExports.ps1"
+        },
+        {
+          "name": "tests/Test-OfflineFullSetSeparateSource.ps1",
+          "path": "tests/Test-OfflineFullSetSeparateSource.ps1"
+        },
+        {
+          "name": "tests/Test-OfflineRestoreJourney.ps1",
+          "path": "tests/Test-OfflineRestoreJourney.ps1"
+        }
+      ],
+      "environment": {
+        "engine": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+        "runtime": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+        "scope": "integrated"
+      },
+      "inputs": [
+        {
+          "path": "src/HtmlConsole.ps1",
+          "sha256": "0D7B9B49E3183622AB9E042D6B373BC5AD550BBE2F3DFFC4E16C452888E67235"
+        },
+        {
+          "path": "src/MigrationContracts.ps1",
+          "sha256": "9015DF2FA626CF979679A748C6B89A2A0E9AFE1639582F70CE6A29F34DDA10C7"
+        },
+        {
+          "path": "src/WindowsServerMigration.psd1",
+          "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+        },
+        {
+          "path": "src/WizardBackup.ps1",
+          "sha256": "8A698F592F6B122DD8F934DABBE0A4207906A6850D63528088A2E0AD40E94684"
+        },
+        {
+          "path": "src/WizardFlow.ps1",
+          "sha256": "5221E5F5D9F469F96F54DE7E7346402B00DD098A75A87E0F332C6363D50D473A"
+        },
+        {
+          "path": "src/WizardRuntime.ps1",
+          "sha256": "C37EE5885069B5D702E0686A222328A2733029698E46C5A50A63785AEF31DBE7"
+        },
+        {
+          "path": "src/ui/console.js",
+          "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+        },
+        {
+          "path": "tests/G-JourneyHost.ps1",
+          "sha256": "A20D6FBE7CF514062C4205D1A02EFFC0C1B115BBFB55DDA670C6FEB2003B1E90"
+        },
+        {
+          "path": "tests/G-JourneyOverrides.ps1",
+          "sha256": "08E0C951BD3297C977AB8502F116E7BB9EA5C3FE0985CC586BC3BBFED2DBB5FA"
+        },
+        {
+          "path": "tests/G-RuntimeOverlay.ps1",
+          "sha256": "2B200DEB41902578C39CA36FE8A2932D7432638F925C35832B58A8B115B40450"
+        },
+        {
+          "path": "tests/Test-ActionExports.ps1",
+          "sha256": "4DCD36168922C389BF2E418786B7AA1F073C0C99B573568BA169722FA0BFD582"
+        },
+        {
+          "path": "tests/Test-OfflineFullSetSeparateSource.ps1",
+          "sha256": "9FE04083E7E3CC06CCAC00029A73349ACF6F70BCC599E520D8FC533FA922BF62"
+        },
+        {
+          "path": "tests/Test-OfflineRestoreJourney.ps1",
+          "sha256": "224713A957EE2D20CD570AFC8FEC0155F39AD47D475F1EAA2568D5EE7F544814"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-G-offline-journey.json",
+          "sha256": "5C0B347DE970F939240E355414B9B9F294E5BFCDD7868FAAE0FCA07099DFF398"
+        }
+      ],
+      "evidenceLog": {
+        "path": "docs/plans/evidence/MIGRATION-7-G-offline-journey.json",
+        "sha256": "5C0B347DE970F939240E355414B9B9F294E5BFCDD7868FAAE0FCA07099DFF398"
+      },
+      "casesExecuted": 271,
+      "result": "Offline restore journey passed at HEAD on WinPS 5.1 (run m3gj01, 48 machine-judged checks, 0 HTTP retries, about 225 s; first attempt with the default 14-character RunId failed only because the longer workspace path pushed a 69-character blob file name past MAX_PATH, so it was rerun with a 6-character RunId as the earlier official runs did). Chain: Target HTTP enrollment, Manager OfflineFullSet approval with snapshot attachment, Source import and one-click backup, independent copy (media-class double), Source/Manager workspaces denied, fresh Target import from the copy, local comparison, select-all receipt, preview, credential wait, console killed after the second file, restart as Interrupted/resumable, explicit resume, preview rebind, credential re-prompt, new session, Succeeded, original-location readback, with the secret canary absent in 380 scanned files. OfflineFullSetSeparateSource 20 checks and ActionExports 203 commands also passed in the snapshot. The stage stays in-progress because section 10 deliverables are not covered.",
+      "limitations": [
+        "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+        "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+        "Account consumer is a narrow double; the new-machine inventory is a pre-seeded fixture, not a live full capture.",
+        "The crash point is fixed at the second file and the Service item is ordered after files.",
+        "The journey ran from the working tree of the repository (it builds its own immutable snapshot and checks src bytes before and after), not from the git-archive snapshot used for the other suites, because it needs git and untracked work/ helpers; run outputs are written under the git-ignored work/r7/g-journey.",
+        "src bytes in the journey are the working-tree (CRLF) bytes; the journey's own HEAD digest (LF blobs) differs from its working-tree digest by line endings only, and the journey asserts the first of them stayed unchanged."
+      ],
+      "openIssues": [
+        "Only one of the five G journeys (Target restore with resume) is automated; item-by-item backup, automatic backup, Manager approval and the independent Probe journeys are covered by separate suites only.",
+        "The mixed case (unlinked C data, D-volume IIS, E-volume task, package body not moved) is not covered.",
+        "Release payload, hashes, tool fingerprint, HTML references and the README/AGENTS/OPERATIONS update (section 10) are not part of this record.",
+        "The 16.6 failure table is only partly covered; 202-lost-response, C/NonC partial generations and media-swap rows are not in the journey.",
+        "Real-machine and enterprise acceptance stay NotTested.",
+        "Tests that already fail at the round-six baseline 6a2329c and at HEAD (PLAN 17.71) are not caused by round seven and are not repaired here: AssistiveWorkloadIntegration, FleetExecutionBindings, FullDirectoryImport, ObservationWorkflow, ShareSourceWorkflow, WorkspaceWorkerIsolation, ZipColdStart, and WorkspaceLockContention (needs pwsh.exe, absent on this host). Test-HtmlBridge also fails at the baseline and at HEAD with an unexplained ECONNRESET."
+      ],
       "historicalEvidence": []
     }
   ]

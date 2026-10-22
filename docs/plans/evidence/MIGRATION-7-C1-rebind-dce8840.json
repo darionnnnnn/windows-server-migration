@@ -1,0 +1,78 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "C1",
+  "verifiedUtc": "2026-10-22T21:56:46Z",
+  "verifier": "M3 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "dce88403d1a52cddc8e66e3acfafe8047cda8e17",
+  "snapshotDirectory": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/AssistiveComparison.ps1",
+      "sha256": "6B5C7D9616190A19549EB8FC3DA5330C37FF901724F102848274F4C37FDD2487"
+    },
+    {
+      "path": "src/AssistiveReports.ps1",
+      "sha256": "D0AC1943519A4277EE102A2360AEDF8C4F51811B1FAD63B6B944525F81DFF578"
+    },
+    {
+      "path": "src/EnvironmentConfirmation.ps1",
+      "sha256": "2F98E08CECD0F543A00F97CB4C9D2D2A98FF7415362FB7B136EA53DC29B74F3A"
+    },
+    {
+      "path": "src/SoftwareInventory.ps1",
+      "sha256": "E4C1268AD94D605A7E0B9DCF03D87E0F07859CA2EC225DCF4136FBE7A116015E"
+    },
+    {
+      "path": "tests/Test-AssistiveComparison.ps1",
+      "sha256": "599F49903393B6DE543EA441C647D22EFFDA94B3E5D711F10F6D592AB7302F0F"
+    },
+    {
+      "path": "tests/Test-EnvironmentConfirmation.ps1",
+      "sha256": "B76AC30AB5785A88695414589632E7E3FBF7D1D5F3645C32FD1D7C330C8900D0"
+    },
+    {
+      "path": "tests/Test-R7SoftwareAssessment.ps1",
+      "sha256": "E760B4E6EAFCC8E25C83C742636A7C17BADF5B9B10E1530C342701FA3C0930E1"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 56,
+  "result": "Rebound to HEAD bytes (src/AssistiveComparison.ps1 and src/AssistiveReports.ps1 had changed since the earlier binding). R7SoftwareAssessment 13 assertions and AssistiveComparison 42 checks passed; the 2501-row EnvironmentConfirmation suite passed (851 s, counted once).",
+  "logs": [
+    {
+      "name": "Test-R7SoftwareAssessment.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-R7SoftwareAssessment.ps1 </dev/null",
+      "sha256": "028F93E0FA4DBB62DC91A09E9A8D87565D10C67AF34DE283448BA1C7845DA294",
+      "exitCode": 0,
+      "seconds": 10,
+      "countedAs": "assertions",
+      "text": "PASS: R7 software assessment preserved 5 collected rows through comparison and report projection; 13 assertions.\r\n"
+    },
+    {
+      "name": "Test-AssistiveComparison.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveComparison.ps1 </dev/null",
+      "sha256": "0226488B96D82925BF63A18E898BD29D79B263DF9392BA6BE51DA9EC16CDB3EA",
+      "exitCode": 0,
+      "seconds": 15,
+      "countedAs": "contract checks",
+      "text": "PASS: 42 Assistive S/E1 contract checks.\r\n"
+    },
+    {
+      "name": "Test-EnvironmentConfirmation.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-EnvironmentConfirmation.ps1 </dev/null",
+      "sha256": "94CAF6C06B5B438FD13FE2889DA42BE490F13725008255C5C6B41F91A36328F9",
+      "exitCode": 0,
+      "seconds": 851,
+      "countedAs": "one 2501-row suite (not broken into assertions)",
+      "text": "PASS: Environment confirmation is complete, immutable, safely rendered and count-consistent for 2501 software rows.\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Registry snapshots are controlled fixtures, not a live full-server software inventory.",
+    "casesExecuted counts assertions printed by the suites; the 2501-row EnvironmentConfirmation suite prints no count and is counted once."
+  ],
+  "openIssues": []
+}

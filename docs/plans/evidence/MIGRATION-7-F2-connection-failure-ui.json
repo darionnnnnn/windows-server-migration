@@ -1,0 +1,82 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "F2",
+  "verifiedUtc": "2026-10-22T21:56:46Z",
+  "verifier": "M3 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "dce88403d1a52cddc8e66e3acfafe8047cda8e17",
+  "snapshotDirectory": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/AssistiveHttpProbe.ps1",
+      "sha256": "908CC9AC84007BBF5453BA0B42B7C491C5667D17B83A7BC3E0CEA58E34B083FE"
+    },
+    {
+      "path": "src/WizardBackup.ps1",
+      "sha256": "8A698F592F6B122DD8F934DABBE0A4207906A6850D63528088A2E0AD40E94684"
+    },
+    {
+      "path": "src/WizardBackupProjection.ps1",
+      "sha256": "691437F2CB025EAB16645642604E5FA58324966780EB553C756D3CF24480AC71"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Test-AssistiveHttpProbe.ps1",
+      "sha256": "692FB5643F2C84804F63001B40DFCAD9DD6BD1DB35E87BFA98BA3B00DBADCFA8"
+    },
+    {
+      "path": "tests/Test-BackupProgressBrowser.js",
+      "sha256": "92F10C30D35A86278CE80BE0CB91E32707611F4267B25E06DCB6CFFD9C2BF74B"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 50,
+  "result": "At HEAD: AssistiveHttpProbe 44 checks (WinPS 5.1) and the 6 F2 connection-prompt cases of BackupProgressBrowser (real Edge: session expired, incomplete assets, unknown write that is never resent, listener unreachable, reset/timeout) passed. Browser-side failure UX now exists; CLI-side locating and the seven external materials remain open.",
+  "logs": [
+    {
+      "name": "Test-AssistiveHttpProbe.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveHttpProbe.ps1 </dev/null",
+      "sha256": "4E744ED822ED735EEF3BC9B2B06FA09AF311EE7EFBE315F250E82657D73BEDD2",
+      "exitCode": 0,
+      "seconds": 9,
+      "countedAs": "checks",
+      "text": "PASS: 44 HTTP probe fixture checks on Desktop 5.1.26100.9711\r\n"
+    },
+    {
+      "name": "Test-BackupProgressBrowser.log",
+      "command": "node tests/Test-BackupProgressBrowser.js </dev/null",
+      "sha256": "F2344F1BA3B426C8C589964D20C20470EEFF265D20752AE9AB124366882104E6",
+      "exitCode": 0,
+      "seconds": 65,
+      "countedAs": "53 progress-card checks + 6 F2 connection cases",
+      "text": "PASS: B1 progress card (53 checks) and F2 connection prompts (6 cases) in Edge; screenshots in work/r7/screens/b1-*.png\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Reset, abort, timeout and HTTP failure categories use controlled response/exception fixtures; only listener-refusal is an actual socket failure in the HTTP probe suite.",
+    "No native browser transport claim; local AdGuard policy remains unchanged.",
+    "BackupProgressBrowser uses a fixture API."
+  ],
+  "openIssues": [
+    "CLI-side failure locating is not covered by this record.",
+    "Seven external acceptance material classes (host, version, workload, owner, material, result) are not assembled; real-machine qualification stays NotTested.",
+    "F2 and the whole round are incomplete."
+  ]
+}

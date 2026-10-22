@@ -1,0 +1,54 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "A1",
+  "verifiedUtc": "2026-10-22T21:56:46Z",
+  "verifier": "M3 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "dce88403d1a52cddc8e66e3acfafe8047cda8e17",
+  "snapshotDirectory": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap, then tools/Test-PlanEvidence.ps1 and tests/Test-PlanEvidence.ps1 (the only two uncommitted M3 changes) overlaid as LF bytes; deleted after use",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "tests/Test-PlanEvidence.ps1",
+      "sha256": "BB34EDA3414ED345CADA91C61F84199EA47C3618EF8A3DA9EB054936BE88B278"
+    },
+    {
+      "path": "tests/Test-ScriptEncoding.ps1",
+      "sha256": "2873FDF3BADD12EAAD338300253AB1C8652CCAC8F02CB4A31EA8B68FE5560A02"
+    },
+    {
+      "path": "tools/Test-PlanEvidence.ps1",
+      "sha256": "8F63690939DFF8D5BD3D04B60E25C86E22F2680885FD87278C44C0B31FDBBA4E"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 28,
+  "result": "27 fixture cases passed on WinPS 5.1: the 19 earlier cases plus 8 new line-ending cases (an LF-bound hash verifies both the LF snapshot and a CRLF checkout; a hash recorded from raw CRLF bytes still verifies the same checkout; one changed byte, an appended line and an extra blank line all fail). The validator now accepts a recorded hash equal to the CRLF-folded form or to the raw bytes of the checkout, so the same committed content verifies in a git archive snapshot and in a core.autocrlf=true working tree. Test-ScriptEncoding passed over 296 files.",
+  "logs": [
+    {
+      "name": "Test-PlanEvidence.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-PlanEvidence.ps1 </dev/null",
+      "sha256": "8E2316CAB160AF8FD04C443C52A34D1903C7F3815A25BD66CC06F15D6337EEB9",
+      "exitCode": 0,
+      "seconds": 21,
+      "countedAs": "fixture cases",
+      "text": "PASS: 27 evidence-validator fixture cases.\r\n"
+    },
+    {
+      "name": "Test-ScriptEncoding.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ScriptEncoding.ps1 </dev/null",
+      "sha256": "353AB3ECBB22668C48969AA1227B98166D734B882DDE0FD5E598684F70075204",
+      "exitCode": 0,
+      "seconds": 2,
+      "countedAs": "one encoding/parser sweep over 296 files",
+      "text": "PASS: strict UTF-8, BOM for every non-ASCII script, and parsing across 296 runtime/test/entry files.\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Evidence validator only; no migration product or external environment acceptance.",
+    "The PowerShell 7 half of the original dual-engine A1 evidence (MIGRATION-7-A1.json) is historical and was not re-run.",
+    "A hash recorded from raw CRLF bytes is still accepted for compatibility, so a pure line-ending change of a bound file is not detected; any content byte change is."
+  ],
+  "openIssues": []
+}

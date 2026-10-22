@@ -1,0 +1,115 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "E3a",
+  "verifiedUtc": "2026-10-22T21:56:46Z",
+  "verifier": "M3 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "dce88403d1a52cddc8e66e3acfafe8047cda8e17",
+  "snapshotDirectory": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/AssistiveComparison.ps1",
+      "sha256": "6B5C7D9616190A19549EB8FC3DA5330C37FF901724F102848274F4C37FDD2487"
+    },
+    {
+      "path": "src/AssistiveRestore.ps1",
+      "sha256": "3ADE8E4FF9BFBB299954F6BB0D1312A5DD84FFF4353152E703855A713A2A7E07"
+    },
+    {
+      "path": "src/OperationRequests.ps1",
+      "sha256": "E35A78A4DBE5960721EFD0EE57D1F9B2B5BD574E74FADA27E1018ABC7AA22DF8"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+    },
+    {
+      "path": "src/WizardRestore.ps1",
+      "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+    },
+    {
+      "path": "src/WizardRuntime.ps1",
+      "sha256": "C37EE5885069B5D702E0686A222328A2733029698E46C5A50A63785AEF31DBE7"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Test-RestoreSelectionBrowser.js",
+      "sha256": "3CE62DBB38FE408C000909402F6CF55FBDA09AD5D6D21D1853FE2E8A8C1234B1"
+    },
+    {
+      "path": "tests/Test-WizardRestore.ps1",
+      "sha256": "642E4795C262F981A4C026DB9CE03E3F2880909290BE9F5A177223567E2A7194"
+    },
+    {
+      "path": "tests/Test-WizardRuntime.ps1",
+      "sha256": "6F3AC64A7096C4C7F9B093E844FFE9DEF82BC3CF8C186731D2F691FF9DB77F49"
+    },
+    {
+      "path": "tests/Test-WizardRuntimeTargetUi.js",
+      "sha256": "28742A4102534C54C3BF91E656A1902045C5F4C712BA5F6BDB2A246F7AD21A1C"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 300,
+  "result": "Offline Target start at HEAD: WizardRestore 132 Target contract checks (including TargetLocalComparison), WizardRuntime 166 module contract checks, and the browser suites RestoreSelectionBrowser (R6 selection, default select-all, type filter, incomplete-dependency marking, re-restore confirmation, 390 px) and WizardRuntimeTargetUi passed. The full empty-Target chain is exercised by the G journey record.",
+  "logs": [
+    {
+      "name": "Test-WizardRestore.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardRestore.ps1 </dev/null",
+      "sha256": "725452E1D5FF2FB7445961D96CEF5810F7E287329BC91360B1BF23B4611B9E36",
+      "exitCode": 0,
+      "seconds": 205,
+      "countedAs": "Target contract checks",
+      "text": "PASS: 132 Target contracts plus real ZIP/directory wrapper receive, repeated-delivery dedupe, deferred decision, schema-3 preview/restore, pre-write cancellation and cancellation after the first fully written item, safe recovery, staged validation/acceptance gates, frozen activation gate, byte/ACL readback, and exact same-attempt replay verified.\r\n"
+    },
+    {
+      "name": "Test-WizardRuntime.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardRuntime.ps1 </dev/null",
+      "sha256": "D25EB0C1486CDF7B3343349A591C886A2B67D5FE0CE509D590C5FB257F69879E",
+      "exitCode": 0,
+      "seconds": 382,
+      "countedAs": "module contract checks",
+      "text": "Wizard runtime module contract checks passed for fixture scope All: 166\r\n"
+    },
+    {
+      "name": "Test-RestoreSelectionBrowser.log",
+      "command": "node tests/Test-RestoreSelectionBrowser.js </dev/null",
+      "sha256": "06188E0A790DDFA4B3F7E1B66624B86CEA7C542944A59F6028215A2FE9F60B43",
+      "exitCode": 0,
+      "seconds": 10,
+      "countedAs": "one real-Edge suite (API fixture)",
+      "text": "PASS: R6 restore selection UI ��� type filter and filtered select/deselect, live n-files/b-bytes summary (single live region, no re-announce on redraw), immediate incomplete-dependency marking, confirm dialog (Esc/back send nothing, focus returns), re-restore confirmation, preview totals and lists, receipt-based preselection after reopening, 390px, zero console errors. API fixture only.\r\n"
+    },
+    {
+      "name": "Test-WizardRuntimeTargetUi.log",
+      "command": "node tests/Test-WizardRuntimeTargetUi.js </dev/null",
+      "sha256": "A9535AB377EBB441A8A3B9E869F0D04639FE6730E7A0D94A65AC3787F1732898",
+      "exitCode": 0,
+      "seconds": 14,
+      "countedAs": "one UI suite (API fixture)",
+      "text": "PASS: Target runtime action flow preserves independent material hashes, approved friendly item selection, explicit restore confirmation, and separate mechanical/business statuses. API fixture only.\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Browser suites use API fixtures.",
+    "Target inventory in the journey is a pre-seeded fixture, not a live full capture.",
+    "Two comparison materials created in the same second were resolved by a Sequence field (PLAN 17.62) and are covered by WizardRestore only."
+  ],
+  "openIssues": [
+    "HTML-guided retrieval of an independent trusted hash/approval material (16.3 item 5) has no dedicated evidence in this record.",
+    "Real new-machine inventory and software installation are not verified."
+  ]
+}

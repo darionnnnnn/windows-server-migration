@@ -1,0 +1,107 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "C2",
+  "verifiedUtc": "2026-10-22T21:56:46Z",
+  "verifier": "M3 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "dce88403d1a52cddc8e66e3acfafe8047cda8e17",
+  "snapshotDirectory": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "0D7B9B49E3183622AB9E042D6B373BC5AD550BBE2F3DFFC4E16C452888E67235"
+    },
+    {
+      "path": "src/OperationRequests.ps1",
+      "sha256": "E35A78A4DBE5960721EFD0EE57D1F9B2B5BD574E74FADA27E1018ABC7AA22DF8"
+    },
+    {
+      "path": "src/SoftwareDispositionReview.ps1",
+      "sha256": "A39B2425FD4A688942C4284F2B6E786C45C23E5B57A051D31C4448D9B65DA04C"
+    },
+    {
+      "path": "src/WindowsServerMigration.psd1",
+      "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+    },
+    {
+      "path": "src/WindowsServerMigration.psm1",
+      "sha256": "BB23A18D0662D8C2E507DBCE9CFC9AEFD4FADB93DC188F667506B7E757A28E88"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Start-C2D2TestServer.ps1",
+      "sha256": "F3F18857A9FF8D882FAF6C5C113BE39FE86A011C89799AAD9A1C6D24D1C9547F"
+    },
+    {
+      "path": "tests/Test-C2D2Browser.js",
+      "sha256": "A260D9007FE369DCE164FF54F2976CB0552975C4CC6E5EBA7586CD77559AE530"
+    },
+    {
+      "path": "tests/Test-C2D2HtmlActions.ps1",
+      "sha256": "15AFDB7167747B4450B3E08020F98D25B4EE0C04D9F64937CB394AF83EF1EAB4"
+    },
+    {
+      "path": "tests/Test-SoftwareDispositionReview.ps1",
+      "sha256": "D20119066E82B3CE0623611F2CC5E3FD9FCF5C2F7246EF43C56796C31685C000"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 203,
+  "result": "At HEAD: SoftwareDispositionReview 17 checks and C2D2HtmlActions 185 checks passed on WinPS 5.1, and the real-Edge C2D2Browser suite passed with the API replaced by a fixture. C2 software disposition review now has an HTML entry (B5, PLAN 17.70) with batch select, Ack, ExpectedRevision/ExpectedPreviewHash and stale handling. The stage stays in-progress.",
+  "logs": [
+    {
+      "name": "Test-SoftwareDispositionReview.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SoftwareDispositionReview.ps1 </dev/null",
+      "sha256": "B417906680BE90FB56D7538CE3C870A2A9CFF9F737D38D472D8E00FC97882FA4",
+      "exitCode": 0,
+      "seconds": 8,
+      "countedAs": "checks",
+      "text": "PASS Test-SoftwareDispositionReview: 17 formal review, CAS, batch preservation, dependency-gate and root-protection checks.\r\n"
+    },
+    {
+      "name": "Test-C2D2HtmlActions.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-C2D2HtmlActions.ps1 </dev/null",
+      "sha256": "076B5F6BB3A56995F6E2A204F573E25AE0A24677CAE83843C39E83CF1D4EBF6F",
+      "exitCode": 0,
+      "seconds": 53,
+      "countedAs": "checks",
+      "text": "PASS resubmitting the same mapping against the changed catalog is refused with 409 and no worker\r\nPASS a wrong inventory hash fails the durable mapping job with the stale_context code\r\nPASS the Source console serves the candidate list with the scan artifact hash\r\nPASS a Source console refuses the Manager confirmation review\r\nPASS the export is refused on the read endpoint\r\nPASS Test-C2D2HtmlActions: 185 action map, role/route gate, argument, C2 batch/CAS, D2 flow, closed projection and real console checks.\r\n"
+    },
+    {
+      "name": "Test-C2D2Browser.log",
+      "command": "node tests/Test-C2D2Browser.js </dev/null",
+      "sha256": "5B4AD93669C0809156E7FC5FF6A53435ABDED291C5A7FE193413D996204644CC",
+      "exitCode": 0,
+      "seconds": 68,
+      "countedAs": "one real-Edge suite (API replaced by a fixture)",
+      "text": "PASS Test-C2D2Browser: source/manager D2 flow, C2 batch, CAS, stale handling, keyboard confirmation, states, 390px layout and zero console errors.\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "C2D2Browser uses a fixture API; there is no real-browser plus real-listener integration test.",
+    "The 'incomplete' display lists only undecided (Unreviewed/Stale) software and is not an approval-blocking rule.",
+    "Selected-dependency gate and root guard tests are isolated contract evidence, not actual Server product migration."
+  ],
+  "openIssues": [
+    "Full capture/restore exclusion proof for C2 dispositions is still pending.",
+    "Panel placement on existing wizard steps needs confirmation on a real machine.",
+    "The Manager's imported-candidate list is read from job history; there is no manual-entry fallback once the history is cleared."
+  ]
+}

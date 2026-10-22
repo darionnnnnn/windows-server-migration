@@ -111,6 +111,37 @@ try {
     $ledger = New-ValidLedger; $ledger.stages[0].inputs[0].path = 'Get-ServerMigrationInventory.ps1'
     Invoke-Expected 'private inventory reference rejected' 'stage' $false $ledger
 
+    # Line-ending handling: the ledger is bound to the canonical (LF) form, or to the raw bytes of the checkout.
+    $lfText = "line one`nline two`n"
+    $crlfText = "line one`r`nline two`r`n"
+    $inputFile = Join-Path $tempRoot 'inputs/runtime.ps1'
+    function New-LedgerBoundTo([string] $Text) {
+        $built = New-ValidLedger
+        [void](Write-FixtureFile 'inputs/runtime.ps1' $Text)
+        $value = Hash-File $inputFile
+        $built.stages[0].inputs[0].sha256 = $value; $built.stages[0].evidence[0].sha256 = $value
+        return $built
+    }
+
+    $ledger = New-LedgerBoundTo $lfText
+    [void](Write-FixtureFile 'inputs/runtime.ps1' $crlfText)
+    Invoke-Expected 'LF-bound hash verifies a CRLF checkout of the same content' 'stage' $true $ledger
+    [void](Write-FixtureFile 'inputs/runtime.ps1' $lfText)
+    Invoke-Expected 'LF-bound hash verifies the LF snapshot' 'stage' $true $ledger
+    [void](Write-FixtureFile 'inputs/runtime.ps1' "line one`nline twO`n")
+    Invoke-Expected 'one changed content byte (LF) fails against the canonical hash' 'stage' $false $ledger
+    [void](Write-FixtureFile 'inputs/runtime.ps1' "line one`r`nline twO`r`n")
+    Invoke-Expected 'one changed content byte (CRLF) fails against the canonical hash' 'stage' $false $ledger
+    [void](Write-FixtureFile 'inputs/runtime.ps1' "line one`nline two`nextra`n")
+    Invoke-Expected 'appended line fails regardless of line endings' 'stage' $false $ledger
+    [void](Write-FixtureFile 'inputs/runtime.ps1' "line one`r`nline two`r`n`r`n")
+    Invoke-Expected 'extra blank line (CRLF) fails regardless of line endings' 'stage' $false $ledger
+
+    $ledger = New-LedgerBoundTo $crlfText
+    Invoke-Expected 'hash recorded from raw CRLF bytes still verifies the same checkout' 'stage' $true $ledger
+    [void](Write-FixtureFile 'inputs/runtime.ps1' "line one`r`nline twO`r`n")
+    Invoke-Expected 'one changed content byte fails against a raw CRLF hash' 'stage' $false $ledger
+
     Write-Output "PASS: $passed evidence-validator fixture cases."
 }
 finally {

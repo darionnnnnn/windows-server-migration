@@ -1191,9 +1191,42 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證：無參數 0 秒失敗並顯示用法；帶參數行為不變（E0 以修正雜湊的帳本副本 PASS、`-WholeRound` 依然在未實作階段失敗）；fixture 測試 19 案例 PASS。
 - 這個檔是 A1 的輸入，修改後 A1 輸入雜湊會變；帳本重綁屬第 17.41 節的另案。
 
-### 17.41 證據帳本未結
+### 17.41 證據帳本未結（根因與處理已於 17.73 完成，草稿待主代理審）
 
-- `tools/Test-PlanEvidence.ps1` 在乾淨的 580e7f8 副本（LF 與 CRLF 兩種 checkout）都失敗：A1 證據檔雜湊與帳本不符，c95b8d6 重綁 E0 時記錄的 `src/MigrationWizard.ps1` 雜湊也與已提交內容的兩種換行版本都不符。本段沒有重綁 E0，帳本修復另案處理，不在本段宣稱證據通過。
+- 原問題：`tools/Test-PlanEvidence.ps1` 在乾淨的 580e7f8 副本（LF 與 CRLF 兩種 checkout）都失敗：A1 證據檔雜湊與帳本不符，c95b8d6 重綁 E0 時記錄的 `src/MigrationWizard.ps1` 雜湊也與已提交內容的兩種換行版本都不符。
+- 根因（M3 逐項查證，細節見 17.73）有三個，彼此獨立：
+  1. 工具以工作樹檔案的原始位元組算雜湊，帳本卻沒有規定是哪一種換行。A1 證據檔記的是 CRLF 工作樹的雜湊（以已提交的 LF blob 轉成 CRLF 後吻合，LF blob 本身不吻合），所以在 `git archive` 快照或 `autocrlf=false` 的副本一定失敗。這是工具與帳本之間的缺陷。
+  2. A1 的輸入 `tools/Test-PlanEvidence.ps1` 記的是 d710909 的內容（與該提交的 blob 完全吻合）；f9998af（17.44）修改該檔後沒有重綁，屬單純過期，不是換行問題。
+  3. E0 的 `src/MigrationWizard.ps1` 雜湊 8CE336… 在該檔 15 個歷史版本中（LF、CRLF、加 BOM 三種形式）都找不到相符者：c95b8d6 重綁時記錄的是尚未提交的 F4a 第一切片工作樹內容，之後提交的內容不同，所以任何乾淨副本都不可能驗證。
+- 處理：(1) 工具改為接受「CRLF 摺成 LF 後的雜湊」或「目前檢出的原始位元組雜湊」其一；新綁定一律記 LF 形式，與 `git archive` 快照及已提交 blob 一致，舊的 CRLF 原始雜湊仍可驗證。任何內容位元組、多一行、多一個空行的變動，兩種形式都會轉紅；只差換行的檔案不會被偵測，這是明確接受的代價。`tests/Test-PlanEvidence.ps1` 由 19 增為 27 案例。(2)(3) A1、C1、E0 以目前 HEAD 位元組重新執行代表性測試後重綁；舊證據檔原封不動保留，並移到各階段的 `historicalEvidence`（附當時記錄的輸入雜湊與取代它的新證據檔），不再當作目前驗收。
+
+### 17.73 M3 證據帳本重綁與 13 個階段狀態更新
+
+- 主代理獨立驗收：12 個 `-Stage` 重跑全部通過，`tests/Test-PlanEvidence.ps1` 27 案例通過；突變（F3 輸入檔加一行）會轉紅並指出過期的檔名。
+- 節號：規格原寫 17.71，該號已被 M7 使用，順延為 17.73。Sonnet 5.5 medium subagent 執行；只動帳本、新增證據檔、`tools/Test-PlanEvidence.ps1` 與其測試、本節與 17.41。
+- 雜湊根因與工具修正見 17.41。工具不再讓同一份提交內容因檢出換行不同而得到不同雜湊，同時保留對過期雜湊的拒絕（`tests/Test-PlanEvidence.ps1` 27 案例通過；突變「比對恆真」「不摺 CRLF」「只收 LF 形式」皆轉紅）。
+- 取證方式：`git archive HEAD`（dce8840，排除 `work/`）解到系統暫存 `m3-snap`，A1 另覆蓋本段修改的兩個檔案；每支代表性測試在前景以 `timeout 900` 執行，只用 Windows PowerShell 5.1（本機沒有 PS7）與 Node＋Edge。帳本與各證據檔的雜湊都是 LF 形式（等於已提交 blob）。G 旅程需要 git 與未追蹤的 `work/` 輔助腳本，改在主工作區執行（它自建不可變快照並比對 `src/`），輸出寫在已忽略的 `work/r7/g-journey/m3gj01`。第一次以預設 14 字元 RunId 執行失敗：工作區路徑變長，69 字元的 blob 檔名超過 MAX_PATH（`找不到路徑的一部分`），與產品無關；改用 6 字元 RunId 重跑通過（沿用先前正式執行的做法）。
+- 階段狀態（寫入的狀態不高於證據；全部只有 WinPS 5.1、隔離 fixture，外部驗收維持 not-tested，簽署不變）：
+
+| 階段 | 實作／證據 | 依據（測試與檢查數） |
+|---|---|---|
+| A1、C1、E0 | implemented／isolated-pass（重綁） | PlanEvidence 27＋ScriptEncoding；R7SoftwareAssessment 13、AssistiveComparison 42、EnvironmentConfirmation（2501 列，851 秒）；WorkloadActionIndex 28、PathCoverage 18、WorkloadDiscovery |
+| D3b | implemented／isolated-pass | OfflineFullSet 67、WizardBackup 18 段、WizardBackupRecovery 21、OfflineFullSetSeparateSource 20、ActionExports 203、真實 Edge NativeWizardRuntimeHandler |
+| E1、E2 | implemented／isolated-pass | AssistiveRestore 169、AssistiveFiles 35、OfflineFullSet 67 |
+| E3a | implemented／isolated-pass | WizardRestore 132、WizardRuntime 166、RestoreSelectionBrowser、WizardRuntimeTargetUi |
+| E3b | implemented／isolated-pass | TargetRestoreContinuation 133、JournalReplayCoverage 413、HtmlRouteMatches 9、HtmlConsole 175 |
+| F3 | implemented／isolated-pass | BackupResultSetV2 8 段、SoftwareTab 9 段、WizardHtmlRuntimeProjection 214、三個真實 Edge 套件 |
+| F4a | implemented／isolated-pass | ServiceCredentialChallenge 46、CredentialDeferral 68、AssistiveRestore 169 |
+| F4b | implemented／isolated-pass | CredentialDialogUi、WaitingConsistencyUi、WizardRuntimeTargetUi、OperationRequests |
+| C2、D2 | in-progress／implemented-unverified | SoftwareDispositionReview 17、C2D2HtmlActions 185、C2D2Browser；D2 另有 SourceCandidateConfirmation 41、Mapping 19、ExactMemberDirectories 25、ExactMembers 29；HTML 入口與空目錄已有，但非 C、整合驗收未完成 |
+| F1、F2 | in-progress／implemented-unverified | F1 只有 F1-P（WizardProgress、WizardBackupProgress 103、進度卡 53 項）；F2 有 AssistiveHttpProbe 44 與瀏覽器連線提示 6 案例，CLI 端與七項外部材料未完成 |
+| G | in-progress／implemented-unverified | OfflineRestoreJourney 通過（run m3gj01，48 項判定，0 次 HTTP 重試）；第 10 節的文件、發行 payload、五旅程與 16.6 全表未涵蓋 |
+
+  B1 內容與證據不變，只把 3 個以 CRLF 原始位元組記錄的雜湊換成 LF 形式（先確認目前檔案吻合原雜湊），否則它在乾淨 LF 副本會失敗。驗證另在「`git archive` 快照＋LF 化的帳本與證據檔」上跑 12 個可通過的 `-Stage`，與主工作區（CRLF）結果一致。
+  B2、D1、D3a 不在本段範圍，維持原狀（舊證據與輸入雜湊未更新，仍是 in-progress，不通過 `-Stage`）。
+- 新證據檔（皆在 `docs/plans/evidence/`）：`MIGRATION-7-A1-line-ending-rebind`、`C1-rebind-dce8840`、`E0-rebind-dce8840`、`C2-html-entry-rebind`、`D2-html-entry-empty-dirs`、`D3b-independent-copy`、`E1-original-location`、`E2-target-gaps`、`E3a-offline-target-start`、`E3b-resume-and-replay`、`F1-backup-progress`、`F2-connection-failure-ui`、`F3-backup-result-views`、`F4a-credential-challenge`、`F4b-credential-dialog-ui`、`G-offline-journey`（`.json`）。舊證據檔不動，被重綁的階段把它們列入 `historicalEvidence`。
+- 驗證：`-Stage` 通過 A1、B1、C1、E0、D3b、E1、E2、E3a、E3b、F3、F4a、F4b；C2、D2、F1、F2、G、B2、D1、D3a 回報 `is not implemented`（預期）。`-WholeRound` 失敗於 `stage B2 is not implemented`，上述 8 個未實作階段是原因，沒有為了通過而改寫狀態。突變：改一個位元組（E0、E1 輸入）與改證據檔一個位元組（F4a）回報 `hash is stale`，刪除證據檔（E1）回報 `file is missing`，皆已用備份還原並以 cmp 確認。
+- 未結（已寫入各階段 `openIssues`／`limitations`）：沒有 PS7，所有綁定都不是雙引擎；17.71 列的 8 支第六輪基準就失敗的測試（AssistiveWorkloadIntegration、FleetExecutionBindings、FullDirectoryImport、ObservationWorkflow、ShareSourceWorkflow、WorkspaceWorkerIsolation、ZipColdStart、WorkspaceLockContention）與 HtmlBridge 的 ECONNRESET 沒有修，記在 G 的 `openIssues`；實機、企業、可移除與網路媒體驗收仍是 NotTested；`casesExecuted` 是各套件列印的檢查數加總，沒有印出數量的套件以每個 PASS 段或整個套件算一。
 
 ## 18. 第五次定案：使用者目標對照與備份端優先
 

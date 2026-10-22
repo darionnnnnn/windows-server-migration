@@ -1,0 +1,82 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "E2",
+  "verifiedUtc": "2026-10-22T21:56:46Z",
+  "verifier": "M3 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "dce88403d1a52cddc8e66e3acfafe8047cda8e17",
+  "snapshotDirectory": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/AssistiveFiles.ps1",
+      "sha256": "9CF7551AD14B565672ED5C871A36BADC6715E0A82BD7E38DE2AA5A9EB57CB118"
+    },
+    {
+      "path": "src/AssistiveRestore.ps1",
+      "sha256": "3ADE8E4FF9BFBB299954F6BB0D1312A5DD84FFF4353152E703855A713A2A7E07"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+    },
+    {
+      "path": "src/WizardRestore.ps1",
+      "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+    },
+    {
+      "path": "tests/Test-AssistiveFiles.ps1",
+      "sha256": "C1ADCACE092394A5853A485C99443A3702EF25961C7A09818D1414BBA3DA74F0"
+    },
+    {
+      "path": "tests/Test-AssistiveRestore.ps1",
+      "sha256": "67C9BEA98826A9E9B36ABF97625E338F0ADAC6CDE0490C3F836E4458C7134DFB"
+    },
+    {
+      "path": "tests/Test-OfflineFullSet.ps1",
+      "sha256": "D6D403BA6DD16EE5841D0EF2E35375E0DE4EB29B6E2D204EA092FA211DD3D959"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 271,
+  "result": "Target gaps, conflicts and capacity at HEAD on WinPS 5.1: AssistiveRestore 169 checks (missing disk -> Deferred/PrepareSameLocation, per-volume capacity aggregation -> Deferred/AddTargetCapacity, mount point -> Blocked/MountPointNotSupported, effective-access check -> Deferred/PermissionDenied, per-file conflict and ownership), AssistiveFiles 35 and OfflineFullSet 67 passed. Continuation after interruption is covered under E3b.",
+  "logs": [
+    {
+      "name": "Test-AssistiveRestore.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveRestore.ps1 </dev/null",
+      "sha256": "61976F66535A600E433DE1EC75595CCD9304E2F8392E9A37D83602B4E83BF9F3",
+      "exitCode": 0,
+      "seconds": 15,
+      "countedAs": "checks",
+      "text": "PASS: 169 Assistive file ownership, per-file conflict, typed IIS mapping and safe manual-gap checks.\r\n"
+    },
+    {
+      "name": "Test-AssistiveFiles.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveFiles.ps1 </dev/null",
+      "sha256": "D1B6337084388505FCD5066583408D615F6EC08F7DA463CE27694AC06B3330B9",
+      "exitCode": 0,
+      "seconds": 6,
+      "countedAs": "checks",
+      "text": "PASS: 35 physical C / exact configuration / topology / native placement checks.\r\n"
+    },
+    {
+      "name": "Test-OfflineFullSet.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineFullSet.ps1 </dev/null",
+      "sha256": "F389E5F8DA90895105225BE5D60D517A45094DCD1F3451BE1C35FB2C6D2F03D2",
+      "exitCode": 0,
+      "seconds": 30,
+      "countedAs": "checks",
+      "text": "PASS: 67 OfflineFullSet approval contract, native C-volume proof, package/readback, nested ZIP/Directory controls, receipt round-trips and negative integrity cases; additional-volume native qualification remains pending.\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Volume mount points are verified with a test double only; creating a real mount point would change the system.",
+    "Writability checks cover create-file and create-subdirectory, not delete or rename.",
+    "Different disk roots in the capacity case use temporary subst drives."
+  ],
+  "openIssues": [
+    "Real mount point and real permission-denied targets are not verified.",
+    "UNC responsibility/evidence handling is not exercised by these suites."
+  ]
+}

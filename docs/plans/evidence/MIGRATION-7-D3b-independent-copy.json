@@ -1,0 +1,150 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "D3b",
+  "verifiedUtc": "2026-10-22T21:56:46Z",
+  "verifier": "M3 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "dce88403d1a52cddc8e66e3acfafe8047cda8e17",
+  "snapshotDirectory": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "0D7B9B49E3183622AB9E042D6B373BC5AD550BBE2F3DFFC4E16C452888E67235"
+    },
+    {
+      "path": "src/OperationRequests.ps1",
+      "sha256": "E35A78A4DBE5960721EFD0EE57D1F9B2B5BD574E74FADA27E1018ABC7AA22DF8"
+    },
+    {
+      "path": "src/WizardBackup.ps1",
+      "sha256": "8A698F592F6B122DD8F934DABBE0A4207906A6850D63528088A2E0AD40E94684"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+    },
+    {
+      "path": "src/WizardRuntime.ps1",
+      "sha256": "C37EE5885069B5D702E0686A222328A2733029698E46C5A50A63785AEF31DBE7"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Start-WizardRuntimeTestServer.ps1",
+      "sha256": "9ACA722AECB95DAA244F812E90A31E2D352BC83289825FD0A71328B092D95B37"
+    },
+    {
+      "path": "tests/Test-ActionExports.ps1",
+      "sha256": "4DCD36168922C389BF2E418786B7AA1F073C0C99B573568BA169722FA0BFD582"
+    },
+    {
+      "path": "tests/Test-NativeWizardRuntimeHandler.js",
+      "sha256": "C9831C98DC8E08B29B0048A0E6965B21747D202EA9D93BFD4F9C8CB8E2F96904"
+    },
+    {
+      "path": "tests/Test-OfflineFullSet.ps1",
+      "sha256": "D6D403BA6DD16EE5841D0EF2E35375E0DE4EB29B6E2D204EA092FA211DD3D959"
+    },
+    {
+      "path": "tests/Test-OfflineFullSetSeparateSource.ps1",
+      "sha256": "9FE04083E7E3CC06CCAC00029A73349ACF6F70BCC599E520D8FC533FA922BF62"
+    },
+    {
+      "path": "tests/Test-WizardBackup.ps1",
+      "sha256": "0D01E234FC070875204372CDDC26A0385173845BF273F614E4C921D4823A2378"
+    },
+    {
+      "path": "tests/Test-WizardBackupRecovery.ps1",
+      "sha256": "D972EFE50BBB93FB48D0C9963D2D51881189872462BBB319B3655A5E1C7001D4"
+    },
+    {
+      "path": "tests/native-diagnostics.js",
+      "sha256": "C9F19CD7227AC4FCDE00FA859D7C6626B6DB17C1EED7392EDFE7E8A427631750"
+    },
+    {
+      "path": "tests/native-evidence.js",
+      "sha256": "F3BA88CC7290BFACD96125AF5DC56C126CFB05F3E9AAF19ADC2388B9763E81B9"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 330,
+  "result": "Backup side of D3b at HEAD on WinPS 5.1 and real Edge: OfflineFullSet 67, WizardBackup 18 PASS sections (Directory/ZIP delivery, independent copy copy/verify-existing and tamper/missing/local-fixed/inside-workspace/overwrite rejections, B7 disk-full, short-write, medium-pulled and crash-retry cases), WizardBackupRecovery 21, OfflineFullSetSeparateSource 20, ActionExports 203 action commands, and the real-Edge NativeWizardRuntimeHandler suite (formal capture bridge) passed.",
+  "logs": [
+    {
+      "name": "Test-OfflineFullSet.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineFullSet.ps1 </dev/null",
+      "sha256": "F389E5F8DA90895105225BE5D60D517A45094DCD1F3451BE1C35FB2C6D2F03D2",
+      "exitCode": 0,
+      "seconds": 30,
+      "countedAs": "checks",
+      "text": "PASS: 67 OfflineFullSet approval contract, native C-volume proof, package/readback, nested ZIP/Directory controls, receipt round-trips and negative integrity cases; additional-volume native qualification remains pending.\r\n"
+    },
+    {
+      "name": "Test-WizardBackup.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardBackup.ps1 </dev/null",
+      "sha256": "0846AB9762AF59BA8F9399A05B0F48088378B8C7D19A4E01433E42C8A660D86A",
+      "exitCode": 0,
+      "seconds": 91,
+      "countedAs": "PASS sections (no numeric total printed)",
+      "text": "PASS: B7 disk full during ZIP volume write.\r\nPASS: B7 short-written ZIP volume refused before rename.\r\nPASS: B7 independent copy disk full, medium pulled mid-copy and re-copied onto the same set.\r\nPASS: B7 crash mid-capture and retry did not mix an aborted capture into the sealed generation.\r\nPASS: B7 delivery fault cases (disk full, short write, medium pulled, crash retry).\r\nPASS: real sealed approval, source host binding, Directory and ZIP export/import, actual payload hash readback, and durable wizard result projection.\r\n"
+    },
+    {
+      "name": "Test-WizardBackupRecovery.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardBackupRecovery.ps1 </dev/null",
+      "sha256": "8AAB8BE1A55AA1E8CE373C6E59D8B7A4489DFC7FAC400C8233E06C77C93CC1D6",
+      "exitCode": 0,
+      "seconds": 23,
+      "countedAs": "assertions",
+      "text": "PASS: narrow SourceResume recovery contract (21 assertions).\r\n"
+    },
+    {
+      "name": "Test-OfflineFullSetSeparateSource.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineFullSetSeparateSource.ps1 </dev/null",
+      "sha256": "ADEEA398F6789CA617A54E64C2B71EA354ED9DC92786332C1E4CB4386F3C7443",
+      "exitCode": 0,
+      "seconds": 17,
+      "countedAs": "checks",
+      "text": "PASS: CV2 snapshot attachment emitted by Manager, verified and placed by a separate Source, one-click backup succeeded (20 checks).\r\n"
+    },
+    {
+      "name": "Test-ActionExports.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ActionExports.ps1 </dev/null",
+      "sha256": "AB04A7C2F1AD66D6E8CFD5F7FB8DA8ACF763800259CF200DF38065FB2AE62A1A",
+      "exitCode": 0,
+      "seconds": 3,
+      "countedAs": "action commands resolved",
+      "text": "PASS: 203 action commands resolve to exported functions (inline console handlers excluded).\r\n"
+    },
+    {
+      "name": "Test-NativeWizardRuntimeHandler.log",
+      "command": "node tests/Test-NativeWizardRuntimeHandler.js </dev/null",
+      "sha256": "D9C374E30F8B8BF972DF8BF75FBF0FCCCC138280F0A2DAA9B11F6468DD4BBBB2",
+      "exitCode": 0,
+      "seconds": 295,
+      "countedAs": "one real-Edge + real handler suite (formal capture bridge)",
+      "text": "PASS: immutable runtime/UI snapshot -> real Edge UI -> actual HTML handler -> actual Source core backup (default ItemByItem Directory and Automatic ZIP 512 MiB) and actual Target Directory receive/comparison/decision/restore; exact package, payload, journal hashes and operation replay verified. Transport mode: formal writer capture bridge; native transport/origin not asserted. Controlled host/software fixtures are us\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Removable and network media are classified through test doubles and subst-based media; no real removable-disk or UNC copy was verified.",
+    "Additional volumes are still simulated bindings; no native D:/E: capture or cold Target restore qualification.",
+    "NativeWizardRuntimeHandler ran with the formal writer capture bridge; native transport/origin is not asserted (AdGuard policy unchanged)."
+  ],
+  "openIssues": [
+    "Real removable-disk and network-media independent copy on actual hardware.",
+    "Non-C ExactMembers and real D/E volume backup remain deferred.",
+    "Success path on the screen can only be completed in an environment with independent media."
+  ]
+}

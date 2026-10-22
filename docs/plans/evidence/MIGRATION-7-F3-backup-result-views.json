@@ -1,0 +1,154 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "F3",
+  "verifiedUtc": "2026-10-22T21:56:46Z",
+  "verifier": "M3 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "dce88403d1a52cddc8e66e3acfafe8047cda8e17",
+  "snapshotDirectory": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "0D7B9B49E3183622AB9E042D6B373BC5AD550BBE2F3DFFC4E16C452888E67235"
+    },
+    {
+      "path": "src/WindowsServerMigration.psd1",
+      "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+    },
+    {
+      "path": "src/WizardBackup.ps1",
+      "sha256": "8A698F592F6B122DD8F934DABBE0A4207906A6850D63528088A2E0AD40E94684"
+    },
+    {
+      "path": "src/WizardBackupProjection.ps1",
+      "sha256": "691437F2CB025EAB16645642604E5FA58324966780EB553C756D3CF24480AC71"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+    },
+    {
+      "path": "src/WizardRestore.ps1",
+      "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+    },
+    {
+      "path": "src/WizardRuntime.ps1",
+      "sha256": "C37EE5885069B5D702E0686A222328A2733029698E46C5A50A63785AEF31DBE7"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/New-OfflineReportFixture.ps1",
+      "sha256": "471F8A1A9D188EA89C1030492ABDF380F42E734EF8EBF5BC4F8360A958230EF3"
+    },
+    {
+      "path": "tests/New-SoftwareTabFixture.ps1",
+      "sha256": "EE1CFE97CA525597D43F8C7479EB9F8488DAFAAE21B5125F6A1CA45A50A7AE94"
+    },
+    {
+      "path": "tests/Test-BackupResultSetV2.ps1",
+      "sha256": "6A28495C0805E0F682971A81640F80754E740A51E8F97855FBD3BC7209073EF8"
+    },
+    {
+      "path": "tests/Test-BackupWorkbenchBrowser.js",
+      "sha256": "7AC7CDE2E0E6A86D1AECC2AF6A2E13DF4C54578116FAD89161D1192A4D2976D3"
+    },
+    {
+      "path": "tests/Test-OfflineReportBrowser.js",
+      "sha256": "DDD872A1CB3897A54F40DE84157C4FEDA6FB0945A44B64391A2E5F66A207DA05"
+    },
+    {
+      "path": "tests/Test-SoftwareTab.ps1",
+      "sha256": "6432959EE5E1AD90DD78C7B323B72B8893677D06D5AFC6FBAED2429715E6C093"
+    },
+    {
+      "path": "tests/Test-SoftwareTabBrowser.js",
+      "sha256": "27C38A0546425804A2FB4E2F4F6DB9F4AE3785D097B3D18201EC9DD9FC942048"
+    },
+    {
+      "path": "tests/Test-WizardHtmlRuntimeProjection.ps1",
+      "sha256": "8C8C5F515CC8E4AD295B48EA08C434CCB1A5AAB18389D085EB2E0D577403DC7A"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 234,
+  "result": "Backup-side F3 at HEAD: BackupResultSetV2 (8 PASS sections: union invariant, restore-condition table, reason codes, workload association, coverage regions, legacy results, JSON/HTML agreement per ItemId), SoftwareTab (9 PASS sections), WizardHtmlRuntimeProjection 214 checks, and three real-Edge suites (software tab with 129 rows, offline report opened over file:// with 301 rows, backup workbench with 301 rows) passed.",
+  "logs": [
+    {
+      "name": "Test-BackupResultSetV2.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-BackupResultSetV2.ps1 </dev/null",
+      "sha256": "D3178AF95585B672005CFA78FB93ADF14202125E46316B2678B8BF2E43E4A2B7",
+      "exitCode": 0,
+      "seconds": 4,
+      "countedAs": "PASS sections",
+      "text": "PASS: reason codes.\r\nPASS: workload association.\r\nPASS: coverage regions and report fields.\r\nPASS: empty and legacy results.\r\nPASS: JSON and HTML agree per ItemId.\r\nPASS: backup result set v2.\r\n"
+    },
+    {
+      "name": "Test-SoftwareTab.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SoftwareTab.ps1 </dev/null",
+      "sha256": "6873A5807EC816D15AC00FC6579847F1AAADB2A8BE7DE750CFB6080EF280500B",
+      "exitCode": 0,
+      "seconds": 31,
+      "countedAs": "PASS sections",
+      "text": "PASS: empty inventory and report markup.\r\nPASS: legacy software rows.\r\nPASS: checklist is not truncated.\r\nPASS: four-state table.\r\nPASS: no comparison material.\r\nPASS: software tab.\r\n"
+    },
+    {
+      "name": "Test-WizardHtmlRuntimeProjection.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardHtmlRuntimeProjection.ps1 </dev/null",
+      "sha256": "E257B3321BFA59251E32B909F0903967FFAA8B24E96A1AACB2B74590B240EE72",
+      "exitCode": 0,
+      "seconds": 13,
+      "countedAs": "checks",
+      "text": "PASS Test-WizardHtmlRuntimeProjection checks=214; genuine unapproved projection and synthetic adversarial result examples; no runtime success or production qualification asserted.\r\n"
+    },
+    {
+      "name": "Test-SoftwareTabBrowser.log",
+      "command": "node tests/Test-SoftwareTabBrowser.js </dev/null",
+      "sha256": "1771618F38467EE7C41C5127C91406FC7D2B4009819128ECF8491339393E7889",
+      "exitCode": 0,
+      "seconds": 71,
+      "countedAs": "one real-Edge suite (129 rows)",
+      "text": "PASS: software tab browser test (129 rows, 30 required, report + workbench + Target).\r\n"
+    },
+    {
+      "name": "Test-OfflineReportBrowser.log",
+      "command": "node tests/Test-OfflineReportBrowser.js </dev/null",
+      "sha256": "1376FE5053347CDC9E5B31853A23F937FB42A071BBA1F986E3CEA723E8A25DA5",
+      "exitCode": 0,
+      "seconds": 18,
+      "countedAs": "one real-Edge file:// suite (301 rows)",
+      "text": "PASS: offline report browser test (301 rows, 181 backed, 120 not backed).\r\n"
+    },
+    {
+      "name": "Test-BackupWorkbenchBrowser.log",
+      "command": "node tests/Test-BackupWorkbenchBrowser.js </dev/null",
+      "sha256": "6E3A520DF45BF01A4A597B273CA9B3CA98D8C791E3C642EF43A7C2F423F8D068",
+      "exitCode": 0,
+      "seconds": 30,
+      "countedAs": "one real-Edge suite (301 rows)",
+      "text": "PASS: backup workbench browser test (301 rows, 181 backed, 120 not backed).\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Browser suites use fixtures and mock APIs with the real src/ui; Target-side software checking has no real-Target end-to-end test.",
+    "Printing is verified with a stubbed window.print and print-media emulation, not the real print dialog.",
+    "Result set and offline report sit beside the delivery descriptor, not inside the sealed package (PLAN 17.47)."
+  ],
+  "openIssues": [
+    "BundleExcluded and CaptureFailed have no reliable data source and are not shown.",
+    "Pagination beyond 100 rows and search input in the offline report are not automated in a browser.",
+    "Software decision values keep the existing six plus 'undecided' instead of the three-value form in 18.5."
+  ]
+}

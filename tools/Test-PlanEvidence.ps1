@@ -59,6 +59,32 @@ function Assert-Sha256([string] $Value, [string] $Label) {
     if ($Value -notmatch '^[0-9a-fA-F]{64}$') { Fail "$Label must be a 64-character SHA256 value." }
 }
 
+# Hashes are bound to the canonical text form (CRLF folded to LF), so the same committed content verifies in an LF
+# snapshot (git archive) and in a CRLF working tree (core.autocrlf=true). A value recorded from the raw bytes of
+# the current checkout is still accepted. Any other byte change, including a single content byte, fails both forms.
+function Get-FileHashForms([string] $Path) {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [IO.File]::ReadAllBytes($Path)
+        $raw = [BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '')
+        if ([Array]::IndexOf($bytes, [byte]0) -ge 0) { return @($raw, $raw) }
+        $folded = New-Object 'System.Collections.Generic.List[byte]' $bytes.Length
+        for ($i = 0; $i -lt $bytes.Length; $i++) {
+            if ($bytes[$i] -eq 13 -and ($i + 1) -lt $bytes.Length -and $bytes[$i + 1] -eq 10) { continue }
+            $folded.Add($bytes[$i])
+        }
+        $canonical = [BitConverter]::ToString($sha.ComputeHash($folded.ToArray())).Replace('-', '')
+        return @($canonical, $raw)
+    }
+    finally { $sha.Dispose() }
+}
+
+function Test-FileHashMatches([string] $Path, [string] $Recorded) {
+    $forms = Get-FileHashForms $Path
+    $expected = $Recorded.ToUpperInvariant()
+    return ($forms[0] -eq $expected -or $forms[1] -eq $expected)
+}
+
 if ($PSCmdlet.ParameterSetName -eq 'Stage' -and [string]::IsNullOrWhiteSpace($Stage)) { Fail 'specify -Stage <id> or -WholeRound.' }
 if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) { $RepositoryRoot = Split-Path -Parent $PSScriptRoot }
 $root = [IO.Path]::GetFullPath($RepositoryRoot)
@@ -105,7 +131,7 @@ foreach ($entry in $stages) {
         $hash = [string](Get-PropertyValue $input 'sha256')
         $full = Resolve-RepoFile $path "stage $id input"
         Assert-Sha256 $hash "stage $id input hash"
-        if ($isComplete -and (Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash -ne $hash.ToUpperInvariant()) { Fail "stage $id input hash is stale: $path" }
+        if ($isComplete -and -not (Test-FileHashMatches $full $hash)) { Fail "stage $id input hash is stale: $path" }
     }
     $evidenceRefs = @(Get-PropertyValue $entry 'evidence')
     foreach ($ref in $evidenceRefs) {
@@ -113,7 +139,7 @@ foreach ($entry in $stages) {
         $hash = [string](Get-PropertyValue $ref 'sha256')
         $full = Resolve-RepoFile $path "stage $id evidence"
         Assert-Sha256 $hash "stage $id evidence hash"
-        if ($isComplete -and (Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash -ne $hash.ToUpperInvariant()) { Fail "stage $id evidence hash is stale: $path" }
+        if ($isComplete -and -not (Test-FileHashMatches $full $hash)) { Fail "stage $id evidence hash is stale: $path" }
     }
     $log = Get-PropertyValue $entry 'evidenceLog'
     if ($null -ne $log) {
@@ -121,7 +147,7 @@ foreach ($entry in $stages) {
         $logHash = [string](Get-PropertyValue $log 'sha256')
         $logFull = Resolve-RepoFile $logPath "stage $id evidence log"
         Assert-Sha256 $logHash "stage $id evidence log hash"
-        if ($isComplete -and (Get-FileHash -LiteralPath $logFull -Algorithm SHA256).Hash -ne $logHash.ToUpperInvariant()) { Fail "stage $id evidence log hash is stale: $logPath" }
+        if ($isComplete -and -not (Test-FileHashMatches $logFull $logHash)) { Fail "stage $id evidence log hash is stale: $logPath" }
     }
     if ((Get-PropertyValue $entry 'evidenceStatus') -eq 'accepted' -and (Get-PropertyValue $entry 'implementationStatus') -ne 'implemented') { Fail "stage $id claims accepted evidence without completed implementation." }
     if ($isComplete) {
@@ -157,7 +183,7 @@ foreach ($entry in $stages) {
             $signatureHash = [string](Get-PropertyValue $signatureEvidence 'sha256')
             $signatureFull = Resolve-RepoFile $signaturePath "stage $id signature evidence"
             Assert-Sha256 $signatureHash "stage $id signature hash"
-            if ((Get-FileHash -LiteralPath $signatureFull -Algorithm SHA256).Hash -ne $signatureHash.ToUpperInvariant()) { Fail "stage $id signature evidence hash is stale: $signaturePath" }
+            if (-not (Test-FileHashMatches $signatureFull $signatureHash)) { Fail "stage $id signature evidence hash is stale: $signaturePath" }
         }
         if ((Get-PropertyValue $entry 'externalStatus') -in @('pending','failed')) { Fail "stage $id claims completion with unresolved external evidence." }
         $cases = Get-PropertyValue $entry 'casesExecuted'

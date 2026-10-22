@@ -1,0 +1,94 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "F1",
+  "verifiedUtc": "2026-10-22T21:56:46Z",
+  "verifier": "M3 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "dce88403d1a52cddc8e66e3acfafe8047cda8e17",
+  "snapshotDirectory": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/Payload.ps1",
+      "sha256": "0F6E0FA9843DF4CBD00C9B590C45CF9B7F3EA8D35982D90FEEFE36B6BF74BEE9"
+    },
+    {
+      "path": "src/WizardBackup.ps1",
+      "sha256": "8A698F592F6B122DD8F934DABBE0A4207906A6850D63528088A2E0AD40E94684"
+    },
+    {
+      "path": "src/WizardBackupProjection.ps1",
+      "sha256": "691437F2CB025EAB16645642604E5FA58324966780EB553C756D3CF24480AC71"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "4F0A8CE641BA8A1E7E07C7C738F8FF60E43D43B1C9E495E5FA2B9373C79BB1D8"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "73647AF07C6C277ECE1C306E57BF2BAEBC9716F7F93607B4EA9BB8D550B44DE2"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "CA5EC3F3EDEDDFBF0CC854695667CADF4ED946DDA7E972CA09217FBF582AD0B7"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Test-BackupProgressBrowser.js",
+      "sha256": "92F10C30D35A86278CE80BE0CB91E32707611F4267B25E06DCB6CFFD9C2BF74B"
+    },
+    {
+      "path": "tests/Test-WizardBackupProgress.ps1",
+      "sha256": "527D1FD45E639348B2DE011100757B6CBCAAC8000BE1BFA17D73350369B49195"
+    },
+    {
+      "path": "tests/Test-WizardProgress.ps1",
+      "sha256": "E8EB8C644CF930C7E55274078589BB23932F42AD5F984BE176242EA3BF1D7AB1"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 158,
+  "result": "F1-P slice (backup progress: current item and file) at HEAD: WizardProgress 2 PASS sections, WizardBackupProgress 103 producer/projection checks and the 53 progress-card checks of BackupProgressBrowser (real Edge) passed. The wider F1 contract (one list carried to the next recoverable step across roles) is not implemented, so the stage stays in-progress.",
+  "logs": [
+    {
+      "name": "Test-WizardProgress.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardProgress.ps1 </dev/null",
+      "sha256": "6658EE90E9D9CC202BE44570097A14C2A257827085F375F9F2CE5C385644904F",
+      "exitCode": 0,
+      "seconds": 11,
+      "countedAs": "PASS sections",
+      "text": "PASS: async HTML progress preserves truthful unknown/numeric percent, bounded safe text and timestamp.\r\nPASS: backup item progress survives trailing Completed records, formats bytes and truncates long paths from the front.\r\n"
+    },
+    {
+      "name": "Test-WizardBackupProgress.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardBackupProgress.ps1 </dev/null",
+      "sha256": "77C92CCC716C2BFD6EE7F9D4902A607F6D97773E09D86C679D38D916D6B2958E",
+      "exitCode": 0,
+      "seconds": 23,
+      "countedAs": "producer/projection checks",
+      "text": "PASS: cancelled and failed runs leave a terminal progress record at the real stage.\r\nPASS: real one-click backup advances step n/m and item counts, ends at 3/3 items with sealed payload bytes.\r\nPASS: finished backup reads back by parent job id as awaiting delivery.\r\nPASS: progress stays out of the attempt records and the journal.\r\nPASS: secret sentinel sweep finds nothing in progress files (and finds it in the negative control).\r\nPASS: B1 backup progress producer/projection checks: 103\r\n"
+    },
+    {
+      "name": "Test-BackupProgressBrowser.log",
+      "command": "node tests/Test-BackupProgressBrowser.js </dev/null",
+      "sha256": "F2344F1BA3B426C8C589964D20C20470EEFF265D20752AE9AB124366882104E6",
+      "exitCode": 0,
+      "seconds": 65,
+      "countedAs": "53 progress-card checks + 6 F2 connection cases",
+      "text": "PASS: B1 progress card (53 checks) and F2 connection prompts (6 cases) in Edge; screenshots in work/r7/screens/b1-*.png\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Percentage is computed only during capture (capped at 99%); verification and delivery have no fine-grained data.",
+    "BytesTotal is known only after sealing.",
+    "BackupProgressBrowser uses a fixture API."
+  ],
+  "openIssues": [
+    "Journey from inventory through software assessment, scope confirmation, new-machine checks, backup/handoff, restore/continue and verification is not carried by one list.",
+    "Already-confirmed items are not yet carried over on re-inventory beyond the covered cases."
+  ]
+}

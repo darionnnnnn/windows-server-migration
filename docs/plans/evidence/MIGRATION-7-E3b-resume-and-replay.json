@@ -1,0 +1,115 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "E3b",
+  "verifiedUtc": "2026-10-22T21:56:46Z",
+  "verifier": "M3 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "dce88403d1a52cddc8e66e3acfafe8047cda8e17",
+  "snapshotDirectory": "git archive HEAD (dce8840, work/ excluded) extracted to %TEMP%\\m3-snap and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/AssistiveRestore.ps1",
+      "sha256": "3ADE8E4FF9BFBB299954F6BB0D1312A5DD84FFF4353152E703855A713A2A7E07"
+    },
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "0D7B9B49E3183622AB9E042D6B373BC5AD550BBE2F3DFFC4E16C452888E67235"
+    },
+    {
+      "path": "src/JournalRecovery.ps1",
+      "sha256": "C77CFBC2632AF2DABA6A0BEC4726209723676F9DBA7CCB75920CE561E23B7EB6"
+    },
+    {
+      "path": "src/MigrationWizard.ps1",
+      "sha256": "C15CC4DD5B222058BCEAFFDA268985E55626310973A430A1749EA19E2C3BD51E"
+    },
+    {
+      "path": "src/Recovery.ps1",
+      "sha256": "2DA0C0BEFF86B12A70FF288BACD63CF41E247F99C650F468CEA3540FE0038CB5"
+    },
+    {
+      "path": "src/Restore.ps1",
+      "sha256": "DE008F8327D192A68F1ECEE27ECDC1F4A6697202851065B5E24A642C6256C128"
+    },
+    {
+      "path": "src/WizardRestore.ps1",
+      "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+    },
+    {
+      "path": "src/WizardRuntime.ps1",
+      "sha256": "C37EE5885069B5D702E0686A222328A2733029698E46C5A50A63785AEF31DBE7"
+    },
+    {
+      "path": "src/WizardTargetPackage.ps1",
+      "sha256": "9F5EAA8385E9E886E907895F1DB1EAE4201DC53E0A329C136A62FDA9D0EC2ECB"
+    },
+    {
+      "path": "tests/Test-HtmlConsole.ps1",
+      "sha256": "AFD75317FCB00B8B921461B362BCF3A022429289590C2F7E4AE0200380AB3E75"
+    },
+    {
+      "path": "tests/Test-HtmlRouteMatches.ps1",
+      "sha256": "E65E2F1E2883D4844848355498152B6C163339D6F6B8158B771A30AA5CD8C26E"
+    },
+    {
+      "path": "tests/Test-JournalReplayCoverage.ps1",
+      "sha256": "29735D1F89BCBDBFDB07AFC58054CB092F0872830224DB52205BB752F83BD24C"
+    },
+    {
+      "path": "tests/Test-TargetRestoreContinuation.ps1",
+      "sha256": "325F369D118912C62A928C069D4A6D39AECC6DA8309B3496DD3B11B5F533E322"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 730,
+  "result": "TargetRestore continuation at HEAD on WinPS 5.1: TargetRestoreContinuation 133 checks (interruption points, dependency blocking, ownership of finished files, preview drift/rebind, repeated ContinuationId, terminal/cancelled refusal), JournalReplayCoverage 413 checks (78 journal actions all replayable or listed fail-closed, 39 replay-equivalence scenarios), HtmlRouteMatches 9 route blocks and HtmlConsole 175 checks (resume, preview, cancel routes) passed. Process-kill resume over HTTP is recorded under G.",
+  "logs": [
+    {
+      "name": "Test-TargetRestoreContinuation.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-TargetRestoreContinuation.ps1 </dev/null",
+      "sha256": "7FD589CEDA56875DD0268C2AC8D8C4A1431E0CB47164F02B861840636A440B54",
+      "exitCode": 0,
+      "seconds": 22,
+      "countedAs": "checks",
+      "text": "PASS: TargetRestore continuation core (133 checks).\r\n"
+    },
+    {
+      "name": "Test-JournalReplayCoverage.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-JournalReplayCoverage.ps1 </dev/null",
+      "sha256": "85748FF8B4160BF3DB2D43F120301EE89F0E6CC235BB190D76B4C9ACC9582495",
+      "exitCode": 0,
+      "seconds": 15,
+      "countedAs": "checks",
+      "text": "PASS: 413 checks; 78 journal actions all replayable or listed fail-closed; 39 replay-equivalence scenarios.\r\n"
+    },
+    {
+      "name": "Test-HtmlRouteMatches.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-HtmlRouteMatches.ps1 </dev/null",
+      "sha256": "B16E56A60D5B6D441CC69AA66DA60A8C3F060FE4A81F6DAB0C2B172F7CF19026",
+      "exitCode": 0,
+      "seconds": 1,
+      "countedAs": "route blocks",
+      "text": "PASS: 9 HTML route blocks read their $Matches captures before any later regex match.\r\n"
+    },
+    {
+      "name": "Test-HtmlConsole.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-HtmlConsole.ps1 </dev/null",
+      "sha256": "30A93B2C1B707017F4C23F1241241AA1EEAF90D41CB34EEE5A65EB70C2A4C41B",
+      "exitCode": 0,
+      "seconds": 44,
+      "countedAs": "checks",
+      "text": "PASS: 175 native HTTP parser/writer and typed action checks; live browser transport is independently probed.\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Resume-WsmWizardTargetRestore is tested with substitute projections/packages here; the real-package resume is only in the G journey.",
+    "Partial (including unknown items) is terminal and needs manual Repair or a new preview.",
+    "Native consumers for tasks and IIS pools are test doubles."
+  ],
+  "openIssues": [
+    "Ownership of an in-progress created directory is persisted at the next journal event, so a crash in that narrow window is judged conflict (safe, not repaired).",
+    "A ContinuationId whose attempt threw midway cannot be reused."
+  ]
+}
