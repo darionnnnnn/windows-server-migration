@@ -987,8 +987,8 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 讀取前依序核對：attempt 已封存且 Valid、manifest 位元組、結果集的 ManifestHash、`artifacts.jsonl` 的 ArtifactsHash。
   - 每頁 100 筆並回傳總數，目錄成員會標示出來。
   - 畫面上有 loading、錯誤（附重試）、空集合三種狀態，展開鈕帶 `aria-expanded`。
-  - 主代理修正：HTML 路由只在參數缺少時才補入工作階段的 `Workspace`、`PairId`（`HtmlConsole.ps1` 約 :1371），subagent 版本對兩者照單全收，前端可藉此指向別的工作區。現在要求兩者必須等於工作階段綁定，否則拒絕，並加上測試守門。
-  - 同型風險待查（M6）：其他 action 是否也接受前端自帶的 `Workspace`／`PairId` 而沒有比對（TargetRestore 已有比對）。
+  - 主代理加一道防線：HTML 路由只在參數缺少時補入工作階段的 `Workspace`、`PairId`（`HtmlConsole.ps1` 約 :1371），所以 BackupItemFiles 另外要求兩者等於工作階段綁定，並加上測試守門。
+  - M6 核對結論：所有 action 在呼叫前都有通用比對（`HtmlConsole.ps1` 約 :1405-1408，WorkRoot、Workspace、PairId 不符即拒絕），所以前端自帶不同的工作區或配對不會被執行。上面那道防線是重複保護，不是修補可利用的缺口。以其他參數名稱接收路徑（例如 StateDirectory、OutputDirectory）的 action 不在通用比對範圍，另列為後續稽核項。
 - CSV 與跨畫面一致：
   - 工作台 CSV 與離線報告 CSV 的欄名、順序、每列內容完全相同，尾端都附上項目 ID、狀態碼、原因碼。
   - 對同一份結果集，以下四方對每個 ItemId 的狀態碼與原因碼一致：JSON、報告 CSV、工作台 CSV、工作台 DOM。另外驗證已備份與未備份的聯集等於全部列。
