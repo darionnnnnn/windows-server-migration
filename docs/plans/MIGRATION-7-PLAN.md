@@ -1030,6 +1030,46 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 沒有真實 Target 端到端的軟體檢查測試：NativeWizardRuntimeHandler 的比較材料 Rows 為空；接線改由單元測試、`$allowed` 投影與瀏覽器 fixture 間接驗證。
   - 列印以 stub `window.print` 搭配 `emulateMedia('print')` 驗證，沒有走真實的列印對話框。
   - `Test-WizardNonCTargetHandoff` 在 HEAD 就因 `.wsm.lock` IOException 失敗，併入 M7。
+### 17.68 B1 一鍵備份進度卡（F1-P）與連線狀態提示（F2 畫面）
+
+- Sonnet 5.5 subagent 實作，主代理審查並獨立重跑。設計依 ui-ux-pro-max 準則。
+- Producer（`WizardBackup.ps1`）
+  - 進度檔：`workspace-control\wizard-backups\<Pair>\progress\<OperationId>.json`，緊湊 JSON，上限 4 KiB。
+  - 寫入：先寫暫存檔再 Replace，屬原子寫入。預設最快每秒寫一次，階段改變時強制寫入。
+  - 不進 journal，也不影響 attempt 掃描（attempt 掃描只讀根層）。
+  - 欄位：
+    - 階段：Stage、StageIndex／StageCount。共三步：擷取與封存、驗證封裝、交付。
+    - 目前位置：Workload、CurrentFile（相對路徑，經過秘密與控制字元過濾）。
+    - 計數：ItemsDone／ItemsTotal、BytesDone／BytesTotal（未知時為 null）。
+    - 時間：StartedUtc、UpdatedUtc。
+    - 最近完成：Recent，最多 20 筆，先進先出。
+  - 掛接方式：在 StartBackup 範圍內遮蔽 `Write-WsmBackupItemProgress`，先呼叫原函式再更新進度，`Payload.ps1` 不改。PS 5.1 已實測動態範圍可見。
+- 七態映射
+  - 等待中：Queued、WaitingForInput 與其他未知狀態。
+  - 執行中：Running。
+  - 取消要求中：CancelRequested。
+  - 完成：Succeeded，交付後 OfflineReadiness 為 Verified（或網路可用性未確認）。
+  - 等待交付：Succeeded，但其餘情況，例如 AwaitingIndependentCopy、NotDelivered（16.5）。
+  - 部分失敗：Succeeded 但有失敗項目，或 ReviewRequired。
+  - 失敗：Failed、Cancelled、Interrupted。後兩者另以 EndReason 顯示「已取消」或「工具重新啟動，作業已中斷」。
+- 進度卡（精靈頁與「備份結果」頁頂端）
+  - 顯示內容：第 n 步／共 m 步、原生 `<progress>`（沒有細粒度資料時為不確定狀態，顯示「未知」）、目前工作負載與檔案、n/N、位元組、經過時間、狀態（文字加圖示）、可收合的最近完成清單。
+  - live region 只在階段或工作負載改變時播報。卡片就地更新，不搶焦點。
+  - 取消要先確認：返回、Esc、三連點都只送出一次；送出後顯示「取消要求中」並停用按鈕。作業列表的「要求取消」也加了同樣的確認。
+  - 重開頁面，或工具重啟後作業標為 Interrupted 時，會依父作業 id 讀回最後進度。
+- F2：純函式 `classifyConnectionFailure` 依情況分五類，以 `#connection-banner` 呈現，每類附下一步：
+  - 401 或 invalid_token：session 過期。
+  - 資產 hash 不符、資源載入失敗或 404：資源不完整。
+  - 寫入時逾時或網路錯誤：未知寫入，不會自動重送。
+  - 讀取時逾時或網路錯誤，且尚無 session：listener 不可達。
+  - 讀取時逾時或網路錯誤，已有 session：reset／逾時。
+- 驗證（WinPS 5.1、真實 Edge）：見提交說明。截圖在 `work/r7/screens/b1-*.png`。
+- 突變（皆轉紅）：Recent 不截到 20 筆、進度不落盤、取消不經確認就送出、live region 每次都播報、未知寫入自動重送；主代理另做「等待交付誤判為完成」也轉紅。
+- 限制
+  - 百分比只在擷取階段依項目數計算（上限 99%）。驗證與交付階段沒有細粒度資料，顯示「未知」。
+  - BytesTotal 在封存後才知道。
+  - 頁面載入後，會依 session 提供的 assetHashes 多抓 5 個 /ui 資產核對。
+  - 「完成」只在獨立副本驗證後出現。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

@@ -202,3 +202,37 @@ body.printing-checklist .print-checklist{display:block;margin:0;padding:0;color:
 .print-checklist tr{break-inside:avoid}
 .print-checklist h2{break-after:avoid}
 }
+
+/* B1: one-click backup progress card and connection banner. Existing tokens only; no animation of its own. */
+.progress-card{position:relative;display:grid;gap:10px;margin:0 0 16px;min-width:0}
+.progress-title{margin:0}
+.progress-status{margin:0;font-size:15px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.progress-icon{display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:50%;background:#eef4f7;color:var(--blue);font-weight:800}
+.progress-card[data-state="Completed"] .progress-icon{background:#edf7f2;color:var(--success)}
+.progress-card[data-state="Failed"] .progress-icon{background:#fff0ee;color:var(--danger)}
+.progress-card[data-state="PartialFailure"] .progress-icon,.progress-card[data-state="AwaitingDelivery"] .progress-icon,.progress-card[data-state="CancelRequested"] .progress-icon{background:#fff5e4;color:var(--warn)}
+.progress-reason{color:var(--muted);font-size:13px}
+.progress-step{margin:0;font-weight:650;color:var(--ink)}
+.progress-bar-row{display:flex;align-items:center;gap:12px;min-width:0}
+.progress-meter{flex:1;min-width:0;height:14px;appearance:none;-webkit-appearance:none;border:1px solid #bdccd6;border-radius:7px;background:#e7edf1;overflow:hidden;accent-color:var(--teal)}
+.progress-meter::-webkit-progress-bar{background:repeating-linear-gradient(135deg,#e7edf1 0,#e7edf1 6px,#dde6ec 6px,#dde6ec 12px)}
+.progress-meter::-webkit-progress-value{background:var(--teal)}
+.progress-meter::-moz-progress-bar{background:var(--teal)}
+.progress-percent{min-width:5.5em;font-variant-numeric:tabular-nums;font-weight:650}
+.progress-facts{display:grid;grid-template-columns:minmax(120px,.35fr) minmax(0,1fr);gap:4px 12px;margin:0;font-size:13px;min-width:0}
+.progress-facts dt{color:var(--muted)}
+.progress-facts dd{margin:0;min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.progress-recent summary{cursor:pointer;font-weight:650;min-height:32px;display:flex;align-items:center}
+.progress-recent summary:focus-visible{outline:3px solid #bd5a13;outline-offset:2px}
+.progress-recent-list{margin:6px 0 0;padding-left:22px;max-height:240px;overflow:auto;font-size:13px}
+.progress-recent-name{overflow-wrap:anywhere}
+.progress-result-failed{color:var(--danger)}
+.progress-result-succeeded{color:var(--success)}
+.progress-actions{display:flex;flex-wrap:wrap;gap:10px}
+.progress-live{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.connection-banner{margin:0 0 15px;padding:14px 16px;border:1px solid #f1d7a5;border-left:4px solid var(--warn);border-radius:9px;background:#fff7e8;color:#5c4107;font-size:14px;overflow-wrap:anywhere}
+.connection-banner .connection-title{margin:0 0 6px;font-size:16px;color:#5c4107}
+.connection-banner p{margin:4px 0}
+.connection-banner .connection-steps{margin:4px 0 10px;padding-left:22px}
+@media(max-width:600px){.progress-facts{grid-template-columns:1fr;gap:2px}.progress-facts dd{margin-bottom:6px}.progress-bar-row{flex-wrap:wrap}.progress-percent{min-width:0}.progress-actions .danger-button{width:100%}}
+@media(prefers-reduced-motion:reduce){.progress-card *,.connection-banner *{animation:none!important;transition:none!important}.progress-meter{animation:none!important}}

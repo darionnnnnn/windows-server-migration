@@ -101,7 +101,7 @@ function ConvertTo-WsmProgressText([object]$Value) {
     $text
 }
 
-function Get-WsmHtmlProgressProjection($Job) {
+function Get-WsmHtmlLegacyProgressProjection($Job) {
     $worker=Get-WsmTextMetadataValue $Job 'PowerShell';$jobRecord=Get-WsmTextMetadataValue $Job 'Record'
     if(-not $worker -or -not $worker.Streams -or -not $worker.Streams.Progress.Count){return $null}
     $streamCount=$worker.Streams.Progress.Count;$record=$worker.Streams.Progress[$streamCount-1]
@@ -114,6 +114,116 @@ function Get-WsmHtmlProgressProjection($Job) {
     if($previous -and $null -ne $observedCount -and [int]$observedCount -eq $streamCount -and [string]$previous.activity -ceq $activity -and [string]$previous.statusDescription -ceq $status -and [string]$previous.currentOperation -ceq $operation -and $previous.percent -eq $percent -and $previous.processedCount -eq $processedCount){$updated=[string]$previous.updatedUtc}
     if($Job -is [Collections.IDictionary]){$Job['ObservedProgressCount']=$streamCount}else{$Job|Add-Member NoteProperty ObservedProgressCount $streamCount -Force}
     [pscustomobject][ordered]@{activity=$activity;statusDescription=$status;currentOperation=$operation;percent=$percent;processedCount=$processedCount;updatedUtc=$updated}
+}
+
+# F1-P seven-state mapping (pure; every row has a test in tests/Test-WizardBackupProgress.ps1).
+# Inputs are existing facts only: the console job status, the durable attempt Stage, the OfflineReadiness that
+# ConvertTo-WsmWizardBackupResult derives, and the number of items the producer recorded as Failed.
+#   job.status          other facts                                              -> State           (label)
+#   Queued / WaitingForInput / anything unknown / empty                          -> Waiting         等待中
+#   Running                                                                      -> Running         執行中
+#   CancelRequested                                                              -> CancelRequested 取消要求中
+#   Succeeded           FailedCount > 0                                          -> PartialFailure  部分失敗
+#   Succeeded           attempt Stage Delivered and a verified independent copy
+#                       (OfflineReadiness Verified / VerifiedNetworkAvailabilityUnconfirmed)
+#                                                                                -> Completed       完成
+#   Succeeded           otherwise (OfflineReadiness AwaitingIndependentCopy,
+#                       NotDelivered or unreadable)                              -> AwaitingDelivery 等待交付 (never success)
+#   ReviewRequired      unresolved items or recovery pending                     -> PartialFailure  部分失敗
+#   Failed                                                                       -> Failed          失敗
+#   Cancelled                                                                    -> Failed          失敗 (EndReason Cancelled)
+#   Interrupted                                                                  -> Failed          失敗 (EndReason Interrupted)
+# The seven states have no separate "cancelled" or "interrupted" state, so those two end as Failed and keep the
+# real reason in EndReason for the UI to show next to the label.
+function Get-WsmBackupProgressState([string]$JobStatus,[string]$AttemptStage='',[string]$OfflineReadiness='',[int]$FailedCount=0) {
+    $state='Waiting';$endReason=''
+    switch -CaseSensitive ($JobStatus) {
+        'Running' {$state='Running'}
+        'CancelRequested' {$state='CancelRequested'}
+        'Succeeded' {
+            if($FailedCount -gt 0){$state='PartialFailure'}
+            elseif($AttemptStage -ceq 'Delivered' -and $OfflineReadiness -cin @('Verified','VerifiedNetworkAvailabilityUnconfirmed')){$state='Completed'}
+            else{$state='AwaitingDelivery'}
+        }
+        'ReviewRequired' {$state='PartialFailure'}
+        'Failed' {$state='Failed'}
+        'Cancelled' {$state='Failed';$endReason='Cancelled'}
+        'Interrupted' {$state='Failed';$endReason='Interrupted'}
+        default {$state='Waiting'}
+    }
+    [pscustomobject][ordered]@{State=$state;EndReason=$endReason}
+}
+
+function Get-WsmBackupProgressStageLabel([string]$Stage) {
+    switch -CaseSensitive ($Stage) {'Capture'{'擷取與封存'}'Verify'{'驗證封裝'}'Deliver'{'交付'}default{''}}
+}
+
+# Closed projection of one durable progress record for the HTML job card. The producer file is the only source of
+# progress facts; the job status (and, once finished, the attempt) decides the state. Every string and number
+# crosses ConvertTo-WsmWizardHtmlValue so unknown fields, secrets patterns and oversized text cannot pass.
+function ConvertTo-WsmWizardBackupProgressView($Raw,[string]$JobStatus,[string]$AttemptStage='',[string]$OfflineReadiness='') {
+    if(-not $Raw){return $null}
+    $failed=0;if($Raw.PSObject.Properties['FailedCount']){try{$failed=[int]$Raw.FailedCount}catch{}}
+    $stateRow=Get-WsmBackupProgressState $JobStatus $AttemptStage $OfflineReadiness $failed
+    $names=$null;if($Raw.PSObject.Properties['ItemNames']){$names=$Raw.ItemNames}
+    $recent=@(foreach($entry in @($Raw.Recent|Select-Object -Last 20)){
+        if(-not $entry){continue}
+        $id=[string]$entry.ItemId;$name='';if($names -and $names.PSObject.Properties[$id]){$name=ConvertTo-WsmProgressText $names.PSObject.Properties[$id].Value}
+        [pscustomobject][ordered]@{ItemId=(ConvertTo-WsmProgressText $id);ItemName=$name;Result=(ConvertTo-WsmProgressText $entry.Result)}
+    })
+    $itemsDone=$null;if($null -ne $Raw.ItemsDone){$itemsDone=[long]$Raw.ItemsDone}
+    $itemsTotal=$null;if($null -ne $Raw.ItemsTotal){$itemsTotal=[long]$Raw.ItemsTotal}
+    $bytesTotal=$null;if($null -ne $Raw.BytesTotal){$bytesTotal=[long]$Raw.BytesTotal}
+    $percent=$null
+    if([string]$Raw.Stage -ceq 'Capture' -and $null -ne $itemsTotal -and $itemsTotal -gt 0 -and $null -ne $itemsDone){$percent=[int][Math]::Min(99,[Math]::Floor(100*[double]$itemsDone/[double]$itemsTotal))}
+    elseif([bool]$Raw.Terminal -and [string]$Raw.Outcome -ceq 'Succeeded'){$percent=100}
+    $view=[ordered]@{
+        Stage=[string]$Raw.Stage;StageLabel=(Get-WsmBackupProgressStageLabel ([string]$Raw.Stage));StageIndex=[int]$Raw.StageIndex;StageCount=[int]$Raw.StageCount
+        Workload=(ConvertTo-WsmProgressText $Raw.Workload);CurrentFile=(ConvertTo-WsmProgressText $Raw.CurrentFile)
+        ItemsDone=$itemsDone;ItemsTotal=$itemsTotal;BytesDone=$(if($null -ne $Raw.BytesDone){[long]$Raw.BytesDone}else{$null});BytesTotal=$bytesTotal;Percent=$percent
+        StartedUtc=[string]$Raw.StartedUtc;UpdatedUtc=[string]$Raw.UpdatedUtc;Recent=$recent;FailedCount=$failed;Terminal=[bool]$Raw.Terminal;Outcome=[string]$Raw.Outcome
+        State=[string]$stateRow.State;EndReason=[string]$stateRow.EndReason
+    }
+    ConvertTo-WsmWizardHtmlValue ([pscustomobject]$view)
+}
+
+# Read back the progress of one StartBackup console job by its parent job id (== the backup OperationId). Works for a
+# running job, for a finished job and after a console restart, because it only reads the durable progress file. A short
+# per-job cache keeps the console loop (which calls this for every job on every pass) from re-reading the disk.
+function Get-WsmHtmlBackupProgress($Job) {
+    $jobRecord=Get-WsmTextMetadataValue $Job 'Record'
+    if(-not $jobRecord -or [string](Get-WsmTextMetadataValue $jobRecord 'action' '') -cne 'StartBackup'){return $null}
+    $jobStatus=[string](Get-WsmTextMetadataValue $jobRecord 'status' '');$workspace=[string](Get-WsmTextMetadataValue $jobRecord 'workspace' '');$pair=[string](Get-WsmTextMetadataValue $jobRecord 'pairId' '');$operation=[string](Get-WsmTextMetadataValue $jobRecord 'jobId' '')
+    if(-not $workspace -or -not $pair -or -not $operation){return $null}
+    $nowTicks=[DateTime]::UtcNow.Ticks;$cache=Get-WsmTextMetadataValue $Job 'BackupProgressCache'
+    if($cache -and [string]$cache.Status -ceq $jobStatus){
+        $ageMs=($nowTicks-[long]$cache.Ticks)/10000
+        $ttl=if($jobStatus -cin @('Running','CancelRequested','Queued','WaitingForInput')){1000}elseif($jobStatus -ceq 'Succeeded'){10000}elseif($null -eq $cache.Value){5000}else{[double]::MaxValue}
+        if($ageMs -lt $ttl){return $cache.Value}
+    }
+    $view=$null
+    try{
+        $raw=Read-WsmWizardBackupProgress $workspace $pair $operation
+        if($raw){
+            $attemptStage='';$offline=''
+            if($jobStatus -cin @('Succeeded','ReviewRequired')){
+                try{$profile=Read-WsmOutputProfile $workspace;$bound=Get-WsmWizardBackupAttemptForOperation $workspace $pair $profile $operation;if($bound){$result=ConvertTo-WsmWizardBackupResult $bound.Attempt $operation;$attemptStage=[string]$result.Stage;$offline=[string]$result.OfflineReadiness}}catch{}
+            }
+            $view=ConvertTo-WsmWizardBackupProgressView $raw $jobStatus $attemptStage $offline
+        }
+    }catch{$view=$null}
+    $entry=[pscustomobject]@{Status=$jobStatus;Ticks=$nowTicks;Value=$view}
+    if($Job -is [Collections.IDictionary]){$Job['BackupProgressCache']=$entry}else{$Job|Add-Member NoteProperty BackupProgressCache $entry -Force}
+    $view
+}
+
+function Get-WsmHtmlProgressProjection($Job) {
+    $legacy=Get-WsmHtmlLegacyProgressProjection $Job
+    $backup=Get-WsmHtmlBackupProgress $Job
+    if(-not $backup){return $legacy}
+    if(-not $legacy){$legacy=[pscustomobject][ordered]@{activity='';statusDescription='';currentOperation='';percent=$null;processedCount=$null;updatedUtc=[string]$backup.UpdatedUtc}}
+    $legacy|Add-Member NoteProperty backup $backup -Force
+    $legacy
 }
 
 # RestoreCondition decision table (first match wins). Inputs are facts already in
