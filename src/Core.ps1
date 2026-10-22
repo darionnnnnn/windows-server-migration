@@ -124,6 +124,11 @@ function Protect-WsmDirectory([string]$Path) {
 }
 function Invoke-WsmLocked([string]$Workspace, [scriptblock]$Action) {
     if(Get-Command Assert-WsmOutputWorkspaceNotMigrated -ErrorAction SilentlyContinue){Assert-WsmOutputWorkspaceNotMigrated $Workspace}
+    # Reentrant within this module instance: a nested call for a workspace this runspace already holds runs directly
+    # instead of reopening the FileShare None lock file and blocking itself. Other processes and runspaces still contend.
+    if(-not (Test-Path variable:script:WsmHeldWorkspaceLocks) -or $null -eq $script:WsmHeldWorkspaceLocks){$script:WsmHeldWorkspaceLocks=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)}
+    $lockKey=[IO.Path]::GetFullPath($Workspace).TrimEnd([char]92,[char]47)
+    if($script:WsmHeldWorkspaceLocks.Contains($lockKey)){return (& $Action)}
     $lock = $null
     try {
         $acquisition=[Diagnostics.Stopwatch]::StartNew()
@@ -137,8 +142,9 @@ function Invoke-WsmLocked([string]$Workspace, [scriptblock]$Action) {
                 Start-Sleep -Milliseconds 10
             }
         }
+        [void]$script:WsmHeldWorkspaceLocks.Add($lockKey)
         & $Action
-    } finally { if ($lock) { $lock.Dispose() } }
+    } finally { if ($lock) { [void]$script:WsmHeldWorkspaceLocks.Remove($lockKey); $lock.Dispose() } }
 }
 function Initialize-WsmWorkspace {
     [CmdletBinding()] param([Parameter(Mandatory)][string]$Workspace)

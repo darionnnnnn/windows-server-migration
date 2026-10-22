@@ -1136,6 +1136,39 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 面板掛在既有精靈步驟上，實機出現時機需要確認。
   - 審閱送出的輸出狀態（如 SubmittedReviewRequired）會讓 job 終態成為 ReviewRequired，這是既有退出碼語意，前端以輸出 Status 判斷成功。
   - `Test-BackupProgressBrowser`（B1）在本段整批循序重跑時失敗一次，單獨連跑 8 次都通過，判定為負載下的時序不穩，併入 M7 追查。
+### 17.71 M7 既有失敗與不穩測試；工作區鎖可重入；DeltaWorkflow 第七輪回歸
+
+- 先派 Opus 5.5 medium subagent。它近兩小時沒有產出、也讀不到訊息，主代理中止後改派 Sonnet 5.5 medium，並限定每項約 30 分鐘。主代理審查，修正第 3 項，加查出 DeltaWorkflow 回歸。
+- `Test-WizardRuntimeUi`（測試過期）
+  - 第六輪 d1f189f 把 Source 備份卡上的作業列與「繼續至交接步驟」按鈕，改為耐久的「最近一次備份嘗試」摘要。
+  - 下一步改由精靈通用導覽決定：`WizardFlow.ps1` 約 :403，有封裝時下一步是 handoff。主代理核對後確認這是有意整併，不是誤刪。
+  - 測試 fixture 補上 backupResult，斷言改為驗證現行摘要（attempt、封裝世代、封裝材料已驗證）。原本三個已無對應行為的斷言已移除。
+- `Test-BackupProgressBrowser`（測試本身不穩）
+  - 在約 2 倍核心數的 CPU 負載下會失敗。
+  - 修正：等待改為依條件判斷，不用固定時間；ready 改為「ready 檔可讀或子行程結束」；未知寫入的橫幅改用 MutationObserver 在出現當下記錄。斷言沒有放寬。
+  - 無負載連跑 5 次通過，但沒有取得「負載下原版失敗、修正版連跑 5 次通過」的乾淨對照。
+- `Test-WizardNonCTargetHandoff`（產品缺陷：同一 runspace 巢狀取鎖造成自我死鎖）
+  - 呼叫鏈：`Import-WsmWizardNonCTargetHandoff` 在 `Invoke-WsmLocked` 內重新取得預覽 → `Get-WsmWizardTargetSnapshot` → `Get-WsmWizardState` 再取同一工作區鎖。`.wsm.lock` 以 FileShare None 開啟，所以自己擋住自己。
+  - 修正：`Core.ps1` 的 `Invoke-WsmLocked` 在同一模組實例內可重入。已持有同一工作區（比對時不分大小寫、忽略尾端分隔符）時直接執行；離開最外層（含例外）時移除持有記錄並釋放檔案。其他 runspace 與行程仍照常競爭。
+  - 第一版直接讀未初始化的 script 變數，在 StrictMode 下讓大量測試失敗，已改用 `Test-Path variable:`。
+  - 新測試 `Test-WorkspaceLockReentrancy`（8 項）：巢狀、路徑寫法差異、持有期間檔案獨占、另一 runspace 仍受阻、例外後釋放、外部持有不得進入。
+- `Test-DeltaWorkflow`（第七輪回歸，M7 期間發現）
+  - 第六輪基準 6a2329c 通過；5664727（CV2）新增 `$restorePackage.Manifest.SchemaVersion -eq 2` 的拒絕後就失敗。
+  - 原因：測試替身的 full package manifest 缺 SchemaVersion，而真實 manifest 一定帶這個欄位，套件讀取器也會驗證。所以這是測試過期，產品行為正確。
+  - 替身補上 `SchemaVersion=1` 後通過。CV2 被 delta restore 拒絕的情況，已有 `Test-OfflineFullSet` 覆蓋。
+- `Test-HtmlBridge`（未定）
+  - 在第六輪基準與 HEAD 都失敗：基準是 native HTTP 逾時，HEAD 是 ECONNRESET。
+  - 測試的 `fetch()` 先做 `new URL(url)`，所以 `/api/../not-allowed` 實際送出的是 `GET /not-allowed`，與測試意圖不符。
+  - RST 的來源還沒查清。可能和 AGENTS.md 記載的本機原生傳輸 NotPassed（AdGuard）有關，但未證實。
+- `Test-WorkspaceLockContention`：需要 `pwsh.exe`（PS7）；本機沒有 PS7，所以在 PS7 那一輪失敗，WinPS 5.1 的部分通過。屬環境限制。
+- 驗證（WinPS 5.1）：見提交說明。
+- 全部 PowerShell 測試（177 支，不含 G 旅程與 PlanEvidence）：工作樹 13 支失敗，同樣 13 支在 HEAD 也失敗，鎖的修改沒有造成新失敗。歸因如下：
+  - 第七輪回歸（6a2329c 通過、HEAD 失敗）：AssistivePackaging、FullDeliveryBudgets、LabValidation、WizardTextRuntime；JournalDiagnostics 是第七輪新增，目前也失敗。列為 M8，本輪修。
+  - 第六輪基準就失敗：AssistiveWorkloadIntegration、FleetExecutionBindings、FullDirectoryImport、ObservationWorkflow、ShareSourceWorkflow、WorkspaceLockContention（需要 PS7）、WorkspaceWorkerIsolation、ZipColdStart。不在本輪範圍，列入總結。
+- 突變（皆轉紅）：
+  - 移除可重入；
+  - 例外後不移除持有記錄；
+  - WizardRuntimeUi fixture 的封裝世代改錯。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

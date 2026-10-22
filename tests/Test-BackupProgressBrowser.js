@@ -113,8 +113,8 @@ const noHorizontalOverflow = async (page, width) => { const overflow = await pag
       await details.locator('summary').click(); assert.equal(await details.evaluate(n => n.open), false);
       // elapsed time advances without any API call
       const first = parseClock((await c.locator('.progress-facts dd').nth(4).textContent()).trim());
-      await page.waitForTimeout(2300);
-      const second = parseClock((await c.locator('.progress-facts dd').nth(4).textContent()).trim());
+      await page.waitForFunction(from => { const dd = document.querySelectorAll('.progress-card[data-progress-card="wizard"] .progress-facts dd')[4]; return !!dd && dd.textContent.trim().split(':').map(Number).reduce((total, part) => total * 60 + part, 0) >= from + 2; }, first, { timeout: 30000 });
+      const second =parseClock((await c.locator('.progress-facts dd').nth(4).textContent()).trim());
       assert.ok(second >= first + 2, `elapsed time did not advance (${first} -> ${second})`);
       counts.cardChecks += 14;
       await page.screenshot({ path: path.join(screens, 'b1-desktop-wizard-running.png'), fullPage: false });
@@ -201,6 +201,8 @@ const noHorizontalOverflow = async (page, width) => { const overflow = await pag
       await page.evaluate(() => { const yes = [...document.querySelectorAll('#cancel-confirm-dialog button')].find(node => node.textContent === '確定取消'); yes.click(); yes.click(); yes.click(); });
       await page.waitForFunction(() => document.querySelector('.progress-card[data-progress-card="wizard"] .progress-state').textContent === '狀態：取消要求中', null, { timeout: 10000 });
       await c.locator('.progress-cancel').click({ force: true, timeout: 500 }).catch(() => {});
+      // wait for the request to reach the fixture (condition), then give any duplicate a window to show up (negative check)
+      for (let waited = 0; posts.cancel < 1 && waited < 20000; waited += 100) await page.waitForTimeout(100);
       await page.waitForTimeout(500);
       assert.equal(posts.cancel, 1, 'the cancel request is sent exactly once');
       assert.equal(await c.locator('.progress-cancel').isDisabled(), true, 'the button is disabled after the request');
@@ -309,9 +311,14 @@ const noHorizontalOverflow = async (page, width) => { const overflow = await pag
       const { page, errors, posts } = await openPage(browser, { jobs: [] });
       await page.waitForFunction(() => window.WsmConsole && window.WsmConsole.state.session, null, { timeout: 30000 });
       const opId = 'bbbbbbbb-2222-4333-8444-555555555555';
+      // Latch the banner the moment it is shown. The console clears an unknown-write banner when any other request is answered
+      // and no pending operation is recorded (this fixture posts straight through endpoint()), so on a loaded host a poll that
+      // was still in flight could clear it before a state-polling wait looked. The assertion stays on the banner's category and text.
+      await page.evaluate(() => { window.__bannerSeen = null; const snap = () => { const b = document.getElementById('connection-banner'); if (!window.__bannerSeen && b && !b.hidden && b.dataset.category === 'unknown-write') window.__bannerSeen = { category: b.dataset.category, text: b.textContent }; }; new MutationObserver(snap).observe(document.documentElement, { attributes: true, childList: true, subtree: true, characterData: true }); snap(); });
       const outcome = await page.evaluate(async id => { try { await window.WsmConsole.endpoint('/api/operations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'SetMigrationSpec', operationId: id, idempotencyKey: 'key-' + id, args: {} }) }); return 'sent'; } catch (e) { return e.code + '|' + e.category; } }, opId);
       assert.equal(outcome, 'connection_error|unknown-write');
-      const banner = await bannerOf(page, 'unknown-write');
+      await page.waitForFunction(() => window.__bannerSeen, null, { timeout: 30000 });
+      const banner = await page.evaluate(() => window.__bannerSeen);
       assert.equal(banner.category, 'unknown-write'); assert.ok(banner.text.includes('上一筆操作結果尚未確認') && banner.text.includes('不要重新提交') && banner.text.includes('不會自動重送'), banner.text);
       await page.waitForTimeout(2500);
       assert.equal(posts.operations, 1, 'the unconfirmed write must never be re-sent automatically');
@@ -343,11 +350,21 @@ async function realConsoleReadback(browser, errorSink) {
     try { fs.unlinkSync(stop); } catch (_) {}
     child = spawn(process.env.WSM_PS_EXE || 'powershell.exe', ['-NoProfile', '-File', path.join(__dirname, 'Start-HtmlTestServer.ps1'), '-Workspace', dir, '-ReadyPath', ready, '-StopFile', stop, '-Seed'], { windowsHide: true, env: { ...process.env, PSModulePath: path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'Modules') } });
     child.stdout.on('data', d => logs.push(d.toString())); child.stderr.on('data', d => logs.push(d.toString()));
-    const deadline = Date.now() + 120000;
-    while (!fs.existsSync(ready)) { if (Date.now() > deadline || child.exitCode !== null) throw new Error(logs.join('') || 'console did not start'); await new Promise(r => setTimeout(r, 100)); }
-    return JSON.parse(fs.readFileSync(ready, 'utf8')).Url.replace(/\/$/, '');
+    // Wait on the condition (the console wrote a readable ready file), not on a clock: a loaded host can take minutes to start
+    // Windows PowerShell and import the module. The only ways out are the ready file or the child process ending; the long
+    // deadline is a safety net against a hung child, not the expected path.
+    const readUrl = () => { try { return JSON.parse(fs.readFileSync(ready, 'utf8')).Url.replace(/\/$/, ''); } catch (_) { return null; } };
+    const deadline = Date.now() + 900000;
+    for (;;) {
+      const url = readUrl(); if (url) return url;
+      if (child.exitCode !== null) { const late = readUrl(); if (late) return late; throw new Error('console process ended before it was ready (exit ' + child.exitCode + '): ' + (logs.join('') || 'no output')); }
+      if (Date.now() > deadline) throw new Error('console did not become ready within the safety deadline: ' + (logs.join('') || 'no output'));
+      await new Promise(r => setTimeout(r, 100));
+    }
   };
-  const stop = async () => { if (!child || child.exitCode !== null) return; fs.writeFileSync(path.join(dir, 'stop'), 'stop'); await new Promise(resolve => { const t = setTimeout(() => { child.kill(); resolve(); }, 8000); child.once('exit', () => { clearTimeout(t); resolve(); }); }); };
+  // Ask the console to stop and wait for the process to actually end (the next start reuses the workspace); only a child that
+  // ignores the stop file for a full minute is killed.
+  const stop = async () => { if (!child || child.exitCode !== null) return; fs.writeFileSync(path.join(dir, 'stop'), 'stop'); await new Promise(resolve => { const t = setTimeout(() => { child.kill(); resolve(); }, 60000); child.once('exit', () => { clearTimeout(t); resolve(); }); }); };
   try {
     let origin = await start();
     const session = await (await fetch(origin + '/api/session')).json();
@@ -363,7 +380,7 @@ async function realConsoleReadback(browser, errorSink) {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } }); const page = await context.newPage();
     page.on('pageerror', e => errorSink.push('real pageerror: ' + e.message)); page.on('console', m => { const where = m.location() && m.location().url || ''; /* the real handler answers the browser's automatic favicon probe with 403; that is not a page error */ if (m.type() === 'error' && !/\/favicon\.ico$/.test(where)) errorSink.push('real console: ' + m.text() + ' @ ' + where); });
     await page.goto(origin + '/ui/index.html#wizard', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('.progress-card[data-progress-card="wizard"]:not([hidden])', { timeout: 60000 });
+    await page.waitForSelector('.progress-card[data-progress-card="wizard"]:not([hidden])', { timeout: 300000 });
     const c = page.locator('.progress-card[data-progress-card="wizard"]'), text = await c.textContent();
     assert.ok(text.includes('2 / 5') && text.includes('還原用工作負載') && text.includes('last-file.txt'), 'the restarted console must serve the last progress by job id: ' + text);
     assert.ok(text.includes('狀態：失敗') && text.includes('已中斷'), 'an interrupted job keeps its progress and says it was interrupted: ' + text);
