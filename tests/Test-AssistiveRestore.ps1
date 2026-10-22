@@ -260,6 +260,41 @@ try {
         $preview=Get-WsmAssistiveRestorePreview -ManifestPath 'fixture' -ExpectedHash ('2'*64) -StateDirectory $root -AssistiveDecisionReceiptPath 'fixture' -AssistiveDecisionReceiptHash ('4'*64) -AssistiveTargetSnapshotPath 'fixture'
         Check (($preview.Rows|Where-Object ItemId -EQ $script:testItemId).Action -ceq 'VerifyOwnedSingleFile' -and ($preview.Rows|Where-Object ItemId -EQ $script:testItemId).Status -ceq 'Ready') 'Single-file preview did not accept only the exact owned file with matching bytes and metadata.'
 
+        # R4: OfflineFullSet CV2 original-location contract at the two real consumers (preview producer of BlockedLocation, and the restore writer).
+        $r4Saved=@{Items=$script:previewPackage.Plan.Items;Entries=$script:testEntries;Selected=$script:previewDecision.SelectedItemIds;Assistive=$script:previewPackage.Plan.PSObject.Properties['Assistive']}
+        $r4GoodId='r4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';$r4BadId='r4bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+        $r4GoodPath=Join-Path $root 'r4-good\same.ini';$r4BadSource=Join-Path $root 'r4-src\moved.ini';$r4BadTarget=Join-Path $root 'r4-moved\moved.ini'
+        function NewR4Item([string]$id,[string]$source,[string]$target){[pscustomobject]@{ItemId=$id;Name=('r4 '+$id);Decision='Include';Dependencies=@();MigrationSpec=[pscustomobject]@{Adapter='FileScope';TransferChannel='C';SourcePath=$source;TargetPath=$target;Metadata='DaclOwner'}}}
+        function NewR4Entry([string]$id,[string]$content){$e=NewEntry '' $content;$e.ItemId=$id;$e}
+        $r4GoodItem=NewR4Item $r4GoodId $r4GoodPath $r4GoodPath;$r4BadItem=NewR4Item $r4BadId $r4BadSource $r4BadTarget
+        $r4Entries=@((NewR4Entry $r4GoodId 'r4 good payload'),(NewR4Entry $r4BadId 'r4 bad payload'))
+        function Get-R4Preview([bool]$cv2){$script:previewPackage.Plan.Items=@($r4GoodItem,$r4BadItem);$script:testEntries=$r4Entries;$script:previewDecision.SelectedItemIds=@($r4GoodId,$r4BadId);$script:previewPackage.Plan|Add-Member NoteProperty Assistive ([pscustomobject]@{ContractVersion=$(if($cv2){2}else{1});SourcePolicy='ApprovedLocalVolumes'}) -Force;Get-WsmAssistiveRestorePreview -ManifestPath 'fixture' -ExpectedHash ('2'*64) -StateDirectory $root -AssistiveDecisionReceiptPath 'fixture' -AssistiveDecisionReceiptHash ('4'*64) -AssistiveTargetSnapshotPath 'fixture'}
+        try{
+            $r4Preview=Get-R4Preview $true
+            $r4GoodRow=@($r4Preview.Rows|Where-Object ItemId -CEQ $r4GoodId)[0];$r4BadRow=@($r4Preview.Rows|Where-Object ItemId -CEQ $r4BadId)[0]
+            Check ($r4BadRow.Action -ceq 'BlockedLocation' -and $r4BadRow.Status -ceq 'Blocked' -and $r4BadRow.Reason -like '*original location*') ('CV2 preview did not block a FileScope whose TargetPath differs from SourcePath: '+$r4BadRow.Action+'/'+$r4BadRow.Status+'/'+$r4BadRow.Reason)
+            Check ($r4GoodRow.Action -ceq 'CreateSingleFile' -and $r4GoodRow.Status -ceq 'Ready') ('CV2 preview let a blocked-location sibling affect an original-location item: '+$r4GoodRow.Action+'/'+$r4GoodRow.Status)
+            Check (@($r4Preview.Problems|Where-Object {$_.ItemId -ceq $r4BadId -and $_.Reason -like '*original location*'}).Count -eq 1 -and @($r4Preview.Problems|Where-Object ItemId -CEQ $r4GoodId).Count -eq 0) 'BlockedLocation was not reported as exactly one problem for the moved item only.'
+            Check (-not [IO.Directory]::Exists((Split-Path $r4BadTarget -Parent)) -and -not [IO.Directory]::Exists((Split-Path $r4GoodPath -Parent))) 'Restore preview created target directories.'
+            $r4Cv1Preview=Get-R4Preview $false
+            $r4Cv1BadRow=@($r4Cv1Preview.Rows|Where-Object ItemId -CEQ $r4BadId)[0]
+            Check ($r4Cv1BadRow.Action -cne 'BlockedLocation') 'Non-CV2 preview applied the OfflineFullSet original-location block.'
+        }finally{$script:previewPackage.Plan.Items=$r4Saved.Items;$script:testEntries=$r4Saved.Entries;$script:previewDecision.SelectedItemIds=$r4Saved.Selected;$script:previewPackage.Plan.PSObject.Properties.Remove('Assistive')}
+        # Writer side: the preview is fine for the original-location item; then the spec TargetPath is tampered before the write.
+        $r4Package=[pscustomobject]@{Root=$root;SHA256=('a'*64);Plan=[pscustomobject]@{Assistive=[pscustomobject]@{ContractVersion=2;SourcePolicy='ApprovedLocalVolumes'}};Manifest=[pscustomobject]@{Generation=31;ArtifactsHash=('b'*64)}}
+        $r4State=[pscustomobject]@{Items=@();PendingOperations=@()}
+        $script:testEntries=@((NewR4Entry $r4GoodId 'r4 good payload'))
+        $r4Control=Invoke-WsmAssistiveFileScopeRestore $r4GoodItem $r4Package $paths $r4State @{} $null
+        Check ($r4Control.Status -ceq 'Succeeded' -and [IO.File]::ReadAllText($r4GoodPath) -ceq 'r4 good payload') 'CV2 writer rejected or failed an original-location FileScope.'
+        $r4Tampered=NewR4Item $r4GoodId $r4GoodPath $r4BadTarget;$r4TamperMessage='';$r4TamperState=[pscustomobject]@{Items=@();PendingOperations=@()}
+        try{Invoke-WsmAssistiveFileScopeRestore $r4Tampered $r4Package $paths $r4TamperState @{} $null|Out-Null}catch{$r4TamperMessage=$_.Exception.Message}
+        Check ($r4TamperMessage -like '*original location*') ('CV2 writer did not reject a tampered TargetPath: '+$r4TamperMessage)
+        Check (-not [IO.Directory]::Exists((Split-Path $r4BadTarget -Parent)) -and -not [IO.File]::Exists($r4BadTarget) -and @($r4TamperState.PendingOperations).Count -eq 0 -and @($r4TamperState.Items).Count -eq 0) 'CV2 writer touched the tampered target or recorded state before rejecting.'
+        $r4Legacy=[pscustomobject]@{Root=$root;SHA256=('a'*64);Plan=[pscustomobject]@{Assistive=[pscustomobject]@{ContractVersion=1}};Manifest=[pscustomobject]@{Generation=32;ArtifactsHash=('b'*64)}}
+        $r4LegacyOutcome=Invoke-WsmAssistiveFileScopeRestore $r4Tampered $r4Legacy $paths ([pscustomobject]@{Items=@();PendingOperations=@()}) @{} $null
+        Check ($r4LegacyOutcome.Status -ceq 'Succeeded' -and [IO.File]::Exists($r4BadTarget)) 'Non-CV2 writer was subjected to the OfflineFullSet original-location rule.'
+        $script:testEntries=$r4Saved.Entries
+
         # X-2: 容量依目標卷加總（同卷已選且會寫入的項目合計只比一次）；X-2b: 可寫入性預檢與掛載點。
         $capSaved=@{Items=$script:previewPackage.Plan.Items;Entries=$script:testEntries;Selected=$script:previewDecision.SelectedItemIds}
         $capRoot=Join-Path $root 'capacity-aggregate';[void][IO.Directory]::CreateDirectory($capRoot);$capKey=([IO.Path]::GetPathRoot($capRoot)).ToUpperInvariant()

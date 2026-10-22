@@ -571,6 +571,158 @@ try {
         $freezeProviderCalls=$script:backupFreezeCalls;Set-Item -Path Function:\script:Export-WsmFreezeRecord -Value $script:backupOriginalFreeze;Remove-Variable backupOriginalFreeze,backupFreezeCalls -Scope Script -ErrorAction SilentlyContinue
         $freezeCancelRecord=Read-WsmJson (Join-Path (Get-WsmWizardBackupRoot $sourceRoot $catalog.PairId) ($freezeCancelOperation+'.json'))
         if(-not $freezeCancelled -or $freezeProviderCalls -ne 0 -or $freezeCancelRecord.Stage -cne 'Cancelled' -or $freezeCancelRecord.FreezeAttemptStarted -or $freezeCancelRecord.SourceResumeRequired -or $freezeCancelRecord.Freeze){throw 'A pre-requested cancellation invoked source freeze or recorded a partial producer change.'}
+        # ---- B7: D3b delivery fault cases (disk full, media pulled mid-copy, crash retry without mixing generations) ----
+        # Only the fault is substituted (a member copy / stream copy / cancellation-boundary seam); capture, sealing, verification and delivery are the production code.
+        $b7Pair=[string]$import.PairId;$b7Plan=[string]$approved.SHA256;$b7DiskFull=[int]'-2147024784'
+        $b7Profile=Read-WsmOutputProfile $sourceRoot
+        function B7Start([string]$Mode,[long]$Volume,[string]$Op){$t=New-WsmCancellationToken -StateDirectory (Join-Path $sourceRoot 'pairs') -PairId $b7Pair -PlanHash $b7Plan -OperationId $Op;Invoke-WsmWizardStartBackup -Workspace $sourceRoot -PairId $b7Pair -OperationId $Op -DeliveryMode $Mode -VolumeBytes $Volume -Jobs @() -CancellationToken $t}
+        function B7Try([scriptblock]$Action){try{& $Action|Out-Null;$null}catch{$_.Exception}}
+        function B7Attempt([string]$Op){(Get-WsmWizardBackupAttemptForOperation $sourceRoot $b7Pair (Read-WsmOutputProfile $sourceRoot) $Op).Attempt}
+        function B7HasHResult($Exception,[int]$HResult){$e=$Exception;while($e){if($e.HResult -eq $HResult){return $true};$e=$e.InnerException};$false}
+        function B7Tree([string]$Directory){(@(Get-ChildItem -LiteralPath $Directory -Recurse -File -Force|Sort-Object FullName|ForEach-Object {$_.FullName+'|'+(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash}) -join "`n")}
+        function B7Find([string]$Directory,[string[]]$Patterns){@(Get-ChildItem -LiteralPath $Directory -Recurse -Force -ErrorAction SilentlyContinue|Where-Object {$name=$_.Name;@($Patterns|Where-Object {$name -like $_}).Count -gt 0})}
+        function B7ReceiptCount(){$dir=Join-Path (Get-WsmWizardBackupRoot $sourceRoot $b7Pair) 'independent-copies';if([IO.Directory]::Exists($dir)){@(Get-ChildItem -LiteralPath $dir -File -Force).Count}else{0}}
+        $b7OrigCopyMember=(Get-Command Copy-WsmOutputMember -CommandType Function).ScriptBlock
+        $b7OrigStreamCopy=(Get-Command Copy-WsmCancellableStream -CommandType Function).ScriptBlock
+        $b7OrigWritePayload=(Get-Command Write-WsmPayloadFile -CommandType Function).ScriptBlock
+        $b7OrigBoundary=(Get-Command Assert-WsmCancellationBoundary -CommandType Function).ScriptBlock
+        $b7OrigMediaClass=(Get-Command Get-WsmIndependentCopyMediaClass -CommandType Function).ScriptBlock
+        $b7SettingsPath=Join-Path $sourceData 'settings.ini';$b7SecondPath=Join-Path $sourceData 'second.txt'
+        $b7MediaDir='';$b7Letter=''
+        try {
+            # Case 1: disk full while the Directory delivery copies its 2nd member.
+            $b7PrevDir=[string]$result.Delivery.Directory;$b7PrevTree=B7Tree $b7PrevDir;$b7PrevSummary=(Get-FileHash -LiteralPath ([string]$result.Delivery.Path) -Algorithm SHA256).Hash
+            $b7Op1=[Guid]::NewGuid().ToString('D');$script:b7Calls=0;$script:b7OrigCopyMember=$b7OrigCopyMember
+            function script:Copy-WsmOutputMember {param([string]$Source,[string]$Destination,[long]$ExpectedBytes,[string]$ExpectedHash,$CancellationToken=$null);$script:b7Calls++;if($script:b7Calls -eq 2){throw (New-Object IO.IOException('There is not enough space on the disk.',[int]'-2147024784'))};& $script:b7OrigCopyMember $Source $Destination $ExpectedBytes $ExpectedHash $CancellationToken}
+            try{$b7Ex1=B7Try {B7Start Directory 0 $b7Op1}}finally{Set-Item -Path Function:\script:Copy-WsmOutputMember -Value $b7OrigCopyMember}
+            if(-not $b7Ex1 -or -not (B7HasHResult $b7Ex1 $b7DiskFull) -or $script:b7Calls -lt 2){throw 'B7 case 1: a disk-full IOException during Directory delivery did not fail the backup.'}
+            $b7A1=B7Attempt $b7Op1
+            if($b7A1.Stage -cne 'Failed' -or $b7A1.ResumeStage -cne 'PackageVerified' -or $b7A1.Delivery -or $b7A1.PSObject.Properties['ItemResults'] -or (ConvertTo-WsmWizardBackupResult $b7A1 $b7Op1).OfflineReadiness -cne 'NotDelivered'){throw ('B7 case 1: failed delivery was reported as delivered. stage='+$b7A1.Stage+' resume='+$b7A1.ResumeStage)}
+            $b7Leftover=@(B7Find ([string]$b7A1.OutputRoot) @('delivery','delivery-*','.d-*','*.partial','backup-report.html','backup-item-results.json'))
+            if($b7Leftover.Count){throw ('B7 case 1: failed delivery left a sealed member, summary, receipt, index or partial: '+(($b7Leftover|ForEach-Object FullName) -join '; '))}
+            if((B7Tree $b7PrevDir) -cne $b7PrevTree -or (Get-FileHash -LiteralPath ([string]$result.Delivery.Path) -Algorithm SHA256).Hash -cne $b7PrevSummary){throw 'B7 case 1: an earlier valid delivery set was changed by the failed one.'}
+            Write-Host 'PASS: B7 disk full during Directory delivery.'
+
+            # Case 3 (same attempt, retried): a short write that reports success must still be refused before the directory is sealed.
+            $b7Op1b=[Guid]::NewGuid().ToString('D');$script:b7Calls=0
+            function script:Copy-WsmOutputMember {param([string]$Source,[string]$Destination,[long]$ExpectedBytes,[string]$ExpectedHash,$CancellationToken=$null);$script:b7Calls++;& $script:b7OrigCopyMember $Source $Destination $ExpectedBytes $ExpectedHash $CancellationToken;if($script:b7Calls -eq 2){$fs=[IO.File]::Open($Destination,'Open','Write','None');try{$fs.SetLength($fs.Length-1)}finally{$fs.Dispose()}}}
+            try{$b7Ex1b=B7Try {B7Start Directory 0 $b7Op1b}}finally{Set-Item -Path Function:\script:Copy-WsmOutputMember -Value $b7OrigCopyMember}
+            $b7A1b=B7Attempt $b7Op1b
+            if(-not $b7Ex1b -or $b7A1b.Stage -cne 'Failed' -or $b7A1b.Delivery){throw 'B7 case 3: a silently truncated member was accepted into the sealed directory delivery.'}
+            $b7Leftover=@(B7Find ([string]$b7A1b.OutputRoot) @('delivery','delivery-*','.d-*','*.partial','backup-report.html'))
+            if($b7Leftover.Count){throw ('B7 case 3: truncated delivery was renamed or left behind: '+(($b7Leftover|ForEach-Object FullName) -join '; '))}
+            Write-Host 'PASS: B7 short write refused before sealing.'
+
+            # Recovery: same attempt, space available again.
+            $b7Op1c=[Guid]::NewGuid().ToString('D');$b7R1=B7Start Directory 0 $b7Op1c
+            $b7A1c=B7Attempt $b7Op1c
+            if($b7R1.Status -cne 'Delivered' -or $b7A1c.AttemptId -cne $b7A1.AttemptId -or @($b7A1c.OperationIds).Count -ne 3 -or -not [IO.Directory]::Exists([string]$b7R1.Delivery.Directory)){throw 'B7 case 1: the retry did not finish the same attempt after space returned.'}
+            $b7Pkg1=Test-WsmMigrationPackage (Join-Path ([string]$b7R1.Delivery.Directory) 'manifest.json') ((Get-FileHash -LiteralPath (Join-Path ([string]$b7R1.Delivery.Directory) 'manifest.json') -Algorithm SHA256).Hash)
+            if(-not $b7Pkg1.Valid -or $b7Pkg1.Manifest.Generation -ne [int]$b7A1c.CoreExport.Generation){throw 'B7 case 1: retried delivery is not the sealed generation.'}
+            if((B7Tree $b7PrevDir) -cne $b7PrevTree){throw 'B7 case 1: retry changed an earlier valid delivery set.'}
+
+            # Case 2: disk full / short write while writing a ZIP volume; the .partial must never become a formal volume.
+            $b7PrevZipTree=B7Tree (Split-Path -Parent ([string]$zipResult.Delivery.Path))
+            $b7Op2=[Guid]::NewGuid().ToString('D');$script:b7Calls=0;$script:b7OrigStreamCopy=$b7OrigStreamCopy
+            function script:Copy-WsmCancellableStream {param($InputStream,$OutputStream,$CancellationToken=$null,[string]$Phase='CopyBuffer');if($Phase -ceq 'ZipWriteBuffer'){$script:b7Calls++;if($script:b7Calls -eq 2){throw (New-Object IO.IOException('There is not enough space on the disk.',[int]'-2147024784'))}};& $script:b7OrigStreamCopy $InputStream $OutputStream $CancellationToken $Phase}
+            try{$b7Ex2=B7Try {B7Start Zip 134217728 $b7Op2}}finally{Set-Item -Path Function:\script:Copy-WsmCancellableStream -Value $b7OrigStreamCopy}
+            $b7A2=B7Attempt $b7Op2
+            if(-not $b7Ex2 -or -not (B7HasHResult $b7Ex2 $b7DiskFull) -or $b7A2.Stage -cne 'Failed' -or $b7A2.ResumeStage -cne 'PackageVerified' -or $b7A2.Delivery){throw 'B7 case 2: a disk-full IOException while writing a ZIP volume did not fail the backup.'}
+            $b7Formal=@(B7Find ([string]$b7A2.OutputRoot) @('package-*.zip','transport.json','delivery-index-*','backup-report.html'))
+            if($b7Formal.Count){throw ('B7 case 2: a failed ZIP volume was renamed to a formal member or sealed: '+(($b7Formal|ForEach-Object FullName) -join '; '))}
+            $b7State=@(B7Find ([string]$b7A2.OutputRoot) @('zip-state.json'));if($b7State.Count -ne 1 -or (Read-WsmJson $b7State[0].FullName).Status -cne 'Failed'){throw 'B7 case 2: the ZIP checkpoint did not record the failure.'}
+            Write-Host 'PASS: B7 disk full during ZIP volume write.'
+            $b7Op2b=[Guid]::NewGuid().ToString('D')
+            function script:Copy-WsmCancellableStream {param($InputStream,$OutputStream,$CancellationToken=$null,[string]$Phase='CopyBuffer');if($Phase -ceq 'ZipWriteBuffer'){$buffer=New-Object byte[] 8;$read=$InputStream.Read($buffer,0,$buffer.Length);if($read -gt 0){$OutputStream.Write($buffer,0,$read-1)};return};& $script:b7OrigStreamCopy $InputStream $OutputStream $CancellationToken $Phase}
+            try{$b7Ex2b=B7Try {B7Start Zip 134217728 $b7Op2b}}finally{Set-Item -Path Function:\script:Copy-WsmCancellableStream -Value $b7OrigStreamCopy}
+            $b7A2b=B7Attempt $b7Op2b
+            $b7Formal=@(B7Find ([string]$b7A2b.OutputRoot) @('package-*.zip','transport.json','delivery-index-*','backup-report.html'))
+            if(-not $b7Ex2b -or $b7A2b.Stage -cne 'Failed' -or $b7A2b.Delivery -or $b7Formal.Count){throw ('B7 case 2: a short-written ZIP .partial was renamed to a formal volume: '+(($b7Formal|ForEach-Object FullName) -join '; '))}
+            Write-Host 'PASS: B7 short-written ZIP volume refused before rename.'
+            $b7Op2c=[Guid]::NewGuid().ToString('D');$b7R2=B7Start Zip 134217728 $b7Op2c;$b7A2c=B7Attempt $b7Op2c
+            if($b7R2.Status -cne 'Delivered' -or $b7A2c.AttemptId -cne $b7A2.AttemptId -or @(B7Find ([string]$b7A2c.OutputRoot) @('*.partial')).Count){throw 'B7 case 2: the ZIP retry did not finish the same attempt or left a .partial behind.'}
+            $b7Zip=Read-WsmTrustedJson $b7R2.Delivery.Path $b7R2.Delivery.SHA256
+            foreach($volume in @($b7Zip.Volumes)){if((Get-FileHash -LiteralPath (Join-Path (Split-Path -Parent $b7R2.Delivery.Path) $volume.Name) -Algorithm SHA256).Hash -ine $volume.Hash){throw 'B7 case 2: a retried ZIP volume differs from its descriptor.'}}
+            $b7ZipImport=Import-WsmPackageZip -TransportPath $b7R2.Delivery.Path -ExpectedHash $b7R2.Delivery.SHA256 -OutputDirectory (Join-Path $Root 'b7-zip-imported')
+            $b7ZipPkg=Test-WsmMigrationPackage $b7ZipImport.ManifestPath $b7ZipImport.SHA256
+            if(-not $b7ZipPkg.Valid -or $b7ZipPkg.Manifest.Generation -ne [int]$b7A2c.CoreExport.Generation -or $b7ZipPkg.Manifest.PackageId -cne (Read-WsmJson ([string]$b7A2c.CoreExport.ManifestPath)).PackageId){throw 'B7 case 2: the retried ZIP is not the sealed package set.'}
+            if((B7Tree (Split-Path -Parent ([string]$zipResult.Delivery.Path))) -cne $b7PrevZipTree){throw 'B7 case 2: an earlier valid ZIP delivery was changed.'}
+
+            # Case 5: independent copy. Disk full, then the medium is pulled in the middle of Copy, then re-inserted.
+            $b7Letter=(@('R','S','T','U','V','W','X','Y','Z')|Where-Object {$_ -cne $Root.Substring(0,1) -and -not (Test-Path -LiteralPath ($_+':\'))}|Select-Object -First 1)
+            if(-not $b7Letter){throw 'B7 case 5: no free drive letter for the removable-medium fixture.'}
+            $b7MediaDir=Join-Path ([IO.Path]::GetTempPath()) ('wsmwb-media-'+[Guid]::NewGuid().ToString('N').Substring(0,8));[void][IO.Directory]::CreateDirectory($b7MediaDir)
+            function B7Subst([string]$Letter,[string]$Path){cmd.exe /c ('subst '+$Letter+': "'+$Path+'"')|Out-Null;if($LASTEXITCODE -ne 0){throw 'B7: unable to map the removable-medium fixture drive.'}}
+            function B7Unsubst([string]$Letter){cmd.exe /c ('subst '+$Letter+': /D')|Out-Null}
+            B7Subst $b7Letter $b7MediaDir
+            $script:b7MediaLetter=$b7Letter;$script:b7BoundaryMode='';$script:b7Calls=0;$script:b7OrigBoundary=$b7OrigBoundary
+            function script:Get-WsmIndependentCopyMediaClass {param($DestinationRoot)'Removable'}
+            function Get-WsmIndependentCopyMediaClass {param($DestinationRoot)'Removable'}
+            function script:Assert-WsmCancellationBoundary {param($Token,[string]$Phase);if($Phase -ceq 'IndependentCopyFile'){$script:b7Calls++;if($script:b7BoundaryMode -ceq 'DiskFull' -and $script:b7Calls -eq 2){throw (New-Object IO.IOException('There is not enough space on the disk.',[int]'-2147024784'))};if($script:b7BoundaryMode -ceq 'Pull' -and $script:b7Calls -eq 3){cmd.exe /c ('subst '+$script:b7MediaLetter+': /D')|Out-Null}};& $script:b7OrigBoundary $Token $Phase}
+            $b7Dest=$b7Letter+':\offline-media';[void][IO.Directory]::CreateDirectory($b7Dest)
+            $b7Receipts0=B7ReceiptCount
+            function B7Copy([string]$Mode){Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $b7Pair -BackupOperationId $b7Op1c -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $b7Dest -Mode $Mode}
+            $b7CopyRoot=Join-Path $b7Dest ('wsm-offline-'+$b7Pair+'-'+[string]$b7A1c.AttemptId)
+            try{
+                $script:b7BoundaryMode='DiskFull';$script:b7Calls=0
+                $b7Ex5a=B7Try {B7Copy Copy}
+                $b7A5a=B7Attempt $b7Op1c
+                if(-not $b7Ex5a -or -not (B7HasHResult $b7Ex5a $b7DiskFull)){throw ('B7 case 5: the disk-full independent copy did not fail with the disk-full IOException: '+$b7Ex5a)}
+                if($b7A5a.IndependentCopy.Status -cne 'Failed' -or (ConvertTo-WsmWizardBackupResult $b7A5a $b7Op1c).OfflineReadiness -cne 'AwaitingIndependentCopy'){throw ('B7 case 5: a failed independent copy was recorded as '+$b7A5a.IndependentCopy.Status+' stage='+$b7A5a.Stage)}
+                if((B7ReceiptCount) -ne $b7Receipts0 -or @(B7Find $b7Dest @('*.partial')).Count){throw 'B7 case 5: a disk-full independent copy wrote a receipt or left a .partial.'}
+                $script:b7BoundaryMode='Pull';$script:b7Calls=0
+                $b7Ex5b=B7Try {B7Copy Copy}
+                $b7Pulled=-not [IO.Directory]::Exists($b7Letter+':\')
+                $b7A5b=B7Attempt $b7Op1c
+                if(-not $b7Ex5b -or -not $b7Pulled -or $b7A5b.IndependentCopy.Status -cne 'Failed' -or (ConvertTo-WsmWizardBackupResult $b7A5b $b7Op1c).OfflineReadiness -cne 'AwaitingIndependentCopy' -or (B7ReceiptCount) -ne $b7Receipts0){throw ('B7 case 5: pulling the medium mid-copy did not fail without a receipt. pulled='+$b7Pulled+' error='+$b7Ex5b)}
+                $b7Partial=@(Get-ChildItem -LiteralPath $b7MediaDir -Recurse -File -Force|Where-Object Name -like '*.partial')
+                if($b7Partial.Count){throw 'B7 case 5: the pulled medium holds an unfinished .partial member.'}
+                B7Subst $b7Letter $b7MediaDir
+                $script:b7BoundaryMode=''
+                $b7Retry=B7Copy Copy
+                if($b7Retry.IndependentCopy.Status -cne 'Verified' -or $b7Retry.OfflineReadiness -cne 'Verified' -or (B7ReceiptCount) -ne $b7Receipts0+1 -or -not [IO.File]::Exists($b7Retry.IndependentCopy.ReceiptPath)){throw 'B7 case 5: the same backup set could not be re-copied onto the re-inserted medium.'}
+                foreach($blob in @(Get-ChildItem -LiteralPath (Join-Path ([string]$b7R1.Delivery.Directory) 'payload') -Filter '*.blob' -File)){$copied=Join-Path $b7CopyRoot ('transport\delivery\payload\'+$blob.Name);if(-not [IO.File]::Exists($copied) -or (Get-FileHash -LiteralPath $copied -Algorithm SHA256).Hash -ine (Get-FileHash -LiteralPath $blob.FullName -Algorithm SHA256).Hash){throw ('B7 case 5: re-copied member differs from the sealed delivery: '+$blob.Name)}}
+                $b7Verify=B7Copy VerifyExisting
+                if($b7Verify.IndependentCopy.Status -cne 'Verified' -or (Read-WsmJson $b7Verify.IndependentCopy.ReceiptPath).Mode -cne 'VerifyExisting'){throw 'B7 case 5: VerifyExisting did not accept the re-inserted copy.'}
+            }finally{
+                Set-Item -Path Function:\script:Assert-WsmCancellationBoundary -Value $b7OrigBoundary
+                Set-Item -Path Function:\script:Get-WsmIndependentCopyMediaClass -Value $b7OrigMediaClass
+                Set-Item -Path Function:\Get-WsmIndependentCopyMediaClass -Value $b7OrigMediaClass
+            }
+            Write-Host 'PASS: B7 independent copy disk full, medium pulled mid-copy and re-copied onto the same set.'
+
+            # Case 4: crash in the middle of capture, source changes, retry captures anew; nothing of the aborted capture is sealed.
+            $b7Op4=[Guid]::NewGuid().ToString('D');$script:b7Calls=0;$script:b7OrigWritePayload=$b7OrigWritePayload
+            function script:Write-WsmPayloadFile {param($SourcePath,$BlobRoot,$ChunkBytes,$BytesPerSecond,$CancellationToken=$null);$script:b7Calls++;if($script:b7Calls -eq 2){throw 'Injected crash in the middle of package capture.'};& $script:b7OrigWritePayload $SourcePath $BlobRoot $ChunkBytes $BytesPerSecond $CancellationToken}
+            try{$b7Ex4=B7Try {B7Start Directory 0 $b7Op4}}finally{Set-Item -Path Function:\script:Write-WsmPayloadFile -Value $b7OrigWritePayload}
+            $b7A4=B7Attempt $b7Op4
+            if(-not $b7Ex4 -or $b7Ex4.Message -notlike '*Injected crash*' -or $b7A4.Stage -cne 'Failed' -or $b7A4.ResumeStage -cne 'Authorized' -or $b7A4.CoreExport){throw 'B7 case 4: an interrupted capture was recorded as sealed.'}
+            $b7Packages=Join-Path ([string]$b7A4.OutputRoot) 'packages'
+            if(@(B7Find $b7Packages @('manifest.json')).Count){throw 'B7 case 4: an interrupted capture produced a sealed manifest.'}
+            $b7StaleBlobs=@(B7Find $b7Packages @('*.blob')|ForEach-Object {$_.BaseName})
+            if($b7StaleBlobs.Count -lt 1){throw 'B7 case 4: the crash fixture left no aborted blob, so the retry proves nothing.'}
+            [IO.File]::WriteAllText($b7SettingsPath,'changed after the crash: settings');[IO.File]::WriteAllText($b7SecondPath,'changed after the crash: second')
+            $b7Op4b=[Guid]::NewGuid().ToString('D');$b7R4=B7Start Directory 0 $b7Op4b;$b7A4b=B7Attempt $b7Op4b
+            if($b7R4.Status -cne 'Delivered' -or $b7A4b.AttemptId -cne $b7A4.AttemptId){throw 'B7 case 4: the retry did not finish the interrupted attempt.'}
+            $b7Pkg4=Test-WsmMigrationPackage ([string]$b7A4b.CoreExport.ManifestPath) ([string]$b7A4b.CoreExport.SHA256)
+            $b7Rows4=@(Read-WsmArtifactLines (Join-Path $b7Pkg4.Root 'artifacts.jsonl') $b7Pkg4.Manifest.ArtifactsHash)
+            $b7Referenced=@($b7Rows4|Where-Object {-not $_.Directory}|ForEach-Object {$_.Data.Chunks}|ForEach-Object {[string]$_.Hash}|Sort-Object -Unique)
+            $b7NewHashes=@((Get-FileHash -LiteralPath $b7SettingsPath -Algorithm SHA256).Hash.ToLowerInvariant(),(Get-FileHash -LiteralPath $b7SecondPath -Algorithm SHA256).Hash.ToLowerInvariant()|Sort-Object -Unique)
+            if((@($b7Referenced) -join ',') -cne (@($b7NewHashes) -join ',') -or @($b7Referenced|Where-Object {$b7StaleBlobs -contains $_}).Count){throw 'B7 case 4: the retried package references bytes of the aborted capture instead of the new capture.'}
+            $b7Delivered=[string]$b7R4.Delivery.Directory;$b7DeliveredBlobs=@(Get-ChildItem -LiteralPath (Join-Path $b7Delivered 'payload') -Filter '*.blob' -File|ForEach-Object {$_.BaseName}|Sort-Object)
+            if((@($b7DeliveredBlobs) -join ',') -cne (@($b7Referenced) -join ',') -or @($b7DeliveredBlobs|Where-Object {$b7StaleBlobs -contains $_}).Count){throw 'B7 case 4: the delivery contains a member that does not belong to the sealed generation.'}
+            $b7Summary=Read-WsmTrustedJson ([string]$b7R4.Delivery.Path) ([string]$b7R4.Delivery.SHA256)
+            foreach($member in @($b7Summary.Members)){if((Get-FileHash -LiteralPath (Join-Path $b7Delivered ([string]$member.Name).Replace('/','\')) -Algorithm SHA256).Hash -ine [string]$member.SHA256){throw ('B7 case 4: delivered member hash differs from the sealed summary: '+$member.Name)}}
+            $b7Delivered4=Test-WsmMigrationPackage (Join-Path $b7Delivered 'manifest.json') ((Get-FileHash -LiteralPath (Join-Path $b7Delivered 'manifest.json') -Algorithm SHA256).Hash)
+            if($b7Delivered4.Manifest.Generation -ne $b7Pkg4.Manifest.Generation -or $b7Delivered4.Manifest.PackageId -cne $b7Pkg4.Manifest.PackageId -or @(B7Find $b7Pkg4.Root @('artifacts.jsonl.partial','manifest.pending.json')).Count){throw 'B7 case 4: delivered manifest or generation differs from the sealed package, or capture temporaries remain.'}
+            Write-Host 'PASS: B7 crash mid-capture and retry did not mix an aborted capture into the sealed generation.'
+        } finally {
+            foreach($restore in @(@('Copy-WsmOutputMember',$b7OrigCopyMember),@('Copy-WsmCancellableStream',$b7OrigStreamCopy),@('Write-WsmPayloadFile',$b7OrigWritePayload),@('Assert-WsmCancellationBoundary',$b7OrigBoundary),@('Get-WsmIndependentCopyMediaClass',$b7OrigMediaClass))){try{Set-Item -Path ('Function:\script:'+$restore[0]) -Value $restore[1]}catch{Write-Warning ('B7 could not restore '+$restore[0]+': '+$_.Exception.Message)}}
+            [IO.File]::WriteAllText($b7SettingsPath,'actual source bytes');[IO.File]::WriteAllText($b7SecondPath,'second source bytes')
+            if($b7Letter){try{cmd.exe /c ('subst '+$b7Letter+': /D')|Out-Null}catch{Write-Warning ('B7 could not unmap the removable-medium fixture: '+$_.Exception.Message)}}
+            if($b7MediaDir){try{$mediaFull=[IO.Path]::GetFullPath($b7MediaDir);if([IO.Path]::GetDirectoryName($mediaFull).TrimEnd('\') -ieq [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') -and [IO.Path]::GetFileName($mediaFull) -like 'wsmwb-media-*' -and [IO.Directory]::Exists($mediaFull)){Remove-Item -LiteralPath $mediaFull -Recurse -Force}}catch{Write-Warning ('B7 media fixture cleanup failed: '+$_.Exception.Message)}}
+        }
+        Write-Host 'PASS: B7 delivery fault cases (disk full, short write, medium pulled, crash retry).'
         Write-Host 'PASS: real sealed approval, source host binding, Directory and ZIP export/import, actual payload hash readback, and durable wizard result projection.'
     } $root $backupScriptPath
 } finally {

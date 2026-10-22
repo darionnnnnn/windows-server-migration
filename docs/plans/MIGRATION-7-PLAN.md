@@ -896,6 +896,23 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1）：見提交說明。突變：加總改回逐項、拿掉可寫入性檢查、拿掉 OfflineReport 投影、略過 controls、拿掉 Sequence 比較皆轉紅。
 - 限制：磁碟區掛載點只以替身驗證（建立真實掛載點會改系統）；可寫入性只檢查新增檔案與子目錄，不含刪除與改名；不同磁碟根的案例以 `subst` 暫時建立並在 finally 移除。
 
+### 17.63 R4／R7／B7 補驗收測試（只改測試，未發現產品缺陷）
+
+- Sonnet 5.5 subagent 實作（中途因 API 連線錯誤中斷一次，同一代理從工作樹接續），主代理審查並獨立重跑。
+- R4（`Test-AssistiveRestore`）：CV2 預覽對 TargetPath 不等於原位置的 FileScope 產生 `BlockedLocation／Blocked`，只列一次 Problem，同批原位置項目仍為 Ready，預覽不建立目錄；寫入端在預覽之後竄改 TargetPath 時拒絕，目標目錄與 state 都沒有痕跡；非 CV2 兩端都不套用此規則（對照組）。
+- R7（新檔 `Test-SecretSentinelSweep`）：共用掃描函式掃描根目錄下全部檔案，比對 UTF-8、UTF-16LE 與 Base64（三種位元對齊，含 UTF-16LE 的 Base64）。正向流程沿用 CredentialDeferral 的替身（等待帳密→延後→被拒→更正後續作）零命中；負向控制在 workspace 與 console 目錄刻意寫入 6 個洩漏檔，三種編碼都有，必須剛好命中這 6 個，並標出檔名與編碼。
+- B7（`Test-WizardBackup`）：
+  - Directory 與 ZIP 交付途中磁碟滿（HResult 0x80070070）：作業失敗，沒有正式成員、收據或報告，先前有效的集合不變，同一 attempt 重試可成功。
+  - 靜默短寫：Directory 在封口前被套件驗證擋下；ZIP 的 `.partial` 不會被改名為正式檔。
+  - 獨立副本：途中磁碟滿或以 `subst /D` 真的拔除媒體時，收據數量不變；重新插回後以同一備份集 Copy 與 VerifyExisting 都成功。
+  - 當機重試：最終封存只引用新世代的 chunk，舊 blob 不會被交付。
+- 驗證（WinPS 5.1）：SecretSentinelSweep 16、AssistiveRestore 169、WizardBackup（含 6 個 B7 案例）、WizardBackupRecovery、WizardMixedGenerationZip、CredentialDeferral 68、OfflineFullSet 67、ScriptEncoding 通過。
+- 突變（皆轉紅）：預覽原位置檢查短路、拿掉寫入端 Assert、掃描略過 UTF-16LE、略過 Base64、只掃第一個根目錄、複製後不再驗套件、ZIP 改名前不驗 volume、獨立副本失敗時仍寫收據。
+- 限制：
+  - R7 正向流程是替身情境，只產生 4 個耐久檔；含報告與交付的完整掃描由 G 旅程的哨兵檢查負責。
+  - 磁碟滿是在接縫丟出替身例外，不在 `[IO.File]::Copy` 內部。
+  - 中斷擷取留下的孤兒 blob 會留在套件工作區供檢視，不會被引用或交付。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
