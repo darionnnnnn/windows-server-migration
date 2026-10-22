@@ -1169,6 +1169,16 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 移除可重入；
   - 例外後不移除持有記錄；
   - WizardRuntimeUi fixture 的封裝世代改錯。
+### 17.72 M8 四支第七輪回歸測試（皆為測試替身過期）
+
+- Sonnet 5.5 medium subagent 歸因並修正，主代理審查後補強一個斷言，再獨立重跑。`src/` 沒有修改。
+- `Test-AssistivePackaging`、`Test-FullDeliveryBudgets`：5664727（CV2）之後，`Get-WsmAssistivePackageMaterialRows` 與 `Get-WsmPackageMembers` 會讀 `Manifest.SchemaVersion`。真實 manifest 一定帶這個欄位，但測試替身沒有。替身補上 `SchemaVersion=1`。
+  - 預算守門本身仍然有效：把 128MB 改成 256MB 的突變會轉紅。
+- `Test-LabValidation`：990650f 之後，`Test-WsmJournal` 要求 state 帶 `JournalSegment`。真實 state 由 `Restore.ps1` 建立時一定帶這個欄位，所以替身補上 `JournalSegment=0`。
+  - 主代理另外查出既有的弱斷言：「foreign state 必須被擋」原本只檢查有沒有例外。實際上報告匯出在檢查指紋之前，就因為「Target operation lock is absent」被擋下；把指紋改成相符的值也一樣會被擋，這條斷言從第六輪起就沒有作用。
+  - 補上直接呼叫 `Assert-WsmLabStateBinding` 的斷言，要求拒絕原因是「foreign」。改成相符指紋的突變現在會轉紅。
+- `Test-WizardTextRuntime`：305a336（G-D2）讓 `Import-WsmWizardApprovedPlan` 多了可選的 `SourceSnapshotPath`，CLI 因此多問一題。測試在兩處補上空白回答（略過），APPLY 確認不變。
+- 驗證（WinPS 5.1）：見提交說明。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

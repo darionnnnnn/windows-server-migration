@@ -31,7 +31,7 @@ try {
             $chunkHash=(Get-FileHash -LiteralPath $chunk).Hash.ToLowerInvariant();[IO.File]::Move($chunk,(Join-Path $OutputDirectory ('payload\'+$chunkHash+'.blob')))
             $index=Join-Path $OutputDirectory 'artifacts.jsonl';$row=[pscustomobject]@{ItemId=('b'*64);Data=[pscustomobject]@{Chunks=@([pscustomobject]@{Hash=$chunkHash;Bytes=15})}}
             [IO.File]::WriteAllText($index,((ConvertTo-Json $row -Compress -Depth 5)+"`n"),(New-Object Text.UTF8Encoding($false)))
-            $script:package=[pscustomobject]@{Root=$OutputDirectory;Manifest=[pscustomobject]@{ArtifactsHash=(Get-FileHash -LiteralPath $index).Hash.ToLowerInvariant()}}
+            $script:package=[pscustomobject]@{Root=$OutputDirectory;Manifest=[pscustomobject]@{SchemaVersion=1;ArtifactsHash=(Get-FileHash -LiteralPath $index).Hash.ToLowerInvariant()}}
             [pscustomobject]@{ManifestPath=(Join-Path $OutputDirectory 'manifest.json');SHA256=(Get-FileHash -LiteralPath (Join-Path $OutputDirectory 'manifest.json')).Hash.ToLowerInvariant()}
         }
         function Test-WsmMigrationPackage {param($path,$hash) Assert-WsmTrustedFile $path $hash;$script:package}

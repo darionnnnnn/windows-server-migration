@@ -56,7 +56,7 @@ try {
 
         # Explicit APPLY is required; cancellation before it must not import or
         # create an operation record.
-        $cancel=Invoke-WsmTypedTextOperation -Workspace $targetRoot -PromptReader (Reader @('2','ImportApprovedPlan',$planPath,$planHash,'no'))
+        $cancel=Invoke-WsmTypedTextOperation -Workspace $targetRoot -PromptReader (Reader @('2','ImportApprovedPlan',$planPath,$planHash,'','no'))
         Check (-not $cancel.Executed -and $cancel.Status -ceq 'Cancelled') 'Typed plan intake ran without explicit APPLY.'
         Check (-not (Get-WsmWizardReceivedApprovedPlan $targetRoot $pair (Read-WsmOutputProfile $targetRoot))) 'Cancelled typed intake mutated received-plan state.'
         $jobsRoot=Join-Path $targetRoot 'console-jobs'
@@ -110,7 +110,7 @@ try {
         } finally {Exit-WsmWorkspaceWorkerGuard $workerGuard}
         $releasedGuard=Enter-WsmWorkspaceWorkerGuard -Workspace $targetRoot -Role 'Target' -PairId $pair -Action 'ReleaseFixture';Exit-WsmWorkspaceWorkerGuard $releasedGuard
 
-        $planImport=Invoke-WsmTypedTextOperation -Workspace $targetRoot -PromptReader (Reader @('2','ImportApprovedPlan',$planPath,$planHash,'APPLY'))
+        $planImport=Invoke-WsmTypedTextOperation -Workspace $targetRoot -PromptReader (Reader @('2','ImportApprovedPlan',$planPath,$planHash,'','APPLY'))
         Check ($planImport.Executed -and $planImport.Status -ceq 'Applied') 'Typed approved-plan intake failed after explicit APPLY.'
         $received=Get-WsmWizardReceivedApprovedPlan $targetRoot $pair (Read-WsmOutputProfile $targetRoot)
         Check ($received -and $received.SHA256 -ceq $planHash) 'Typed intake did not create the real Target-bound approved-plan receipt.'

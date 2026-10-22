@@ -8,7 +8,7 @@ try {
         param($Root)
         foreach($name in @('manifest.json','plan.json')){[IO.File]::WriteAllText((Join-Path $Root $name),'{}')}
         $artifactPath=Join-Path $Root 'artifacts.jsonl';$stream=[IO.File]::Open($artifactPath,'Create','Write','None');try{$stream.SetLength(128MB)}finally{$stream.Dispose()}
-        $package=[pscustomobject]@{Root=$Root;Manifest=[pscustomobject]@{Final=$false;ArtifactsHash=('a'*64)}}
+        $package=[pscustomobject]@{Root=$Root;Manifest=[pscustomobject]@{SchemaVersion=1;Final=$false;ArtifactsHash=('a'*64)}}
         $blocked=$false;try{@(Get-WsmPackageMembers $package)|Out-Null}catch{$blocked=$_.Exception.Message -match 'aggregate 128 MiB'}
         if(-not $blocked){throw 'Oversized full delivery metadata was not rejected before transport output.'}
         [IO.File]::WriteAllText($artifactPath,'')
