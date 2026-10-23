@@ -1311,6 +1311,37 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 限制與待決定：
   - 本機只有 C:，NonC 只能用 TransferChannel 標籤表示。
   - 重試時 `artifacts.jsonl.partial` 會被新索引取代，舊 blob 仍留在套件工作區。16.6-2 的「舊 partial 保留」目前只保留到重試之前；重試時要不要另存舊 partial，由使用者決定。
+### 17.79 N5 反例與檢查（15.3-2、15.3-10、15.5-6、15.2-4、16.3-6、16.6-10）
+
+- Sonnet 5.5 medium subagent 實作，主代理審查並獨立重跑。
+- 新增兩項檢查：
+  - **15.5-6 備份媒體與還原目的重疊**（原本沒有這項檢查）
+    - 在 N1 的共用判定 `Get-WsmAssistiveFileScopeRestoreGap` 加入 `Get-WsmAssistiveBackupMediaOverlapReason`。下列情況都標為 `BackupMediaOverlap／Blocked`，並附中文原因：目標在媒體內、目標等於媒體、只差大小寫、目標包含媒體。預覽與還原選項都會擋下。
+    - 媒體用 subst 代號、目標用真實路徑時，靠實體路徑比對攔下。實體路徑解析失敗時，以邏輯路徑判斷；邏輯上沒有重疊的，也保守擋下。
+    - 寫入端 `Invoke-WsmAssistiveFileScopeRestore` 在建立任何東西之前，用同一個函式再拋出一次例外。
+    - 四支既有測試的封裝替身位置原本就在還原目標底下，被新檢查擋下；已改用獨立的媒體資料夾，沒有刪除任何斷言。
+  - **15.3-10 重複卷**
+    - 探測發現，原本允許同一個 DeviceID 在可信 inventory 中以兩個項目或兩個代號出現並通過核准。
+    - 新增 `Assert-WsmAssistiveVolumeBindingsUnique`：核准端拒絕這種情況；讀取端驗證 CV2 綁定是「一個卷對應一個代號」。同一卷底下有多個範圍則不會誤擋。
+- 既有檢查補上反例：
+  - **15.3-2**：用 subst 加替身模擬第二個卷，跑真實的核准、封存、預覽、還原，兩邊同名的相對路徑沒有碰撞，也沒有互相交換。
+  - **15.3-10**：
+    - 混卷：實體路徑落在他卷、junction、竄改 proof、未綁定的卷，都會被擋。
+    - 未知版本：plan、manifest、OfflineFullSet、controls 出現未知版本或未知欄位時都會拒絕。
+  - **15.2-4**：父子、子父、同路徑、只差大小寫、ExactMembers 成員落在 WholeScope 內，都以 overlapping destinations 拒絕；兄弟資料夾則照常核准。
+  - **16.3-6**：真實 Target 匯入（資料夾與 ZIP）以及還原預覽，連同兩種 HTML 投影，都不會宣稱 ProductionExecutionEnabled、ProductionVerified 等為 true。
+  - **16.6-10**：用三個真正封印的封裝，交付資料夾或 ZIP 被換成另一包時拒絕；續作時 manifest、artifacts、plan 被換也拒絕。同一個 Generation 出現兩包時一律拒絕。
+- 驗證（WinPS 5.1、G 旅程 n5a001 48 項）：見提交說明。
+- 突變（皆轉紅）：
+  - 拿掉預覽層檢查、拿掉寫入端 Assert、拿掉實體或邏輯比對；邏輯比對的突變一開始存活，補上「實體路徑無法解析」情境後轉紅。
+  - 拿掉核准端或讀取端的重複卷檢查，以及兩個分支。
+  - 關掉重疊目的地檢查、關掉耐久紀錄的 manifest 雜湊比對。
+  - 主代理另做一個獨立突變：重疊判定恆回空，寫入端測試轉紅。
+- 限制與待決定：
+  - 15.5-6 只比對已驗證封裝的 `Package.Root`。使用者原本放置交付資料夾或 ZIP 的位置不在匯入紀錄中；若要一併擋下，需要擴充匯入紀錄的契約。
+  - `Get-WsmHtmlResultProjection` 會原樣放行來源物件的 `ProductionVerified／ProductionQualified=true`。目前真實產出者都是 false；要不要在投影層一律改成 false，由使用者決定（`ProductionQualified` 可能有合法用途）。
+  - `Read-WsmMigrationPlan` 讀取已封存計畫時，不會再檢查父子重疊，只有核准端會檢查。
+  - 第二個卷是模擬的，沒有實機的第二顆磁碟。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

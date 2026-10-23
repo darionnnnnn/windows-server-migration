@@ -71,7 +71,7 @@ try {
         $comparison=[pscustomobject]@{Revision=2;SourceSnapshotHash=$sourceInventoryHash;TargetSnapshotHash=('9'*64);SelectionRevision=1;Rows=@()}
         $sealedPlan=[pscustomobject]@{SchemaVersion=3;ToolVersion='0.4.0';Kind='MigrationPlan';PairId=$pair;PlanId=[Guid]::NewGuid().ToString();InventoryHash=$sourceInventoryHash;InventoryRevision=1;Source=[pscustomobject]@{HostId=[Guid]::NewGuid().ToString();Fingerprint=('8'*64)};Target=[pscustomobject]@{HostId=$targetHost;Fingerprint=$targetFingerprint};Assistive=[pscustomobject]@{SourceSnapshotHash=$sourceInventoryHash;SourceSelectionsVersion=1;ApprovedItemIds=@($itemId,$cItemId)};Items=@($planItem,$cItem)}
         $manifest=[pscustomobject]@{PairId=$pair;PlanHash=$planHash;Generation=4;Final=$true;Target=[pscustomobject]@{Fingerprint=$targetFingerprint};ArtifactsHash=('7'*64)}
-        $package=[pscustomobject]@{Root=$root;SHA256=$manifestHash;PlanHash=$planHash;Plan=$sealedPlan;Manifest=$manifest}
+        $package=[pscustomobject]@{Root=(Join-Path $root 'backup-media-fixture');SHA256=$manifestHash;PlanHash=$planHash;Plan=$sealedPlan;Manifest=$manifest}
         $snapshot=[pscustomobject]@{Source=[pscustomobject]@{Fingerprint=$targetFingerprint};CreatedUtc=(Get-WsmUtc)}
         $receipt=[pscustomobject]@{Decision='RestoreNow';AcceptedUnpreparedItemIds=@();SelectedItemIds=@($itemId,$cItemId);TargetSnapshotHash=('9'*64)}
         $decision=[pscustomobject]@{Receipt=$receipt;ReceiptPath=(Join-Path $root 'receipt.json');ReceiptHash=('6'*64);Snapshot=$snapshot;SnapshotPath=(Join-Path $root 'snapshot.json');SelectedItemIds=@($itemId,$cItemId)}

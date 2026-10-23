@@ -47,8 +47,8 @@ try {
             [pscustomobject]@{ItemId=$Id;Name=('item '+$Id);Kind='K';Decision='Include';Dependencies=@();MigrationSpec=[pscustomobject]@{Adapter='FileScope';TransferChannel='C';SourcePath=$(if($Source){$Source}else{$Target});TargetPath=$Target;Metadata='DaclOwner';ContentSelection='WholeScope';ConfigFiles=@();ExcludedRelativePaths=@()}}
         }
         # Payload：ItemId -> 檔案位元組陣列；沒登錄的項目在 artifacts.jsonl 裡沒有任何列（缺 payload）。
-        function NewPackage([object[]]$Items,[hashtable]$Payload,[int]$ContractVersion=1){
-            $script:packageCounter++;$packageRoot=Join-Path $Root ('pkg-'+$script:packageCounter);[void][IO.Directory]::CreateDirectory($packageRoot)
+        function NewPackage([object[]]$Items,[hashtable]$Payload,[int]$ContractVersion=1,[string]$PackageBase=''){
+            $script:packageCounter++;$packageRoot=Join-Path $(if($PackageBase){$PackageBase}else{$Root}) ('pkg-'+$script:packageCounter);[void][IO.Directory]::CreateDirectory($packageRoot)
             $meta=[ordered]@{MetadataMode='DaclOwner';Sddl='';Attributes=0;CreationUtc='2026-10-10T00:00:00.0000000Z';LastWriteUtc='2026-10-10T00:00:00.0000000Z'}
             $lines=New-Object 'System.Collections.Generic.List[string]'
             foreach($item in $Items){
@@ -98,7 +98,14 @@ try {
         # ---------------------------------------------------------------- 0. 基準：都有 payload、目標可放置 -> 全部可還原
         $a=NewScopeItem 'ok-a' (Join-Path $targets 'a');$b=NewScopeItem 'ok-b' (Join-Path $targets 'b')
         $fixture=NewPackage @($a,$b) @{'ok-a'=@(10);'ok-b'=@(20,30)}
-        [void](AssertScenario 'baseline' $fixture @{'ok-a'='';'ok-b'=''})
+        $baseline=AssertScenario 'baseline' $fixture @{'ok-a'='';'ok-b'=''}
+        # N5（16.3-6）：還原預覽是唯讀檢視，結果與 HTML 投影都不得宣稱已驗證或可在正式環境執行。
+        $baselineJson=ConvertTo-Json -InputObject $baseline.Preview -Depth 20 -Compress
+        Check ($baseline.Preview.ProductionVerified -eq $false -and $baseline.Preview.BusinessValidationRequired -eq $true -and -not $baseline.Preview.PSObject.Properties['ProductionExecutionEnabled'] -and $baselineJson -notmatch '"ProductionExecutionEnabled"\s*:\s*true' -and $baselineJson -notmatch '"ProductionVerified"\s*:\s*true') 'The read-only restore preview claims production verification or execution.'
+        foreach($projectedPreview in @(Get-WsmHtmlResultProjection @($baseline.Preview))){
+            $projectedJson=ConvertTo-Json -InputObject $projectedPreview -Depth 20 -Compress
+            Check ($projectedJson -notmatch '"ProductionExecutionEnabled"\s*:\s*true' -and $projectedJson -notmatch '"ProductionVerified"\s*:\s*true' -and $projectedJson -notmatch '"ProductionQualified"\s*:\s*true') 'The HTML projection of the read-only restore preview claims production verification or execution.'
+        }
 
         # ---------------------------------------------------------------- 1. NoPayload：核准了但封裝裡沒有這個項目的 artifact
         $c=NewScopeItem 'no-payload' (Join-Path $targets 'c')
@@ -171,6 +178,51 @@ try {
         [void](AssertScenario 'blocked conflict' $fixture @{'ok-a'='';'conflict'='BlockedConflict'})
         Check ([IO.File]::ReadAllText($conflictPath) -ceq 'operator-owned file') 'Conflict evaluation changed the operator-owned file.'
 
+        # ---------------------------------------------------------------- 7b. BackupMediaOverlap（N5／15.5-6）：備份媒體（封裝資料夾）與還原目的範圍重疊，兩個方向都擋下
+        # 選項與預覽共用同一個判定；擋下的項目不得被當成可還原，也不得因為評估而在目標建立任何東西。
+        foreach($mediaContract in @(1,2)){
+            $mediaPackageRoot=Join-Path $Root ('pkg-'+($script:packageCounter+1))
+            $mediaInside=NewScopeItem 'media-inside' (Join-Path $mediaPackageRoot 'restored')
+            $mediaSame=NewScopeItem 'media-same' $mediaPackageRoot
+            $mediaCase=NewScopeItem 'media-case' (Join-Path $mediaPackageRoot.ToUpperInvariant() 'Sub')
+            $mediaParent=NewScopeItem 'media-parent' $Root
+            $mediaPrefixSibling=NewScopeItem 'media-prefix-sibling' ($mediaPackageRoot+'-sibling')
+            $mediaFar=NewScopeItem 'media-far' (Join-Path $targets 'far-from-media')
+            $mediaItems=@($mediaInside,$mediaSame,$mediaCase,$mediaParent,$mediaPrefixSibling,$mediaFar)
+            $mediaPayload=@{};foreach($mediaItem in $mediaItems){$mediaPayload[[string]$mediaItem.ItemId]=@(10)}
+            $fixture=NewPackage $mediaItems $mediaPayload $mediaContract
+            Check ([IO.Path]::GetFullPath($fixture.Package.Root).TrimEnd('\') -ieq $mediaPackageRoot) 'Media overlap fixture: the package folder is not where the targets were built from.'
+            $result=AssertScenario ('backup media overlap (contract '+$mediaContract+')') $fixture @{'media-inside'='BackupMediaOverlap';'media-same'='BackupMediaOverlap';'media-case'='BackupMediaOverlap';'media-parent'='BackupMediaOverlap';'media-prefix-sibling'='';'media-far'=''}
+            foreach($blockedId in @('media-inside','media-same','media-case','media-parent')){
+                $blockedRow=@($result.Preview.Rows|Where-Object ItemId -CEQ $blockedId)[0]
+                Check ($blockedRow.Action -ceq 'BackupMediaOverlap' -and $blockedRow.Status -ceq 'Blocked' -and $blockedRow.Reason -match '[一-鿿]' -and $blockedRow.Reason.Contains('備份媒體')) ('Media overlap '+$blockedId+': the preview row must be Blocked with a Chinese reason naming the backup media: '+$blockedRow.Action+'/'+$blockedRow.Status+'/'+$blockedRow.Reason)
+                Check (@($result.Preview.Problems|Where-Object ItemId -CEQ $blockedId).Count -eq 1) ('Media overlap '+$blockedId+': the preview must list the block as one problem.')
+            }
+            Check ($result.Preview.Blocked -eq $true) 'Media overlap: the preview as a whole must be marked Blocked.'
+            Check (-not [IO.Directory]::Exists((Join-Path $mediaPackageRoot 'restored')) -and -not [IO.Directory]::Exists((Join-Path $mediaPackageRoot 'Sub')) -and -not [IO.Directory]::Exists($mediaPackageRoot+'-sibling')) 'Media overlap: evaluation created a directory.'
+        }
+        # 別名：備份媒體在 subst 磁碟上，目的地用同一個實體位置的另一個寫法（真實路徑），邏輯路徑不相交、實體路徑相交。
+        $aliasBase=$substLetter+':\media-alias';[void][IO.Directory]::CreateDirectory($aliasBase)
+        $aliasPackageName='pkg-'+($script:packageCounter+1)
+        $aliasTarget=Join-Path (Join-Path (Join-Path $substRoot 'media-alias') $aliasPackageName) 'restored'
+        $aliasItem=NewScopeItem 'media-alias' $aliasTarget
+        $fixture=NewPackage @($aliasItem) @{'media-alias'=@(10)} 1 $aliasBase
+        Check ($fixture.Package.Root.StartsWith($substLetter+':\',[StringComparison]::OrdinalIgnoreCase) -and -not $aliasTarget.StartsWith($substLetter+':\',[StringComparison]::OrdinalIgnoreCase)) 'Alias fixture: the package must be addressed through the subst letter and the target through the real path.'
+        [void](AssertScenario 'backup media physical alias' $fixture @{'media-alias'='BackupMediaOverlap'})
+        Check (-not [IO.Directory]::Exists($aliasTarget)) 'Media alias: evaluation created the aliased target directory.'
+        # 備份媒體的實體路徑無法解析時：邏輯上已重疊的仍給出精確原因；邏輯上不重疊的保守擋下（Blocked），不假設安全。
+        $script:nativePhysicalForMedia=(Get-Command Get-WsmPhysicalPath -CommandType Function).ScriptBlock
+        function Get-WsmPhysicalPath([string]$Path){if($Path -like '*unresolvable-media*'){throw 'Fixture: physical path unavailable.'};& $script:nativePhysicalForMedia $Path}
+        try{
+            $unresolvableBase=Join-Path $Root 'unresolvable-media';[void][IO.Directory]::CreateDirectory($unresolvableBase)
+            $unresolvableRoot=Join-Path $unresolvableBase ('pkg-'+($script:packageCounter+1))
+            $logicalItem=NewScopeItem 'media-logical' (Join-Path $unresolvableRoot 'restored')
+            $farItem=NewScopeItem 'media-unverifiable' (Join-Path $targets 'unverifiable')
+            $fixture=NewPackage @($logicalItem,$farItem) @{'media-logical'=@(10);'media-unverifiable'=@(10)} 1 $unresolvableBase
+            $result=AssertScenario 'backup media unresolvable' $fixture @{'media-logical'='BackupMediaOverlap';'media-unverifiable'='Blocked'}
+            Check (-not [IO.Directory]::Exists((Join-Path $targets 'unverifiable'))) 'Media unresolvable: evaluation created the unverifiable target.'
+        }finally{Set-Item Function:\Get-WsmPhysicalPath -Value $script:nativePhysicalForMedia}
+
         # ---------------------------------------------------------------- 8. 人工處理／外部處理／沒有規格仍標示原本代碼；沒有已驗證封裝時不替 payload／目標下結論
         $manual=[pscustomobject]@{ItemId='manual';Name='manual';Kind='K';Decision='Include';Dependencies=@();MigrationSpec=[pscustomobject]@{Adapter='ManualWorkflow'}}
         $external=[pscustomobject]@{ItemId='external';Name='external';Kind='K';Decision='Include';Dependencies=@();MigrationSpec=[pscustomobject]@{Adapter='FileScope';TransferChannel='External';TargetPath=(Join-Path $targets 'ext')}}
@@ -181,7 +233,7 @@ try {
         $noPackage=@(Get-WsmWizardTargetItemOptions ([pscustomobject]@{Plan=$fixture.Context.Plan}) $null $null)
         Check (@($noPackage|Where-Object {$_.value -ceq 'ok-a'})[0].restorable -and @($noPackage|Where-Object {$_.value -ceq 'ok-a'})[0].restorableCode -ceq '') 'Without a verified package an option must not invent a payload or placement verdict.'
 
-        Write-Host ('PASS: '+$script:checks+' restorable-set checks (payload / volume / capacity / location / permission / mount point / conflict agree between options and preview; option evaluation is read-only).')
+        Write-Host ('PASS: '+$script:checks+' restorable-set checks (payload / volume / capacity / location / permission / mount point / conflict / backup-media overlap agree between options and preview; option evaluation is read-only; the preview never claims production execution).')
     } $root $assistivePath $runtimePath
 } finally {
     foreach($mapping in @(& subst.exe 2>&1|Where-Object {([string]$_).Contains($idMarker)})){$letter=([string]$mapping).Substring(0,2);& subst.exe $letter /d 2>&1|Out-Null}

@@ -450,6 +450,18 @@ function Get-WsmAssistiveTargetLocationGap([string]$TargetPath,[long]$RequiredBy
     $missing=Get-WsmAssistiveTargetMissingVolumeGap $TargetPath;if($missing){return $missing}
     Get-WsmAssistiveVolumeCapacityGap ([IO.Path]::GetPathRoot($TargetPath)) $RequiredBytes
 }
+function Get-WsmAssistiveBackupMediaOverlapReason([string]$TargetPath,$Package) {
+    # N5（15.5-6）：備份媒體（已驗證封裝的匯入資料夾）與還原目的範圍不得相同、互相包含；否則還原會寫入或覆蓋備份本身。
+    # 預覽、可還原集合共用這個判定（寫在 Get-WsmAssistiveFileScopeRestoreGap 內），寫入端另用同一函式再擋一次。
+    # 先比邏輯路徑（不分大小寫），再比實體路徑（subst、junction 之類的別名）；任何一步無法驗證就丟出例外，由呼叫端以保守方向處理。
+    # 沒有封裝資料夾資訊時沒有可比對的對象，回傳空字串。
+    if($null -eq $Package -or -not $Package.PSObject.Properties['Root'] -or [string]::IsNullOrWhiteSpace([string]$Package.Root)){return ''}
+    $media=[IO.Path]::GetFullPath([string]$Package.Root).TrimEnd('\');$target=[IO.Path]::GetFullPath($TargetPath).TrimEnd('\')
+    $overlap=(Test-WsmPathOverlap $target $media)
+    if(-not $overlap){$overlap=(Test-WsmPathOverlap (Get-WsmPhysicalPath $target) (Get-WsmPhysicalPath $media))}
+    if($overlap){return ('備份媒體（匯入的封裝資料夾 '+$media+'）與還原目的範圍 '+$target+' 重疊；還原會寫入或覆蓋備份本身，工具不會還原。請把備份集放到還原範圍之外的位置後重新匯入。')}
+    ''
+}
 function Get-WsmAssistiveFileScopeRestoreGap($Item,$Package,$State,[bool]$ContractV2,$ArtifactRows=$null,$CancellationToken=$null) {
     # 預覽與「可還原集合」共用的 FileScope 判定：原位置、封裝內容、掛載點、缺卷、既有目標衝突、可寫入性與（單項）容量需求。
     # 全程唯讀：不建目錄、不寫檔、不取鎖。回傳 Action／Status／Reason，以及會寫入時的容量候選（Capacity；由呼叫端依卷加總）。
@@ -458,6 +470,7 @@ function Get-WsmAssistiveFileScopeRestoreGap($Item,$Package,$State,[bool]$Contra
     $target=ConvertTo-WsmCanonicalPath $spec.TargetPath
     try{
         if($null -ne $ArtifactRows){$artifactRows=@($ArtifactRows)}else{$artifactRows=@(Read-WsmArtifactLines (Join-Path $package.Root 'artifacts.jsonl') $package.Manifest.ArtifactsHash $CancellationToken | Where-Object ItemId -CEQ $item.ItemId)};if(-not $artifactRows.Count){return [pscustomobject]@{Action='NoPayload';Status='Blocked';Reason='封裝中沒有這個核准項目的備份內容（缺少 artifact），工具不會還原。';Capacity=$null}};$singleFileScope=($artifactRows.Count -eq 1 -and -not $artifactRows[0].Directory -and [string]::IsNullOrEmpty([string]$artifactRows[0].RelativePath));$requiredBytes=[long]0;foreach($row in @($artifactRows | Where-Object {-not $_.Directory})){if($row.PSObject.Properties['Data'] -and $row.Data -and $row.Data.PSObject.Properties['Bytes']){$requiredBytes+=[long]$row.Data.Bytes}};$mountPoint=Get-WsmAssistiveMountPointAncestor $target;if($mountPoint){$gap=[pscustomobject]@{Action='MountPointNotSupported';Status='Blocked';Reason=('目標路徑位於另一個掛載點（'+$mountPoint+'），工具不會寫入掛載點底下；請改用相同位置的一般目錄或另行處理。')}}else{$gap=Get-WsmAssistiveTargetMissingVolumeGap $target}
+        if(-not $gap){$mediaReason=Get-WsmAssistiveBackupMediaOverlapReason $target $Package;if($mediaReason){$gap=[pscustomobject]@{Action='BackupMediaOverlap';Status='Blocked';Reason=$mediaReason}}}
         if($gap){$action=$gap.Action;$status=$gap.Status;$reason=$gap.Reason}else{
         Assert-WsmNoReparse $target
         Assert-WsmAssistiveTargetScopeTopology -Path $target -Spec $spec -TargetRoot $target -Kind Root
@@ -1186,7 +1199,7 @@ function Clear-WsmAssistivePartialOwnership($State,[string]$ItemId) {
 }
 
 function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hashtable]$SidMap,$CancellationToken,[string]$Workspace='') {
-    $spec=$Item.MigrationSpec;$target=ConvertTo-WsmCanonicalPath $spec.TargetPath;if($Package.PSObject.Properties['Plan']){Assert-WsmOfflineFullSetOriginalLocation $Package.Plan $spec};if(-not [IO.Directory]::Exists([IO.Path]::GetPathRoot($target))){throw 'Target volume for the original location is not available; prepare the same location and recheck.'};Assert-WsmNoReparse $target;Assert-WsmAssistiveTargetScopeTopology -Path $target -Spec $spec -TargetRoot $target -Kind Root
+    $spec=$Item.MigrationSpec;$target=ConvertTo-WsmCanonicalPath $spec.TargetPath;if($Package.PSObject.Properties['Plan']){Assert-WsmOfflineFullSetOriginalLocation $Package.Plan $spec};if(-not [IO.Directory]::Exists([IO.Path]::GetPathRoot($target))){throw 'Target volume for the original location is not available; prepare the same location and recheck.'};$mediaOverlap=Get-WsmAssistiveBackupMediaOverlapReason $target $Package;if($mediaOverlap){throw $mediaOverlap};Assert-WsmNoReparse $target;Assert-WsmAssistiveTargetScopeTopology -Path $target -Spec $spec -TargetRoot $target -Kind Root
     $index=Join-Path $Package.Root 'artifacts.jsonl';$entries=@(Read-WsmArtifactLines $index $Package.Manifest.ArtifactsHash $CancellationToken | Where-Object {$_.ItemId -ceq $Item.ItemId});if(-not $entries.Count){throw 'Approved FileScope has no package artifacts.'}
     $singleFileScope=($entries.Count -eq 1 -and -not $entries[0].Directory -and [string]::IsNullOrEmpty([string]$entries[0].RelativePath));$restoreRoot=$target;$createdDirs=New-Object 'System.Collections.Generic.List[string]'
     if($singleFileScope){if([IO.Directory]::Exists($target)){throw 'A directory occupies the approved single-file target.'};$restoreRoot=[IO.Path]::GetDirectoryName($target);Assert-WsmNoReparse $restoreRoot;if(-not [IO.Directory]::Exists($restoreRoot)){[void][IO.Directory]::CreateDirectory($restoreRoot)}}

@@ -25,9 +25,22 @@ function New-WsmAssistiveApprovedLocalVolumeBindings($ScopeItems,$SourceInventor
         $snapshot=@($volumeItems | Where-Object {([string]$_.Settings.DriveLetter).TrimEnd('\') -ieq $drive})
         if($snapshot.Count -ne 1){throw 'Trusted source inventory does not identify exactly one volume for the approved FileScope.'}
         $device=[string]$snapshot[0].Settings.DeviceID;if($device -notmatch '^\\\\\?\\Volume\{[0-9a-fA-F-]{36}\}\\$'){throw 'Trusted source volume DeviceID is not a canonical volume GUID.'}
+        if(@($volumeItems | Where-Object {[string]$_.Settings.DeviceID -ieq $device}).Count -ne 1){throw 'Trusted source inventory names the same volume (DeviceID) under more than one volume entry or drive letter.'}
         $rows.Add([pscustomobject][ordered]@{ItemId=[string]$item.ItemId;SourcePath=$source;DeviceID=$device;DriveLetter=$drive})
     }
     $rows.ToArray()
+}
+# N5（15.3-10）：核准的本機卷綁定必須是「一個卷一個磁碟代號」。同一個 DeviceID 用兩個代號、或同一個代號對應兩個 DeviceID，
+# 都表示同一個卷被當成兩個卷（或兩個卷被混成一個）處理，C／非 C 通道分類與封裝成員歸屬都會失真，核准與讀取時一律拒絕。
+function Assert-WsmAssistiveVolumeBindingsUnique($Bindings) {
+    $byDevice=@{};$byLetter=@{}
+    foreach($binding in @($Bindings)){
+        if($null -eq $binding){continue}
+        $device=([string]$binding.DeviceID).ToLowerInvariant();$letter=([string]$binding.DriveLetter).TrimEnd('\').ToUpperInvariant()
+        if($byDevice.ContainsKey($device) -and $byDevice[$device] -cne $letter){throw 'OfflineFullSet approved volume bindings name one volume under more than one drive letter.'}
+        if($byLetter.ContainsKey($letter) -and $byLetter[$letter] -cne $device){throw 'OfflineFullSet approved volume bindings name one drive letter under more than one volume.'}
+        $byDevice[$device]=$letter;$byLetter[$letter]=$device
+    }
 }
 function Assert-WsmAssistiveSourceScope {
     param($Spec,[ValidateSet('SourceCOnly','ApprovedLocalVolumes')][string]$Policy='SourceCOnly',[switch]$Native,$ApprovedVolumes=@())
@@ -68,6 +81,7 @@ function Assert-WsmAssistiveCollectionProofs($Manifest,$Plan) {
     if(-not $Plan.PSObject.Properties['Assistive']){if($Manifest.PSObject.Properties['SourceCollectionProofs']){throw 'Legacy package cannot claim assistive source proofs.'};return}
     if(-not $Manifest.PSObject.Properties['SourceCollectionProofs'] -or $Manifest.SourceCollectionProofs -isnot [array]){throw 'Assistive package requires native source collection proofs, including an empty array for zero-file plans.'}
     $scopes=@{};foreach($item in $Plan.Items){if($item.Decision -ceq 'Include' -and $item.MigrationSpec.Adapter -ceq 'FileScope'){$scopes[$item.ItemId]=$item}}
+    if($Plan.Assistive.ContractVersion -eq 2){Assert-WsmAssistiveVolumeBindingsUnique @($Plan.Assistive.ApprovedLocalVolumes)}
     $seen=@{}
     foreach($proof in $Manifest.SourceCollectionProofs){
         if($Plan.Assistive.ContractVersion -eq 2){Assert-WsmFields $proof @('ItemId','Channel','PhysicalPath','SourceCPhysicalRoot','SourceFingerprint','NativeVerified','VolumeDeviceID','PhysicalVolumeRoot') @('ItemId','Channel','PhysicalPath','SourceCPhysicalRoot','SourceFingerprint','NativeVerified','VolumeDeviceID','PhysicalVolumeRoot')}
