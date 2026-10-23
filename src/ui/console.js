@@ -1784,6 +1784,15 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
   // N3: nothing was delivered but an attempt failed. Capture is all-or-nothing, so this is the only place a capture failure
   // (with the failed item when the attempt recorded one) or a failed read-back is shown; it is never a row of the result set.
   const BACKUP_ERROR_CLASS_TEXT = { PermissionDenied: '權限不足', NotFound: '找不到檔案或目錄', IOError: '讀寫錯誤', Failed: '其他錯誤' };
+  // P4: 失敗項目的來源路徑由伺服端在投影時查出（不存在 attempt 紀錄）。狀態用文字加圖示；路徑只用 textContent。
+  const BACKUP_FAILED_PATH_STATE = { Resolved: { text: '來源路徑', icon: '●', cls: 'neutral' }, NoPath: { text: '沒有檔案路徑', icon: '—', cls: 'neutral' }, Unverifiable: { text: '無法核對來源路徑', icon: '!', cls: 'warn' } };
+  function renderBackupFailedItemPath(box, info) {
+    const code = info && typeof info === 'object' && Object.prototype.hasOwnProperty.call(BACKUP_FAILED_PATH_STATE, backupPlain(info.state)) ? info.state : 'Unverifiable';
+    const row = el('p', 'inline-note backup-failed-path'); row.dataset.pathState = code; row.append(backupBadge(BACKUP_FAILED_PATH_STATE[code]), ' ');
+    if (code === 'Resolved') { row.appendChild(el('code', 'backup-path', backupPlain(info.text))); if (info.truncated === true) row.append(' ', backupBadge({ text: '已截斷', icon: '!', cls: 'warn' }), ` ${backupPlain(info.reason)}`); }
+    else row.append(code === 'NoPath' ? '此項目沒有檔案路徑。' : `${info && info.reason ? backupPlain(info.reason) : '伺服端沒有提供來源路徑的核對結果。'}`);
+    box.appendChild(row);
+  }
   function renderBackupFailedAttempt(section, failed) {
     const box = el('section', 'backup-failed-attempt'); box.dataset.classification = backupPlain(failed.classification); box.setAttribute('aria-labelledby', 'backup-failed-title');
     const heading = el('h3', '', `最近一次備份沒有完成：${backupPlain(failed.title)}`); heading.id = 'backup-failed-title'; box.appendChild(heading);
@@ -1792,6 +1801,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     if (item && typeof item === 'object') {
       appendSummaryRows(box, [['失敗項目', backupPlain(item.Name)], ['項目類型', backupPlain(item.Kind)], ['通道', backupChannelText(item.Channel)], ['錯誤分類', Object.prototype.hasOwnProperty.call(BACKUP_ERROR_CLASS_TEXT, backupPlain(item.ErrorClass)) ? BACKUP_ERROR_CLASS_TEXT[item.ErrorClass] : backupPlain(item.ErrorClass)], ['錯誤型別', backupPlain(item.ErrorKind)]]);
       box.dataset.failedItem = backupPlain(item.ItemId);
+      renderBackupFailedItemPath(box, item.SourcePath);
     } else if (backupPlain(failed.classification) === 'CaptureFailed') wizardMessage(box, '這次失敗沒有記錄到特定項目（失敗不在逐項擷取之內）。', 'inline-note');
     if (failed.nextStep) wizardMessage(box, `下一步：${backupPlain(failed.nextStep)}`, 'inline-note');
     section.appendChild(box);

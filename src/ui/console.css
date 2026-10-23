@@ -195,7 +195,7 @@ body{font-size:18px}
 .backup-detail table{min-width:36rem}
 .backup-detail-title{margin:0 0 6px;font-size:15px}
 .backup-coverage{margin-top:6px}
-.backup-excluded,.backup-failed-attempt{margin-top:6px}
+.backup-excluded,.backup-failed-attempt{margin-top:6px}.backup-failed-path{min-width:0;overflow-wrap:anywhere}.backup-failed-path code{overflow-wrap:anywhere;word-break:break-all}
 .backup-region-toggle{white-space:normal;text-align:left;font-size:13px;min-height:36px;max-width:100%}
 .backup-region-summary{margin-top:6px}
 .backup-detail .region-counts{margin:0 0 8px;overflow-wrap:anywhere}

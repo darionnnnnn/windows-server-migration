@@ -1737,6 +1737,36 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1，主代理重跑）：UnresolvedPathNoPrefill 72、WizardPreparation 30、WizardPreparationAdapters 88、WizardPreparationBulk 43、PathResolutionDisplay、SourceContextResolution 87、AdvancedReview 32、AssistiveReviewForms 53、HtmlConsole 175、WizardNonCPreparation、G4 30、ScriptEncoding；AssistiveUi（node --test）、WizardPreparationUi 與 PathResolutionBrowser（Edge）。
 - 限制：沒有專用的補登介面。表單沒有 SourcePath 欄位，要補登實際路徑，目前只能重新盤點，或走既有的候選確認（SourceCandidateConfirmation）流程；Mapping 只能補 TargetPath，不能讓項目通過核准。
 
+### 17.97 P4 擷取失敗項目顯示來源路徑（投影時查出，不寫進 attempt；2026-10-23 使用者授權定案）
+
+- Sonnet 5.5 medium subagent 實作。主代理審 diff、追 HTTP 路徑、做突變並獨立重跑。UI 依 ui-ux-pro-max 準則，沿用既有 tokens 與失敗卡片版面。
+- `src/WizardBackupProjection.ps1`：
+  - `Get-WsmBackupFailedItemSourcePathView` 只在投影時查路徑。它依 attempt 綁定的計畫雜湊，重新核對已核准計畫檔的雜湊，ItemId 在計畫內唯一時才取 `MigrationSpec.SourcePath`。
+  - 投影狀態分三種：
+    - `Resolved`：顯示來源路徑。
+    - `NoPath`：非檔案項目，顯示「沒有檔案路徑」。
+    - `Unverifiable`：沒有計畫、雜湊格式錯、attempt 綁定別的計畫、計畫檔遺失或被改、ItemId 不在計畫內或重複時，顯示「無法核對來源路徑」並寫明原因，不 throw。
+  - 路徑經 N9c2 的 `ConvertTo-WsmPathDisplayText` 安全化：控制字元與雙向覆寫字元改為可見的 `\uXXXX`，機密指派遮蔽。顯示上限 1024 字元，超過時明示截斷與原長（規格寫「超過 260」，但 Windows 長路徑可達 32K，260 會誤導，所以改訂 1024）。
+  - `ConvertTo-WsmBackupFailureView` 多帶一個 `SourcePath` 投影，呼叫端傳入 planRef。
+  - 離線報告「已備份」「未備份」兩表的 Location 欄改走同一個安全化；HTML escape 仍由原本的表格建構負責。
+- `WizardBackup.ps1` 沒有改，attempt 的 FailedItem 仍然沒有路徑。HTTP 的 `backup-items` view（`HtmlConsole.ps1:606`）直接回傳投影物件，以 `ConvertTo-Json -Depth 30` 序列化，巢狀欄位不會被壓平（主代理核對）。
+- `console.js` 以 textContent 加狀態 badge（文字加圖示）顯示路徑；`console.css` 對 `.backup-failed-path` 加 `overflow-wrap:anywhere`。
+- 測試：
+  - `Test-FailedItemSourcePath.ps1`，分三段：
+    - 合成計畫：安全化、截斷、非檔案項目、各種無法核對的情況。
+    - 真實失敗備份：attempt 與同資料夾所有檔案，以位元組比對原字串、JSON 跳脫形式與獨特片段，都不含路徑；計畫被改時顯示無法核對。
+    - 離線報告：對應列與工作台投影一致，且已 escape。
+  - `Test-BackupWorkbenchBrowser.js` 新增四種狀態（resolved、truncated、nopath、unverifiable），在 Edge 390px 寬驗證：零 console 錯誤、注入字串不產生節點或 dialog、不水平捲動。截圖在 `work/r7/screens/p4-*.png`。
+- 突變（皆轉紅）：
+  - subagent：拿掉安全化、把路徑寫進 capture failure、只在特定情況寫入 attempt（位元組比對要比 JSON 跳脫形式才抓得到）、關掉計畫檔雜湊比對、UI 改用 innerHTML。
+  - 主代理：拿掉「attempt 綁定的計畫雜湊必須等於目前計畫」檢查，測試抓到「attempt bound to another plan hash」。
+- 秘密哨兵：新欄位沒有持久化，`Test-SecretSentinelBackupSweep` 照常通過。
+- 驗證（主代理重跑）：FailedItemSourcePath、BackupUnbackedReasons、BackupResultSetV2、SecretSentinelBackupSweep、WizardBackup、WizardBackupReliability 62、HtmlConsole 175、ScriptEncoding；AssistiveUi（node --test）；BackupWorkbenchBrowser、F1AcceptanceBrowser 317、OfflineReportBrowser、BackupProgressBrowser（Edge）。
+- 限制：
+  - 擷取是整批成敗，失敗的 attempt 沒有逐檔結果，所以只顯示核准範圍的來源路徑，不是實際出錯的檔案。
+  - 計畫檔被改到無法讀取時，工作台沿用既有行為，顯示「尚未匯入已核准計畫」，不會顯示失敗卡片。
+  - 瀏覽器 fixture 的 SourcePath 是照投影形狀手寫的。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

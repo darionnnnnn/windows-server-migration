@@ -732,9 +732,11 @@ function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha
     $gapCount=@($document.Software.CoverageGaps | Where-Object {$null -ne $_}).Count
     $backedBadge=@{Text='已備份';Icon='✓';Class='ok'}
     $pendingBadge=@{Text='未備份';Icon='✕';Class='bad'}
-    $backedCells=@(foreach($row in $backedRows){,@([string]$row.Name,[string]$row.Kind,(& $workloadText $row),[string]$row.Location,$(if($channelText.ContainsKey([string]$row.Channel)){$channelText[[string]$row.Channel]}else{[string]$row.Channel}),[string]$row.Files,(& $sizeText $row.Bytes),$backedBadge,(& $restoreCell $row))})
+    # P4: 與工作台失敗卡片同一個安全化（控制字元可見化、過長明示截斷）；HTML 跳脫仍由表格建構統一處理。
+    $locationText={param($Value)$safe=ConvertTo-WsmBackupSafePathText $Value;if($safe.truncated){$safe.text+'…（路徑過長已截斷，原長 '+$safe.fullLength+' 個字元）'}else{$safe.text}}
+    $backedCells=@(foreach($row in $backedRows){,@([string]$row.Name,[string]$row.Kind,(& $workloadText $row),(& $locationText $row.Location),$(if($channelText.ContainsKey([string]$row.Channel)){$channelText[[string]$row.Channel]}else{[string]$row.Channel}),[string]$row.Files,(& $sizeText $row.Bytes),$backedBadge,(& $restoreCell $row))})
     $backedAttrs=@(foreach($row in $backedRows){& $rowAttr $row})
-    $pendingCells=@(foreach($row in $pendingRows){,@([string]$row.Name,[string]$row.Kind,(& $workloadText $row),[string]$row.Location,[string]$row.Reason,[string]$row.NextStep,[string]$row.DiscoveryStatus,$pendingBadge)})
+    $pendingCells=@(foreach($row in $pendingRows){,@([string]$row.Name,[string]$row.Kind,(& $workloadText $row),(& $locationText $row.Location),[string]$row.Reason,[string]$row.NextStep,[string]$row.DiscoveryStatus,$pendingBadge)})
     $pendingAttrs=@(foreach($row in $pendingRows){& $rowAttr $row})
     # Software tab (B4). Every new field is read only when the result set recorded it; a missing field is shown as 未記錄, never as an empty value.
     $has={param($Row,[string]$Name)[bool]$Row.PSObject.Properties[$Name]}
@@ -1267,7 +1269,45 @@ function Get-WsmWizardLatestFailedAttempt([string]$Workspace,[string]$PairId,$Pr
 #   core_export_failed  CaptureFailed  capture/seal did not finish; nothing partial is kept as a result set
 #   package_test_failed NotVerified    sealed, but the read-back verification did not pass
 #   delivery_failed     DeliveryFailed verified package, hand-over material incomplete
-function ConvertTo-WsmBackupFailureView($Attempt) {
+# P4: 路徑一律走 N9c2 的 ConvertTo-WsmPathDisplayText（控制字元改成可見的 \uXXXX、內嵌機密遮蔽）再設上限；
+# 超過上限就截斷並明示（truncated=true、fullLength 為原長），不會讓截斷後的字串看起來像完整路徑。HTML 跳脫由顯示端負責（textContent／ConvertTo-WsmHtmlText）。
+function ConvertTo-WsmBackupSafePathText($Value,[int]$MaximumLength=1024) {
+    $raw=$(if($null -eq $Value){''}else{[string]$Value})
+    $text=ConvertTo-WsmPathDisplayText $raw ($MaximumLength+1)
+    $truncated=($text.Length -gt $MaximumLength -or $raw.Length -gt $MaximumLength)
+    if($text.Length -gt $MaximumLength){$text=$text.Substring(0,$MaximumLength)}
+    [pscustomobject][ordered]@{text=$text;truncated=[bool]$truncated;fullLength=[int]$raw.Length}
+}
+
+# P4: 失敗項目的來源路徑「只在投影時」從已核准計畫查出，從不寫進 attempt／journal／結果集。
+#   state=Resolved     計畫通過雜湊核對、ItemId 在計畫內、且有來源路徑 → text 為安全化後的路徑
+#   state=NoPath       項目在計畫內但沒有檔案路徑（非檔案型項目） → 「此項目沒有檔案路徑」
+#   state=Unverifiable 查不到計畫／雜湊不符／ItemId 不在計畫內 → 不顯示路徑，reason 寫明原因；絕不 throw
+function Get-WsmBackupFailedItemSourcePathView($PlanRef,[string]$ExpectedPlanHash,[string]$ItemId) {
+    $unverifiable={param([string]$Why)[pscustomobject][ordered]@{state='Unverifiable';label='無法核對來源路徑';text='';truncated=$false;fullLength=0;reason=$Why}}
+    try{
+        if(-not $PlanRef -or -not $PlanRef.PSObject.Properties['Plan'] -or -not $PlanRef.Plan){return (& $unverifiable '找不到這次備份所綁定的已核准計畫。')}
+        $planHash=[string]$PlanRef.SHA256
+        if($planHash -notmatch '^[a-fA-F0-9]{64}$'){return (& $unverifiable '核准計畫的雜湊格式不正確。')}
+        if($ExpectedPlanHash -and $planHash -ine $ExpectedPlanHash){return (& $unverifiable '備份紀錄綁定的計畫與目前核准的計畫不同。')}
+        $planPath=[IO.Path]::GetFullPath([string]$PlanRef.Path)
+        Assert-WsmNoReparse $planPath
+        if(-not [IO.File]::Exists($planPath)){return (& $unverifiable '核准計畫檔已不存在。')}
+        if((Get-FileHash -LiteralPath $planPath -Algorithm SHA256).Hash -ine $planHash){return (& $unverifiable '核准計畫檔內容與核准時的雜湊不符，已不信任。')}
+        $found=@($PlanRef.Plan.Items | Where-Object {[string]$_.ItemId -ceq $ItemId})
+        if($found.Count -ne 1){return (& $unverifiable '失敗項目不在這份核准計畫內。')}
+        $sourcePath=''
+        $item=$found[0]
+        if($item.PSObject.Properties['MigrationSpec'] -and $item.MigrationSpec -and $item.MigrationSpec.PSObject.Properties['SourcePath'] -and $item.MigrationSpec.SourcePath -is [string]){$sourcePath=[string]$item.MigrationSpec.SourcePath}
+        if([string]::IsNullOrWhiteSpace($sourcePath)){return [pscustomobject][ordered]@{state='NoPath';label='沒有檔案路徑';text='';truncated=$false;fullLength=0;reason='此項目沒有檔案路徑。'}}
+        $safe=ConvertTo-WsmBackupSafePathText $sourcePath
+        [pscustomobject][ordered]@{state='Resolved';label='來源路徑';text=$safe.text;truncated=$safe.truncated;fullLength=$safe.fullLength;reason=$(if($safe.truncated){'路徑過長，只顯示前 1024 個字元（原長 '+$safe.fullLength+' 個字元）。'}else{''})}
+    }catch{
+        & $unverifiable '核准計畫無法讀取或核對。'
+    }
+}
+
+function ConvertTo-WsmBackupFailureView($Attempt,$PlanRef=$null) {
     $code=[string]$Attempt.Error.Code
     $table=@{
         core_export_failed=@('CaptureFailed','擷取或封存失敗','封存沒有完成，所以沒有產生任何備份結果集；工具不會把部分擷取的內容當成已備份。','修正失敗項目的問題後，從同一個作業續作。')
@@ -1278,7 +1318,7 @@ function ConvertTo-WsmBackupFailureView($Attempt) {
     $failedItem=$null
     if($Attempt.Error.PSObject.Properties['FailedItem'] -and $Attempt.Error.FailedItem){
         $item=$Attempt.Error.FailedItem
-        $failedItem=[pscustomobject][ordered]@{ItemId=[string]$item.ItemId;Name=[string]$item.Name;Kind=[string]$item.Kind;Channel=[string]$item.Channel;ErrorClass=[string]$item.ErrorClass;ErrorKind=[string]$item.ErrorKind}
+        $failedItem=[pscustomobject][ordered]@{ItemId=[string]$item.ItemId;Name=[string]$item.Name;Kind=[string]$item.Kind;Channel=[string]$item.Channel;ErrorClass=[string]$item.ErrorClass;ErrorKind=[string]$item.ErrorKind;SourcePath=(Get-WsmBackupFailedItemSourcePathView $PlanRef ([string]$Attempt.PlanHash) ([string]$item.ItemId))}
     }
     [pscustomobject][ordered]@{attemptId=[string]$Attempt.AttemptId;errorCode=$code;classification=$entry[0];title=$entry[1];detail=$entry[2];nextStep=$entry[3];updatedUtc=[string]$Attempt.UpdatedUtc;failedItem=$failedItem}
 }
@@ -1352,7 +1392,7 @@ function Get-WsmWizardBackupItemResultsView([string]$Workspace,[string]$PairId) 
     $set=Get-WsmWizardVerifiedResultSet $Workspace $PairId $profile $planRef
     if($set.Failure){
         # N3: nothing delivered yet. A failed attempt explains why (capture failed / read-back failed); it never becomes a result row.
-        if(-not $set.Attempt){try{$failedAttempt=Get-WsmWizardLatestFailedAttempt $Workspace $PairId $profile $planRef;if($failedAttempt){$set.Failure | Add-Member NoteProperty failedAttempt (ConvertTo-WsmBackupFailureView $failedAttempt) -Force}}catch{}}
+        if(-not $set.Attempt){try{$failedAttempt=Get-WsmWizardLatestFailedAttempt $Workspace $PairId $profile $planRef;if($failedAttempt){$set.Failure | Add-Member NoteProperty failedAttempt (ConvertTo-WsmBackupFailureView $failedAttempt $planRef) -Force}}catch{}}
         return $set.Failure
     }
     $attempt=$set.Attempt;$document=$set.Document

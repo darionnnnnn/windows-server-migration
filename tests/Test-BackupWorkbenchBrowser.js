@@ -362,6 +362,41 @@ const waitResults = async page => { await page.waitForSelector('#backup-item-res
       assert.deepEqual(verify.errors, []); await verify.context.close();
     }
 
+    // P4: the failed item card shows the source path the server looked up from the approved plan (never stored in the attempt).
+    // Fixture shapes follow Get-WsmBackupFailedItemSourcePathView: Resolved / NoPath / Unverifiable (and a marked truncation).
+    {
+      const injected = 'C:\\data\\<script>window.__p4=1</script><img src=x onerror="window.__p4=2"> \\u0001' + 'x'.repeat(260);
+      const item = extra => ({ ItemId: 'item-0042', Name: 'Doomed folder', Kind: 'DataRoot', Channel: 'C', ErrorClass: 'IOError', ErrorKind: 'System.IO.IOException', SourcePath: extra });
+      const attemptWith = sourcePath => ({ attemptId: 'fixture-failed', errorCode: 'core_export_failed', classification: 'CaptureFailed', title: '擷取或封存失敗', detail: '封存沒有完成，所以沒有產生任何備份結果集。', nextStep: '修正失敗項目的問題後，從同一個作業續作。', updatedUtc: '2026-10-23T01:00:00Z', failedItem: item(sourcePath) });
+      const longText = 'C:\\' + 'L'.repeat(1021);
+      const cases = [
+        { name: 'resolved', state: 'Resolved', path: { state: 'Resolved', label: '來源路徑', text: injected, truncated: false, fullLength: injected.length, reason: '' }, expect: injected },
+        { name: 'truncated', state: 'Resolved', path: { state: 'Resolved', label: '來源路徑', text: longText, truncated: true, fullLength: 1500, reason: '路徑過長，只顯示前 1024 個字元（原長 1500 個字元）。' }, expect: longText, note: '原長 1500' },
+        { name: 'nopath', state: 'NoPath', path: { state: 'NoPath', label: '沒有檔案路徑', text: '', truncated: false, fullLength: 0, reason: '此項目沒有檔案路徑。' }, expect: null, note: '此項目沒有檔案路徑' },
+        { name: 'unverifiable', state: 'Unverifiable', path: { state: 'Unverifiable', label: '無法核對來源路徑', text: '', truncated: false, fullLength: 0, reason: '核准計畫檔內容與核准時的雜湊不符，已不信任。' }, expect: null, note: '雜湊不符' }
+      ];
+      for (const c of cases) {
+        const { page, errors, context } = await openWorkbench(browser, fixture, { ...base, failedAttempt: attemptWith(c.path) }, '#jobs?filter=backup', { viewport: { width: 390, height: 900 } });
+        const dialogs = []; page.on('dialog', async d => { dialogs.push(d.message()); await d.dismiss(); });
+        await page.waitForSelector('#backup-item-results .backup-failed-attempt', { timeout: 30000 });
+        const box = page.locator('#backup-item-results .backup-failed-attempt'), row = box.locator('.backup-failed-path');
+        assert.equal(await row.count(), 1, c.name + ': exactly one path row');
+        assert.equal(await row.getAttribute('data-path-state'), c.state, c.name + ': state');
+        const rowText = await row.innerText();
+        if (c.expect !== null) assert.equal(await row.locator('code.backup-path').textContent(), c.expect, c.name + ': the path is shown verbatim as text');
+        else assert.equal(await row.locator('code').count(), 0, c.name + ': no path element when no path is shown');
+        if (c.note) assert.ok(rowText.includes(c.note), c.name + ': row explains why: ' + rowText);
+        assert.ok(await row.locator('.backup-badge').count() >= 1 && (await row.locator('.backup-badge').first().getAttribute('data-icon')), c.name + ': state is text plus icon');
+        assert.equal(await box.locator('script, img').count(), 0, c.name + ': injected markup must not become nodes');
+        assert.equal(await page.evaluate(() => window.__p4 === undefined), true, c.name + ': injected handler must not run');
+        assert.deepEqual(dialogs, [], c.name + ': no dialog');
+        const overflow = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+        assert.ok(overflow.scroll <= overflow.client, c.name + ': 390px must not scroll horizontally (' + overflow.scroll + ' > ' + overflow.client + ')');
+        await box.scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(screens, 'p4-failed-item-path-' + c.name + '.png') });
+        assert.deepEqual(errors, [], c.name + ': zero console errors'); await context.close();
+      }
+    }
+
     // ================= D. URL hash state: written by filters, survives reload, back and manual edits =================
     {
       const { page, errors } = await openWorkbench(browser, fixture, { ...base, copy: COPY_STATES.verified }, '#jobs?filter=backup&tab=pending&type=DataRoot');
