@@ -1,5 +1,20 @@
 ﻿# Closed UI projection. Raw plans, configuration definitions, secrets, ACL blobs
 # and native diagnostic objects never cross this projection.
+function ConvertTo-WsmWizardPathResolutionRow($Row) {
+    # N9c2: 固定形狀的路徑解析列。只有名稱、字串、布林；環境變數的值沒有欄位可以放，其他欄位一律丟棄。
+    $text = { param($value) if($null -eq $value){return $null}; ConvertTo-WsmWizardHtmlValue ([string]$value) }
+    $resolution = $null; if($Row -and $Row.PSObject.Properties['Resolution']){ $resolution = $Row.Resolution }
+    $shape = [ordered]@{ItemId=(& $text $Row.ItemId);ItemName=(& $text $Row.ItemName);ItemKind=(& $text $Row.ItemKind)}
+    if($resolution){
+        $variables = @(); if($resolution.PSObject.Properties['variables']){ $variables = @(foreach($variable in @($resolution.variables)){ [pscustomobject][ordered]@{name=(& $text $variable.name);excluded=[bool]$variable.excluded} }) }
+        $shape.Resolution = [pscustomobject][ordered]@{
+            original=(& $text $resolution.original);resolved=(& $text $resolution.resolved);resolvedText=(& $text $resolution.resolvedText)
+            basis=(& $text $resolution.basis);basisLabel=(& $text $resolution.basisLabel);unresolved=[bool]$resolution.unresolved;manual=[bool]$resolution.manual
+            reasonCode=(& $text $resolution.reasonCode);reasonLabel=(& $text $resolution.reasonLabel);nextStep=(& $text $resolution.nextStep);variables=$variables
+        }
+    }
+    [pscustomobject]$shape
+}
 function ConvertTo-WsmWizardHtmlValue($Value,[int]$Depth=0) {
     if($Depth -gt 16 -or $null -eq $Value){return $null}
     if($Value -is [string]){
@@ -52,6 +67,9 @@ function ConvertTo-WsmWizardHtmlValue($Value,[int]$Depth=0) {
                 $summary.Counts=[pscustomobject]$counts
             }
             $safe.ItemResults=[pscustomobject]$summary
+        }elseif($property.Name -ceq 'PathResolutions' -and $property.Value -is [array]){
+            # N9c2: C2 軟體處置審閱的消費者路徑解析（原字串／結果／依據／原因／下一步），固定形狀。
+            $safe.PathResolutions=@(foreach($row in $property.Value){ConvertTo-WsmWizardPathResolutionRow $row})
         }elseif($property.Name -in $allowed){$safe[$property.Name]=ConvertTo-WsmWizardHtmlValue $property.Value ($Depth+1)}
     }
     [pscustomobject]$safe

@@ -185,7 +185,7 @@ function Get-WsmEnvironmentConfirmationProjection {
             [pscustomobject]$row
         })
         $coverageInput=@(Get-WsmConfirmationValue $softwareCatalog 'Coverage' @())
-        $coverage=@(foreach($probe in $coverageInput){
+        $coverage=@(foreach($probe in $coverageInput){$pathView=Get-WsmCoveragePathResolutionView @($Catalog.Items) $probe;
             $budget=Get-WsmConfirmationValue $probe 'Budget' $null
             [pscustomobject][ordered]@{
                 Probe=[string](Get-WsmConfirmationValue $probe 'Probe' 'Unknown')
@@ -200,10 +200,10 @@ function Get-WsmEnvironmentConfirmationProjection {
                 VisitedEntries=(Get-WsmConfirmationValue $probe 'VisitedEntries' (Get-WsmConfirmationValue $budget 'VisitedEntries' ''))
                 MetadataBytes=(Get-WsmConfirmationValue $probe 'MetadataBytes' (Get-WsmConfirmationValue $budget 'MetadataBytes' ''))
                 Budget=ConvertTo-WsmConfirmationSafeValue (Get-WsmConfirmationValue $probe 'Budget' $null)
-                ErrorKind=[string](Get-WsmConfirmationValue $probe 'ErrorKind' '')
+                ErrorKind=[string](Get-WsmConfirmationValue $probe 'ErrorKind' '');ItemId=[string](Get-WsmConfirmationValue $probe 'ItemId' '');PathOriginal=$(if($pathView){ConvertTo-WsmConfirmationSafeText $pathView.original}else{''});PathResolved=$(if($pathView){ConvertTo-WsmConfirmationSafeText $pathView.resolvedText}else{''});PathBasis=$(if($pathView){$pathView.basisLabel}else{''});PathReason=$(if($pathView){$pathView.reasonLabel}else{''});ManualDisposition=[bool]$pathView
                 ObservedUtc=[string](Get-WsmConfirmationValue $probe 'ObservedUtc' '')
                 EvidencePointer=[string](Get-WsmConfirmationValue $probe 'EvidencePointer' '')
-                NextStep=$(if((Get-WsmConfirmationValue $probe 'Status' 'NotTested') -in @('Success','NotInstalled')){'Owner review; empty successful probe is not global proof'}else{'Owner must resolve this coverage gap'})
+                NextStep=$(if($pathView){'人工處置：'+$pathView.nextStep}elseif((Get-WsmConfirmationValue $probe 'Status' 'NotTested') -in @('Success','NotInstalled')){'Owner review; empty successful probe is not global proof'}else{'Owner must resolve this coverage gap'})
             }
         })
         for($entryPosition=0;$entryPosition -lt $entries.Count;$entryPosition++){
@@ -261,7 +261,7 @@ function Get-WsmEnvironmentConfirmationProjection {
             }
         })
     } else {
-        $coverage=@([pscustomobject][ordered]@{Probe='SoftwareCatalog';Scope='All source scopes';SID='';View='';Status='NotTested';Count=0;MaxEntries='';MetadataBytes='';ErrorKind='SourceSoftwareCaptureMissing';ObservedUtc='';EvidencePointer='';NextStep='Capture source software evidence on the enrolled host; missing catalog is not proof of absence'})
+        $coverage=@([pscustomobject][ordered]@{Probe='SoftwareCatalog';Scope='All source scopes';SID='';View='';Status='NotTested';Count=0;MaxEntries='';MetadataBytes='';ErrorKind='SourceSoftwareCaptureMissing';ItemId='';PathOriginal='';PathResolved='';PathBasis='';PathReason='';ManualDisposition=$false;ObservedUtc='';EvidencePointer='';NextStep='Capture source software evidence on the enrolled host; missing catalog is not proof of absence'})
         $unknown.Add([pscustomobject][ordered]@{Type='SoftwareCapture';SoftwareId='';Name='Complete source software catalog';MissingFields='All source software and coverage evidence';Status='Unknown';Owner='Source host operator'})
     }
 

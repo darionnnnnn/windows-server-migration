@@ -70,7 +70,21 @@ function Get-WsmHtmlSourceCandidateList {
     })
     [pscustomobject][ordered]@{Kind='SourceCandidateList';ScanId=[string]$ScanId;ScanStatus=[string]$artifact.Status;CandidateHash=$hash;CandidateCount=$all.Count;CandidatesShown=$rows.Count;CandidatesTruncated=($all.Count -gt $rows.Count);Candidates=$rows;AuthoritativeApproval=$false}
 }
-function ConvertTo-WsmHtmlC2D2View($Result,[string]$Action,[int]$Revision) {
+function Get-WsmHtmlConsumerPathResolutions([string]$Workspace,[string]$PairId) {
+    # N9c2: C2 涵蓋範圍缺口中 SourcePathUnresolved 的消費者項目；Manager 端沒有來源 context，只依原字串分類，不展開、不讀本機環境。
+    try{
+        $catalog=Get-WsmCatalog $Workspace $PairId;$general=Get-WsmGeneralHostContract $catalog
+        if(-not $general -or -not $general.SoftwareCatalog){return @()}
+        $items=@($catalog.Items);$rows=New-Object 'System.Collections.Generic.List[object]'
+        foreach($probe in @($general.SoftwareCatalog.Coverage)){
+            $view=Get-WsmCoveragePathResolutionView $items $probe;if(-not $view){continue}
+            $item=@($items|Where-Object {[string]$_.ItemId -ceq [string]$probe.ItemId}|Select-Object -First 1)[0]
+            $rows.Add([pscustomobject][ordered]@{ItemId=[string]$probe.ItemId;ItemName=[string]$item.Name;ItemKind=[string]$item.Kind;Resolution=$view})
+        }
+        return $rows.ToArray()
+    }catch{return @()}
+}
+function ConvertTo-WsmHtmlC2D2View($Result,[string]$Action,[int]$Revision,[string]$Workspace='',[string]$PairId='') {
     # Closed projection through the shared allow-list. The confirmation member list can reach 40,000 rows, so only the first page is returned
     # together with exact file/directory counts; the counts come from the full list before truncation.
     $copy=[ordered]@{};foreach($property in $Result.PSObject.Properties){$copy[$property.Name]=$property.Value}
@@ -79,6 +93,7 @@ function ConvertTo-WsmHtmlC2D2View($Result,[string]$Action,[int]$Revision) {
         $copy.FileMemberCount=$members.Count-$directoryCount;$copy.DirectoryMemberCount=$directoryCount
         $copy.Members=@($members|Select-Object -First 500);$copy.MembersShown=@($copy.Members).Count;$copy.MembersTruncated=($members.Count -gt 500)
     }
+    if($Action -ceq 'SoftwareDispositionReview' -and $Workspace -and $PairId){$copy.PathResolutions=@(Get-WsmHtmlConsumerPathResolutions $Workspace $PairId)}
     $view=ConvertTo-WsmWizardHtmlValue ([pscustomobject]$copy)
     $view|Add-Member NoteProperty viewRevision $Revision -Force
     $view
@@ -1472,7 +1487,7 @@ function Start-WsmHtmlConsole {
                                     foreach($key in $arguments.Keys){if($previewCommand.Parameters.ContainsKey($key)){$previewArgs[$key]=$arguments[$key]}}
                                     $result=& $previewCommand @previewArgs;$kind='ResourcePreview'
                                 }elseif($command.Name -match '^(Get|Test|Assert|Read)-'){$result=& $command @arguments;$kind='ResourcePreview'}
-                                if($body.action -ceq 'BackupItemFiles'){$response=ConvertTo-WsmWizardHtmlValue $result}elseif(Test-WsmHtmlC2D2ReadAction ([string]$body.action)){$response=ConvertTo-WsmHtmlC2D2View $result ([string]$body.action) $revision}else{$response=ConvertTo-WsmHtmlPreview $result $body.action $revision $kind}
+                                if($body.action -ceq 'BackupItemFiles'){$response=ConvertTo-WsmWizardHtmlValue $result}elseif(Test-WsmHtmlC2D2ReadAction ([string]$body.action)){$response=ConvertTo-WsmHtmlC2D2View $result ([string]$body.action) $revision $Workspace $PairId}else{$response=ConvertTo-WsmHtmlPreview $result $body.action $revision $kind}
                             }
                             else{
                                 Assert-WsmId ([string]$body.operationId);Assert-WsmId ([string]$body.idempotencyKey)

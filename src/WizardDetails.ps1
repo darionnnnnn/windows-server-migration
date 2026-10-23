@@ -1,11 +1,136 @@
-﻿function Get-WsmWizardFileDetails($Item) {
+﻿# N9c2 / R7-07: 顯示原字串、解析結果與解析依據的唯讀投影。只讀 item 內已保存的欄位；不展開環境變數、不讀本機環境。
+function ConvertTo-WsmPathDisplayText($Value,[int]$MaximumLength=2048) {
+    # 路徑是資料，不是標記：控制字元／雙向覆寫字元改成可見的 \uXXXX，內嵌機密指派遮蔽，長度設上限。
+    if($null -eq $Value){return ''}
+    $text=[string]$Value
+    $text=[regex]::Replace($text,'(?i)(password|passwd|pwd|secret|token|credential|api[-_]?key)\s*[:=]\s*[^\s;,]+','$1=[redacted]')
+    $builder=New-Object System.Text.StringBuilder
+    foreach($char in $text.ToCharArray()){
+        $category=[Globalization.CharUnicodeInfo]::GetUnicodeCategory($char)
+        if($category -eq [Globalization.UnicodeCategory]::Control -or $category -eq [Globalization.UnicodeCategory]::Format -or $category -eq [Globalization.UnicodeCategory]::LineSeparator -or $category -eq [Globalization.UnicodeCategory]::ParagraphSeparator){[void]$builder.Append('\u'+([int]$char).ToString('X4'))}else{[void]$builder.Append($char)}
+        if($builder.Length -ge $MaximumLength){break}
+    }
+    $result=$builder.ToString();if($result.Length -gt $MaximumLength){$result=$result.Substring(0,$MaximumLength)}
+    $result
+}
+
+function Get-WsmPathResolutionBasisLabel([string]$Basis) {
+    switch -CaseSensitive ($Basis) { 'Machine'{'機器層'} 'ProfileDerived'{'帳號設定檔推導'} 'Literal'{'字面路徑'} default{'未解析'} }
+}
+
+function Get-WsmPathResolutionReasonInfo([string]$Reason) {
+    $text=switch -CaseSensitive ($Reason) {
+        {$_ -in @('AccountHasNoProfile','NoAccountForProfileVariable','ProfilePathNotResolvable','ProfileVariableUnresolved')} {@('找不到可用的帳號設定檔','在新機確認該帳號的設定檔路徑')}
+        {$_ -in @('VariableNotInSourceContext','ExpansionLimit')} {@('自訂或來源未記錄的環境變數','確認變數在新機的值')}
+        'ExcludedSecretVariable' {@('變數含機密，值未保存','確認變數在新機的值（工具不保存機密值，只顯示名稱）')}
+        'UserScopedVariable' {@('TEMP／TMP 屬於執行帳號本身','在新機確認執行帳號的 TEMP／TMP 路徑')}
+        'NoSourceContext' {@('來源沒有留下解析依據','重新在來源機執行盤點，或人工確認實際路徑')}
+        'RelativeOrNonAbsolutePath' {@('相對路徑，無法判定基準目錄','人工確認此路徑相對於哪個目錄')}
+        'ParentOrCurrentSegment' {@('路徑含 . 或 .. 區段','人工確認實際的絕對路徑')}
+        'EmptyPath' {@('路徑為空','人工確認此項目是否仍需搬移')}
+        default {@('未記錄原因','人工確認此路徑在新機的實際位置')}
+    }
+    [pscustomobject][ordered]@{label=$text[0];nextStep=$text[1]}
+}
+
+function New-WsmPathResolutionView {
+    # Context 只用來查「被排除的機密變數名稱」；環境變數的值從不進入回傳物件。
+    [CmdletBinding()]
+    param([AllowNull()][AllowEmptyString()][string]$Original,[AllowNull()][AllowEmptyString()][string]$Resolved,[string]$Basis,[AllowNull()][AllowEmptyString()][string]$Reason='',[object[]]$Variables=@(),$Context=$null)
+    $names=New-Object 'System.Collections.Generic.List[string]'
+    foreach($name in @($Variables)){if($null -ne $name -and ([string]$name) -and -not $names.Contains([string]$name)){$names.Add([string]$name)}}
+    if(-not $names.Count -and $Original){foreach($m in [regex]::Matches($Original,'%([^%\\/:*?"<>|\r\n]+)%')){$n=$m.Groups[1].Value;if(-not $names.Contains($n)){$names.Add($n)}}}
+    $excludedNames=@();if($null -ne $Context -and $Context.PSObject.Properties['ExcludedEnvironmentNames']){$excludedNames=@($Context.ExcludedEnvironmentNames|ForEach-Object {[string]$_})}
+    $secretName='(?i)(password|passwd|pwd|secret|token|credential|api[_-]?key|connectionstring|private)'
+    $variableRows=@(foreach($name in $names){[pscustomobject][ordered]@{name=(ConvertTo-WsmPathDisplayText $name 256);excluded=[bool](($excludedNames -contains $name) -or ($name -match $secretName))}})
+    $known=@('Machine','ProfileDerived','Literal','Unresolved')
+    $effectiveBasis=if($Basis -cin $known){$Basis}else{'Unresolved'}
+    $unresolved=($effectiveBasis -ceq 'Unresolved' -or [string]::IsNullOrWhiteSpace($Resolved))
+    if($unresolved){$effectiveBasis='Unresolved'}
+    $code=[string]$Reason
+    if($unresolved -and -not $code){
+        $lower=@($names|ForEach-Object {$_.ToLowerInvariant()})
+        if(@($variableRows|Where-Object excluded).Count){$code='ExcludedSecretVariable'}
+        elseif(@($lower|Where-Object {$_ -in @('userprofile','appdata','localappdata')}).Count){$code='ProfileVariableUnresolved'}
+        elseif($names.Count){$code='VariableNotInSourceContext'}
+        elseif($Original -match '(^|[\\/])\.{1,2}([\\/]|$)'){$code='ParentOrCurrentSegment'}
+        elseif([string]::IsNullOrWhiteSpace($Original)){$code='EmptyPath'}
+        else{$code='RelativeOrNonAbsolutePath'}
+    }
+    $info=$null;if($unresolved){$info=Get-WsmPathResolutionReasonInfo $code}
+    [pscustomobject][ordered]@{
+        original=(ConvertTo-WsmPathDisplayText $Original)
+        resolved=$(if($unresolved){$null}else{ConvertTo-WsmPathDisplayText $Resolved})
+        resolvedText=$(if($unresolved){'未解析'}else{ConvertTo-WsmPathDisplayText $Resolved})
+        basis=$effectiveBasis
+        basisLabel=(Get-WsmPathResolutionBasisLabel $effectiveBasis)
+        unresolved=$unresolved
+        manual=$unresolved
+        reasonCode=$(if($unresolved){$code}else{''})
+        reasonLabel=$(if($unresolved){$info.label}else{''})
+        nextStep=$(if($unresolved){$info.nextStep}else{''})
+        variables=@($variableRows)
+    }
+}
+
+function Get-WsmItemPathResolutionView($Item,$Context=$null) {
+    # Discovery 候選與 WorkloadDiscovery 的 web.config 根；沒有 ResolutionBasis 的舊資料不推測依據。
+    if(-not $Item -or -not $Item.PSObject.Properties['Settings'] -or -not $Item.Settings){return $null}
+    # Settings 可能是記憶體中的雜湊表（剛盤點）或 JSON 載回的物件，兩種都要讀得到。
+    $settings=$Item.Settings
+    $basis=Get-WsmWorkloadSettingValue $settings 'ResolutionBasis'
+    if($null -eq $basis){return $null}
+    $original=Get-WsmWorkloadSettingValue $settings 'OriginalPath'
+    if($null -ne $original){
+        $variables=@(Get-WsmWorkloadSettingValue $settings 'ResolutionVariables')
+        return (New-WsmPathResolutionView -Original ([string]$original) -Resolved ([string](Get-WsmWorkloadSettingValue $settings 'ResolvedCandidate')) -Basis ([string]$basis) -Reason '' -Variables $variables -Context $Context)
+    }
+    $root=Get-WsmWorkloadSettingValue $settings 'PhysicalRoot'
+    if($null -ne $root){
+        return (New-WsmPathResolutionView -Original ([string]$root) -Resolved '' -Basis ([string]$basis) -Reason ([string](Get-WsmWorkloadSettingValue $settings 'ResolutionReason')) -Variables @() -Context $Context)
+    }
+    $null
+}
+
+function Get-WsmCoveragePathResolutionView($Items,$Probe,$Context=$null) {
+    # ConsumerPathResolution / SourcePathUnresolved coverage rows -> the consumer's original string and why it stayed unresolved.
+    if($null -eq $Probe){return $null}
+    $kind='';if($Probe -is [Collections.IDictionary]){if($Probe.Contains('ErrorKind')){$kind=[string]$Probe['ErrorKind']};$itemId=if($Probe.Contains('ItemId')){[string]$Probe['ItemId']}else{''}}
+    else{if($Probe.PSObject.Properties['ErrorKind']){$kind=[string]$Probe.ErrorKind};$itemId=if($Probe.PSObject.Properties['ItemId']){[string]$Probe.ItemId}else{''}}
+    if($kind -cne 'SourcePathUnresolved' -or -not $itemId){return $null}
+    foreach($item in @($Items)){if($item -and $item.PSObject.Properties['ItemId'] -and [string]$item.ItemId -ceq $itemId){return (Get-WsmConsumerPathResolutionView $item $Context)}}
+    $null
+}
+
+function Get-WsmConsumerPathResolutionView($Item,$Context=$null) {
+    # Software coverage 的 ConsumerPathResolution（SourcePathUnresolved）：從消費者項目取回原字串。
+    # 有 Context 就交給唯一的解析函式取得真正原因；沒有就只從原字串分類，不展開、不讀本機環境。
+    if(-not $Item -or -not $Item.PSObject.Properties['Settings'] -or -not $Item.Settings -or $null -eq (Get-WsmWorkloadSettingValue $Item.Settings 'Xml')){return $null}
+    $raw='';$sid=$null
+    try{
+        $xmlText=[string](Get-WsmWorkloadSettingValue $Item.Settings 'Xml')
+        if($xmlText -match '<!DOCTYPE|<!ENTITY'){return $null}
+        $xml=[xml]$xmlText
+        if([string]$Item.Kind -ceq 'ScheduledTask'){$node=$xml.SelectSingleNode("//*[local-name()='Command']");if($node){$raw=[string]$node.InnerText};if($Context){$sid=Get-WsmSourceAccountSid $Context (Get-WsmTaskPrincipalAccount $xmlText)}}
+        elseif([string]$Item.Kind -ceq 'IISSite'){$node=$xml.SelectSingleNode('//*[@physicalPath]');if($node){$raw=[string]$node.GetAttribute('physicalPath')}}
+    }catch{return $null}
+    if([string]::IsNullOrWhiteSpace($raw)){return $null}
+    $reason='';$variables=@()
+    if($null -ne $Context){$resolution=Resolve-WsmSourcePath $raw $Context $sid;$variables=@($resolution.Variables);if($null -eq $resolution.Resolved){$reason=[string]$resolution.Reason}}
+    $view=New-WsmPathResolutionView -Original $raw -Resolved '' -Basis 'Unresolved' -Reason $reason -Variables $variables -Context $Context
+    $view
+}
+
+function Get-WsmWizardFileDetails($Item) {
     # Projection only: never touch a source filesystem during GET/polling.
     $rows=New-Object 'System.Collections.Generic.List[object]'
     $seen=@{}
-    function Add-Detail([string]$Path,[string]$Status,[string]$Hash,[string]$Reason) {
+    function Add-Detail([string]$Path,[string]$Status,[string]$Hash,[string]$Reason,$Resolution=$null) {
         if(-not $Path -or $seen.ContainsKey($Path.ToLowerInvariant())){return}
         $seen[$Path.ToLowerInvariant()]=$true
-        $rows.Add([pscustomobject][ordered]@{path=$Path;status=$Status;sha256=$Hash;reason=$Reason;contentRead=$false})
+        $row=[ordered]@{path=$Path;status=$Status;sha256=$Hash;reason=$Reason;contentRead=$false}
+        if($null -ne $Resolution){$row.resolution=$Resolution}
+        $rows.Add([pscustomobject]$row)
     }
     if($Item.PSObject.Properties['Settings'] -and $Item.Settings){
         $settings=$Item.Settings
@@ -15,7 +140,11 @@
             Add-Detail ([string]$settings.Path) $status $hash 'Location recorded by the inventory collector; this projection does not read the file.'
         }
         if($settings.PSObject.Properties['ConfigurationFile']){Add-Detail ([string]$settings.ConfigurationFile) 'ConfigurationEvidence' '' 'Configuration location recorded by the collector; this does not imply the whole file will be restored.'}
-        if($settings.PSObject.Properties['ResolvedCandidate'] -and $settings.ResolvedCandidate){Add-Detail ([string]$settings.ResolvedCandidate) 'ScopeNotEnumerated' '' 'Candidate location only; descendants have not been enumerated or approved.'}
+        $resolution=Get-WsmItemPathResolutionView $Item
+        if($null -ne $resolution){
+            if($resolution.unresolved){Add-Detail ([string]$resolution.original) 'ManualDisposition' '' ([string]$resolution.nextStep) $resolution}
+            else{Add-Detail ([string]$resolution.resolved) 'ScopeNotEnumerated' '' 'Candidate location only; descendants have not been enumerated or approved.' $resolution}
+        }elseif($settings.PSObject.Properties['ResolvedCandidate'] -and $settings.ResolvedCandidate){Add-Detail ([string]$settings.ResolvedCandidate) 'ScopeNotEnumerated' '' 'Candidate location only; descendants have not been enumerated or approved.'}
     }
     if($Item.PSObject.Properties['MigrationSpec'] -and $Item.MigrationSpec -and $Item.MigrationSpec.Adapter -ceq 'FileScope'){
         $spec=$Item.MigrationSpec

@@ -1485,6 +1485,24 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 網域帳號的 NTAccount 解析以替身驗證。
   - IIS 站台沒有解析 app pool 身分，所以 IIS 路徑中的 `%USERPROFILE%` 會是 Unresolved。
   - 顯示原字串、解析結果與 Basis 的 UI 牽涉白名單外的投影層，另由 N9c2 處理。
+### 17.87 N9c2 顯示來源路徑的解析依據（R7-07「顯示原字串與已驗位置」）
+
+- Sonnet 5.5 medium subagent 實作，主代理審查並獨立重跑。`Resolve-WsmSourcePath` 本身沒有改。
+- 投影（`WizardDetails.ps1`）：
+  - `New-WsmPathResolutionView` 輸出固定形狀的欄位：原字串、解析結果（未解析時顯示「未解析」）、依據標籤（機器層、帳號設定檔推導、字面路徑、未解析）、原因、人工處置的下一步，以及涉及的變數（只列名稱和 excluded 旗標，不帶任何值）。
+  - 顯示字串的處理：控制字元與雙向字元轉成可見形式；遮蔽內嵌的機密指派；長度上限 2048。前端一律用 `textContent` 輸出，不做 HTML encode。
+- 套用的畫面：
+  - 審閱的檔案明細：每列附上解析資訊；未解析的列標示「需人工處置」。
+  - C2 軟體處置審閱：新增「來源路徑未能解析」區塊，缺口清單加註。
+  - 環境確認與報告：Coverage 列加上原字串、解析結果、依據、原因，以及人工處置。
+- 驗證（WinPS 5.1、真實 Edge）：
+  - 主代理重跑：PathResolutionDisplay 57、SourceContextResolution 87、WizardDetails、WizardHtmlRuntimeProjection 214、HtmlConsole 175、C2D2HtmlActions 185、Report、ScriptEncoding、PathResolutionBrowser、C2D2Browser、AssistiveUi 47。
+  - subagent 另跑：EnvironmentConfirmation、SoftwareDispositionReview、WizardGrouping、WizardGroupingUi。
+- 突變（皆轉紅）：漏掉 Basis、未解析顯示成已解析、投影帶出環境變數值；主代理另做「不遮蔽內嵌機密」，也轉紅。
+- 限制與待決定：
+  - Manager 端的 catalog 只有 context 的 hash，所以 C2 與環境確認的「原因」只能從原字串分類。
+  - C2 缺口列沒有 ItemId（`SoftwareDispositionReview` 會丟掉），因此改用獨立區塊呈現。
+  - **待決定**：`MigrationWizard.ps1` 約 :55 與 `WizardPreparation.ps1` 約 :106 在解析失敗時，會用原字串預填 SourcePath／TargetPath，並標示來源為 TrustedSourceInventory。這是 N9c 之前就有的行為，後續路徑檢查也會擋下。是否改成「不預填」或「明示未解析」，屬於產品行為，留給使用者決定。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
