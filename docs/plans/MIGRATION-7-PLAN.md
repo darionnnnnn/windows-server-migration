@@ -1431,6 +1431,25 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - `Start-ServerMigration.ps1 -Action DeveloperProbe` 只印固定欄位，不會顯示定位行；文字選單與 HTML 會顯示。
   - 「七類」以 `IMPLEMENTATION-0.1.md` 外部驗收的七個待辦為準。
   - InvalidSessionResponse 等歸為「其他」，與畫面端一致。
+### 17.85 N9b 發行包冒煙測試擴充（15.8；如實標註「不是完整 G 旅程」）
+
+- 由 Sonnet 5.5 medium subagent 實作，主代理審查並獨立重跑。只修改 `tests/Test-ReleaseWizardSmoke.ps1`。`src/ToolRelease.ps1` 沒有漏收 R7 檔，所以不需修改。
+- export 檢查：在解壓後的包內，以子程序匯入模組。下列兩類函式都必須真的被匯出：`FunctionsToExport` 宣告的函式，以及從 HtmlConsole 和 OperationRequests 的 action 表推導出的指令。另外，包內匯出集合必須與工作樹完全一致。共 276 個 export，其中 201 個是 action 指令。
+- 必要檔：由 `git ls-files` 推導（src 101、ui 5、docs 24、固定 6，共 136 個）。包內出現未追蹤檔，或包內與索引不一致，都會判失敗。
+- HTML 引用：掃描包內 15 個 HTML 與 CSS 中的本地引用（104 個），目標都必須存在於包內。載入型的外部資源一律拒絕；文件裡的 18 個 `<a href>` 外部參考連結可以保留。
+- 小流程：在解壓後的工具根上跑 7 步：CV2 核准 → 一鍵備份 → 獨立副本 → 新機匯入 → 本機比較 → 預覽 → 還原。先刪掉來源，再逐檔比對還原檔的 SHA256。
+  - 輸出與 release-evidence 都已標明：這**不是完整的 G 離線旅程**，完整旅程在工作樹快照上執行。
+  - 身分、preflight、inventory 是替身，三個角色在同一台主機上。
+- 排除檢查：包內不可有 archive、plans、work、tests、PLAN HTML、私人盤點檔、.git。
+- 驗證（WinPS 5.1）：ReleaseWizardSmoke 約 42 秒；另跑 ActionExports 203、ScriptEncoding 308、Qualification、NativeAcceptanceScope 124。`Test-ReleaseNativeLauncher.js` 本機缺 playwright，由 CI 執行。
+- 突變（皆轉紅）：
+  - 包內少一個 R7 src 檔，或少一份文件
+  - HTML 引用不存在的資產
+  - HTML 載入外部 CDN script
+  - CSS 載入遠端字型（主代理）
+  - 少一個 export
+  - 還原位元組多寫一個 byte
+- 待決定：`docs/MIGRATION-3-PLAN.md` 位於 docs 根層，依現行規則會進入發行包。是否要排除，由使用者決定。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
