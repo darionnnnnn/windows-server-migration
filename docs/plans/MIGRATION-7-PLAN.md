@@ -1503,6 +1503,34 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - Manager 端的 catalog 只有 context 的 hash，所以 C2 與環境確認的「原因」只能從原字串分類。
   - C2 缺口列沒有 ItemId（`SoftwareDispositionReview` 會丟掉），因此改用獨立區塊呈現。
   - **待決定**：`MigrationWizard.ps1` 約 :55 與 `WizardPreparation.ps1` 約 :106 在解析失敗時，會用原字串預填 SourcePath／TargetPath，並標示來源為 TrustedSourceInventory。這是 N9c 之前就有的行為，後續路徑檢查也會擋下。是否改成「不預填」或「明示未解析」，屬於產品行為，留給使用者決定。
+### 17.88 N9d 混合套裝目錄的可見性（R7-04／R7-05；定案：只做可見性，不放寬防護）
+
+- Sonnet 5.5 medium subagent 實作，主代理審查並獨立重跑。`FileScopeGuard.ps1` 未修改。
+- 候選探索遇到安裝根時，仍整塊排除。另外以唯讀方式、在既有預算內列出根內檔案並分類：
+  - **本體**：讀檔頭前 64 位元組判定為 PE；反安裝中繼資料也算。不看副檔名。
+  - **疑似業務資料**：非 PE，且位於資料或報表類子目錄（清單寫在函式註解）。
+  - **未知**：其餘檔案。
+  - 不跟隨 junction。超過預算時標示「未列完」。
+- 排除區域列新增結構化欄位 `Category` 與 `Contents`（分類計數加樣本）。17.77 原本從原因文字推斷類別，現在優先讀結構化欄位；舊掃描則回退到文字推斷。
+- 同名追溯：本體類檔名同時出現在安裝根與根外的已核准範圍時（例如網站發布目錄），產生 `SameNameLinks`。兩側分別標示分類與理由，結果集會對回已備份項目。只做標示，不影響任何備份決定。
+- 結果集新增 `ExcludedCompleteness`，有四種狀態：有人工處置項、無法確認（未列完或舊掃描）、無人工處置項、未記錄。工作台與離線報告都會顯示。區域可展開查看樣本，人工處置項附原因、原件位置與下一步。
+- 防護未放寬：WholeScope 與 ExactMembers 涵蓋安裝根時仍會被拒；掃描後根內不會產生任何候選。
+- 驗證（WinPS 5.1、真實 Edge）：
+  - 主代理重跑：MixedBundleVisibility 49、SourceCandidateDiscovery 68、FileScopeGuard 36、BackupUnbackedReasons、BackupResultSetV2、SourceCandidateConfirmation 41、ScriptEncoding、OfflineReportBrowser、BackupWorkbenchBrowser。
+  - subagent 另跑：BackupWorkbenchView、SourceCandidateMapping、C2D2HtmlActions、SoftwareTab、WizardBackup、WorkloadDiscovery、SoftwareTabBrowser、NativeWizardRuntimeHandler。
+- 突變（皆轉紅）：
+  - PE 判定改看副檔名
+  - 超過預算時不標未列完
+  - 同名報告漏掉一側
+  - 掃描漏掉連結
+  - 根內被當成候選
+  - 主代理另做：資料子目錄清單被清空
+- 限制：
+  - 目前沒有可信的安裝時間來源，`SoftwareCatalog` 合約不收 InstallDate；「修改時間晚於安裝時間」的判定已實作，但盤點端不會自動提供安裝時間。
+  - 「安裝程式登記的檔案」只以反安裝中繼資料與可傳入的清單涵蓋。
+  - 讀取檔頭時 `ContentRead` 維持 false，另以 `BundleHeaderBytesRead` 揭露。
+  - 大型安裝根的取消回應最長受單次預算限制。
+  - 真實 CV2 端到端沒有實機跑過。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

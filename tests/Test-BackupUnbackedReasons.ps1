@@ -252,7 +252,7 @@ try {
         # ---- 6. wiring: the real backup hands the Source profile and workspace to the binding check and stores what it returns ----
         [void][IO.Directory]::CreateDirectory($dataBad);[IO.File]::WriteAllText((Join-Path $dataBad 'a.txt'),'back again, no failure injected')
         $script:n3Spy=@{Calls=0;Profile=$null;Workspace='';PlanHash=''}
-        $script:n3StubRegions=@(Get-WsmBackupExcludedRegionRows @([pscustomobject]@{Path='C:\Vendor\Wired Through';Reason=($policyPrefix+'C:\Vendor\Wired Through')},[pscustomobject]@{Path='C:\Windows';Reason=($policyPrefix+'C:\Windows')}) '')
+        $script:n3StubRegions=@(Get-WsmBackupExcludedRegionRows @([pscustomobject]@{Path='C:\Vendor\Wired Through';Reason=($policyPrefix+'C:\Vendor\Wired Through');Category='BundleExcluded';Contents=[pscustomobject]@{Listed=3;Directories=1;Complete=$true;IncompleteReason='';SkippedReparse=0;Unreadable=0;Counts=[pscustomobject]@{Bundle=1;SuspectedBusinessData=2;Unknown=0};Samples=@([pscustomobject]@{RelativePath='Reports\a.csv';Bytes=10;Class='SuspectedBusinessData';Why='DataDirectory:Reports'});InstallTimeUtc='';InstallTimeTrusted=$false;BundleFiles=@('app.exe')}},[pscustomobject]@{Path='C:\Windows';Reason=($policyPrefix+'C:\Windows')}) '')
         $script:n3OriginalBound=(Get-Command Get-WsmBackupBoundScanExclusions -CommandType Function).ScriptBlock
         function script:Get-WsmBackupBoundScanExclusions {param($Plan,[string]$Workspace,$Profile)$script:n3Spy.Calls++;$script:n3Spy.Profile=$Profile;$script:n3Spy.Workspace=$Workspace;[pscustomobject]@{Regions=$script:n3StubRegions;Binding=[pscustomobject][ordered]@{Status='Bound';Reason='';Scans=@([pscustomobject][ordered]@{ScanId='wired-scan';CandidateArtifactHash=('c'*64);ScanStatus='Succeeded'})}}}
         try{
@@ -267,6 +267,10 @@ try {
         & $check ($deliveredHtml.Contains('id="tbl-excluded"') -and $deliveredHtml.Contains('Wired Through')) 'The delivered offline report must list the stored regions.'
         $deliveredView=Get-WsmWizardBackupItemResultsView $sourceRoot $pairId
         & $check ($deliveredView.available -and @($deliveredView.excludedRegions).Count -eq 2 -and -not $deliveredView.PSObject.Properties['failedAttempt']) 'After delivery the view shows the regions and no failed-attempt block.'
+        # N9d：同一條真實備份流程，區域列帶結構化 Category／Contents 時，結果集、工作台 view 與離線報告都要呈現「有人工處置項」。
+        & $check ($deliveredDocument.ExcludedCompleteness.Status -ceq 'ManualItems' -and $deliveredDocument.ExcludedCompleteness.SuspectedFileCount -eq 2 -and @($deliveredDocument.ExcludedRegions|Where-Object Path -ceq 'C:\Vendor\Wired Through')[0].Contents.Counts.SuspectedBusinessData -eq 2) 'N9d: the stored result set records the manual-handling completeness and the classified contents.'
+        & $check ($deliveredView.excludedCompleteness.Status -ceq 'ManualItems' -and $deliveredView.excludedCompleteness.Text -ceq '有人工處置項' -and @($deliveredView.excludedRegions|Where-Object Path -ceq 'C:\Vendor\Wired Through')[0].ManualHandling.Required) 'N9d: the workbench view shows "有人工處置項" and marks the region for manual handling.'
+        & $check ($deliveredHtml.Contains('data-status="ManualItems"') -and $deliveredHtml.Contains('有人工處置項') -and $deliveredHtml.Contains('Reports\a.csv')) 'N9d: the delivered offline report shows "有人工處置項" and the suspected file.'
         Write-Host 'PASS: a real backup stores the bound regions and the view/report show them.'
     } $root
 }

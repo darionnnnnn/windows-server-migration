@@ -1710,6 +1710,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     const sources = { PackageControls: '封裝內的來源盤點', TrustedInventory: '已核驗的來源盤點', Unavailable: '無法取得來源盤點' }, counts = data.counts || {}, allRows = Array.isArray(data.rows) ? data.rows : [];
     appendSummaryRows(section, [['產生時間', formatEvidenceTime(data.generatedUtc)], ['離線還原就緒', offlineReadinessText(data.offlineReadiness)], ['來源盤點', Object.prototype.hasOwnProperty.call(sources, data.inventorySource) ? sources[data.inventorySource] : safeText(data.inventorySource)]]);
     if (data.inventorySource === 'Unavailable') wizardMessage(section, '無法取得來源盤點，未備份清單只包含核准計畫內的項目，未選入的已發現項目沒有列出。', 'callout');
+    renderBackupCompleteness(section, data);
     const refresh = el('button', 'secondary-button', '重新整理明細'); refresh.type = 'button'; refresh.addEventListener('click', () => loadBackupResults(true)); section.appendChild(refresh);
     const hashState = backupHashState(), views = {}, initialFor = key => hashState.tab === key ? hashState.filters : null;
     const defs = [
@@ -1794,6 +1795,57 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     if (failed.nextStep) wizardMessage(box, `下一步：${backupPlain(failed.nextStep)}`, 'inline-note');
     section.appendChild(box);
   }
+  // N9d / R7-04：安裝根內容分類。結果集只存代碼、計數與少量樣本；文字（WhyText 等）由伺服端統一產生。路徑與檔名一律用 textContent。
+  const BACKUP_BUNDLE_CLASS = { Bundle: { text: '本體', icon: '■', cls: 'neutral' }, SuspectedBusinessData: { text: '人工處置', icon: '!', cls: 'warn' }, Unknown: { text: '未知', icon: '?', cls: 'neutral' } };
+  const BACKUP_COMPLETENESS_INFO = { ManualItems: { text: '有人工處置項', icon: '!', cls: 'warn' }, Unconfirmed: { text: '無法確認', icon: '?', cls: 'warn' }, NoManualItems: { text: '未發現人工處置項', icon: '○', cls: 'neutral' }, NotRecorded: { text: '未記錄', icon: '?', cls: 'neutral' } };
+  function backupRegionHasContents(r) { return !!(r && r.Contents && typeof r.Contents === 'object' && r.Contents.Counts && typeof r.Contents.Counts === 'object'); }
+  function backupRegionSummary(r) { const c = r.Contents.Counts, n = v => (v == null ? 0 : v); return `內容分類：本體 ${n(c.Bundle)} · 疑似業務資料 ${n(c.SuspectedBusinessData)} · 未知 ${n(c.Unknown)}${r.Contents.Complete === false ? '（未列完）' : ''}`; }
+  function renderBackupRegionContents(host, r) {
+    const c = r.Contents, counts = c.Counts, root = backupPlain(r.Path).replace(/\\+$/, '');
+    const p = el('p', 'region-counts', `安裝目錄內容（唯讀分類，整個目錄仍不備份）：本體 ${counts.Bundle}、疑似業務資料 ${counts.SuspectedBusinessData}、未知 ${counts.Unknown}；已列 ${c.Listed} 筆檔案與目錄。`);
+    if (c.Complete === false) { p.append(' ', backupBadge({ text: '未列完', icon: '!', cls: 'warn' }), ` 超過列舉預算（${backupPlain(c.IncompleteReason)}），以上只是已列出的部分，不能當成全部。`); }
+    host.appendChild(p);
+    const manual = r.ManualHandling;
+    if (manual && typeof manual === 'object') {
+      const box = el('div', 'manual-box'); box.setAttribute('role', 'note');
+      box.append(backupBadge({ text: '人工處置', icon: '!', cls: 'warn' }), ` 疑似業務資料 ${backupPlain(manual.FileCount)} 個檔案。原因：${backupPlain(manual.Reason)} 原件位置：`, el('code', '', backupPlain(manual.OriginalLocation)), `。下一步：${backupPlain(manual.NextStep)}`);
+      host.appendChild(box);
+    }
+    const samples = Array.isArray(c.Samples) ? c.Samples : [];
+    if (samples.length) {
+      const wrap = el('div', 'table-wrap'); wrap.tabIndex = 0; wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', `${backupPlain(r.Path)} 的內容樣本表格`);
+      const table = el('table', 'region-samples'), head = el('tr'); table.appendChild(el('caption', '', `內容樣本（每類最多 ${backupPlain(c.SamplesPerClass || 10)} 筆）`));
+      ['類別', '原件位置', '大小', '判斷依據', '處置'].forEach(h => { const th = el('th', '', h); th.scope = 'col'; head.appendChild(th); }); table.appendChild(el('thead')).appendChild(head);
+      const body = el('tbody');
+      samples.forEach(s => {
+        const tr = el('tr'), kind = el('td'), path = el('td'), size = el('td', '', formatBytes(s.Bytes)), why = el('td', '', backupPlain(s.WhyText || s.Why)), action = el('td', '', s.Class === 'SuspectedBusinessData' ? '人工處置：另外人工複製' : '不備份（依政策）');
+        kind.appendChild(backupBadge(Object.prototype.hasOwnProperty.call(BACKUP_BUNDLE_CLASS, s.Class) ? BACKUP_BUNDLE_CLASS[s.Class] : BACKUP_BUNDLE_CLASS.Unknown)); path.appendChild(el('code', 'backup-path', `${root}\\${backupPlain(s.RelativePath)}`));
+        tr.dataset.class = backupPlain(s.Class); tr.append(kind, path, size, why, action); body.appendChild(tr);
+      });
+      table.appendChild(body); wrap.appendChild(table); host.appendChild(wrap);
+    }
+    const links = Array.isArray(r.SameName) ? r.SameName : [];
+    if (links.length) {
+      host.appendChild(el('h4', '', '同名檔案追溯（僅標示，不改變任何備份或排除決定）'));
+      const list = el('ul', 'same-name');
+      links.forEach(link => {
+        const a = el('li'), b = el('li'); a.dataset.sameName = backupPlain(link.Name); a.dataset.side = 'bundle'; b.dataset.sameName = backupPlain(link.Name); b.dataset.side = 'other';
+        a.append(el('code', '', backupPlain(link.Name)), '（安裝根內）：同名，另一處位於 ', el('code', '', backupPlain(link.OtherPath)), `。分類：${backupPlain(link.BundleClassText)}。理由：${backupPlain(link.BundleReason)}`);
+        b.append(el('code', '', backupPlain(link.Name)), '（另一處）：同名，另一處位於 ', el('code', '', backupPlain(link.BundlePath)), `。分類：${backupPlain(link.OtherClassText)}。理由：${backupPlain(link.OtherReason)}`);
+        list.append(a, b);
+      });
+      host.appendChild(list);
+    }
+  }
+  const backupRegionExpand = { has: backupRegionHasContents, summary: backupRegionSummary, render: renderBackupRegionContents };
+  // 整體完整度：區域內有疑似業務資料就是「有人工處置項」；永遠不宣稱完整。舊結果集沒有欄位時顯示「未記錄」。
+  function renderBackupCompleteness(section, data) {
+    const c = data && data.excludedCompleteness; if (!c || typeof c !== 'object') return;
+    const info = Object.prototype.hasOwnProperty.call(BACKUP_COMPLETENESS_INFO, c.Status) ? BACKUP_COMPLETENESS_INFO[c.Status] : BACKUP_COMPLETENESS_INFO.NotRecorded;
+    const box = el('p', c.Status === 'ManualItems' ? 'backup-completeness callout' : 'backup-completeness inline-note'); box.id = 'backup-completeness'; box.dataset.status = backupPlain(c.Status); box.setAttribute('role', 'status');
+    const detail = c.Status === 'ManualItems' ? `${c.ManualRegionCount} 個區域、${c.SuspectedFileCount} 個疑似業務資料檔需要人工處置，請看「未備份」分頁的套裝本體與受保護區域。` : `${backupPlain(c.Text)}。`;
+    box.append('整體完整度：', backupBadge(info), ` ${detail} ${backupPlain(c.Claim)}`); section.appendChild(box);
+  }
   function renderBackupExcludedRegions(panel, data) {
     panel.appendChild(el('h3', '', '套裝本體與受保護區域（依政策不納入備份；以區域列出，不是項目）'));
     const region = el('div', 'backup-excluded'); region.dataset.excluded = 'unset'; panel.appendChild(region);
@@ -1803,7 +1855,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     const seen = new Map(); data.excludedRegions.forEach(r => { const code = backupPlain(r.ReasonCode); if (code && !seen.has(code)) seen.set(code, backupPlain(r.Reason) || code); });
     renderBackupPagedTable(region, { id: 'backup-excluded', name: '套裝本體與受保護區域', caption: '套裝本體與受保護區域', rows: data.excludedRegions, regionRows: true, searchLabel: '搜尋區域路徑', search: r => [r.Path], csvName: 'backup-excluded-regions.csv', csvExtra: { headers: ['原因碼'], cells: r => [backupPlain(r.ReasonCode)] },
       filters: [{ key: 'reason', label: '區域類別', options: [...seen.entries()].map(([value, text]) => ({ value, text })), match: (r, value) => backupPlain(r.ReasonCode) === value }],
-      columns: [{ h: '區域', text: r => backupPlain(r.Path) }, { h: '原因', text: r => backupPlain(r.Reason) }, { h: '下一步', text: r => backupPlain(r.NextStep) }] });
+      columns: [{ h: '區域', text: r => backupPlain(r.Path) }, { h: '原因', text: r => backupPlain(r.Reason) }, { h: '下一步', text: r => backupPlain(r.NextStep) }], expand: backupRegionExpand });
   }
   function renderBackupRowsPanel(panel, rows, kind, data, initial) {
     const backed = kind === 'backed', copy = backupCopyInfo(data), uniqueKinds = [...new Set(rows.map(r => backupPlain(r.Kind)).filter(Boolean))].sort();
@@ -1978,7 +2030,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     const exportButton = el('button', 'secondary-button', '匯出 CSV'); exportButton.type = 'button'; bar.appendChild(exportButton);
     const count = el('div', 'backup-count'); count.setAttribute('role', 'status'); count.setAttribute('aria-atomic', 'true'); bar.appendChild(count);
     const out = el('div', 'backup-table-area'); panel.append(bar, out);
-    const csvColumns = cfg.columns.filter(c => c.csv !== false), expanded = new Map(), hosts = new Map();
+    const csvColumns = cfg.columns.filter(c => c.csv !== false), expanded = new Map(), hosts = new Map(), openRegions = new Set();
     let detailSequence = 0;
     const filtered = () => { const q = view.query.trim().toLocaleLowerCase(); return rows.filter(r => filterDefs.every(f => !view[f.key] || f.match(r, view[f.key])) && (!q || cfg.search(r).some(v => String(v == null ? '' : v).toLocaleLowerCase().includes(q)))); };
     const paintDetail = (itemId, focusTitle) => {
@@ -2032,6 +2084,17 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
           tr.appendChild(td);
         });
         body.appendChild(tr);
+        if (cfg.expand && cfg.expand.has(r)) {
+          const key = backupPlain(r.Path), open = openRegions.has(key), detailId = `${cfg.id}-region-${++detailSequence}`, label = cfg.expand.summary(r);
+          const toggle = el('button', 'secondary-button backup-expand backup-region-toggle', `${open ? '▾' : '▸'} ${label}`); toggle.type = 'button'; toggle.setAttribute('aria-expanded', open ? 'true' : 'false'); toggle.setAttribute('aria-controls', detailId); toggle.setAttribute('aria-label', `${label}：${key}`);
+          const summaryBox = el('div', 'backup-region-summary'); summaryBox.appendChild(toggle); tr.firstChild.appendChild(summaryBox);
+          const regionRow = el('tr', 'backup-detail-row'), regionCell = el('td'), regionHost = el('div', 'backup-detail'); regionRow.id = detailId; regionRow.hidden = !open; regionCell.colSpan = headers.length; regionCell.appendChild(regionHost); regionRow.appendChild(regionCell); body.appendChild(regionRow);
+          if (open) cfg.expand.render(regionHost, r);
+          toggle.addEventListener('click', () => {
+            if (openRegions.has(key)) { openRegions.delete(key); toggle.setAttribute('aria-expanded', 'false'); toggle.textContent = `▸ ${label}`; regionRow.hidden = true; regionHost.replaceChildren(); return; }
+            openRegions.add(key); toggle.setAttribute('aria-expanded', 'true'); toggle.textContent = `▾ ${label}`; regionRow.hidden = false; regionHost.replaceChildren(); cfg.expand.render(regionHost, r);
+          });
+        }
         if (cfg.drill) {
           const itemId = String(r.ItemId), td = el('td'), open = expanded.has(itemId), detailId = `${cfg.id}-detail-${++detailSequence}`;
           const button = el('button', 'secondary-button backup-expand', '檔案明細'); button.type = 'button'; button.setAttribute('aria-expanded', open ? 'true' : 'false'); button.setAttribute('aria-controls', detailId); button.setAttribute('aria-label', `檔案明細：${backupPlain(r.Name)}`);

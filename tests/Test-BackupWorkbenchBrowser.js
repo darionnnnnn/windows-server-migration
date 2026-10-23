@@ -15,9 +15,9 @@ const root = path.resolve(__dirname, '..');
 const screens = path.join(root, 'work', 'r7', 'screens');
 fs.mkdirSync(screens, { recursive: true });
 
-function buildFixture(shape) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wsm-b2-' + shape.toLowerCase() + '-'));
-  const run = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'tests', 'New-OfflineReportFixture.ps1'), '-OutDir', dir, '-Shape', shape], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+function buildFixture(shape, scale) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wsm-b2-' + shape.toLowerCase() + (scale ? '-' + scale.toLowerCase() : '') + '-'));
+  const run = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'tests', 'New-OfflineReportFixture.ps1'), '-OutDir', dir, '-Shape', shape].concat(scale ? ['-Scale', scale] : []), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   assert.equal(run.status, 0, 'fixture build failed: ' + run.stderr);
   const results = JSON.parse(fs.readFileSync(path.join(dir, 'backup-item-results.json'), 'utf8').replace(/^\ufeff/, ''));
   return { dir, report: path.join(dir, 'backup-report.html'), results };
@@ -89,7 +89,7 @@ async function openWorkbench(browser, fixture, scenario, hash, contextOptions) {
   const session = { token: 'memory-only-test-token', sessionId: 'fixture-session', contextId: 'fixture-context', hostName: 'fixture-host', role: 'Source', workspace: root, pairId: 'fixture-pair', revision: 5, decisionRevision: 7, selectionRevision: 3, sourceSelectionRevision: 3, dataVersion: 'fixture-data-1', principal: 'fixture-user' };
   const viewContext = () => ({ sessionId: session.sessionId, contextId: session.contextId, pairId: 'fixture-pair', role: 'Source', revision: session.revision, decisionRevision: session.decisionRevision, selectionRevision: session.selectionRevision, sourceSelectionRevision: session.sourceSelectionRevision, dataVersion: session.dataVersion, readUtc: new Date().toISOString() });
   const results = scenario.results;
-  const view = () => ({ kind: 'BackupItemResultsView', available: true, integrity: 'Verified', attemptId: 'fixture-attempt', backupOperationId: 'fixture-op', generatedUtc: results.GeneratedUtc, inventorySource: results.InventorySource, offlineReadiness: 'AwaitingIndependentCopy', counts: results.Counts, rows: results.Rows, software: results.Software, schemaVersion: results.SchemaVersion || 1, coverageRegions: Object.prototype.hasOwnProperty.call(results, 'CoverageRegions') ? results.CoverageRegions : null, excludedRegions: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegions') ? results.ExcludedRegions : null, excludedRegionsBinding: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegionsBinding') ? results.ExcludedRegionsBinding : null, independentCopy: scenario.copy, viewContext: viewContext() });
+  const view = () => ({ kind: 'BackupItemResultsView', available: true, integrity: 'Verified', attemptId: 'fixture-attempt', backupOperationId: 'fixture-op', generatedUtc: results.GeneratedUtc, inventorySource: results.InventorySource, offlineReadiness: 'AwaitingIndependentCopy', counts: results.Counts, rows: results.Rows, software: results.Software, schemaVersion: results.SchemaVersion || 1, coverageRegions: Object.prototype.hasOwnProperty.call(results, 'CoverageRegions') ? results.CoverageRegions : null, excludedRegions: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegions') ? results.ExcludedRegions : null, excludedRegionsBinding: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegionsBinding') ? results.ExcludedRegionsBinding : null, excludedCompleteness: Object.prototype.hasOwnProperty.call(results, 'ExcludedCompleteness') ? results.ExcludedCompleteness : null, independentCopy: scenario.copy, viewContext: viewContext() });
   await page.route(/\/api\/.*/, async route => {
     const request = route.request(), parsed = new URL(request.url()), pathname = parsed.pathname;
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -131,7 +131,7 @@ const waitResults = async page => { await page.waitForSelector('#backup-item-res
   const fixture = buildFixture('V2'), legacyFixture = buildFixture('V1');
   await new Promise((resolve, reject) => server.listen(0, '127.0.0.1', resolve).once('error', reject));
   const browser = await chromium.launch({ headless: true, executablePath: process.env.WSM_EDGE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' });
-  const allErrors = [];
+  const allErrors = [], extraDirs = [];
   const rows = fixture.results.Rows, backedRows = rows.filter(r => r.Status === 'BackedUp'), pendingRows = rows.filter(r => r.Status === 'NotBackedUp');
   assert.ok(rows.length > 250 && backedRows.length > 100 && pendingRows.length > 100, 'fixture must exceed one page in both tabs');
   const base = { results: fixture.results, copy: COPY_STATES.notVerified };
@@ -607,11 +607,104 @@ const waitResults = async page => { await page.waitForSelector('#backup-item-res
       assert.deepEqual(reduced.errors, []); await reduced.context.close();
     }
 
+    // ================= H. N9d: mixed install-root contents (R7-04 / R7-05 visibility) =================
+    {
+      const mixed = buildFixture('V2', 'Mixed'); extraDirs.push(mixed.dir);
+      const regions = mixed.results.ExcludedRegions, withContents = regions.filter(r => r.Contents);
+      assert.equal(withContents.length, 2, 'the mixed fixture has two classified install roots');
+      const regionA = regions.find(r => r.Path.includes('Vendor =App')), regionB = regions.find(r => r.Path.endsWith('Big Suite'));
+      const mixedBase = { results: mixed.results, copy: COPY_STATES.notVerified };
+      const { page, errors } = await openWorkbench(browser, mixed, mixedBase, '#jobs?filter=backup&tab=pending');
+      await waitResults(page);
+      const pending = page.locator('#backup-panel-pending'), excluded = pending.locator('.backup-excluded');
+      // overall completeness: never "complete"; manual items are named
+      const completeness = page.locator('#backup-completeness');
+      assert.equal(await completeness.getAttribute('data-status'), 'ManualItems');
+      const completenessText = await completeness.innerText();
+      assert.ok(completenessText.includes('整體完整度') && completenessText.includes('有人工處置項') && completenessText.includes('不代表搬移已完整'), completenessText);
+      assert.equal(await completeness.locator('.backup-badge').getAttribute('data-icon'), '!', 'status is text plus icon');
+      // table shape is unchanged; the expanders are extra, collapsed by default and carry aria-expanded
+      assert.deepEqual(await excluded.locator('thead th').allInnerTexts(), ['區域', '原因', '下一步']);
+      const toggles = excluded.locator('.backup-region-toggle');
+      assert.equal(await toggles.count(), 2);
+      for (const index of [0, 1]) assert.equal(await toggles.nth(index).getAttribute('aria-expanded'), 'false');
+      assert.equal(await excluded.locator('tr.backup-detail-row:not([hidden])').count(), 0, 'details are collapsed by default');
+      const rowA = excluded.locator('tr[data-reason]').filter({ hasText: 'Vendor =App' });
+      const toggleA = rowA.locator('.backup-region-toggle');
+      assert.ok((await toggleA.innerText()).includes(`本體 ${regionA.Contents.Counts.Bundle} · 疑似業務資料 ${regionA.Contents.Counts.SuspectedBusinessData} · 未知 ${regionA.Contents.Counts.Unknown}`));
+      await toggleA.click();
+      assert.equal(await toggleA.getAttribute('aria-expanded'), 'true');
+      const detailA = page.locator('#' + await toggleA.getAttribute('aria-controls'));
+      assert.equal(await detailA.isVisible(), true);
+      const detailText = await detailA.innerText();
+      assert.ok(detailText.includes(`本體 ${regionA.Contents.Counts.Bundle}、疑似業務資料 ${regionA.Contents.Counts.SuspectedBusinessData}、未知 ${regionA.Contents.Counts.Unknown}`));
+      // manual handling: reason, original location, next step
+      const manual = detailA.locator('.manual-box');
+      const manualText = await manual.innerText();
+      assert.ok(manualText.includes('人工處置') && manualText.includes('原件位置') && manualText.includes(regionA.Path) && manualText.includes('人工另外複製') && manualText.includes('原因'), manualText);
+      // samples: one table row per sample, suspected rows are marked as manual handling, paths shown as plain text
+      const sampleRows = detailA.locator('table.region-samples tbody tr');
+      assert.equal(await sampleRows.count(), regionA.Contents.Samples.length);
+      const suspectedRows = detailA.locator('table.region-samples tbody tr[data-class="SuspectedBusinessData"]');
+      assert.equal(await suspectedRows.count(), regionA.Contents.Samples.filter(s => s.Class === 'SuspectedBusinessData').length);
+      assert.ok((await suspectedRows.first().innerText()).includes('人工處置：另外人工複製'));
+      assert.ok((await detailA.locator('table.region-samples').innerText()).includes("sales & 'q'.csv"), 'file names with & and quotes are shown as text');
+      // same-name trace shows both sides
+      const sameSides = await detailA.locator('ul.same-name li').evaluateAll(items => items.map(i => ({ side: i.dataset.side, text: i.textContent })));
+      assert.deepEqual(sameSides.map(s => s.side).sort(), ['bundle', 'other']);
+      assert.ok(sameSides.every(s => s.text.includes('同名，另一處位於') && s.text.includes('core.dll')));
+      assert.ok(sameSides.find(s => s.side === 'other').text.includes('Website publish'), 'the other side names the backed-up item');
+      assert.notEqual(regionA.SameName[0].BundleClassText, regionA.SameName[0].OtherClassText);
+      await detailA.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(screens, 'n9d-workbench-region-expanded.png') });
+      // collapse again
+      await toggleA.click();
+      assert.equal(await toggleA.getAttribute('aria-expanded'), 'false'); assert.equal(await detailA.isVisible(), false);
+      // keyboard: Enter opens the incomplete region and the "not finished" state is explicit
+      const toggleB = excluded.locator('tr[data-reason]').filter({ hasText: 'Big Suite' }).locator('.backup-region-toggle');
+      await toggleB.focus(); await page.keyboard.press('Enter');
+      assert.equal(await toggleB.getAttribute('aria-expanded'), 'true');
+      const detailB = page.locator('#' + await toggleB.getAttribute('aria-controls'));
+      const detailBText = await detailB.innerText();
+      assert.ok(detailBText.includes('未列完') && detailBText.includes(regionB.Contents.IncompleteReason) && detailBText.includes(`已列 ${regionB.Contents.Listed} 筆`), detailBText);
+      assert.ok(regionB.Contents.Complete === false && regionB.Contents.Listed === 5);
+      // regions without Contents (Program Files, Windows, legacy rows) get no expander and are not claimed to be classified
+      assert.equal(await excluded.locator('tr[data-reason]').filter({ hasText: 'Legacy App' }).locator('.backup-region-toggle').count(), 0);
+      // CSV is unchanged by the expanders: same header, one row per region, path column is the plain path
+      const regionCsv = await captureCsv(page, excluded);
+      assert.deepEqual(regionCsv[0], ['區域', '原因', '下一步', '原因碼']);
+      assert.equal(regionCsv.length - 1, regions.length);
+      const csvByPath = new Map(regionCsv.slice(1).map(r => [r[0], r]));
+      assert.ok(csvByPath.has(regionA.Path) && csvByPath.get(regionA.Path)[2] === regionA.NextStep && csvByPath.get(regionA.Path)[3] === 'BundleExcluded');
+      assert.ok(regionCsv.every(r => !r.join('').includes('內容分類') && !r.join('').includes('▸')), 'expander text never leaks into the CSV');
+      // filter and search keep working with the expanders
+      await excluded.getByLabel('搜尋區域路徑').fill('Big Suite');
+      assert.equal(await excluded.locator('tr[data-reason]').count(), 1);
+      await excluded.getByLabel('搜尋區域路徑').fill('');
+      assert.deepEqual(errors, []); await page.context().close();
+      // 390px: nothing overflows the page, the detail scrolls inside its own region
+      const narrow = await openWorkbench(browser, mixed, mixedBase, '#jobs?filter=backup&tab=pending', { viewport: { width: 390, height: 844 } });
+      await waitResults(narrow.page);
+      const narrowExcluded = narrow.page.locator('#backup-panel-pending .backup-excluded');
+      await narrowExcluded.locator('.backup-region-toggle').first().click();
+      await narrowExcluded.locator('tr.backup-detail-row:not([hidden])').first().scrollIntoViewIfNeeded();
+      const overflow = await narrow.page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      assert.ok(overflow <= 0, `390px: page overflows by ${overflow}px`);
+      await narrow.page.screenshot({ path: path.join(screens, 'n9d-workbench-390.png') });
+      assert.deepEqual(narrow.errors, []); await narrow.context.close();
+      // a legacy result set (no new fields) shows no completeness line and no expander
+      const legacy = await openWorkbench(browser, mixed, { ...mixedBase, results: legacyFixture.results }, '#jobs?filter=backup&tab=pending');
+      await waitResults(legacy.page);
+      assert.equal(await legacy.page.locator('#backup-completeness').count(), 0);
+      assert.equal(await legacy.page.locator('.backup-region-toggle').count(), 0);
+      assert.deepEqual(legacy.errors, []); await legacy.context.close();
+    }
+
     assert.deepEqual(allErrors, [], 'no console errors expected');
     console.log(`PASS: backup workbench browser test (${rows.length} rows, ${backedRows.length} backed, ${pendingRows.length} not backed).`);
   } finally {
     await browser.close();
     server.close();
-    for (const dir of [fixture.dir, legacyFixture.dir]) fs.rmSync(dir, { recursive: true, force: true });
+    for (const dir of [fixture.dir, legacyFixture.dir, ...extraDirs]) fs.rmSync(dir, { recursive: true, force: true });
   }
 })().catch(error => { console.error(error); process.exit(1); });

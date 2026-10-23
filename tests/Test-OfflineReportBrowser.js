@@ -307,6 +307,103 @@ async function captureCsv(page, panel) {
       } finally { fs.rmSync(large.dir, { recursive: true, force: true }); }
     }
 
+    // ================= N9d: mixed install-root contents in the offline report =================
+    {
+      const mixed = buildFixture('V2', 'Mixed');
+      try {
+        const results = JSON.parse(fs.readFileSync(mixed.results, 'utf8').replace(/^\ufeff/, ''));
+        const regions = results.ExcludedRegions, regionA = regions.find(r => r.Path.includes('Vendor =App')), regionB = regions.find(r => r.Path.endsWith('Big Suite'));
+        assert.equal(results.ExcludedCompleteness.Status, 'ManualItems');
+        const mixedContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+        await mixedContext.addInitScript(() => { window.__blobs = []; const original = URL.createObjectURL; URL.createObjectURL = function (blob) { window.__blobs.push(blob); return original.call(URL, blob); }; });
+        const mixedPage = await mixedContext.newPage(), mixedErrors = [];
+        mixedPage.on('pageerror', e => mixedErrors.push(e.message)); mixedPage.on('console', m => { if (m.type() === 'error') mixedErrors.push(m.text()); });
+        await mixedPage.goto(fileUrl(mixed.report)); await mixedPage.waitForSelector('[role=tablist]');
+        // overall completeness is on top of every tab and never says complete
+        const completeness = mixedPage.locator('#completeness');
+        assert.equal(await completeness.getAttribute('data-status'), 'ManualItems');
+        const completenessText = await completeness.innerText();
+        assert.ok(completenessText.includes('整體完整度') && completenessText.includes('有人工處置項') && completenessText.includes('不代表搬移已完整'), completenessText);
+        assert.equal(await completeness.locator('.badge').getAttribute('data-icon'), '!');
+        await mixedPage.locator('[role=tab]').nth(1).click();
+        const table = mixedPage.locator('#tbl-excluded'), pending = mixedPage.locator('#pending');
+        assert.deepEqual(await mixedPage.locator('#tbl-excluded > thead th').allInnerTexts(), ['區域', '原因', '下一步']);
+        const toggles = pending.locator('.region-toggle');
+        assert.equal(await toggles.count(), 2);
+        for (const index of [0, 1]) assert.equal(await toggles.nth(index).getAttribute('aria-expanded'), 'false');
+        assert.equal(await table.locator('tr.region-detail-row:not([hidden])').count(), 0, 'details start collapsed when JavaScript runs');
+        // counts shown by the pager are rows of regions only, not detail rows
+        const status = pending.locator('.toolbar').nth(1).locator('[role=status]');
+        assert.equal(await status.innerText(), `顯示 ${regions.length}／共 ${regions.length} 筆`);
+        const toggleA = table.locator('tr[data-reason]').filter({ hasText: 'Vendor =App' }).locator('.region-toggle');
+        assert.ok((await toggleA.innerText()).includes(`本體 ${regionA.Contents.Counts.Bundle} · 疑似業務資料 ${regionA.Contents.Counts.SuspectedBusinessData} · 未知 ${regionA.Contents.Counts.Unknown}`));
+        await toggleA.click();
+        assert.equal(await toggleA.getAttribute('aria-expanded'), 'true');
+        const detailA = mixedPage.locator('#' + await toggleA.getAttribute('aria-controls'));
+        assert.equal(await detailA.isVisible(), true);
+        const detailText = await detailA.innerText();
+        assert.ok(detailText.includes(`本體 ${regionA.Contents.Counts.Bundle}、疑似業務資料 ${regionA.Contents.Counts.SuspectedBusinessData}、未知 ${regionA.Contents.Counts.Unknown}`));
+        const manualText = await detailA.locator('.manual-box').innerText();
+        assert.ok(manualText.includes('人工處置') && manualText.includes('原件位置') && manualText.includes(regionA.Path) && manualText.includes('人工另外複製') && manualText.includes('原因'), manualText);
+        const suspectedRows = detailA.locator('table.region-samples tbody tr').filter({ hasText: '人工處置：另外人工複製' });
+        assert.equal(await suspectedRows.count(), regionA.Contents.Samples.filter(s => s.Class === 'SuspectedBusinessData').length);
+        assert.ok((await detailA.locator('table.region-samples').innerText()).includes("sales & 'q'.csv"));
+        const sameSides = await detailA.locator('ul.same-name li').evaluateAll(items => items.map(i => ({ side: i.getAttribute('data-side'), text: i.textContent })));
+        assert.deepEqual(sameSides.map(s => s.side).sort(), ['bundle', 'other'], 'both sides of the same-name DLL are marked');
+        assert.ok(sameSides.every(s => s.text.includes('同名，另一處位於') && s.text.includes('core.dll')));
+        assert.ok(sameSides.find(s => s.side === 'other').text.includes('Website publish'));
+        await detailA.scrollIntoViewIfNeeded();
+        await mixedPage.screenshot({ path: path.join(screens, 'n9d-report-region-expanded.png') });
+        // search hides the detail together with its row and shows it again with the row
+        await pending.getByLabel('搜尋區域路徑').fill('Big Suite');
+        assert.equal(await status.innerText(), `顯示 1／共 ${regions.length} 筆`);
+        assert.equal(await detailA.isVisible(), false, 'a filtered-out row takes its detail with it');
+        await pending.getByLabel('搜尋區域路徑').fill('Vendor =App');
+        assert.equal(await detailA.isVisible(), true, 'the open state survives filtering');
+        await pending.getByLabel('搜尋區域路徑').fill('');
+        await toggleA.click();
+        assert.equal(await toggleA.getAttribute('aria-expanded'), 'false'); assert.equal(await detailA.isVisible(), false);
+        // keyboard + incomplete listing
+        const toggleB = table.locator('tr[data-reason]').filter({ hasText: 'Big Suite' }).locator('.region-toggle');
+        await toggleB.focus(); await mixedPage.keyboard.press('Enter');
+        assert.equal(await toggleB.getAttribute('aria-expanded'), 'true');
+        const detailBText = await mixedPage.locator('#' + await toggleB.getAttribute('aria-controls')).innerText();
+        assert.ok(detailBText.includes('未列完') && detailBText.includes(regionB.Contents.IncompleteReason) && detailBText.includes(`已列 ${regionB.Contents.Listed} 筆`), detailBText);
+        assert.equal(await table.locator('tr[data-reason]').filter({ hasText: 'Legacy App' }).locator('.region-toggle').count(), 0, 'rows without Contents get no expander');
+        // CSV: header unchanged, plain path column (no expander text), one row per region
+        const regionCsv = await captureCsv(mixedPage, pending.locator('.toolbar').nth(1));
+        assert.deepEqual(regionCsv[0], ['區域', '原因', '下一步', '原因碼']);
+        assert.equal(regionCsv.length - 1, regions.length);
+        const csvByPath = new Map(regionCsv.slice(1).map(r => [r[0], r]));
+        assert.ok(csvByPath.has(regionA.Path) && csvByPath.get(regionA.Path)[2] === regionA.NextStep && csvByPath.get(regionA.Path)[3] === 'BundleExcluded');
+        assert.ok(regionCsv.every(r => !r.join('').includes('內容分類') && !r.join('').includes('▸')), 'expander text never leaks into the CSV');
+        // print: collapsed details are printed (nothing hidden from a printout)
+        await mixedPage.emulateMedia({ media: 'print' });
+        assert.equal(await table.locator('tr.region-detail-row').evaluateAll(rows => rows.filter(r => getComputedStyle(r).display !== 'none').length), 2, 'both details are printed');
+        await mixedPage.emulateMedia({ media: 'screen' });
+        assert.deepEqual(mixedErrors, []); await mixedContext.close();
+        // no JavaScript: the details are plain visible rows, completeness still shown
+        const plainContext = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 1280, height: 900 } });
+        const plainPage = await plainContext.newPage();
+        await plainPage.goto(fileUrl(mixed.report));
+        assert.equal(await plainPage.locator('#completeness').getAttribute('data-status'), 'ManualItems');
+        assert.equal(await plainPage.locator('tr.region-detail-row').evaluateAll(rows => rows.filter(r => r.getClientRects().length > 0).length), 2, 'without JavaScript the details are visible');
+        assert.equal(await plainPage.locator('.region-toggle').count(), 0);
+        await plainContext.close();
+        // 390px: nothing overflows the page
+        const narrowContext = await browser.newContext({ viewport: { width: 390, height: 844 } }), narrowPage = await narrowContext.newPage(), narrowErrors = [];
+        narrowPage.on('pageerror', e => narrowErrors.push(e.message)); narrowPage.on('console', m => { if (m.type() === 'error') narrowErrors.push(m.text()); });
+        await narrowPage.goto(fileUrl(mixed.report)); await narrowPage.waitForSelector('[role=tablist]');
+        await narrowPage.locator('[role=tab]').nth(1).click();
+        await narrowPage.locator('#tbl-excluded .region-toggle').first().click();
+        await narrowPage.locator('#tbl-excluded tr.region-detail-row:not([hidden])').first().scrollIntoViewIfNeeded();
+        const overflow = await narrowPage.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        assert.ok(overflow <= 0, `390px: the report overflows by ${overflow}px`);
+        await narrowPage.screenshot({ path: path.join(screens, 'n9d-report-390.png') });
+        assert.deepEqual(narrowErrors, []); await narrowContext.close();
+      } finally { fs.rmSync(mixed.dir, { recursive: true, force: true }); }
+    }
+
     assert.deepEqual(consoleErrors, [], 'no console errors expected');
     console.log(`PASS: offline report browser test (${expected.Total} rows, ${backedExpected.length} backed, ${pendingExpected.length} not backed).`);
   } finally {

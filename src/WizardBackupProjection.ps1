@@ -297,21 +297,128 @@ function Get-WsmBackupExcludedRegionClass([string]$SourceReason,[string]$Workspa
     'BundleExcluded'
 }
 
-function Get-WsmBackupExcludedRegionRows([object[]]$ExcludedAreas,[string]$Workspace) {
+# N9d：安裝根內容分類的顯示用文字。結果集只存代碼與計數，文字在這裡統一產生，讓工作台與離線報告用同一份。
+function Get-WsmBackupBundleClassText([string]$Class) {
+    switch($Class){
+        'Bundle'{'本體（可執行檔或安裝程式登記）'}
+        'SuspectedBusinessData'{'疑似業務資料（需人工處置）'}
+        'Unknown'{'未知'}
+        default{$Class}
+    }
+}
+
+function Get-WsmBackupBundleWhyText([string]$Why) {
+    if($Why -like 'DataDirectory:*'){return ('位於資料／報表類子目錄「'+$Why.Substring('DataDirectory:'.Length)+'」')}
+    switch($Why){
+        'PEHeader'{'檔頭為可執行檔（PE）'}
+        'RegisteredByInstaller'{'安裝程式登記的檔案'}
+        'UninstallMetadata'{'反安裝中繼資料'}
+        'ModifiedAfterInstall'{'修改時間晚於安裝時間'}
+        'NoSignal'{'沒有可辨識的訊號'}
+        default{$Why}
+    }
+}
+
+# 掃描列的 Contents 重新整形：只留已知欄位、數值與長度設上限；格式不對就當作「未記錄」（回傳 $null），不做部分採信。
+function ConvertTo-WsmBackupExcludedContents($Contents) {
+    if($null -eq $Contents -or $Contents -is [string] -or $Contents -is [ValueType] -or $Contents -is [array]){return $null}
+    try{
+        if(-not $Contents.PSObject.Properties['Counts'] -or $null -eq $Contents.Counts){return $null}
+        $counts=[ordered]@{}
+        foreach($name in @('Bundle','SuspectedBusinessData','Unknown')){
+            if(-not $Contents.Counts.PSObject.Properties[$name]){return $null}
+            $value=[long]$Contents.Counts.$name;if($value -lt 0){return $null};$counts[$name]=$value
+        }
+        $samples=New-Object 'System.Collections.Generic.List[object]';$perClass=@{Bundle=0;SuspectedBusinessData=0;Unknown=0}
+        foreach($sample in @($Contents.Samples)){
+            if($null -eq $sample){continue}
+            $class=[string]$sample.Class;if(-not $perClass.ContainsKey($class) -or $perClass[$class] -ge 10){continue}
+            $relative=[string]$sample.RelativePath;if($relative.Length -gt 400){$relative=$relative.Substring(0,400)}
+            $why=[string]$sample.Why;if($why.Length -gt 120){$why=$why.Substring(0,120)}
+            $bytes=[long]$sample.Bytes;if($bytes -lt 0){$bytes=0}
+            $perClass[$class]++
+            $samples.Add([pscustomobject][ordered]@{RelativePath=$relative;Bytes=$bytes;Class=$class;Why=$why;WhyText=(Get-WsmBackupBundleWhyText $why)})
+        }
+        $reason=[string]$Contents.IncompleteReason;if($reason.Length -gt 60){$reason=$reason.Substring(0,60)}
+        $installTime=$(if($Contents.PSObject.Properties['InstallTimeUtc']){[string]$Contents.InstallTimeUtc}else{''})
+        [pscustomobject][ordered]@{
+            Listed=[long]$Contents.Listed;Directories=[long]$Contents.Directories;Complete=[bool]$Contents.Complete;IncompleteReason=$reason
+            SkippedReparse=[long]$Contents.SkippedReparse;Unreadable=[long]$Contents.Unreadable
+            Counts=[pscustomobject]$counts;SamplesPerClass=10;Samples=@($samples.ToArray())
+            InstallTimeUtc=$installTime;InstallTimeTrusted=[bool]$Contents.InstallTimeTrusted
+        }
+    }catch{return $null}
+}
+
+function Get-WsmBackupExcludedRegionRows([object[]]$ExcludedAreas,[string]$Workspace,[object[]]$SameNameLinks=@()) {
     $text=@{
         BundleExcluded=@('套裝軟體本體（安裝目錄），依政策不納入備份','在新機重新安裝該軟體；需要保留的資料或設定，請另外選入備份項目')
         ProtectedArea=@('系統、工具或受保護區域，依政策不納入備份','通常不需處理；若其中確有需要搬移的資料，請人工評估後另行處理')
     }
+    $manualNextStep='工具不會備份這些檔案；請人工另外複製到新機的對應位置（例如手動複製資料夾或請業務負責人提供），並在新機確認內容。'
     $seen=@{};$rows=New-Object 'System.Collections.Generic.List[object]'
     foreach($area in @($ExcludedAreas)){
         if($null -eq $area){continue}
         $path=[string]$area.Path;if(-not $path){continue}
         $key=$path.ToLowerInvariant();if($seen.ContainsKey($key)){continue};$seen[$key]=$true
         $policyReason=[string]$area.Reason;if($policyReason.Length -gt 300){$policyReason=$policyReason.Substring(0,300)}
-        $code=Get-WsmBackupExcludedRegionClass $policyReason $Workspace
-        $rows.Add([pscustomobject][ordered]@{Path=$path;ReasonCode=$code;Reason=$text[$code][0];NextStep=$text[$code][1];PolicyReason=$policyReason})
+        # N9d：掃描直接寫入結構化類別；只接受兩個已知值，其餘（含舊掃描沒有欄位）回退到原因文字推斷。
+        $structured=$(if($area.PSObject.Properties['Category']){[string]$area.Category}else{''})
+        $categorySource='Inferred';$code=''
+        if($structured -ceq 'BundleExcluded' -or $structured -ceq 'ProtectedArea'){$code=$structured;$categorySource='Structured'}else{$code=Get-WsmBackupExcludedRegionClass $policyReason $Workspace}
+        $row=[ordered]@{Path=$path;ReasonCode=$code;Reason=$text[$code][0];NextStep=$text[$code][1];PolicyReason=$policyReason;CategorySource=$categorySource}
+        $contents=$null;if($area.PSObject.Properties['Contents']){$contents=ConvertTo-WsmBackupExcludedContents $area.Contents}
+        if($contents -and $code -ceq 'BundleExcluded'){
+            $row.Contents=$contents
+            $suspected=[long]$contents.Counts.SuspectedBusinessData
+            if($suspected -gt 0){
+                $row.NextStep=('安裝目錄內有 '+$suspected+' 個疑似業務資料檔，工具不會備份（人工處置）；請展開查看清單並另外人工複製。軟體本體請在新機重新安裝。')
+                $row.ManualHandling=[pscustomobject][ordered]@{Required=$true;FileCount=$suspected;OriginalLocation=$path;Reason='安裝目錄整塊不備份；其中非可執行檔且位於資料或報表類子目錄、或修改時間晚於安裝時間的檔案，可能是業務資料。';NextStep=$manualNextStep}
+            }
+            $mine=@($SameNameLinks|Where-Object {$null -ne $_ -and [string]$_.BundleRoot -ieq $path})
+            if($mine.Count){
+                $row.SameName=@(foreach($link in $mine){[pscustomobject][ordered]@{Name=[string]$link.Name;BundlePath=[string]$link.BundlePath;BundleClass=[string]$link.BundleClass;BundleClassText=(Get-WsmBackupBundleClassText ([string]$link.BundleClass));BundleReason=[string]$link.BundleReason;OtherPath=[string]$link.OtherPath;OtherClass=[string]$link.OtherClass;OtherClassText='候選範圍內的檔案（未讀內容）';OtherReason=[string]$link.OtherReason;Note=[string]$link.Note;OtherItem='';OtherApproved=$false}})
+            }
+        }
+        $rows.Add([pscustomobject]$row)
     }
     @($rows.ToArray() | Sort-Object -Property @{Expression={([string]$_.Path).ToLowerInvariant()}})
+}
+
+# N9d：把同名追溯的「另一處」對回已備份項目（原位置涵蓋該路徑者）；只加註記，不改任何備份決定。
+function Add-WsmBackupSameNameItems([object[]]$Regions,[object[]]$Rows) {
+    $backed=@($Rows|Where-Object {$null -ne $_ -and [string]$_.Status -ceq 'BackedUp' -and [string]$_.Location -match '^[A-Za-z]:\\'})
+    foreach($region in @($Regions)){
+        if($null -eq $region -or -not $region.PSObject.Properties['SameName']){continue}
+        foreach($link in @($region.SameName)){
+            $other=[string]$link.OtherPath
+            foreach($row in $backed){
+                $location=([string]$row.Location).TrimEnd('\')
+                if($other -ieq $location -or $other.StartsWith($location+'\',[StringComparison]::OrdinalIgnoreCase)){$link.OtherItem=[string]$row.Name;$link.OtherApproved=$true;$link.OtherClassText='已備份項目範圍內的檔案';$link.OtherReason=('位於已備份項目「'+[string]$row.Name+'」的範圍內，依核准計畫備份；工具沒有比對兩份檔案的內容。');break}
+            }
+        }
+    }
+    @($Regions)
+}
+
+# N9d：整體完整度。區域內有疑似業務資料就是「有人工處置項」；安裝目錄沒列完或舊掃描沒分類時是「無法確認」。永遠不宣稱完整。
+function Get-WsmBackupExcludedCompleteness($Regions) {
+    if($null -eq $Regions){return [pscustomobject][ordered]@{Status='NotRecorded';Text='未記錄';ManualRegionCount=0;SuspectedFileCount=0;IncompleteRegionCount=0;UnclassifiedRegionCount=0;Claim='此結果集未記錄排除區域，不能視為完整。'}}
+    $manual=0;$suspected=[long]0;$incomplete=0;$unclassified=0
+    foreach($region in @($Regions)){
+        if($null -eq $region -or [string]$region.ReasonCode -cne 'BundleExcluded'){continue}
+        $hasContents=($region.PSObject.Properties['Contents'] -and $null -ne $region.Contents)
+        $source=$(if($region.PSObject.Properties['CategorySource']){[string]$region.CategorySource}else{'Inferred'})
+        if($hasContents){
+            $count=[long]$region.Contents.Counts.SuspectedBusinessData
+            if($count -gt 0){$manual++;$suspected+=$count}
+            if(-not [bool]$region.Contents.Complete){$incomplete++}
+        }elseif($source -ceq 'Inferred'){$unclassified++}
+    }
+    $status='NoManualItems';$text='安裝目錄內容已分類，未發現疑似業務資料'
+    if($manual -gt 0){$status='ManualItems';$text='有人工處置項'}
+    elseif($incomplete -gt 0 -or $unclassified -gt 0){$status='Unconfirmed';$text='無法確認（有安裝目錄內容未分類或未列完）'}
+    [pscustomobject][ordered]@{Status=$status;Text=$text;ManualRegionCount=$manual;SuspectedFileCount=$suspected;IncompleteRegionCount=$incomplete;UnclassifiedRegionCount=$unclassified;Claim='此清單只涵蓋工具看得到的範圍，不代表搬移已完整。'}
 }
 
 # Returns Regions=$null (not recorded) unless the whole chain verifies:
@@ -326,7 +433,7 @@ function Get-WsmBackupBoundScanExclusions($Plan,[string]$Workspace,$Profile) {
         if(-not $references.Count){return (& $notRecorded '核准計畫沒有引用候選探索的確認材料。')}
         if(-not $Profile -or [string]$Profile.Role -cne 'Source'){return (& $notRecorded '只有已註冊的 Source 工作區能核對候選掃描。')}
         $materialPrefix=[IO.Path]::GetFullPath((Join-Path $Workspace 'assistive/materials')).TrimEnd('\')+'\'
-        $scans=[ordered]@{};$areas=New-Object 'System.Collections.Generic.List[object]'
+        $scans=[ordered]@{};$areas=New-Object 'System.Collections.Generic.List[object]';$links=New-Object 'System.Collections.Generic.List[object]'
         foreach($reference in $references){
             $expected=([string]$reference.SHA256).ToLowerInvariant()
             if($expected -notmatch '^[a-f0-9]{64}$' -or ([string]$reference.Reference) -cne ('assistive/materials/source-candidate/'+$expected+'/confirmation.json')){return (& $notRecorded '計畫中的確認材料參考與雜湊不一致。')}
@@ -349,8 +456,9 @@ function Get-WsmBackupBoundScanExclusions($Plan,[string]$Workspace,$Profile) {
             if([string]$artifact.Kind -cne 'SourceCandidateDiscovery' -or [string]$artifact.ScanId -cne $scanId -or [string]$artifact.SourceFingerprint -ine [string]$Plan.Source.Fingerprint -or -not $artifact.PSObject.Properties['ExcludedAreas'] -or $artifact.ExcludedAreas -isnot [array]){return (& $notRecorded '候選掃描結果的身分或格式與計畫不符。')}
             $scans[$scanId]=[pscustomobject][ordered]@{ScanId=$scanId;CandidateArtifactHash=$artifactHash;ScanStatus=[string]$artifact.Status}
             foreach($area in @($artifact.ExcludedAreas)){$areas.Add($area)}
+            if($artifact.PSObject.Properties['SameNameLinks']){foreach($link in @($artifact.SameNameLinks)){$links.Add($link)}}
         }
-        [pscustomobject]@{Regions=@(Get-WsmBackupExcludedRegionRows @($areas.ToArray()) $Workspace);Binding=[pscustomobject][ordered]@{Status='Bound';Reason='';Scans=@($scans.Values)}}
+        [pscustomobject]@{Regions=@(Get-WsmBackupExcludedRegionRows @($areas.ToArray()) $Workspace @($links.ToArray()));Binding=[pscustomobject][ordered]@{Status='Bound';Reason='';Scans=@($scans.Values)}}
     }catch{
         & $notRecorded '候選掃描與計畫的綁定無法核對。'
     }
@@ -551,8 +659,9 @@ function Export-WsmBackupItemResults([string]$Path,[object[]]$Rows,$Meta) {
     $document=[pscustomobject][ordered]@{SchemaVersion=2;ToolVersion=$script:ToolVersion;Kind='BackupItemResults';PairId=[string]$Meta.PairId;AttemptId=[string]$Meta.AttemptId;PlanHash=[string]$Meta.PlanHash;ManifestHash=[string]$Meta.ManifestHash;InventorySource=[string]$Meta.InventorySource;GeneratedUtc=(Get-WsmUtc);Counts=[pscustomobject]$counts;Software=$softwareDocument;CoverageRegions=@($coverageRegions);Rows=$allRows}
     # N3: ExcludedRegions is written only by callers that checked the scan binding. ExcludedRegions=null with a NotRecorded binding means "could not be verified"; a missing field means an older writer. Both read as not recorded.
     if($Meta.PSObject.Properties['ExcludedRegionsBinding'] -and $null -ne $Meta.ExcludedRegionsBinding){
-        $excludedRegions=$null;if($Meta.PSObject.Properties['ExcludedRegions'] -and $null -ne $Meta.ExcludedRegions){$excludedRegions=@($Meta.ExcludedRegions)}
+        $excludedRegions=$null;if($Meta.PSObject.Properties['ExcludedRegions'] -and $null -ne $Meta.ExcludedRegions){$excludedRegions=@(Add-WsmBackupSameNameItems @($Meta.ExcludedRegions) $allRows)}
         $document | Add-Member NoteProperty ExcludedRegions $excludedRegions
+        $document | Add-Member NoteProperty ExcludedCompleteness (Get-WsmBackupExcludedCompleteness $excludedRegions)
         $document | Add-Member NoteProperty ExcludedRegionsBinding $Meta.ExcludedRegionsBinding
     }
     Write-WsmJson $Path $document
@@ -577,7 +686,7 @@ function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha
     $isV2=($schemaVersion -ge 2)
     # A cell is plain text, or a hashtable @{Text;Icon;Class} rendered as a text badge (status never relies on colour alone).
     $buildTable={
-        param([string]$Id,[string]$Caption,[string]$SearchColumns,[string[]]$Headers,[object[]]$RowCells,[string]$Filters='',[string]$CsvName='',[string[]]$RowAttrs=@(),[string]$CsvMeta='1',[string]$EmptyText='沒有項目',[string]$SearchLabel='')
+        param([string]$Id,[string]$Caption,[string]$SearchColumns,[string[]]$Headers,[object[]]$RowCells,[string]$Filters='',[string]$CsvName='',[string[]]$RowAttrs=@(),[string]$CsvMeta='1',[string]$EmptyText='沒有項目',[string]$SearchLabel='',[string[]]$RowDetails=@())
         if(@($RowCells).Count -eq 0){return '<p class="empty">'+(& $encode $EmptyText)+'</p>'}
         $sb=New-Object Text.StringBuilder
         $tableAttrs=' id="'+$Id+'"';if($SearchColumns){$tableAttrs+=' data-search="'+$SearchColumns+'"'};if($Filters){$tableAttrs+=' data-filters="'+(& $encode $Filters)+'"'};if($CsvName){$tableAttrs+=' data-csv="'+(& $encode $CsvName)+'"'};if(@($RowAttrs).Count){$tableAttrs+=' data-csv-meta="'+$CsvMeta+'"'};if($SearchLabel){$tableAttrs+=' data-search-label="'+(& $encode $SearchLabel)+'"'}
@@ -589,10 +698,12 @@ function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha
             $attr='';if($rowIndex -lt @($RowAttrs).Count){$attr=' '+$RowAttrs[$rowIndex]}
             [void]$sb.Append('<tr'+$attr+'>')
             foreach($cell in $cells){
-                if($cell -is [hashtable]){[void]$sb.Append('<td><span class="badge b-'+$cell.Class+'" data-icon="'+(& $encode $cell.Icon)+'">'+(& $encode $cell.Text)+'</span></td>')}
+                if($cell -is [hashtable] -and $cell.ContainsKey('Toggle')){[void]$sb.Append('<td data-text="'+(& $encode $cell.Text)+'">'+(& $encode $cell.Text)+'<div class="region-summary" data-target="'+(& $encode $cell.Toggle)+'">'+(& $encode $cell.Summary)+'</div></td>')}
+                elseif($cell -is [hashtable]){[void]$sb.Append('<td><span class="badge b-'+$cell.Class+'" data-icon="'+(& $encode $cell.Icon)+'">'+(& $encode $cell.Text)+'</span></td>')}
                 else{[void]$sb.Append('<td>'+(& $encode $cell)+'</td>')}
             }
             [void]$sb.Append('</tr>')
+            if($rowIndex -lt @($RowDetails).Count -and $RowDetails[$rowIndex]){[void]$sb.Append('<tr class="region-detail-row" id="rd-'+$rowIndex+'"><td colspan="'+@($Headers).Count+'">'+$RowDetails[$rowIndex]+'</td></tr>')}
             $rowIndex++
         }
         [void]$sb.Append('</tbody></table></div>')
@@ -687,6 +798,56 @@ function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha
     $hashText={param($Value)$v=[string]$Value;if($v){'<code class="hash">'+(& $encode $v)+'</code>'}else{'未記錄'}}
     $manifestHash=$(if($document.PSObject.Properties['ManifestHash']){[string]$document.ManifestHash}else{''})
     $planHash=$(if($document.PSObject.Properties['PlanHash']){[string]$document.PlanHash}else{''})
+    # N9d：安裝根內容分類的展開區塊（靜態 HTML；有 JavaScript 時預設收合，沒有時直接顯示）。路徑與檔名一律當資料跳脫。
+    $badgeHtml={param($Cell)'<span class="badge b-'+$Cell.Class+'" data-icon="'+(& $encode $Cell.Icon)+'">'+(& $encode $Cell.Text)+'</span>'}
+    $classBadge={param([string]$Class)
+        switch($Class){
+            'SuspectedBusinessData'{@{Text='人工處置';Icon='!';Class='warn'}}
+            'Bundle'{@{Text='本體';Icon='■';Class='neutral'}}
+            default{@{Text='未知';Icon='?';Class='neutral'}}
+        }
+    }
+    $regionSummaryText={param($Region)
+        $c=$Region.Contents
+        $t='內容分類：本體 '+[string]$c.Counts.Bundle+' · 疑似業務資料 '+[string]$c.Counts.SuspectedBusinessData+' · 未知 '+[string]$c.Counts.Unknown
+        if(-not [bool]$c.Complete){$t+='（未列完）'}
+        $t
+    }
+    $regionDetailHtml={param($Region)
+        $c=$Region.Contents;$root=([string]$Region.Path).TrimEnd('\')
+        $sb=New-Object Text.StringBuilder
+        [void]$sb.Append('<div class="region-detail" data-region="'+(& $encode $Region.Path)+'">')
+        [void]$sb.Append('<p class="region-counts">安裝目錄內容（唯讀分類，整個目錄仍不備份）：本體 '+(& $encode $c.Counts.Bundle)+'、疑似業務資料 '+(& $encode $c.Counts.SuspectedBusinessData)+'、未知 '+(& $encode $c.Counts.Unknown)+'；已列 '+(& $encode $c.Listed)+' 筆檔案與目錄。')
+        if(-not [bool]$c.Complete){[void]$sb.Append(' <span class="badge b-warn" data-icon="!">未列完</span> 超過列舉預算（'+(& $encode $c.IncompleteReason)+'），以上只是已列出的部分，不能當成全部。')}
+        [void]$sb.Append('</p>')
+        if($Region.PSObject.Properties['ManualHandling'] -and $Region.ManualHandling){
+            $m=$Region.ManualHandling
+            [void]$sb.Append('<div class="manual-box" role="note"><span class="badge b-warn" data-icon="!">人工處置</span> 疑似業務資料 '+(& $encode $m.FileCount)+' 個檔案。原因：'+(& $encode $m.Reason)+' 原件位置：<code>'+(& $encode $m.OriginalLocation)+'</code>。下一步：'+(& $encode $m.NextStep)+'</div>')
+        }
+        $samples=@($c.Samples|Where-Object {$null -ne $_})
+        if($samples.Count){
+            [void]$sb.Append('<div class="table-wrap" tabindex="0" role="region" aria-label="'+(& $encode $Region.Path)+' 的內容樣本表格"><table class="region-samples"><caption>內容樣本（每類最多 '+(& $encode $c.SamplesPerClass)+' 筆）</caption><thead><tr><th scope="col">類別</th><th scope="col">原件位置</th><th scope="col">大小</th><th scope="col">判斷依據</th><th scope="col">處置</th></tr></thead><tbody>')
+            foreach($s in $samples){
+                $disposition=$(if([string]$s.Class -ceq 'SuspectedBusinessData'){'人工處置：另外人工複製'}else{'不備份（依政策）'})
+                [void]$sb.Append('<tr><td>'+(& $badgeHtml (& $classBadge ([string]$s.Class)))+'</td><td><code>'+(& $encode ($root+'\'+[string]$s.RelativePath))+'</code></td><td>'+(& $encode (& $sizeText $s.Bytes))+'</td><td>'+(& $encode $s.WhyText)+'</td><td>'+(& $encode $disposition)+'</td></tr>')
+            }
+            [void]$sb.Append('</tbody></table></div>')
+        }
+        if($Region.PSObject.Properties['SameName'] -and @($Region.SameName).Count){
+            [void]$sb.Append('<h4>同名檔案追溯（僅標示，不改變任何備份或排除決定）</h4><ul class="same-name">')
+            foreach($link in @($Region.SameName)){
+                [void]$sb.Append('<li data-same-name="'+(& $encode $link.Name)+'" data-side="bundle"><code>'+(& $encode $link.Name)+'</code>（安裝根內）：同名，另一處位於 <code>'+(& $encode $link.OtherPath)+'</code>。分類：'+(& $encode $link.BundleClassText)+'。理由：'+(& $encode $link.BundleReason)+'</li>')
+                [void]$sb.Append('<li data-same-name="'+(& $encode $link.Name)+'" data-side="other"><code>'+(& $encode $link.Name)+'</code>（另一處）：同名，另一處位於 <code>'+(& $encode $link.BundlePath)+'</code>。分類：'+(& $encode $link.OtherClassText)+'。理由：'+(& $encode $link.OtherReason)+'</li>')
+            }
+            [void]$sb.Append('</ul>')
+        }
+        [void]$sb.Append('</div>')
+        $sb.ToString()
+    }
+    $completenessModel=Get-WsmBackupExcludedCompleteness $(if($document.PSObject.Properties['ExcludedRegions'] -and $null -ne $document.ExcludedRegions){@($document.ExcludedRegions)}else{$null})
+    $completenessBadge=switch([string]$completenessModel.Status){'ManualItems'{@{Text='有人工處置項';Icon='!';Class='warn'}}'Unconfirmed'{@{Text='無法確認';Icon='?';Class='warn'}}'NoManualItems'{@{Text='未發現人工處置項';Icon='○';Class='neutral'}}default{@{Text='未記錄';Icon='?';Class='neutral'}}}
+    $completenessDetail=$(if([string]$completenessModel.Status -ceq 'ManualItems'){[string]$completenessModel.ManualRegionCount+' 個區域、'+[string]$completenessModel.SuspectedFileCount+' 個疑似業務資料檔需要人工處置，請看「未備份」分頁的套裝本體與受保護區域。'}else{[string]$completenessModel.Text+'。'})
+    $completenessHtml='<p class="completeness'+$(if([string]$completenessModel.Status -ceq 'ManualItems'){' note'}else{''})+'" id="completeness" role="status" data-status="'+(& $encode $completenessModel.Status)+'">整體完整度：'+(& $badgeHtml $completenessBadge)+' '+(& $encode $completenessDetail)+' '+(& $encode $completenessModel.Claim)+'</p>'
     $coverageHtml=''
     if(-not $document.PSObject.Properties['CoverageRegions'] -or $null -eq $document.CoverageRegions){$coverageHtml='<p class="empty">此結果集未記錄</p>'}
     else{
@@ -703,9 +864,10 @@ function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha
         $excludedRows=@($document.ExcludedRegions | Where-Object {$null -ne $_})
         if(-not $excludedRows.Count){$excludedHtml='<p class="empty">沒有記錄到被排除的區域</p>'}
         else{
-            $excludedCells=@(foreach($region in $excludedRows){,@([string]$region.Path,[string]$region.Reason,[string]$region.NextStep)})
+            $excludedCells=@(for($i=0;$i -lt $excludedRows.Count;$i++){$region=$excludedRows[$i];if($region.PSObject.Properties['Contents'] -and $null -ne $region.Contents){,@(@{Text=[string]$region.Path;Toggle=('rd-'+$i);Summary=(& $regionSummaryText $region)},[string]$region.Reason,[string]$region.NextStep)}else{,@([string]$region.Path,[string]$region.Reason,[string]$region.NextStep)}})
             $excludedAttrs=@(foreach($region in $excludedRows){'data-reason="'+(& $encode $region.ReasonCode)+'"'})
-            $excludedHtml=(& $buildTable 'tbl-excluded' '套裝本體與受保護區域' '0' @('區域','原因','下一步') $excludedCells '1:區域類別' 'backup-excluded-regions.csv' $excludedAttrs 'region' '沒有項目' '搜尋區域路徑')
+            $excludedDetails=@(foreach($region in $excludedRows){if($region.PSObject.Properties['Contents'] -and $null -ne $region.Contents){& $regionDetailHtml $region}else{''}})
+            $excludedHtml=(& $buildTable 'tbl-excluded' '套裝本體與受保護區域' '0' @('區域','原因','下一步') $excludedCells '1:區域類別' 'backup-excluded-regions.csv' $excludedAttrs 'region' '沒有項目' '搜尋區域路徑' $excludedDetails)
         }
     }
     $noJsNote='<noscript><p class="js-note">需啟用 JavaScript 才能匯出 CSV，也才能使用搜尋、篩選與分頁；目前顯示全部列。</p></noscript>'
@@ -736,6 +898,16 @@ code.hash{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:.9
 .layers li{margin:.35rem 0}
 .empty{font-style:italic;margin:.5rem 0}
 .js-note{margin:.5rem 0}
+.completeness{margin:1rem 0}
+.region-summary{margin-top:.25rem;font-size:.85rem}
+.region-toggle{font:inherit;font-size:.85rem;padding:.2rem .6rem;cursor:pointer;text-align:left;max-width:100%;white-space:normal}
+.region-toggle:focus{outline:3px solid #1b5fc1;outline-offset:2px}
+.region-detail-row>td{background:#f7f9fc}
+.region-detail{position:sticky;left:0;box-sizing:border-box;width:100%;max-width:calc(100vw - 3rem);padding:.25rem .5rem}
+.region-detail .table-wrap{margin:.5rem 0}
+.region-samples{min-width:34rem}
+.region-detail h4{margin:.75rem 0 .25rem}
+.manual-box{border:2px solid #7a5a00;background:#fff6d6;padding:.5rem .75rem;margin:.5rem 0;border-radius:4px}
 .table-wrap{overflow-x:auto;max-width:100%;border:1px solid #bbc4ce}
 .table-wrap:focus{outline:3px solid #1b5fc1;outline-offset:2px}
 table{border-collapse:collapse;width:100%;font-size:.9rem}
@@ -787,6 +959,7 @@ a{color:#000}
 '@)
     [void]$page.Append("`n"+'<dl class="meta"><dt>配對 ID</dt><dd>'+(& $encode $document.PairId)+'</dd><dt>Attempt ID</dt><dd>'+(& $encode $document.AttemptId)+'</dd><dt>產生時間</dt><dd>'+(& $encode $document.GeneratedUtc)+'</dd><dt>來源盤點</dt><dd>'+(& $encode $sourceText)+'</dd><dt>ManifestHash</dt><dd>'+(& $hashText $manifestHash)+'</dd><dt>PlanHash</dt><dd>'+(& $hashText $planHash)+'</dd></dl>'+"`n")
     [void]$page.Append('<p class="note" role="note">這份報告顯示擷取與封存當時的狀態，不代表目前備份媒體仍然完整，也不代表新機的還原結果。新機匯入時會重新驗證所有檔案。</p>'+"`n")
+    [void]$page.Append($completenessHtml+"`n")
     [void]$page.Append('<div class="layers" role="group" aria-labelledby="layers-title"><h2 id="layers-title">四層狀態說明</h2><ol>'+
         '<li><strong>資料已備份：</strong>本報告呈現（已備份與未備份分頁）。</li>'+
         '<li><strong>獨立副本已驗證：</strong>不在此報告判定。這是封存後才產生的收據，請看新機工作台或獨立副本收據。</li>'+
@@ -814,6 +987,7 @@ a{color:#000}
 var doc=document,PAGE=100;
 doc.documentElement.className+=' js';
 function mk(tag,text,cls){var e=doc.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;}
+function cellText(c){return c.hasAttribute('data-text')?c.getAttribute('data-text'):c.textContent;}
 function csvCell(v){var t=v==null?'':String(v);if(/^[=+\-@\t\r]/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"';}
 function downloadCsv(name,headers,rows){
  var lines=[headers].concat(rows).map(function(r){return r.map(csvCell).join(',');});
@@ -823,16 +997,17 @@ function downloadCsv(name,headers,rows){
  setTimeout(function(){URL.revokeObjectURL(url);},0);
 }
 function enhanceTable(table){
- var wrap=table.parentNode,body=table.tBodies[0],rows=[].slice.call(body.rows);
+ var wrap=table.parentNode,body=table.tBodies[0],allRows=[].slice.call(body.rows),rows=allRows.filter(function(r){return !/(^|\s)region-detail-row(\s|$)/.test(r.className);});
+ var detailOf=rows.map(function(r){var n=r.nextElementSibling;return n&&/(^|\s)region-detail-row(\s|$)/.test(n.className)?n:null;}),open=rows.map(function(){return false;});
  var cols=(table.getAttribute('data-search')||'0').split(',');
- var texts=rows.map(function(r){return cols.map(function(c){return r.cells[+c]?r.cells[+c].textContent:'';}).join('\n').toLowerCase();});
+ var texts=rows.map(function(r){return cols.map(function(c){return r.cells[+c]?cellText(r.cells[+c]):'';}).join('\n').toLowerCase();});
  var defs=(table.getAttribute('data-filters')||'').split(';').filter(Boolean).map(function(s){var i=s.indexOf(':');return {col:+s.slice(0,i),label:s.slice(i+1)};});
  var bar=mk('div','','toolbar'),label=mk('label',table.getAttribute('data-search-label')||'搜尋名稱或位置'),input=doc.createElement('input');
  input.type='search';input.id=table.id+'-q';input.autocomplete='off';label.htmlFor=input.id;bar.appendChild(label);bar.appendChild(input);
  var selects=defs.map(function(f){
   var sel=doc.createElement('select'),lab=mk('label',f.label),seen=Object.create(null),vals=[];
   sel.id=table.id+'-f'+f.col;lab.htmlFor=sel.id;
-  rows.forEach(function(r){var v=r.cells[f.col]?r.cells[f.col].textContent:'';if(!seen[v]){seen[v]=1;vals.push(v);}});
+  rows.forEach(function(r){var v=r.cells[f.col]?cellText(r.cells[f.col]):'';if(!seen[v]){seen[v]=1;vals.push(v);}});
   vals.sort();
   var all=doc.createElement('option');all.value='';all.textContent='全部';sel.appendChild(all);
   vals.forEach(function(v){var o=doc.createElement('option');o.value=v;o.textContent=v;sel.appendChild(o);});
@@ -852,7 +1027,7 @@ function enhanceTable(table){
   for(i=0;i<rows.length;i++){
    if(q&&texts[i].indexOf(q)<0)continue;
    var ok=true;
-   for(var k=0;k<selects.length;k++){if(selects[k].value&&rows[i].cells[defs[k].col].textContent!==selects[k].value){ok=false;break;}}
+   for(var k=0;k<selects.length;k++){if(selects[k].value&&cellText(rows[i].cells[defs[k].col])!==selects[k].value){ok=false;break;}}
    if(ok)m.push(i);
   }
   matched=m;
@@ -860,6 +1035,7 @@ function enhanceTable(table){
   if(page>=pages)page=pages-1;if(page<0)page=0;
   for(i=0;i<rows.length;i++)rows[i].hidden=true;
   m.slice(page*PAGE,(page+1)*PAGE).forEach(function(k){rows[k].hidden=false;});
+  for(i=0;i<rows.length;i++){if(detailOf[i])detailOf[i].hidden=rows[i].hidden||!open[i];}
   wrap.hidden=!m.length;none.hidden=m.length>0;pager.hidden=!m.length;
   count.textContent='顯示 '+m.length+'／共 '+rows.length+' 筆';
   pageInfo.textContent=m.length?'第 '+(page+1)+'／'+pages+' 頁':'';
@@ -873,11 +1049,18 @@ function enhanceTable(table){
   var headers=[].slice.call(table.tHead.rows[0].cells).map(function(c){return c.textContent;});
   if(csvMeta==='1')headers=headers.concat(['項目 ID','狀態碼','原因碼']);else if(csvMeta==='software')headers=headers.concat(['SoftwareId']);else if(csvMeta==='region')headers=headers.concat(['原因碼']);
   var out=matched.map(function(i){
-   var r=rows[i],cells=[].slice.call(r.cells).map(function(c){return c.textContent;});
+   var r=rows[i],cells=[].slice.call(r.cells).map(cellText);
    if(csvMeta==='1')cells=cells.concat([r.getAttribute('data-id'),r.getAttribute('data-status'),r.getAttribute('data-reason')]);else if(csvMeta==='software')cells=cells.concat([r.getAttribute('data-sid')]);else if(csvMeta==='region')cells=cells.concat([r.getAttribute('data-reason')]);
    return cells;
   });
   downloadCsv(csvName,headers,out);
+ });
+ rows.forEach(function(r,i){
+  var d=detailOf[i],host=r.querySelector('.region-summary');if(!d||!host)return;
+  var label=host.textContent,b=mk('button','▸ '+label,'region-toggle');
+  b.type='button';b.setAttribute('aria-expanded','false');b.setAttribute('aria-controls',d.id);
+  b.addEventListener('click',function(){open[i]=!open[i];b.setAttribute('aria-expanded',open[i]?'true':'false');b.textContent=(open[i]?'▾ ':'▸ ')+label;d.hidden=rows[i].hidden||!open[i];});
+  host.textContent='';host.appendChild(b);
  });
  draw();
 }
@@ -1174,7 +1357,7 @@ function Get-WsmWizardBackupItemResultsView([string]$Workspace,[string]$PairId) 
     }
     $attempt=$set.Attempt;$document=$set.Document
     $excludedRecorded=($document.PSObject.Properties['ExcludedRegions'] -and $null -ne $document.ExcludedRegions)
-    [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software;schemaVersion=$(if($document.PSObject.Properties['SchemaVersion']){[int]$document.SchemaVersion}else{1});coverageRegions=$(if($document.PSObject.Properties['CoverageRegions']){@($document.CoverageRegions)}else{$null});excludedRegions=$(if($excludedRecorded){@($document.ExcludedRegions)}else{$null});excludedRegionsBinding=$(if($document.PSObject.Properties['ExcludedRegionsBinding']){$document.ExcludedRegionsBinding}else{$null});independentCopy=(Get-WsmWizardIndependentCopyProjection $Workspace $PairId $attempt $set.ResultsSha256)}
+    [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software;schemaVersion=$(if($document.PSObject.Properties['SchemaVersion']){[int]$document.SchemaVersion}else{1});coverageRegions=$(if($document.PSObject.Properties['CoverageRegions']){@($document.CoverageRegions)}else{$null});excludedRegions=$(if($excludedRecorded){@($document.ExcludedRegions)}else{$null});excludedRegionsBinding=$(if($document.PSObject.Properties['ExcludedRegionsBinding']){$document.ExcludedRegionsBinding}else{$null});excludedCompleteness=$(if($excludedRecorded){Get-WsmBackupExcludedCompleteness @($document.ExcludedRegions)}else{Get-WsmBackupExcludedCompleteness $null});independentCopy=(Get-WsmWizardIndependentCopyProjection $Workspace $PairId $attempt $set.ResultsSha256)}
 }
 
 # Read-only drill-down (action BackupItemFiles): the archived files of one backed-up item, 100 per page.

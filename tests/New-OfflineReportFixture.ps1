@@ -2,7 +2,7 @@
 # Builds a >250 row backup result set and its offline report for the real-browser test.
 # -Scale Large builds 2501 backed rows (one table above the 2000-row mark) plus 5 not-backed rows and 250 excluded regions.
 # Rows come from the real Get-WsmBackupItemResultRows so the browser sees production shapes.
-param([Parameter(Mandatory)][string]$OutDir,[ValidateSet('V2','V1')][string]$Shape='V2',[ValidateSet('Standard','Large')][string]$Scale='Standard')
+param([Parameter(Mandatory)][string]$OutDir,[ValidateSet('V2','V1')][string]$Shape='V2',[ValidateSet('Standard','Large','Mixed')][string]$Scale='Standard')
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
@@ -49,7 +49,13 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
             $inventoryItems.Add([pscustomobject]@{ItemId=$id;Name=$name;Kind='DataRoot';Category='Storage';NaturalKey=('key-'+$id);Settings=[pscustomobject]@{Path=('E:\inv\'+$id)};Status=$status})
         }
     }
-    if($Scale -ceq 'Standard'){$planItems.Add((& $item 'site-1' $siteName ([pscustomobject]@{Adapter='IISSite'}) 'Include' 'IISSite' 'Web' @([pscustomobject]@{ItemId='item-0001'},[pscustomobject]@{ItemId='item-0002'})))}
+    if($Scale -cne 'Large'){$planItems.Add((& $item 'site-1' $siteName ([pscustomobject]@{Adapter='IISSite'}) 'Include' 'IISSite' 'Web' @([pscustomobject]@{ItemId='item-0001'},[pscustomobject]@{ItemId='item-0002'})))}
+    $mixedRoot=Join-Path $OutDir 'mixed-fixture';$siteDir=Join-Path $mixedRoot 'Site'
+    if($Scale -ceq 'Mixed'){
+        [void][IO.Directory]::CreateDirectory($siteDir)
+        $planItems.Add((& $item 'site-files' 'Website publish' ([pscustomobject]@{Adapter='FileScope';SourcePath=$siteDir;TransferChannel='C'}) 'Include'))
+        $artifacts.Add([pscustomobject]@{ItemId='site-files';RelativePath='core.dll';Directory=$false;Data=[pscustomobject]@{Bytes=256}})
+    }
     $plan=[pscustomobject]@{Items=@($planItems.ToArray())}
     $inventory=[pscustomobject]@{Items=@($inventoryItems.ToArray())}
     $rows=@(Get-WsmBackupItemResultRows $plan $inventory @($artifacts.ToArray()) $false)
@@ -66,7 +72,28 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
     $areas.Add([pscustomobject]@{Path='C:\Windows';Reason=($policyPrefix+'C:\Windows')})
     $areas.Add([pscustomobject]@{Path='C:\Config.Msi';Reason=($policyPrefix+'Config.Msi')})
     if($Scale -ceq 'Large'){for($n=1;$n -le 246;$n++){$areas.Add([pscustomobject]@{Path=('C:\Vendor\App{0:D3}' -f $n);Reason=($policyPrefix+('C:\Vendor\App{0:D3}' -f $n))})}}
-    $excludedRegions=@(Get-WsmBackupExcludedRegionRows @($areas.ToArray()) '')
+    $sameNameLinks=@()
+    if($Scale -ceq 'Mixed'){
+        # N9d：混合套裝目錄。區域列用真正的唯讀分類函式產生（結構化 Category／Contents），同名追溯用真正的比對函式。
+        $areas.Clear()
+        [byte[]]$pe=New-Object byte[] 256;$pe[0]=0x4d;$pe[1]=0x5a;[BitConverter]::GetBytes([int]128).CopyTo($pe,60);$pe[128]=0x50;$pe[129]=0x45
+        [IO.File]::WriteAllBytes((Join-Path $siteDir 'core.dll'),$pe)
+        $installA=Join-Path $mixedRoot "Vendor =App & 'Co'";$installB=Join-Path $mixedRoot 'Big Suite'
+        foreach($dir in @('lib','Reports','data')){[void][IO.Directory]::CreateDirectory((Join-Path $installA $dir))}
+        [IO.File]::WriteAllBytes((Join-Path $installA 'app.exe'),$pe);[IO.File]::WriteAllBytes((Join-Path $installA 'lib\core.dll'),$pe)
+        [IO.File]::WriteAllText((Join-Path $installA 'settings.config'),'<configuration/>')
+        [IO.File]::WriteAllText((Join-Path $installA "Reports\sales & 'q'.csv"),'a,b');[IO.File]::WriteAllText((Join-Path $installA 'data\customers.db'),'rows')
+        [void][IO.Directory]::CreateDirectory($installB);for($n=1;$n -le 12;$n++){[IO.File]::WriteAllText((Join-Path $installB ('file{0:D2}.txt' -f $n)),'x')}
+        $policyPrefix='Protected or package area excluded by policy: '
+        $areas.Add([pscustomobject][ordered]@{Path=$installA;Reason=($policyPrefix+$installA);Category='BundleExcluded';Contents=(Get-WsmSourceCandidateBundleContents $installA)})
+        $areas.Add([pscustomobject][ordered]@{Path=$installB;Reason=($policyPrefix+$installB);Category='BundleExcluded';Contents=(Get-WsmSourceCandidateBundleContents $installB 5)})
+        $areas.Add([pscustomobject][ordered]@{Path='C:\Program Files';Reason=($policyPrefix+'C:\Program Files');Category='BundleExcluded'})
+        $areas.Add([pscustomobject][ordered]@{Path='C:\Windows';Reason=($policyPrefix+'C:\Windows');Category='ProtectedArea'})
+        $areas.Add([pscustomobject]@{Path='C:\Config.Msi';Reason=($policyPrefix+'Config.Msi')})
+        $areas.Add([pscustomobject]@{Path='C:\Vendor\Legacy App';Reason=($policyPrefix+'C:\Vendor\Legacy App')})
+        $sameNameLinks=@((Get-WsmSourceCandidateSameNameLinks ([pscustomobject]@{ExcludedAreas=@($areas.ToArray())}) @([pscustomobject]@{CandidateType='ExactFile';Path=(Join-Path $siteDir 'core.dll')})).Links)
+    }
+    $excludedRegions=@(Get-WsmBackupExcludedRegionRows @($areas.ToArray()) '' $sameNameLinks)
     $binding=[pscustomobject][ordered]@{Status='Bound';Reason='';Scans=@([pscustomobject][ordered]@{ScanId='fixture-scan';CandidateArtifactHash=('d'*64);ScanStatus='Succeeded'})}
     $meta=[pscustomobject]@{PairId='fixture-pair';AttemptId='fixture-attempt';PlanHash=('b'*64);ManifestHash=('a'*64);InventorySource='TrustedInventory';Software=$software;ExcludedRegions=$excludedRegions;ExcludedRegionsBinding=$binding}
     $export=Export-WsmBackupItemResults $resultsPath $rows $meta
