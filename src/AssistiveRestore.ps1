@@ -360,6 +360,12 @@ function Add-WsmAssistivePreviewDisplayFields($Row,$Item,[hashtable]$Totals,[has
     $Row|Add-Member NoteProperty AlreadyRestored ([bool]$Restored.ContainsKey($itemId))
 }
 
+function Test-WsmAssistivePlanContractV2($Plan) {
+    # N9h-D4: the single judgement of "this plan is OfflineFullSet contract version 2". The preview and the executor must both use it:
+    # in a CV2 plan a NonC-labelled FileScope is written by the CV2 FileScope writer (original location, volume binding, ownership), never by the legacy NonC branch.
+    [bool]($Plan -and $Plan.PSObject.Properties['Assistive'] -and $Plan.Assistive -and $Plan.Assistive.PSObject.Properties['ContractVersion'] -and [int]$Plan.Assistive.ContractVersion -eq 2)
+}
+
 function Get-WsmAssistiveRestorePreview {
     [CmdletBinding()]param([Parameter(Mandatory)][string]$ManifestPath,[Parameter(Mandatory)][string]$ExpectedHash,[Parameter(Mandatory)][string]$StateDirectory,[hashtable]$Secrets=@{},$CancellationToken=$null,[object[]]$GeneralHostEvidence=@(),[Parameter(Mandatory)][string]$AssistiveDecisionReceiptPath,[Parameter(Mandatory)][string]$AssistiveDecisionReceiptHash,[string]$AssistiveTargetSnapshotPath='',[string]$NonCTransferPlanPath='',[string]$NonCTransferPlanHash='',[string]$NonCResultPath='',[string]$NonCResultHash='')
     $package=Test-WsmMigrationPackage $ManifestPath $ExpectedHash $CancellationToken
@@ -384,7 +390,7 @@ function Get-WsmAssistiveRestorePreview {
     foreach($item in @($package.Plan.Items)){
         Assert-WsmCancellationBoundary $CancellationToken 'AssistiveRestorePreviewItem'
         if(-not $selected.ContainsKey([string]$item.ItemId)){$deferredRow=[pscustomobject]@{ItemId=$item.ItemId;Adapter=$item.MigrationSpec.Adapter;Action='DeferredBySelection';Status='Deferred';Reason='This approved item was not selected in the current target decision receipt.'};Add-WsmAssistivePreviewDisplayFields $deferredRow $item $artifactTotals $selected $planItemsById $restoredIds;$deferredRow.MissingDependencies=[string[]]@();$rows.Add($deferredRow);continue}
-        $spec=$item.MigrationSpec;$action='RestoreNow';$status='Ready';$reason='';$cv2=[bool]($package.Plan.PSObject.Properties['Assistive'] -and $package.Plan.Assistive -and $package.Plan.Assistive.PSObject.Properties['ContractVersion'] -and [int]$package.Plan.Assistive.ContractVersion -eq 2);$locationError='';$readiness=Get-WsmAssistiveWorkloadReadiness $item
+        $spec=$item.MigrationSpec;$action='RestoreNow';$status='Ready';$reason='';$cv2=Test-WsmAssistivePlanContractV2 $package.Plan;$locationError='';$readiness=Get-WsmAssistiveWorkloadReadiness $item
         if($decision.Receipt.Decision -eq 'WaitForInstall'){$action='WaitForInstall';$status='DeferredSoftware';$reason='Owner chose to wait for target preparation; no target writes will occur.'}
         elseif($readiness.Status -ne 'Ready'){$action=$readiness.Status;$status=$readiness.Status;$reason=$readiness.Reason}
         else{
@@ -991,6 +997,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     $itemsById=@{};foreach($item in @($Package.Plan.Items)){$itemsById[[string]$item.ItemId]=$item}
     $itemResults=New-Object 'System.Collections.Generic.List[object]'
     $priorItemResults=@();if(($Continuation -or $parentWasWaiting) -and $attempt.PSObject.Properties['ItemResults']){$priorItemResults=@($attempt.ItemResults)}
+    $cv2=Test-WsmAssistivePlanContractV2 $Package.Plan
     try { foreach($row in @($Preview.Rows)){
         if($settledByParent.ContainsKey([string]$row.ItemId)){continue}
         if($unknownItems.ContainsKey([string]$row.ItemId)){$unknownResult=[pscustomobject]@{ItemId=$row.ItemId;Status='NeedsReconciliation';CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error=[string]$unknownItems[[string]$row.ItemId];NativeCode=$null};$itemResults.Add($unknownResult);Add-WsmJournal $paths $state 'AssistiveItemNeedsReconciliation' $row.ItemId $unknownResult;continue}
@@ -1011,10 +1018,10 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
         try{
             # Continuation without the secret an unfinished credential item needs: ask again under the current session instead of failing it. Already-existing owned objects only read back and never need it.
             if($Continuation -and $credentialByItem.ContainsKey([string]$item.ItemId) -and -not $Secrets.ContainsKey([string]$credentialByItem[[string]$item.ItemId].SecretRef) -and -not (Get-WsmAdapterState $spec).Exists){$repromptItemRefs[[string]$item.ItemId]=[string]$credentialByItem[[string]$item.ItemId].SecretRef;continue}
-            $reservations=@();if(-not ($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'NonC')){$reservations=Get-WsmAssistiveReservations $item $Package $StateDirectory -OperationId $ParentOperationId}
+            $reservations=@();if(-not ($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'NonC' -and -not $cv2)){$reservations=Get-WsmAssistiveReservations $item $Package $StateDirectory -OperationId $ParentOperationId}
             $priorRecord=@($state.Items | Where-Object ItemId -CEQ $item.ItemId);$undo=$null;if($priorRecord.Count){$undo=$priorRecord[0]}
             Add-WsmJournal $paths $state 'AssistiveItemStarted' $item.ItemId ([pscustomobject]@{Adapter=$spec.Adapter;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;DecisionReceiptHash=$decision.ReceiptHash})
-            if($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'NonC'){$fileRows=@($Preview.NonCFileResults|Where-Object ItemId -CEQ $item.ItemId);if(-not $fileRows.Count -or @($fileRows|Where-Object {$_.Status -notin @('Applied','DirectoryReady') -or -not $_.EffectivePath -or [long]$_.Generation -ne [long]$Package.Manifest.Generation}).Count){throw 'NonC result lost its exact-generation native readback before G acceptance.'};$result=[pscustomobject]@{ItemId=$item.ItemId;Status='Succeeded';CreatedByTool=$false;ExternalOwnershipVerified=$true;OwnershipChannel='NonC';AppliedManifestHash=$ManifestHash;AppliedGeneration=[long]$Package.Manifest.Generation;ActualHash=(Get-WsmHashText ($fileRows|Sort-Object EntryId|ConvertTo-Json -Depth 20 -Compress));Target=$spec.TargetPath;OwnedFiles=@();OwnedDirectories=@();FileResults=$fileRows;Error='';NativeCode=0}}
+            if($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'NonC' -and -not $cv2){$fileRows=@($Preview.NonCFileResults|Where-Object ItemId -CEQ $item.ItemId);if(-not $fileRows.Count -or @($fileRows|Where-Object {$_.Status -notin @('Applied','DirectoryReady') -or -not $_.EffectivePath -or [long]$_.Generation -ne [long]$Package.Manifest.Generation}).Count){throw 'NonC result lost its exact-generation native readback before G acceptance.'};$result=[pscustomobject]@{ItemId=$item.ItemId;Status='Succeeded';CreatedByTool=$false;ExternalOwnershipVerified=$true;OwnershipChannel='NonC';AppliedManifestHash=$ManifestHash;AppliedGeneration=[long]$Package.Manifest.Generation;ActualHash=(Get-WsmHashText ($fileRows|Sort-Object EntryId|ConvertTo-Json -Depth 20 -Compress));Target=$spec.TargetPath;OwnedFiles=@();OwnedDirectories=@();FileResults=$fileRows;Error='';NativeCode=0}}
             elseif($spec.Adapter -eq 'FileScope'){$result=Invoke-WsmAssistiveFileScopeRestore $item $Package $paths $state $SidMap $CancellationToken $StateDirectory}
             elseif($spec.Adapter -eq 'ManualWorkflow'){$result=[pscustomobject]@{ItemId=$item.ItemId;Status='ManualEvidenceRequired';CreatedByTool=$false;AppliedManifestHash='';AppliedGeneration=0;Error='Dedicated owner procedure and accepted evidence are required.'}}
             else{

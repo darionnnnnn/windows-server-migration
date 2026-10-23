@@ -4,13 +4,14 @@
 # is not moved. One immutable snapshot of the tracked tree; the product is imported unchanged from it.
 # Flow: Source scan -> confirmation -> Manager import / approval (CV2, three volumes) -> one-click backup -> Target import,
 # comparison, receipt, preview, restore (typed IIS / task restore doubles, counted) -> original-location readback.
-# A second Target run fails the task restore: the C success must not mask it.
+# Target run: one wizard restore of all five approved items; the typed IIS restore double fails its only call on purpose (a failure unrelated to any product defect):
+# the C / D / E / task successes must not mask it, and the failed item keeps its own status in the core, HTML and runtime projections.
 # Output: work\r7\g-journey\<RunId>\verdict.json (same shape as the main journey).
 param(
     [string]$RunId='g4a001',
     [switch]$KeepArtifacts,
     [ValidateSet('Backup','Preview','All')][string]$Through='All',
-    [ValidateSet('','MoveTheBundle','ReproD4')][string]$Mutation=''
+    [ValidateSet('','MoveTheBundle')][string]$Mutation=''
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -31,12 +32,10 @@ try{
     Add-GDouble 'Get-WsmMachineIdentity / Get-WsmPreflight / Export-WsmInventory' 'host qualification observation and the fixture inventory file only'
     Add-GDouble 'Get-WsmSourceCandidateRoot' 'the scan walks a fixture directory that stands for the C volume; scan, confirmation and everything after are the real code'
     Add-GDouble 'freeze evidence' 'New-WsmSourceFreezeEvidenceFixture (typed fixture evidence); the freeze record consumer is real'
-    Add-GDouble 'WORKAROUND N9f-D3 (product defect, not a double)' 'the SourceResolutionContext is used to resolve the path candidates but is not written into the fixture inventory; with it the Manager cannot read its catalog after import (tests/Repro-N9f-D3-ManagerCatalogContext.ps1)'
-    Add-GDouble 'WORKAROUND N9f-D1 (product defect, not a double)' 'confirmation material is copied from <ws>/assistive/materials to <ws>/pairs/assistive/materials before the backup (see Test-G2DiscoveryToDelivery.ps1 -Mutation ReproD1NoBridge)'
+    Add-GDouble 'Invoke-WsmAdapterRestore (IISSite, its only call)' 'N9h: the typed IIS restore double throws on its only call on purpose so that the restore keeps one stable, defect-independent failed item (the item stays pending repair by design; no second restore is attempted). The typed ScheduledTask boundary succeeds and is counted.'
 
-    $script:GVerdict.Notes+=@('N9f-D1: Source scan/confirmation material lives under <ws>/assistive/materials but the one-click backup reads MaterialReferences under <ws>/pairs (bridged by copying; repro: Test-G2DiscoveryToDelivery.ps1 -Mutation ReproD1NoBridge).')
-    $script:GVerdict.Notes+=@('N9f-D3: an inventory with SourceResolutionContext and SoftwareCatalog can be imported by the Manager but its catalog can never be read again (repro: tests/Repro-N9f-D3-ManagerCatalogContext.ps1); the context is therefore not written into the fixture inventory.')
-    $script:GVerdict.Notes+=@('N9f-D4: the TargetRestore executor takes the legacy NonC branch for NonC-labelled scopes of a CV2 plan although the preview says Ready/RestoreNow (repro: Test-G4MixedScope.ps1 -Mutation ReproD4); unfinished NonC scopes are therefore written with the real FileScope writer, as Test-ScopeVolumeCounterexamples.ps1 does.')
+    $script:GVerdict.Notes+=@('N9h-D1/D3/D4 (fixed): the inventory file carries the SourceResolutionContext (D3), the one-click backup reads the confirmation material where the scan wrote it (D1, no copy into <ws>/pairs), and the NonC-labelled D / E scopes of the CV2 plan are restored by the CV2 FileScope writer inside the wizard restore (D4, no direct writer call).')
+    $script:GVerdict.Notes+=@('N9h: the not-masked-failure judgement uses an injected typed IIS adapter failure (stable), not a product defect.')
     Write-GStage 2 'Source scan, confirmation, Manager approval, one-click backup (C + D + E + typed IIS / task)'
     $observations=& $module {
         param($Root,$FixturePath,$MutationName,$Report,$WsRoot,$DRoot,$ERoot,$ThroughStage,$RunDir)
@@ -120,8 +119,7 @@ try{
         $baseItems=@($volC,$volD,$volE,$scopeD,$scopeE,$siteItem,$taskItem)
         $candidates=@(Get-WsmPathCandidates $source.HostId $baseItems $context)
         $inventory=New-WsmInventory $source 1 (@($baseItems)+@($candidates))
-        # WORKAROUND N9f-D3: the context is NOT attached to the inventory file. With the context the Manager can import the inventory but can never read
-        # its catalog again (tests\Repro-N9f-D3-ManagerCatalogContext.ps1). The path candidates below were already resolved WITH the context.
+        $inventory|Add-Member NoteProperty SourceResolutionContext $context -Force
         $softwareId='sw-'+('d'*32)
         $softwareEntry=[pscustomobject][ordered]@{SoftwareId=$softwareId;Name='G4 Vendor App';Version='1';Publisher='G4 Test';Architecture='x64';Scope='Machine';SID='';RegistryView='Registry64';Location=$installRoot;SourceKind='Registry';Evidence=[pscustomobject]@{RegistryPath='HKLM:\Software\G4';NaturalKey='G4 Vendor App'};ObservedUtc=$now;CaptureStatus='Success';ItemIds=@();AccountContext='Machine'}
         $catalog=[pscustomobject][ordered]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='SoftwareCatalog';Source=[pscustomobject]@{HostId=$source.HostId;Fingerprint=$source.Fingerprint;Name=$source.Name;InventoryRevision=1;InventoryProjectionHash=(Get-WsmSoftwareInventoryProjectionHash $inventory)};CaptureContext=[pscustomobject][ordered]@{CapturedUtc=$now;CaptureIdentity='g4 fixture';AccountContext='Machine';CaptureHost='g4';PowerShellVersion='5.1';RequestedPortableRoots=@()};Entries=@($softwareEntry);Coverage=@([pscustomobject][ordered]@{Probe='Uninstall';Scope='Machine';SID='';View='Registry64';Status='Success';EvidenceKind='Registry';Count=1;Budget=[pscustomobject]@{MaxEntries=10};ErrorKind='';ObservedUtc=$now});PreparationRequirements=@([pscustomobject][ordered]@{PreparationId=('prep-'+$softwareId.Substring(3));SoftwareId=$softwareId;Status='NeedsOwnerReview';RequiredPhase='PreparationReady';EvidenceStatus='Success';ConsumerItemIds=@();Owner='';Reason='G4 fixture evidence only.'});CatalogProjectionHash=('0'*64)}
@@ -190,13 +188,10 @@ try{
         & $Report 'plan_holds_exactly_the_five_mixed_items_with_c_and_nonc_channels_and_three_bound_volumes' (($planIncluded -join ',') -ceq (@($includeIds|Sort-Object) -join ',') -and $channelOf[$unrelatedItemId] -ceq 'C' -and $channelOf[[string]$scopeD.ItemId] -ceq 'NonC' -and $channelOf[[string]$scopeE.ItemId] -ceq 'NonC' -and $channelOf[[string]$siteItem.ItemId] -ceq 'IISSite' -and $channelOf[[string]$taskItem.ItemId] -ceq 'ScheduledTask' -and @($plan.Assistive.ApprovedLocalVolumes).Count -eq 3 -and [int]$plan.Assistive.ContractVersion -eq 2) ('included='+$planIncluded.Count+' volumes='+@($plan.Assistive.ApprovedLocalVolumes).Count)
         & $Report 'unconfirmed_path_candidates_and_the_bundle_are_not_plan_items' (@($plan.Items|Where-Object {$_.Decision -ceq 'Include' -and [string]$_.ItemId -in $excludeIds}).Count -eq 0 -and @($plan.Items|Where-Object {$_.Decision -ceq 'Include' -and $_.MigrationSpec.PSObject.Properties['SourcePath'] -and ([string]$_.MigrationSpec.SourcePath -ieq $installRoot -or ([string]$_.MigrationSpec.SourcePath).StartsWith($installRoot+'\',[StringComparison]::OrdinalIgnoreCase))}).Count -eq 0) 'no plan item covers the Vendor App root'
 
-        # ---- 3. Source: import the plan, bridge the material (N9f-D1), one-click backup
+        # ---- 3. Source: import the plan, one-click backup (the confirmation material stays where the scan wrote it)
         $import=Import-WsmWizardApprovedPlan $sourceRoot Source $sealed.Path $sealed.SHA256
         & $Report 'source_imported_the_approved_plan_verified' ([string]$import.Status -ceq 'ImportedVerified') ([string]$import.Status)
-        foreach($reference in @($plan.Assistive.MaterialReferences)){
-            $from=Join-Path $sourceRoot ([string]$reference.Reference).Replace('/','\');$to=Join-Path (Join-Path $sourceRoot 'pairs') ([string]$reference.Reference).Replace('/','\')
-            [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($to));[IO.File]::Copy($from,$to,$false)
-        }
+        & $Report 'no_confirmation_material_was_copied_into_the_source_pairs_directory' (-not [IO.Directory]::Exists((Join-Path (Join-Path $sourceRoot 'pairs') 'assistive\materials')) -and @($plan.Assistive.MaterialReferences).Count -ge 1) ('material references='+@($plan.Assistive.MaterialReferences).Count+'; pairs\assistive\materials absent')
         # ---- Source-side typed doubles: the freeze really quiesces the selected task and IIS site, so their native boundary is replaced by a
         # small state machine (task enabled flag, site auto-start / running). The quiesced inventory that the freeze re-reads is the fixture
         # inventory with exactly the two expected changes (task Enabled=false, site serverAutoStart=false).
@@ -311,7 +306,7 @@ try{
             & $script:g4OrigSoftwareCatalog @PSBoundParameters
         }
         # typed restore doubles: the native boundary of the two typed adapters only. Calls are counted and the received spec is recorded.
-        $script:g4Typed=[ordered]@{IISSite=0;ScheduledTask=0;Specs=@();Applied=@{}}
+        $script:g4Typed=[ordered]@{IISSite=0;ScheduledTask=0;Specs=@();Applied=@{};InjectedFailures=0}
         $script:g4OrigAdapterState=(Get-Command Get-WsmAdapterState -CommandType Function).ScriptBlock
         $script:g4OrigAdapterRestore=(Get-Command Invoke-WsmAdapterRestore -CommandType Function).ScriptBlock
         $script:g4OrigAdapterTest=(Get-Command Test-WsmAdapterConfiguration -CommandType Function).ScriptBlock
@@ -328,6 +323,7 @@ try{
                 $script:g4Typed[[string]$Spec.Adapter]++
                 $name=$(if($Spec.Desired.PSObject.Properties['Name']){[string]$Spec.Desired.Name}else{[string]$Spec.Desired.TaskPath+[string]$Spec.Desired.TaskName})
                 $script:g4Typed.Specs=@($script:g4Typed.Specs)+@([pscustomobject]@{Adapter=[string]$Spec.Adapter;Name=$name;StagedDisabled=[bool]$Spec.StagedDisabled;FinalState=[string]$Spec.DesiredFinalState;XmlHash=(Get-WsmHashText ([string]$Spec.Desired.Xml))})
+                if([string]$Spec.Adapter -ceq 'IISSite' -and $script:g4Typed.IISSite -eq 1){$script:g4Typed.InjectedFailures++;throw 'G4 injected typed IISSite adapter failure (first call only; unrelated to any product defect)'}
                 $script:g4Typed.Applied[[string]$Spec.Adapter]=$true
                 return [pscustomobject]@{RebootRequired=$false;AuxiliaryOwnership=@()}
             }
@@ -346,10 +342,9 @@ try{
         & $Report 'target_preview_is_previewed_unblocked_and_covers_exactly_the_five_selected_items' ([string]$comparison.Status -ceq 'Succeeded' -and [string]$preview.Status -ceq 'Previewed' -and -not [bool]$preview.Blocked -and @($preview.SelectedItemIds).Count -eq 5 -and @($previewRows|Where-Object {[string]$_.Status -ceq 'Ready'}).Count -ge 5) ('Status='+$preview.Status+' blocked='+$preview.Blocked+' rows='+($obs.PreviewRows -join '; '))
         if($ThroughStage -ceq 'Preview'){return $obs}
 
-        # ======================= Restore run 1: C, D, E and the IIS site selected; whatever the wizard restore cannot finish must keep the result open =======================
-        # Observed product behaviour N9f-D4: in a CV2 plan the preview says Ready/RestoreNow for a NonC-labelled scope, but the executor still takes the legacy NonC
-        # branch ("NonC result lost its exact-generation native readback") and fails the scope. The assertions below do not depend on that: they say that any failed item
-        # keeps the parent result, the HTML projection and the runtime projection from reading as success, and that the C success does not hide it.
+        # ======================= Restore: every approved item selected; the injected typed IIS failure must stay visible =======================
+        # The restore covers C, D, E, the IIS site and the scheduled task. The typed IIS restore double fails its call on purpose (a failure that has nothing to do with any product defect):
+        # the failed item keeps the parent result, the HTML projection and the runtime projection from reading as success, and the C / D / E successes do not hide it.
         $restoreStateDirectory=Join-Path $targetRoot 'pairs'
         $script:g4OrigFileRestore=(Get-Command Invoke-WsmAssistiveFileScopeRestore -CommandType Function).ScriptBlock
         $script:g4BundleLeak=($MutationName -ceq 'MoveTheBundle');$script:g4BundleSource=$installRoot;$script:g4UnrelatedDir=$unrelated
@@ -358,8 +353,8 @@ try{
             if($script:g4BundleLeak -and [string]$args[0].MigrationSpec.SourcePath -ieq $script:g4UnrelatedDir){[IO.File]::Copy((Join-Path $script:g4BundleSource 'app.exe'),(Join-Path $script:g4UnrelatedDir 'app.exe'),$true)}
             $written
         }
-        $selection1=@($unrelatedItemId,[string]$scopeD.ItemId,[string]$scopeE.ItemId,[string]$siteItem.ItemId)
-        $receipt1=Create-WsmWizardTargetDecisionReceipt -Workspace $targetRoot -PairId $pairId -Decision RestoreNow -Owner 'G4 target operator' -Reason 'Run 1: restore C, D, E and the IIS site.' -SelectedItemIds ([string[]]$selection1) -Jobs $tJobs
+        $selection1=@($includeIds)
+        $receipt1=Create-WsmWizardTargetDecisionReceipt -Workspace $targetRoot -PairId $pairId -Decision RestoreNow -Owner 'G4 target operator' -Reason 'Restore every approved mixed item; the IIS site is made to fail by the test double.' -SelectedItemIds ([string[]]$selection1) -Jobs $tJobs
         $preview1=Get-WsmWizardTargetRestoreProjection -Workspace $targetRoot -PairId $pairId -Jobs $tJobs
         $global:Error.Clear()
         $restore1=Invoke-WsmWizardTargetRestore -Workspace $targetRoot -PairId $pairId -PreviewHash ([string]$preview1.PreviewHash) -Jobs $tJobs
@@ -371,55 +366,24 @@ try{
         $runtime1=ConvertTo-WsmWizardHtmlValue (Get-WsmWizardRuntimeProjection -Workspace $targetRoot -PairId $pairId -Role Target -Jobs (@($tJobs)+@($restoreJob1)))
         $obs.Runtime1=[ordered]@{Status=[string]$runtime1.status;RuntimeKeys=@($runtime1.runtime.PSObject.Properties.Name);Result=$runtime1.runtime.restoreResult}
         Save-Obs
-        $c1=[string]$r1ByItem[$unrelatedItemId];$d1=[string]$r1ByItem[[string]$scopeD.ItemId];$e1=[string]$r1ByItem[[string]$scopeE.ItemId];$site1=[string]$r1ByItem[[string]$siteItem.ItemId]
+        $c1=[string]$r1ByItem[$unrelatedItemId];$d1=[string]$r1ByItem[[string]$scopeD.ItemId];$e1=[string]$r1ByItem[[string]$scopeE.ItemId];$site1=[string]$r1ByItem[[string]$siteItem.ItemId];$task1=[string]$r1ByItem[[string]$taskItem.ItemId]
         $failed1=@($restore1.ItemResults|Where-Object {[string]$_.Status -cne 'Succeeded'})
-        & $Report 'run1_c_and_the_iis_site_succeeded_and_every_unfinished_nonc_scope_is_reported_with_its_own_status' ($c1 -ceq 'Succeeded' -and $site1 -ceq 'Succeeded' -and $d1 -and $e1) ('C='+$c1+' D='+$d1+' E='+$e1+' site='+$site1)
+        & $Report 'restore_c_d_e_and_task_succeeded_and_only_the_injected_iis_site_failure_is_reported_as_its_own_failed_item' ($c1 -ceq 'Succeeded' -and $d1 -ceq 'Succeeded' -and $e1 -ceq 'Succeeded' -and $task1 -ceq 'Succeeded' -and $site1 -ceq 'Failed' -and $failed1.Count -eq 1 -and [string]$failed1[0].ItemId -ceq [string]$siteItem.ItemId -and $script:g4Typed.InjectedFailures -eq 1) ('C='+$c1+' D='+$d1+' E='+$e1+' task='+$task1+' site='+$site1+' failed items='+$failed1.Count+' injected='+$script:g4Typed.InjectedFailures)
+        $d1Result=@($restore1.ItemResults|Where-Object {[string]$_.ItemId -ceq [string]$scopeD.ItemId});$e1Result=@($restore1.ItemResults|Where-Object {[string]$_.ItemId -ceq [string]$scopeE.ItemId})
+        $viaLegacyNonC=@($d1Result+$e1Result|Where-Object {$_.PSObject.Properties['OwnershipChannel'] -and [string]$_.OwnershipChannel -ceq 'NonC'}).Count
+        & $Report 'n9h_d4_nonc_labelled_scopes_of_the_cv2_plan_were_written_by_the_cv2_filescope_writer_not_the_legacy_nonc_branch' ($d1Result.Count -eq 1 -and $e1Result.Count -eq 1 -and $viaLegacyNonC -eq 0 -and @($d1Result[0].OwnedFiles).Count -eq 3 -and @($e1Result[0].OwnedFiles).Count -eq 2) ('legacy NonC results='+$viaLegacyNonC+' ownedFiles D='+@($d1Result[0].OwnedFiles).Count+' E='+@($e1Result[0].OwnedFiles).Count)
         $runtimeResult=$runtime1.runtime.restoreResult
         $runtimeResultStatus=$(if($runtimeResult -and $runtimeResult.PSObject.Properties['status']){[string]$runtimeResult.status}else{'(none)'})
         $retire1=@();foreach($name in @('FinalAccepted','RetirementReady','Activated')){if($restore1.PSObject.Properties[$name] -and [bool]$restore1.$name){$retire1+=@($name)}}
-        $noMask=($failed1.Count -eq 0) -or ([string]$restore1.Status -cne 'Succeeded' -and (Get-WsmOperationStatusCode $restore1) -ne 0 -and [string]$htmlRestore1.Status -cne 'Succeeded' -and $runtimeResultStatus -cne 'Succeeded')
-        & $Report 'run1_a_failed_nonc_or_mixed_item_is_not_masked_by_the_c_success_in_core_html_and_runtime_projection' ($noMask -and $retire1.Count -eq 0) ('failed items='+$failed1.Count+' core='+$restore1.Status+' code='+(Get-WsmOperationStatusCode $restore1)+' html='+$htmlRestore1.Status+' runtime.restoreResult='+$runtimeResultStatus)
-        $leftovers=@();foreach($pair in @(@($scopeD,$siteDir,$d1),@($scopeE,$jobsDir,$e1))){if($pair[2] -cne 'Succeeded' -and [IO.Directory]::Exists($pair[1])){$leftovers+=@(Get-ChildItem -LiteralPath $pair[1] -Recurse -File -Force -ErrorAction SilentlyContinue)}}
-        & $Report 'run1_a_failed_scope_left_no_half_written_file_at_its_original_location' ($leftovers.Count -eq 0) ('leftover files='+$leftovers.Count)
-        if($MutationName -ceq 'ReproD4' -and @($d1,$e1|Where-Object {$_ -cne 'Succeeded'}).Count){throw ('N9f-D4 reproduced: the wizard restore of a NonC-labelled scope in a CV2 plan failed although the preview said Ready (D='+$d1+', E='+$e1+'): '+(($obs.Restore1Errors|Where-Object {$_ -like 'NonC result lost*'}|Select-Object -First 1)))}
-        $obs.D4=[ordered]@{Id='N9f-D4';NonCScopesFailedInWizardRestore=@($d1,$e1|Where-Object {$_ -cne 'Succeeded'}).Count;Reason=($obs.Restore1Errors|Where-Object {$_ -like 'NonC result lost*'}|Select-Object -First 1)}
+        $noMask=($failed1.Count -ge 1) -and [string]$restore1.Status -cne 'Succeeded' -and (Get-WsmOperationStatusCode $restore1) -ne 0 -and [string]$htmlRestore1.Status -cne 'Succeeded' -and $runtimeResultStatus -cne 'Succeeded'
+        & $Report 'the_failed_iis_item_is_not_masked_by_the_c_d_e_and_task_successes_in_core_html_and_runtime_projection' ($noMask -and $retire1.Count -eq 0) ('failed items='+$failed1.Count+' core='+$restore1.Status+' code='+(Get-WsmOperationStatusCode $restore1)+' html='+$htmlRestore1.Status+' runtime.restoreResult='+$runtimeResultStatus)
+        $siteApplied=$script:g4Typed.Applied.ContainsKey('IISSite')
+        & $Report 'the_failed_iis_item_left_no_applied_state_behind' (-not $siteApplied) 'typed IISSite boundary recorded no applied state'
+        $obs.D4=[ordered]@{Id='N9h-D4';NonCScopesFailedInWizardRestore=@($d1,$e1|Where-Object {$_ -cne 'Succeeded'}).Count;LegacyNonCResults=$viaLegacyNonC}
 
-        # ======================= Restore run 2: the scheduled task only =======================
-        $receipt2=Create-WsmWizardTargetDecisionReceipt -Workspace $targetRoot -PairId $pairId -Decision RestoreNow -Owner 'G4 target operator' -Reason 'Run 2: restore the scheduled task.' -SelectedItemIds ([string[]]@([string]$taskItem.ItemId)) -Jobs (@($tJobs)+@($restoreJob1))
-        $preview2=Get-WsmWizardTargetRestoreProjection -Workspace $targetRoot -PairId $pairId -Jobs (@($tJobs)+@($restoreJob1))
-        $restore2=Invoke-WsmWizardTargetRestore -Workspace $targetRoot -PairId $pairId -PreviewHash ([string]$preview2.PreviewHash) -Jobs (@($tJobs)+@($restoreJob1))
-        $r2ByItem=@{};foreach($row in @($restore2.ItemResults)){$r2ByItem[[string]$row.ItemId]=[string]$row.Status}
-        $obs.Restore2=[ordered]@{Status=[string]$restore2.Status;Items=@($restore2.ItemResults|ForEach-Object {([string]$_.ItemId).Substring(0,8)+'='+[string]$_.Status})}
-        Save-Obs
-        & $Report 'run2_restores_the_scheduled_task_and_the_parent_stays_open_while_earlier_items_are_still_failed' ([string]$r2ByItem[[string]$taskItem.ItemId] -ceq 'Succeeded' -and (([string]$restore2.Status -ceq 'Succeeded') -eq ($failed1.Count -eq 0))) ('Status='+$restore2.Status+' task='+$r2ByItem[[string]$taskItem.ItemId])
-        & $Report 'typed_iis_and_task_restore_doubles_were_called_exactly_once_each_across_both_runs' ($script:g4Typed.IISSite -eq 1 -and $script:g4Typed.ScheduledTask -eq 1) ('IISSite='+$script:g4Typed.IISSite+' ScheduledTask='+$script:g4Typed.ScheduledTask)
+        & $Report 'typed_iis_double_failed_its_only_call_and_the_task_double_was_called_exactly_once' ($script:g4Typed.IISSite -eq 1 -and $script:g4Typed.ScheduledTask -eq 1 -and $script:g4Typed.InjectedFailures -eq 1) ('IISSite='+$script:g4Typed.IISSite+' ScheduledTask='+$script:g4Typed.ScheduledTask+' injected='+$script:g4Typed.InjectedFailures)
         $recorded=@($script:g4Typed.Specs)
         & $Report 'typed_doubles_received_the_reviewed_staged_disabled_specs_for_the_right_objects' ($recorded.Count -eq 2 -and @($recorded|Where-Object {$_.Adapter -ceq 'IISSite' -and $_.Name -ceq 'G4 Shop' -and $_.StagedDisabled -and $_.FinalState -ceq 'Disabled'}).Count -eq 1 -and @($recorded|Where-Object {$_.Adapter -ceq 'ScheduledTask' -and $_.Name -ceq '\G4\Worker' -and $_.StagedDisabled -and $_.FinalState -ceq 'Disabled'}).Count -eq 1) (($recorded|ForEach-Object {$_.Adapter+':'+$_.Name}) -join ',')
-
-        # ======================= NonC scopes the wizard restore did not finish: the real FileScope writer (N5 device), journal and cancellation boundary stubbed =======================
-        $directScopes=@()
-        foreach($pair in @(@($scopeD,$d1),@($scopeE,$e1))){if($pair[1] -cne 'Succeeded'){$directScopes+=@($pair[0])}}
-        $obs.DirectNonCScopes=$directScopes.Count
-        if($directScopes.Count){
-            $package2=Test-WsmMigrationPackage ([string]$pkgImport.ManifestPath) ([string]$pkgImport.ManifestHash)
-            $identityMap=Resolve-WsmIdentityMap $package2.Plan @{}
-            $directState=[pscustomobject]@{Items=@();PendingOperations=@()};$directPaths=[pscustomobject]@{Root=(Join-Path $Root 'direct-nonc');State=(Join-Path $Root 'direct-nonc\state.json');Journal=(Join-Path $Root 'direct-nonc\journal.jsonl')}
-            [void][IO.Directory]::CreateDirectory($directPaths.Root)
-            $script:g4OrigJournal=(Get-Command Add-WsmJournal -CommandType Function).ScriptBlock;$script:g4OrigBoundary=(Get-Command Assert-WsmCancellationBoundary -CommandType Function).ScriptBlock
-            function Add-WsmJournal($Paths,$State,[string]$Action,[string]$ItemId,$Detail){ }
-            function Assert-WsmCancellationBoundary($Token,[string]$Name){ }
-            try{
-                foreach($scope in $directScopes){
-                    $planItem=@($package2.Plan.Items|Where-Object {[string]$_.ItemId -ceq [string]$scope.ItemId})[0]
-                    $gap=Get-WsmAssistiveFileScopeRestoreGap $planItem $package2 $directState $true $null $null
-                    if([string]$gap.Status -cne 'Ready'){throw ('Direct NonC restore gap is not Ready for '+$planItem.MigrationSpec.SourcePath+': '+$gap.Action+' '+$gap.Reason)}
-                    $written=Invoke-WsmAssistiveFileScopeRestore $planItem $package2 $directPaths $directState $identityMap $null
-                    if([string]$written.Status -cne 'Succeeded'){throw ('Direct NonC restore did not succeed for '+$planItem.MigrationSpec.SourcePath+': '+$written.Status)}
-                }
-            }finally{
-                Remove-Item Function:\Add-WsmJournal -ErrorAction SilentlyContinue;Remove-Item Function:\Assert-WsmCancellationBoundary -ErrorAction SilentlyContinue
-            }
-        }
 
         # ======================= original locations: bytes, nothing extra, the bundle neither moved nor copied =======================
         $after=[ordered]@{Unrelated=(Get-TreeMap $unrelated);Site=(Get-TreeMap $siteDir);Jobs=(Get-TreeMap $jobsDir)}
@@ -433,13 +397,13 @@ try{
         & $Report 'software_bundle_was_not_moved_not_archived_not_restored_and_its_source_is_unchanged' (@($allRestoredHashes|Where-Object {$bundleOnlyHashes -contains $_}).Count -eq 0 -and (Get-Json $bundleAfter) -ceq (Get-Json $before.Bundle) -and @($archiveHashes|Where-Object {$bundleOnlyHashes -contains $_}).Count -eq 0) 'no bundle-only hash in the archive or in any restored tree; Vendor App unchanged'
 
         # ======================= "not enabled" =======================
-        $finalJob=[pscustomobject]@{action='TargetRestore';status=(Get-RestoreJobStatus $restore2);role='Target';pairId=$pairId;workspace=$targetRoot;jobId=[string]$restore2.AttemptOperationId;CompletedUtc=(Get-WsmUtc);outputs=@($restore2)}
-        $runtime2=ConvertTo-WsmWizardHtmlValue (Get-WsmWizardRuntimeProjection -Workspace $targetRoot -PairId $pairId -Role Target -Jobs (@($tJobs)+@($restoreJob1)+@($finalJob)))
+        $finalJob=$restoreJob1
+        $runtime2=ConvertTo-WsmWizardHtmlValue (Get-WsmWizardRuntimeProjection -Workspace $targetRoot -PairId $pairId -Role Target -Jobs (@($tJobs)+@($finalJob)))
         $obs.Runtime2Status=[string]$runtime2.status
         $activationActions=@($runtime2.actions|Where-Object {[string]$_.id -ceq 'TargetActivation' -and $_.available -eq $true})
-        & $Report 'runtime_projection_claims_nothing_enabled_verified_or_authoritative_and_offers_no_activation' ($runtime2.ProductionVerified -eq $false -and $runtime2.AuthoritativeApproval -eq $false -and $restore2.ProductionVerified -eq $false -and $activationActions.Count -eq 0) ('ProductionVerified='+$runtime2.ProductionVerified+' activation actions available='+$activationActions.Count)
+        & $Report 'runtime_projection_claims_nothing_enabled_verified_or_authoritative_and_offers_no_activation' ($runtime2.ProductionVerified -eq $false -and $runtime2.AuthoritativeApproval -eq $false -and $restore1.ProductionVerified -eq $false -and $activationActions.Count -eq 0) ('ProductionVerified='+$runtime2.ProductionVerified+' activation actions available='+$activationActions.Count)
         & $Report 'typed_items_stay_staged_disabled_by_the_reviewed_spec_and_nothing_was_activated_or_resumed' ($script:g4Run.TaskEnabled -eq $false -and $script:g4Run.SiteAuto -eq $false -and @($recorded|Where-Object {$_.FinalState -ceq 'Disabled'}).Count -eq 2 -and $retire1.Count -eq 0) ('source task enabled='+$script:g4Run.TaskEnabled+' site auto='+$script:g4Run.SiteAuto+' (quiesced by the freeze, not resumed); target specs FinalState=Disabled')
-        $obs.Restore=[ordered]@{Run1=$obs.Restore1.Status;Run2=[string]$restore2.Status;TypedCalls=@("IIS=$($script:g4Typed.IISSite)","Task=$($script:g4Typed.ScheduledTask)")}
+        $obs.Restore=[ordered]@{Status=$obs.Restore1.Status;TypedCalls=@("IIS=$($script:g4Typed.IISSite)","Task=$($script:g4Typed.ScheduledTask)")}
         $obs
     } $script:GTestRoot $fixturePath $Mutation ${function:Set-GCheck} ($wsDrive+':'+[char]92) ($dDrive+':'+[char]92) ($eDrive+':'+[char]92) $Through $script:GRunDir
     $script:GVerdict.Observations=$observations

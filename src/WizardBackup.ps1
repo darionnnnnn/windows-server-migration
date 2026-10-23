@@ -484,7 +484,7 @@ function Invoke-WsmWizardStartBackup {
                 $record.Freeze=[pscustomobject]@{Status='Succeeded';Path=[IO.Path]::GetFullPath([string]$frozen.Path);SHA256=[string]$frozen.SHA256;FreezeId=[string]$frozen.FreezeId;ExpiresUtc=[string]$frozen.ExpiresUtc;Owner=[string]$record.FreezeOwner;EvidenceHash=[string]$record.FreezeEvidenceHash;ProductionVerified=$false};$record.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $path $record $Workspace
             }
             Assert-WsmCancellationBoundary $CancellationToken 'BeforeCoreExport'
-            $exportArgs=@{PlanPath=$planRef.Path;ExpectedHash=$planRef.SHA256;SourceStateDirectory=(Join-Path $Workspace 'pairs');OutputDirectory=$output.PackagesDirectory;CancellationToken=$CancellationToken}
+            $exportArgs=@{PlanPath=$planRef.Path;ExpectedHash=$planRef.SHA256;SourceStateDirectory=(Join-Path $Workspace 'pairs');MaterialWorkspace=$Workspace;OutputDirectory=$output.PackagesDirectory;CancellationToken=$CancellationToken}
             if($freezeRequired){$exportArgs.FreezePath=[string]$record.Freeze.Path;$exportArgs.FreezeHash=[string]$record.Freeze.SHA256;$exportArgs.FreezeExternalEvidencePath=[string]$record.FreezeEvidencePath;$exportArgs.FreezeExternalEvidenceHash=[string]$record.FreezeEvidenceHash}
             # The exporter reports every file through Write-WsmBackupItemProgress. A function defined in this scope is
             # visible only to the commands called from here, so the exporter code itself stays unchanged and the original

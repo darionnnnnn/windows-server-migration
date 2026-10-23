@@ -98,26 +98,53 @@ function Assert-WsmOfflineFullSetCoverage($Plan,$ApprovalCoverage,$CaptureCovera
     $true
 }
 
-function Write-WsmOfflineFullSetControls($Plan,[string]$SourceWorkspace,[string]$PackageRoot) {
+function Copy-WsmOfflineFullSetControlFile([string]$SourcePath,[string]$DestinationPath,[string]$ExpectedSha256) {
+    # N9h-D2: a failed attempt can leave controls/ behind in the (same plan, same generation) package directory. Writing the same bytes again is a
+    # retry, not a conflict: reuse the file when it already hashes to the sealed value; any other existing content is never overwritten.
+    if([IO.File]::Exists($DestinationPath)){
+        Assert-WsmNoReparse $DestinationPath
+        if((Get-FileHash -LiteralPath $DestinationPath -Algorithm SHA256).Hash -ine $ExpectedSha256){throw 'An OfflineFullSet control file from an earlier attempt has different content; preserve it for reconciliation and do not overwrite it.'}
+        return 'Reused'
+    }
+    if([IO.Directory]::Exists($DestinationPath)){throw 'An OfflineFullSet control path is occupied by a directory; preserve it for reconciliation.'}
+    # Short temporary name in the same directory: the control file names are already long and must stay below the legacy path limit that the final name satisfies.
+    $temporary=Join-Path ([IO.Path]::GetDirectoryName($DestinationPath)) ('.c'+[Guid]::NewGuid().ToString('N').Substring(0,8)+'.tmp')
+    try{
+        [IO.File]::Copy($SourcePath,$temporary,$false)
+        if((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash -ine $ExpectedSha256){throw 'OfflineFullSet control file changed while it was being copied.'}
+        [IO.File]::Move($temporary,$DestinationPath)
+    }finally{if([IO.File]::Exists($temporary)){try{[IO.File]::Delete($temporary)}catch{}}}
+    'Written'
+}
+
+function Write-WsmOfflineFullSetControls($Plan,[string]$SourceWorkspace,[string]$PackageRoot,[string]$MaterialWorkspace='') {
     if(-not $Plan.PSObject.Properties['Assistive'] -or $Plan.Assistive.ContractVersion -ne 2){return $null}
     if(@($Plan.Assistive.MaterialReferences).Count -gt 9999){throw 'OfflineFullSet supports at most 9,999 portable material files.'}
     $controls=Join-Path $PackageRoot 'controls';[void][IO.Directory]::CreateDirectory($controls);Assert-WsmNoReparse $controls
     $snapshotRef=$Plan.Assistive.DiscoveryAuthority.SourceSnapshotReference
     $sourceRoot=[IO.Path]::GetFullPath($SourceWorkspace).TrimEnd('\')+'\'
+    # N9h-D1: Source scan/confirmation writes its content-addressed material under <workspace>\assistive\materials (SourceCandidateConfirmation), while the
+    # source state directory handed to the exporter is <workspace>\pairs. Plan MaterialReferences are workspace-relative (the same reference the Manager
+    # verifies), so they resolve against the approved Source workspace root; the state directory must lie inside it. Without MaterialWorkspace (shared
+    # state fixtures) the state directory is the root, as before. The snapshot stays under the state directory (Import-WsmWizardApprovedPlan).
+    $materialRoot=$sourceRoot;if($MaterialWorkspace){
+        $materialRoot=[IO.Path]::GetFullPath($MaterialWorkspace).TrimEnd('\')+'\'
+        if(-not $sourceRoot.StartsWith($materialRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'OfflineFullSet source state directory is outside the approved source workspace.'}
+    }
     $snapshotPath=[IO.Path]::GetFullPath((Join-Path $SourceWorkspace ([string]$snapshotRef.Reference).Replace('/','\')))
     if(-not $snapshotPath.StartsWith($sourceRoot,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.File]::Exists($snapshotPath)){throw 'OfflineFullSet source snapshot is missing or outside the approved source workspace.'}
     Assert-WsmNoReparse $snapshotPath
     if((Get-FileHash -LiteralPath $snapshotPath -Algorithm SHA256).Hash -ine [string]$Plan.Assistive.SourceSnapshotHash){throw 'OfflineFullSet source snapshot changed after approval.'}
-    $inventoryPath=Join-Path $controls 'source-inventory.json';[IO.File]::Copy($snapshotPath,$inventoryPath,$false)
+    $inventoryPath=Join-Path $controls 'source-inventory.json';[void](Copy-WsmOfflineFullSetControlFile $snapshotPath $inventoryPath ([string]$Plan.Assistive.SourceSnapshotHash))
     $rows=New-Object 'System.Collections.Generic.List[object]';$inventoryBytes=(New-Object IO.FileInfo($inventoryPath)).Length
     $rows.Add([pscustomobject][ordered]@{Name='controls/source-inventory.json';Kind='SourceInventory';Reference=[string]$snapshotRef.Reference;Bytes=[long]$inventoryBytes;SHA256=[string]$Plan.Assistive.SourceSnapshotHash})
     $index=0
     foreach($reference in @($Plan.Assistive.MaterialReferences)){
-        $index++;$path=[IO.Path]::GetFullPath((Join-Path $SourceWorkspace ([string]$reference.Reference).Replace('/','\')))
-        if(-not $path.StartsWith($sourceRoot,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.File]::Exists($path)){throw 'OfflineFullSet mandatory source control material is missing or outside the approved source workspace.'}
+        $index++;$path=[IO.Path]::GetFullPath((Join-Path $materialRoot ([string]$reference.Reference).Replace('/','\')))
+        if(-not $path.StartsWith($materialRoot,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.File]::Exists($path)){throw 'OfflineFullSet mandatory source control material is missing or outside the approved source workspace.'}
         Assert-WsmNoReparse $path
         if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine [string]$reference.SHA256){throw 'OfflineFullSet mandatory source control material changed after approval.'}
-        $name='controls/material-'+$index.ToString('0000')+'-'+([string]$reference.SHA256).ToLowerInvariant()+'.bin';$destination=Join-Path $PackageRoot $name.Replace('/','\');$parent=[IO.Path]::GetDirectoryName($destination);if(-not [IO.Directory]::Exists($parent)){[void][IO.Directory]::CreateDirectory($parent)};Assert-WsmNoReparse $parent;[IO.File]::Copy($path,$destination,$false)
+        $name='controls/material-'+$index.ToString('0000')+'-'+([string]$reference.SHA256).ToLowerInvariant()+'.bin';$destination=Join-Path $PackageRoot $name.Replace('/','\');$parent=[IO.Path]::GetDirectoryName($destination);if(-not [IO.Directory]::Exists($parent)){[void][IO.Directory]::CreateDirectory($parent)};Assert-WsmNoReparse $parent;[void](Copy-WsmOfflineFullSetControlFile $path $destination ([string]$reference.SHA256))
         $rows.Add([pscustomobject][ordered]@{Name=$name;Kind='AssistiveMaterial';Reference=[string]$reference.Reference;Bytes=[long](New-Object IO.FileInfo($destination)).Length;SHA256=([string]$reference.SHA256).ToLowerInvariant()})
     }
     $indexDoc=[pscustomobject][ordered]@{SchemaVersion=1;Kind='OfflineFullSetControls';SourceSnapshotHash=[string]$Plan.Assistive.SourceSnapshotHash;SourceInventoryHash=[string]$Plan.Assistive.SourceSnapshotHash;Controls=$rows.ToArray()}
@@ -175,7 +202,7 @@ function Write-WsmBackupItemProgress([int]$ItemIndex,[int]$ItemCount,[string]$It
     Write-Progress -Id 32 -Activity ('正在備份：第 '+$ItemIndex+'/'+$ItemCount+' 項') -Status ($ItemName+'（'+$Channel+'）· 已處理 '+$FilesDone+' 個檔案、'+(Format-WsmBackupBytes $BytesDone)) -CurrentOperation $operation -PercentComplete $percent
 }
 function Export-WsmMigrationPackage {
-    [CmdletBinding()]param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,[string]$FreezeExternalEvidencePath,[string]$FreezeExternalEvidenceHash,$CancellationToken=$null)
+    [CmdletBinding()]param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,[string]$FreezeExternalEvidencePath,[string]$FreezeExternalEvidenceHash,$CancellationToken=$null,[string]$MaterialWorkspace='')
     $job=$null;$result=$null;$succeeded=$false
     $preflightPlan=Read-WsmMigrationPlan $PlanPath $ExpectedHash;if($preflightPlan.PSObject.Properties['Assistive'] -and $preflightPlan.Assistive.ContractVersion -eq 2 -and ($BaseManifestPath -or $BaseManifestHash)){throw 'OfflineFullSet CV2 requires a complete generation and rejects external delta bases.'}
     try{$job=Start-WsmAssistiveSourcePackageJob $PlanPath $ExpectedHash $SourceStateDirectory $BaseManifestPath $BaseManifestHash;$result=Export-WsmMigrationPackageCore @PSBoundParameters;$succeeded=$true;$result}catch [OperationCanceledException]{
@@ -184,7 +211,7 @@ function Export-WsmMigrationPackage {
     }finally{Complete-WsmAssistiveSourcePackageJob $job $result $succeeded}
 }
 function Export-WsmMigrationPackageCore {
-    [CmdletBinding()] param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,[string]$FreezeExternalEvidencePath,[string]$FreezeExternalEvidenceHash,$CancellationToken=$null)
+    [CmdletBinding()] param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,[string]$FreezeExternalEvidencePath,[string]$FreezeExternalEvidenceHash,$CancellationToken=$null,[string]$MaterialWorkspace='')
     $plan=Read-WsmMigrationPlan $PlanPath $ExpectedHash;if($BaseManifestPath -and (Test-WsmPlanHasExactMembers $plan)){throw 'ExactMembers delta packaging is not supported; use a complete full generation until the member-set base chain is implemented.'};Assert-WsmMigrationHost (Get-WsmMachineIdentity) $plan.Source.Fingerprint
     $sourceProofs=@();if($plan.PSObject.Properties['Assistive']){
         $approvedVolumes=@();if($plan.Assistive.PSObject.Properties['ApprovedLocalVolumes']){$approvedVolumes=@($plan.Assistive.ApprovedLocalVolumes)}
@@ -238,7 +265,7 @@ function Export-WsmMigrationPackageCore {
         Assert-WsmCancellationBoundary $CancellationToken 'BeforePackageSeal'
         $indexPath=Join-Path $root 'artifacts.jsonl';if([IO.File]::Exists($indexPath)){[IO.File]::Delete($indexPath)};[IO.File]::Move($indexTemp,$indexPath)
         $planCopy=Join-Path $root 'plan.json';[IO.File]::Copy($PlanPath,$planCopy,$true);if((Get-FileHash -LiteralPath $planCopy).Hash -ine $ExpectedHash){throw 'Plan changed during export.'}
-        $schemaVersion=1;$offlineEnvelope=$null;if($plan.PSObject.Properties['Assistive'] -and $plan.Assistive.ContractVersion -eq 2){$schemaVersion=2;$controlExport=Write-WsmOfflineFullSetControls $plan $SourceStateDirectory $root;$offlineEnvelope=[pscustomobject][ordered]@{ContractVersion=1;FullSet=$true;SourceSnapshotHash=[string]$plan.Assistive.SourceSnapshotHash;ControlIndexHash=[string]$controlExport.IndexHash;ControlCount=[int]$controlExport.Count;ApprovedVolumeBindingsHash=(Get-WsmHashText (ConvertTo-Json -InputObject @($plan.Assistive.ApprovedLocalVolumes) -Depth 20 -Compress));ApprovedRootCoverageHash=(Get-WsmHashText (ConvertTo-Json -InputObject @($plan.Assistive.ApprovedRootCoverage) -Depth 20 -Compress));CaptureCoverage=@($softwareScopeCoverage);CaptureCoverageHash=(Get-WsmHashText (ConvertTo-Json -InputObject @($softwareScopeCoverage) -Depth 30 -Compress))}}
+        $schemaVersion=1;$offlineEnvelope=$null;if($plan.PSObject.Properties['Assistive'] -and $plan.Assistive.ContractVersion -eq 2){$schemaVersion=2;$controlExport=Write-WsmOfflineFullSetControls $plan $SourceStateDirectory $root $MaterialWorkspace;$offlineEnvelope=[pscustomobject][ordered]@{ContractVersion=1;FullSet=$true;SourceSnapshotHash=[string]$plan.Assistive.SourceSnapshotHash;ControlIndexHash=[string]$controlExport.IndexHash;ControlCount=[int]$controlExport.Count;ApprovedVolumeBindingsHash=(Get-WsmHashText (ConvertTo-Json -InputObject @($plan.Assistive.ApprovedLocalVolumes) -Depth 20 -Compress));ApprovedRootCoverageHash=(Get-WsmHashText (ConvertTo-Json -InputObject @($plan.Assistive.ApprovedRootCoverage) -Depth 20 -Compress));CaptureCoverage=@($softwareScopeCoverage);CaptureCoverageHash=(Get-WsmHashText (ConvertTo-Json -InputObject @($softwareScopeCoverage) -Depth 30 -Compress))}}
         $manifest=[pscustomobject][ordered]@{SchemaVersion=$schemaVersion;ToolVersion=$script:ToolVersion;Kind='MigrationPackage';PackageId=[Guid]::NewGuid().ToString();BatchId=$plan.BatchId;PairId=$plan.PairId;ApprovalId=$plan.ApprovalId;PlanHash=$ExpectedHash.ToLowerInvariant();Source=$plan.Source;Target=$plan.Target;InventoryRevision=$plan.InventoryRevision;DecisionRevision=$plan.DecisionRevision;Generation=$generation;BaseManifestHash=$BaseManifestHash;Final=($null -ne $freeze);FreezeHash=$FreezeHash;ArtifactsHash=(Get-FileHash -LiteralPath $indexPath).Hash.ToLowerInvariant();Files=$files;Bytes=$bytes;Records=$records;ChunkBytes=$ChunkBytes;SealedUtc=(Get-WsmUtc);Mode='IsolatedPilot'}
         if($plan.PSObject.Properties['Assistive']){$manifest | Add-Member NoteProperty SourceCollectionProofs $sourceProofs};if($offlineEnvelope){$manifest | Add-Member NoteProperty OfflineFullSet $offlineEnvelope}
         if($freeze){Write-WsmJson (Join-Path $root 'freeze.json') $freeze; $manifest.FreezeHash=(Get-FileHash -LiteralPath (Join-Path $root 'freeze.json')).Hash.ToLowerInvariant()}

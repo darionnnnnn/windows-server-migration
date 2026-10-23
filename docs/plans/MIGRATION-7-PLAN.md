@@ -1580,6 +1580,38 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 型別化 adapter 是替身，沒有驗證真實的 IIS 與工作排程器。
   - 三支劇本都沒有走 HTTP console。
   - 工作區放在 subst 短代號上。
+
+### 17.91 N9h 修正 N9f 找到的四個產品缺陷（D1～D4），G 劇本拿掉繞道
+
+- Sonnet 5.5 effort high subagent 實作，規格 `work/r7/specs/N9h-g-defects.md`；主代理審 diff、獨立重跑、補一項測試缺口並自做兩個突變。
+- **D3（N9c 回歸）**：
+  - 根因：軟體投影雜湊（`SoftwareInventory.ps1` :234）已納入 `SourceResolutionContextHash`，但 `Import-WsmInventory`（`Core.ps1`）建 catalog 時沒保存 context，`Get-WsmCatalogInventoryProjection`（`GeneralHostContracts.ps1`）重建時也沒帶回，所以每次 `Get-WsmCatalog` 都判定「does not bind」。
+  - 修正：匯入時把 context 原樣存進 catalog，投影重建時帶回同一份；雜湊比對不放寬。
+  - 測試：`Test-ManagerCatalogSourceContext`（16 項，取代 `Repro-N9f-D3-ManagerCatalogContext.ps1`，後者刪除）。涵蓋匯入後連續讀回、第二版 revision、無 context 對照，以及五種竄改（inventory 內 context、catalog 內值、移除、注入、帳號 ProfileImagePath）皆被拒。
+- **D1**：
+  - 根因：確認材料由 `SourceCandidateConfirmation` 寫在 `<ws>\assistive\materials`（`WizardBackupProjection` 與 `AssistiveNonC` 也以 workspace 根為準），一鍵備份卻只把 `<ws>\pairs` 交給匯出器，`Write-WsmOfflineFullSetControls` 把 `MaterialReferences` 解析在 `pairs` 底下。
+  - 修正：讀取端對齊寫入端。匯出器新增選用參數 `MaterialWorkspace`，`WizardBackup.ps1` 傳入 workspace 根；材料必須位於該根內，state 目錄也必須位於該根內。不傳時行為不變，不會默默退回。src 內只有 `WizardBackup.ps1` 呼叫匯出器。
+  - 測試：`Test-OfflineFullSetMaterialWorkspace`（12 項）。G2、G4 拿掉把材料複製進 `pairs` 的繞道，並新增「`pairs\assistive\materials` 不存在」判定。
+- **D2**：
+  - 根因：同計畫、同世代的封裝目錄跨 attempt 重用，`controls` 的兩處 `[IO.File]::Copy(...,$false)` 遇既有檔就丟例外。
+  - 修正：`Copy-WsmOfflineFullSetControlFile`。既有檔先檢查 reparse，雜湊等於封存值才沿用；不同就拒絕且保留原檔；目錄佔位拒絕；新寫入走短名暫存檔、驗雜湊後 Move（長路徑下避開 MAX_PATH）。
+  - 測試：`Test-OfflineFullSetControlsRetry`（15 項；主代理補第 5 段：沿用的既有檔必須重做 reparse 檢查。本機建立 symlink 需要提權，改用只對該路徑丟例外的探針暫時替換模組守門並還原）。G2 新增 `-Mutation RetryAfterSealFailure`：以與 D1 無關的封裝驗證失敗觸發重試，同目錄重試後交付成功。
+- **D4**：
+  - 根因：預覽（`AssistiveRestore.ps1` 約 :394）有 `-not $cv2` 防護，執行迴圈的 reservation（約 :1014）與舊 NonC 結果分支（約 :1017）沒有，CV2 的 NonC 範圍因此走到舊分支而失敗。
+  - 修正：抽出單一判定 `Test-WsmAssistivePlanContractV2`，預覽與執行共用；兩個舊 NonC 分支都加 `-not $cv2`，CV2 的 NonC 範圍改由 CV2 FileScope 寫入器負責原位置、volume、ownership 檢查。
+  - 測試：`Test-AssistiveCv2NonCConsistency`（17 項：真值表與 AST 靜態檢查）；端到端由 G4 新增判定（舊 NonC 結果 0 筆，D／E 由 FileScope 寫入器寫入）。
+  - G4 拿掉直接呼叫 FileScope 寫入器的繞道。「不遮蔽失敗」改用與 D4 無關的故障注入（IISSite restore 替身丟例外）。因為 adapter 失敗後會保留 pending intent、擋住同父作業再開 restore，G4 從兩次 restore 改為一次涵蓋五項：C、D、E、排程成功，站台 Failed，各層投影都不是 Succeeded。
+- 驗證（WinPS 5.1）：
+  - 主代理重跑：上述四支新測試、OfflineFullSet 67、G2 34（doubles 6）、G2 RetryAfterSealFailure 35（doubles 7）、G3 29、G4 30（doubles 6）、ScriptEncoding 320 檔。
+  - subagent 另跑：SourceContextResolution 87、SoftwareInventory、AssistiveComparison 42、SourceCandidateConfirmation 41、SourceCandidateMapping 19、OfflineFullSetSeparateSource 20、WizardBackup、WizardBackupReliability 62、AssistiveRestore 178、RestorableSet 199、WizardRestore 132、TargetRestoreContinuation 133；G 主旅程 n9h001 48 項通過。
+- 突變（皆轉紅）：
+  - subagent：D3 兩處、各自單邊、雜湊不納入 context；D1 Payload、WizardBackup 傳參、拿掉 state 目錄包含檢查、拿掉材料 StartsWith；D2 兩處退回 raw Copy、盲目覆寫、沿用不驗雜湊；D4 還原、只拿掉任一防護、執行端 `$cv2` 固定 false、真值表改 `-ge 1`；G4 MoveTheBundle。
+  - 主代理：材料包含檢查改回比對 state 目錄（轉紅，原始錯誤訊息）；沿用分支拿掉 reparse 檢查（原本存活，補測試後轉紅）。
+- 限制與待決：
+  - D1 的方向（材料以 Source workspace 根為受控位置）由現有三個消費端推論，不是使用者定案。
+  - CV2 的 NonC 範圍現在會建立 reservation，渠道標籤仍是 `NonC`；後續釋放與回復只由既有還原測試間接涵蓋。
+  - G4 失敗項留下的 pending intent 能否由 `Resume-WsmWizardTargetRestore`／`Repair-WsmOperation` 清除，沒有驗證。
+  - 本段沒有跑瀏覽器測試、PS7 與全套測試。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

@@ -62,6 +62,8 @@ function Test-WsmGeneralHostSpecialSoftware($Entry) {
 
 function Get-WsmCatalogInventoryProjection($Catalog) {
     $sourceInventory=[pscustomobject][ordered]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='Inventory';Source=$Catalog.Source;Revision=$Catalog.InventoryRevision;CreatedUtc=[string]$Catalog.ImportedUtc;Items=@(foreach($item in @($Catalog.Items)){if($item.PSObject.Properties['Present'] -and -not [bool]$item.Present){continue};if($item.PSObject.Properties['ManualEntry'] -and [bool]$item.ManualEntry){continue};[pscustomobject][ordered]@{ItemId=$item.ItemId;Category=$item.Category;Kind=$item.Kind;Name=$item.Name;NaturalKey=$item.NaturalKey;Settings=$item.Settings;SettingsHash=$item.SettingsHash;Dependencies=@($item.Dependencies);Status=$item.Status;Adapter=$item.Adapter}})}
+    # N9h-D3: the projection hash includes SourceResolutionContextHash, so the rebuilt inventory must carry the imported context verbatim.
+    $catalogContext=Get-WsmInventorySourceResolutionContext $Catalog;if($null -ne $catalogContext){$sourceInventory|Add-Member NoteProperty SourceResolutionContext $catalogContext -Force}
     $sourceInventory
 }
 

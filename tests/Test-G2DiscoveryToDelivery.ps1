@@ -10,7 +10,7 @@
 param(
     [string]$RunId='g2a001',
     [switch]$KeepArtifacts,
-    [ValidateSet('','ApprovalExtraItem','ReproD1NoBridge','ReproD2RetryAfterBridge')][string]$Mutation=''
+    [ValidateSet('','ApprovalExtraItem','ReproD1NoBridge','RetryAfterSealFailure')][string]$Mutation=''
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -27,11 +27,11 @@ try{
     Add-GDouble 'Export-WsmInventory' 'returns the fixture inventory file instead of a full live capture (the product re-reads it through its normal hash checks)'
     Add-GDouble 'Get-WsmSourceCandidateRoot' 'the scan walks a fixture directory that stands for the C volume; the scan, confirmation and everything after are the real code'
     Add-GDouble 'Get-WsmIndependentCopyMediaClass' 'returns Removable: this runner has no removable disk'
-    Add-GDouble 'WORKAROUND N9f-D1 (product defect, not a double)' 'confirmation material is copied from <ws>/assistive/materials to <ws>/pairs/assistive/materials before the backup; without it the one-click backup refuses (see Observations.DefectProbe)'
+    if($Mutation -ceq 'RetryAfterSealFailure'){Add-GDouble 'Test-WsmMigrationPackage (first seal verification only)' 'N9h-D2 retry mode: the first verification of the pending manifest fails once (a D1-independent failure after controls/ was written); every other call is the real function'}
     Add-GDouble 'freeze evidence' 'New-WsmSourceFreezeEvidenceFixture (typed writer-stopped evidence, fixture only); the freeze record consumer is the real one'
 
-    $script:GVerdict.Notes+=@('N9f-D1: Source scan/confirmation material lives under <ws>/assistive/materials but the one-click backup reads MaterialReferences under <ws>/pairs; the backup refuses (see Observations.DefectProbe). Bridged by copying. Repro: -Mutation ReproD1NoBridge.')
-    $script:GVerdict.Notes+=@('N9f-D2: retrying a failed CV2 attempt cannot rewrite controls/ (File already exists). Repro: -Mutation ReproD2RetryAfterBridge.')
+    $script:GVerdict.Notes+=@('N9h-D1 (fixed): Source scan/confirmation material lives under <ws>/assistive/materials; the one-click backup now reads the plan MaterialReferences from that same Source workspace root. No copy into <ws>/pairs is made. -Mutation ReproD1NoBridge is kept as an alias of the default run: without any bridge the backup passes.')
+    $script:GVerdict.Notes+=@('N9h-D2 (fixed): a retry of a CV2 attempt reuses identical controls/ files and refuses different ones. -Mutation RetryAfterSealFailure fails the first attempt after controls/ was written (injected seal-verification failure, not D1) and retries.')
     Write-GStage 2 'Source scan -> confirmation export -> Manager import / approval -> Source backup -> independent copy'
     # The workspaces live on a short subst drive: the CV2 control material names are long and the nested attempt/package folders
     # would pass MAX_PATH under the long test root (N4 uses the same device). The scanned fixture stays on the real C: path.
@@ -198,26 +198,21 @@ try{
         $backupOperation=[Guid]::NewGuid().ToString('D')
         $token=New-WsmCancellationToken -StateDirectory (Join-Path $sourceRoot 'pairs') -PairId $pairId -PlanHash $sealed.SHA256 -OperationId $backupOperation
         $startBackup={param([string]$Op,$Tok)Invoke-WsmWizardStartBackup -Workspace $sourceRoot -PairId $pairId -OperationId $Op -Owner $freezeOwner -Evidence $freezeText -FreezeAuthorization -FreezeExternalEvidencePath $freezeProof.Path -FreezeExternalEvidenceHash $freezeProof.SHA256 -Jobs @() -CancellationToken $Tok -DeliveryMode Directory -VolumeBytes 0}
-        # DEFECT PROBE (N9f-D1): the Source scan/confirmation writes its material to <ws>\assistive\materials, while the one-click
-        # backup resolves the sealed plan's MaterialReferences under <ws>\pairs (its SourceStateDirectory). The controls writer that the backup calls is
-        # probed directly first (no attempt is created), then the material is copied (never moved) to the place the backup reads.
+        # N9h-D1: the controls writer is probed directly first with the real call shape of the one-click backup (state directory <ws>\pairs, workspace root as the
+        # material workspace). No attempt is created and no material is copied or moved: the Source scan wrote it where the exporter now reads it.
         $probeDirectory=Join-Path $Root 'probe-controls';[void][IO.Directory]::CreateDirectory($probeDirectory)
-        $probeMessage='';try{$null=Write-WsmOfflineFullSetControls $plan (Join-Path $sourceRoot 'pairs') $probeDirectory}catch{$probeMessage=[string]$_.Exception.Message}
-        $obs.DefectProbe=[ordered]@{Id='N9f-D1';ControlsWriterRefusedBeforeBridge=[bool]$probeMessage;Message=$probeMessage}
-        $copyMaterial={foreach($reference in @($plan.Assistive.MaterialReferences)){
-            $from=Join-Path $sourceRoot ([string]$reference.Reference).Replace('/','\');$to=Join-Path (Join-Path $sourceRoot 'pairs') ([string]$reference.Reference).Replace('/','\')
-            [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($to));[IO.File]::Copy($from,$to,$false)
-        }}
-        # Repro modes (not test mutations): ReproD1NoBridge skips the copy so the backup itself shows N9f-D1;
-        # ReproD2RetryAfterBridge lets the first backup fail, bridges, and retries the same attempt to show N9f-D2.
-        if($MutationName -cne 'ReproD1NoBridge' -and $MutationName -cne 'ReproD2RetryAfterBridge'){& $copyMaterial}
-        $obs.Workaround='N9f-D1: confirmation material copied from <ws>\assistive\materials to <ws>\pairs\assistive\materials before the first backup'
-        if($MutationName -ceq 'ReproD2RetryAfterBridge'){
-            $firstError='';try{$null=& $startBackup $backupOperation $token}catch{$firstError=[string]$_.Exception.Message}
-            $obs.ReproD2=[ordered]@{FirstAttemptError=$firstError}
-            & $copyMaterial
-            $retryOperation=[Guid]::NewGuid().ToString('D');$retryToken=New-WsmCancellationToken -StateDirectory (Join-Path $sourceRoot 'pairs') -PairId $pairId -PlanHash $sealed.SHA256 -OperationId $retryOperation
-            try{$null=& $startBackup $retryOperation $retryToken}catch{$obs.ReproD2.RetryError=[string]$_.Exception.Message;throw}
+        $probeMessage='';$probeCount=-1;try{$probe=Write-WsmOfflineFullSetControls $plan (Join-Path $sourceRoot 'pairs') $probeDirectory $sourceRoot;$probeCount=[int]$probe.Count}catch{$probeMessage=[string]$_.Exception.Message}
+        $obs.D1Probe=[ordered]@{Id='N9h-D1';ControlsWriterAcceptedSourceMaterialInPlace=(-not $probeMessage);ControlCount=$probeCount;Message=$probeMessage;MaterialCopiedIntoPairs=$false}
+        & $Report 'n9h_d1_controls_writer_reads_the_source_material_where_the_scan_wrote_it' ((-not $probeMessage) -and $probeCount -eq (@($plan.Assistive.MaterialReferences).Count+1) -and -not [IO.Directory]::Exists((Join-Path (Join-Path $sourceRoot 'pairs') 'assistive\materials'))) ('controls='+$probeCount+' pairs\assistive\materials absent')
+        if($MutationName -ceq 'RetryAfterSealFailure'){
+            # N9h-D2 retry mode: the first attempt fails after controls/ was written, for a reason that has nothing to do with D1; the retry must succeed on the same package directory.
+            $script:g2SealFailuresLeft=1;$script:g2OrigTestPackage=(Get-Command Test-WsmMigrationPackage -CommandType Function).ScriptBlock
+            function script:Test-WsmMigrationPackage {if($script:g2SealFailuresLeft -gt 0 -and [string]$args[0] -like '*manifest.pending.json'){$script:g2SealFailuresLeft--;throw 'G2 injected seal verification failure (not D1)'};& $script:g2OrigTestPackage @args}
+            $firstError='';$firstStatus='';try{$firstResult=& $startBackup $backupOperation $token;$firstStatus=[string]$firstResult.Status}catch{$firstError=[string]$_.Exception.Message}
+            $controlsDirs=@(Get-ChildItem -LiteralPath $sourceRoot -Recurse -Directory -Force -Filter 'controls' -ErrorAction SilentlyContinue)
+            $obs.RetryAfterSealFailure=[ordered]@{FirstAttemptError=$firstError;FirstAttemptStatus=$firstStatus;ControlsDirectoriesAfterFailure=$controlsDirs.Count}
+            & $Report 'n9h_d2_first_attempt_failed_for_the_injected_reason_after_controls_were_written' (($firstError -like '*injected seal verification failure*' -or $firstStatus -cin @('Failed','Cancelled')) -and $controlsDirs.Count -ge 1) ('error='+$firstError+' status='+$firstStatus+' controls dirs='+$controlsDirs.Count)
+            $backupOperation=[Guid]::NewGuid().ToString('D');$token=New-WsmCancellationToken -StateDirectory (Join-Path $sourceRoot 'pairs') -PairId $pairId -PlanHash $sealed.SHA256 -OperationId $backupOperation
         }
         $backup=& $startBackup $backupOperation $token
         $obs.BackupStatus=[string]$backup.Status
