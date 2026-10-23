@@ -1,0 +1,188 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "C2",
+  "verifiedUtc": "2026-10-23T17:25:52Z",
+  "verifier": "P7 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "f588e0d155632252395e1045825d73bdc534da3c",
+  "snapshotDirectory": "git archive HEAD (f588e0d, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (two snapshots, one per parallel stream, at most two streams) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; the recorded seconds include contention between the two streams",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "BB4A20E354A8AE98271A37764A292042F802EDE9E6DE79323F2DF7DF471CDE37"
+    },
+    {
+      "path": "src/OperationRequests.ps1",
+      "sha256": "794D513B54619EE944D5F5568B335404043F36865C79C7483206113DE00AE47B"
+    },
+    {
+      "path": "src/SoftwareDispositionReview.ps1",
+      "sha256": "A39B2425FD4A688942C4284F2B6E786C45C23E5B57A051D31C4448D9B65DA04C"
+    },
+    {
+      "path": "src/WindowsServerMigration.psd1",
+      "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+    },
+    {
+      "path": "src/WindowsServerMigration.psm1",
+      "sha256": "BB23A18D0662D8C2E507DBCE9CFC9AEFD4FADB93DC188F667506B7E757A28E88"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "C00D0A52907F54A1297081AF7EE9AC84571C4F346034C04A35D60C30B8F1D15C"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "107973EAAAF91828ED6AE214CAB64A6E6DE2FE94EDC5F43DB0C20FAF6CBA730E"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "DACB74DF59B506B06E02AEADE60D6C58D640409A0E262BC88B856F6105A35DD0"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Start-C2D2TestServer.ps1",
+      "sha256": "F3F18857A9FF8D882FAF6C5C113BE39FE86A011C89799AAD9A1C6D24D1C9547F"
+    },
+    {
+      "path": "tests/Test-C2D2Browser.js",
+      "sha256": "A260D9007FE369DCE164FF54F2976CB0552975C4CC6E5EBA7586CD77559AE530"
+    },
+    {
+      "path": "tests/Test-C2D2HtmlActions.ps1",
+      "sha256": "15AFDB7167747B4450B3E08020F98D25B4EE0C04D9F64937CB394AF83EF1EAB4"
+    },
+    {
+      "path": "tests/Test-SoftwareDispositionReview.ps1",
+      "sha256": "D20119066E82B3CE0623611F2CC5E3FD9FCF5C2F7246EF43C56796C31685C000"
+    },
+    {
+      "path": "src/WizardDetails.ps1",
+      "sha256": "37E524A209ABD008BACA36A4BAEFA04C34F0C5324527B8DFE84A5A9F15FB55FF"
+    },
+    {
+      "path": "tests/New-PathResolutionFixture.ps1",
+      "sha256": "609E5F1BF16E128FE67D7113F6FABFFB136E8F52DBAC8C9D9FB05AA883F71D51"
+    },
+    {
+      "path": "tests/Test-PathResolutionDisplay.ps1",
+      "sha256": "C3F0EF2944AB597E8CC63E3CC03E57565DAC56BEF5D3BF8254E2E5D9C01E6E7A"
+    },
+    {
+      "path": "tests/Test-PathResolutionBrowser.js",
+      "sha256": "AD6A8BFCB4786D4B632A5ECDF455888692C245127AEA4F1F65E0D2E56374C581"
+    },
+    {
+      "path": "src/WindowsSettingsReview.ps1",
+      "sha256": "902B5A029FEA4276CA4C33F5D6E7501EB1E727AB76336239C6BD4E17831A039C"
+    },
+    {
+      "path": "tests/Test-ProductionFlagProjection.ps1",
+      "sha256": "D8B01E725A7B4B79E8848234A06DFFFA1A6292F7B2AA440701B759BAEC141E18"
+    },
+    {
+      "path": "src/MigrationWizard.ps1",
+      "sha256": "012D9B41D7E23059B87665F992A3B6A7590291426B794BA69F5E17D2727F76E5"
+    },
+    {
+      "path": "src/WizardPreparation.ps1",
+      "sha256": "0ACB7BA775A589D01EA51B5B4C137C3FBE0EFA631DA2FD190B35D7B97F88042D"
+    },
+    {
+      "path": "tests/Test-UnresolvedPathNoPrefill.ps1",
+      "sha256": "F3B161585831F760E7AEE177EAE736E39AB42C2DE3655A5AFAF1C84732C700BC"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 381,
+  "result": "Rebound to f588e0d bytes after P1 to P5 (previous binding 23054c1); every command below exited 0 on WinPS 5.1: SoftwareDispositionReview 17, C2D2HtmlActions 185, C2D2Browser 1, PathResolutionDisplay 57, PathResolutionBrowser 1, ProductionFlagProjection 48, UnresolvedPathNoPrefill 72. Added for P1 to P5: ProductionFlagProjection (P1, PLAN 17.93; HtmlConsole, WizardHtmlRuntime, WindowsSettingsReview, console.js); UnresolvedPathNoPrefill (P3, 17.96; MigrationWizard, WizardDetails, WizardPreparation, console.js). The stage stays in-progress: capture/restore exclusion proof and real-machine panel placement are still open.",
+  "logs": [
+    {
+      "name": "Test-SoftwareDispositionReview.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SoftwareDispositionReview.ps1 </dev/null",
+      "sha256": "B417906680BE90FB56D7538CE3C870A2A9CFF9F737D38D472D8E00FC97882FA4",
+      "exitCode": 0,
+      "seconds": 10,
+      "countedAs": "checks",
+      "count": 17,
+      "text": "PASS Test-SoftwareDispositionReview: 17 formal review, CAS, batch preservation, dependency-gate and root-protection checks.\r\n"
+    },
+    {
+      "name": "Test-C2D2HtmlActions.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-C2D2HtmlActions.ps1 </dev/null",
+      "sha256": "5CA467A5CA465A39C20ADF9E09CEAA2BD06FB8654F7A2654A77F41CDE18741A8",
+      "exitCode": 0,
+      "seconds": 68,
+      "countedAs": "checks",
+      "count": 185,
+      "text": "PASS the export is refused on the read endpoint\r\nPASS Test-C2D2HtmlActions: 185 action map, role/route gate, argument, C2 batch/CAS, D2 flow, closed projection and real console checks.\r\n"
+    },
+    {
+      "name": "Test-C2D2Browser.js.log",
+      "command": "node tests/Test-C2D2Browser.js </dev/null",
+      "sha256": "5B4AD93669C0809156E7FC5FF6A53435ABDED291C5A7FE193413D996204644CC",
+      "exitCode": 0,
+      "seconds": 69,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS Test-C2D2Browser: source/manager D2 flow, C2 batch, CAS, stale handling, keyboard confirmation, states, 390px layout and zero console errors.\r\n"
+    },
+    {
+      "name": "Test-PathResolutionDisplay.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-PathResolutionDisplay.ps1 </dev/null",
+      "sha256": "C8065D0ACDCB3658D76E7C66F6D7F14F38A49D7770EFA254090F80FBE4F021BA",
+      "exitCode": 0,
+      "seconds": 4,
+      "countedAs": "checks",
+      "count": 57,
+      "text": "Path resolution display projection checks passed: 57\r\n"
+    },
+    {
+      "name": "Test-PathResolutionBrowser.js.log",
+      "command": "node tests/Test-PathResolutionBrowser.js </dev/null",
+      "sha256": "A4B6CCC22D66D948B3C2EE40311692947379044D4313E1125319288BA4A85F3E",
+      "exitCode": 0,
+      "seconds": 10,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: path resolution basis display (review + C2), 390px, zero console errors\r\n"
+    },
+    {
+      "name": "Test-ProductionFlagProjection.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ProductionFlagProjection.ps1 </dev/null",
+      "sha256": "1DD208F2DF5FC7BB7D58E33A5F272284675593F7D0705E52EAF99592478BBE1B",
+      "exitCode": 0,
+      "seconds": 14,
+      "countedAs": "checks",
+      "count": 48,
+      "text": "PASS Test-ProductionFlagProjection checks=48; projections force false for true, \"true\" and 1; absent fields are not invented.\r\n"
+    },
+    {
+      "name": "Test-UnresolvedPathNoPrefill.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-UnresolvedPathNoPrefill.ps1 </dev/null",
+      "sha256": "F426594190FE60FFEE2112B79B04DC4021D573C9F909FEAA64BB89C6B4687276",
+      "exitCode": 0,
+      "seconds": 10,
+      "countedAs": "checks",
+      "count": 72,
+      "text": "PASS: 72 unresolved source path no-prefill checks (predicate, draft, approval, form, bulk, supplied path).\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "C2D2Browser uses a fixture API; there is no real-browser plus real-listener integration test.",
+    "The 'incomplete' display lists only undecided (Unreviewed/Stale) software and is not an approval-blocking rule.",
+    "Selected-dependency gate and root guard tests are isolated contract evidence, not actual Server product migration.",
+    "P3 (17.96): an unresolved source path has no dedicated supply-the-real-path form; the user re-scans or uses source candidate confirmation."
+  ],
+  "openIssues": [
+    "Full capture/restore exclusion proof for C2 dispositions is still pending.",
+    "Panel placement on existing wizard steps needs confirmation on a real machine.",
+    "The Manager's imported-candidate list is read from job history; there is no manual-entry fallback once the history is cleared.",
+    "Source-path resolution display (N9c2) is verified on fixtures only; the real Server Export-WsmInventory with a SourceResolutionContext has not been run."
+  ]
+}

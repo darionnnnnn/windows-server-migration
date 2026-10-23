@@ -1,0 +1,117 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "E0",
+  "verifiedUtc": "2026-10-23T17:25:52Z",
+  "verifier": "P7 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "f588e0d155632252395e1045825d73bdc534da3c",
+  "snapshotDirectory": "git archive HEAD (f588e0d, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (two snapshots, one per parallel stream, at most two streams) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; the recorded seconds include contention between the two streams",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/MigrationWizard.ps1",
+      "sha256": "012D9B41D7E23059B87665F992A3B6A7590291426B794BA69F5E17D2727F76E5"
+    },
+    {
+      "path": "src/WorkloadDiscovery.ps1",
+      "sha256": "E97FA3FD90F5CDF58A9B41F16B1915AEDAB00B56F19D17FF1009A7F7CD8990BA"
+    },
+    {
+      "path": "tests/Test-WorkloadActionIndex.ps1",
+      "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+    },
+    {
+      "path": "tests/Test-WorkloadDiscovery.ps1",
+      "sha256": "BCD76D15934C7ED03C9F561FFFEE69A04BA63659272968AD170340F32E4124EF"
+    },
+    {
+      "path": "tests/Test-WorkloadPathCoverage.ps1",
+      "sha256": "C10FABC7D3B8256D5479A4FEF585BF7E1ABA5B036FB781731D632075EAB837DF"
+    },
+    {
+      "path": "src/EnterpriseDiscovery.ps1",
+      "sha256": "9891583FA40F114C7E66A0E0E41D95B1DC65941299B5D22FA1DCCC282A607252"
+    },
+    {
+      "path": "tests/Test-SourceContextResolution.ps1",
+      "sha256": "5F73A2A6D2EC70942B9CFE3A70F22FB741E8A08D1701857E9704F1666BC91827"
+    },
+    {
+      "path": "src/WizardDetails.ps1",
+      "sha256": "37E524A209ABD008BACA36A4BAEFA04C34F0C5324527B8DFE84A5A9F15FB55FF"
+    },
+    {
+      "path": "src/WizardPreparation.ps1",
+      "sha256": "0ACB7BA775A589D01EA51B5B4C137C3FBE0EFA631DA2FD190B35D7B97F88042D"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "DACB74DF59B506B06E02AEADE60D6C58D640409A0E262BC88B856F6105A35DD0"
+    },
+    {
+      "path": "tests/Test-UnresolvedPathNoPrefill.ps1",
+      "sha256": "F3B161585831F760E7AEE177EAE736E39AB42C2DE3655A5AFAF1C84732C700BC"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 206,
+  "result": "Rebound to f588e0d bytes after P1 to P5 (previous binding 23054c1); every command below exited 0 on WinPS 5.1: WorkloadActionIndex 28, WorkloadDiscovery 1, WorkloadPathCoverage 18, SourceContextResolution 87, UnresolvedPathNoPrefill 72. Added for P1 to P5: UnresolvedPathNoPrefill (P3, 17.96; MigrationWizard, WizardDetails, WizardPreparation, console.js).",
+  "logs": [
+    {
+      "name": "Test-WorkloadActionIndex.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WorkloadActionIndex.ps1 </dev/null",
+      "sha256": "55831B0736ED3EE2FA579FD2F669A22AA1F8E5F84879E3940389B140045C3B8D",
+      "exitCode": 0,
+      "seconds": 5,
+      "countedAs": "checks",
+      "count": 28,
+      "text": "PASS: E0 original action indices, typed draft consumer, opaque argument redaction, Exec-only and same-location regression, and ambiguous/unsupported action handling. Assertions: 28\r\n"
+    },
+    {
+      "name": "Test-WorkloadDiscovery.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WorkloadDiscovery.ps1 </dev/null",
+      "sha256": "CB91958F43FCBAC3DA8A8FA0A29B3D8BE420E6D78AFD23C17A278D75430D5501",
+      "exitCode": 0,
+      "seconds": 6,
+      "countedAs": "one public-regression suite (no count printed)",
+      "count": 1,
+      "text": "PASS: R3-B workload graph and schema3 public draft consumer. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-workload-9c0b99e49863482eb2adbb8e842061bf\r\n"
+    },
+    {
+      "name": "Test-WorkloadPathCoverage.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WorkloadPathCoverage.ps1 </dev/null",
+      "sha256": "5DBEED1AF9B396D944F5628C15B64F4B384D1417BC04B1EC9CF7545017C78D06",
+      "exitCode": 0,
+      "seconds": 5,
+      "countedAs": "checks",
+      "count": 18,
+      "text": "PASS: 18 workload path coverage checks; unresolved Source context remains manual.\r\n"
+    },
+    {
+      "name": "Test-SourceContextResolution.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SourceContextResolution.ps1 </dev/null",
+      "sha256": "35CA0A26347F617EEC0D5B71492C8E1618B981CC729F7DEE6E9094FB1F23CFC1",
+      "exitCode": 0,
+      "seconds": 19,
+      "countedAs": "checks",
+      "count": 87,
+      "text": "PASS: 87 source-context resolution checks (machine layer, ProfileList derivation, Unresolved cases, three-end invariance, five call sites, legacy inventory, read-only capture, static guard).\r\n"
+    },
+    {
+      "name": "Test-UnresolvedPathNoPrefill.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-UnresolvedPathNoPrefill.ps1 </dev/null",
+      "sha256": "F426594190FE60FFEE2112B79B04DC4021D573C9F909FEAA64BB89C6B4687276",
+      "exitCode": 0,
+      "seconds": 10,
+      "countedAs": "checks",
+      "count": 72,
+      "text": "PASS: 72 unresolved source path no-prefill checks (predicate, draft, approval, form, bulk, supplied path).\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Fixture XML/draft tests; no live task registration or execution.",
+    "WorkloadDiscovery prints no assertion count and is counted once."
+  ],
+  "openIssues": []
+}

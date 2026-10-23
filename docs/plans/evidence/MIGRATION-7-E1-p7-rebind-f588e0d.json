@@ -1,0 +1,140 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "E1",
+  "verifiedUtc": "2026-10-23T17:25:52Z",
+  "verifier": "P7 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "f588e0d155632252395e1045825d73bdc534da3c",
+  "snapshotDirectory": "git archive HEAD (f588e0d, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (two snapshots, one per parallel stream, at most two streams) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; the recorded seconds include contention between the two streams",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/AssistiveFiles.ps1",
+      "sha256": "8EF054777F6F60293D28D7B41001A2CA5974E39B6B338841A1D5FE7BA5BBEB07"
+    },
+    {
+      "path": "src/AssistiveRestore.ps1",
+      "sha256": "B3F496349678319199B1DD1ACC3228D7BCF8E46C532A7EE19AEFC273A3F98909"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "C00D0A52907F54A1297081AF7EE9AC84571C4F346034C04A35D60C30B8F1D15C"
+    },
+    {
+      "path": "src/WizardRestore.ps1",
+      "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+    },
+    {
+      "path": "tests/Test-AssistiveFiles.ps1",
+      "sha256": "C1ADCACE092394A5853A485C99443A3702EF25961C7A09818D1414BBA3DA74F0"
+    },
+    {
+      "path": "tests/Test-AssistiveRestore.ps1",
+      "sha256": "850F933E30B4C37D1732ACD2797F23DBDCDDA98D199724DCAEC5FFBCDBE0C02B"
+    },
+    {
+      "path": "tests/Test-OfflineFullSet.ps1",
+      "sha256": "D6D403BA6DD16EE5841D0EF2E35375E0DE4EB29B6E2D204EA092FA211DD3D959"
+    },
+    {
+      "path": "tests/Test-AssistiveCv2NonCConsistency.ps1",
+      "sha256": "69A100313D75AF44245EA8E818EBFCF5117EF3F6EC00A17BBEA96C9C2028D337"
+    },
+    {
+      "path": "tests/Test-RestorableSet.ps1",
+      "sha256": "EC50EB6E1712252E4EF0037CED06D2272D60E2A748F838D6E292E081A8A13D1F"
+    },
+    {
+      "path": "tests/Test-PendingIntentRecovery.ps1",
+      "sha256": "4388E32C9924ECF918D15998BC2A20753AC5CA39EA9258B35A285F2148BFB3D5"
+    },
+    {
+      "path": "tests/Test-Cv2NonCReservationLifecycle.ps1",
+      "sha256": "7EAE69D8E898078F93F3E3E94289E3DB37859B8E0528D1FB07315A4A9B40AC6C"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 582,
+  "result": "Rebound to f588e0d bytes after P1 to P5 (previous binding 23054c1); every command below exited 0 on WinPS 5.1: AssistiveRestore 178, AssistiveFiles 35, OfflineFullSet 67, AssistiveCv2NonCConsistency 17, RestorableSet 199, PendingIntentRecovery 31, Cv2NonCReservationLifecycle 55. Added for P1 to P5: PendingIntentRecovery (P5, 17.98); Cv2NonCReservationLifecycle (P5, 17.98).",
+  "logs": [
+    {
+      "name": "Test-AssistiveRestore.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveRestore.ps1 </dev/null",
+      "sha256": "EEEB0885D420BFC10707FE01EE41FB1C90AE65A1920DC826FB9F21DD80437B8C",
+      "exitCode": 0,
+      "seconds": 16,
+      "countedAs": "checks",
+      "count": 178,
+      "text": "PASS: 178 Assistive file ownership, per-file conflict, typed IIS mapping, safe manual-gap and backup-media overlap writer checks.\r\n"
+    },
+    {
+      "name": "Test-AssistiveFiles.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveFiles.ps1 </dev/null",
+      "sha256": "D1B6337084388505FCD5066583408D615F6EC08F7DA463CE27694AC06B3330B9",
+      "exitCode": 0,
+      "seconds": 7,
+      "countedAs": "checks",
+      "count": 35,
+      "text": "PASS: 35 physical C / exact configuration / topology / native placement checks.\r\n"
+    },
+    {
+      "name": "Test-OfflineFullSet.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineFullSet.ps1 </dev/null",
+      "sha256": "F389E5F8DA90895105225BE5D60D517A45094DCD1F3451BE1C35FB2C6D2F03D2",
+      "exitCode": 0,
+      "seconds": 43,
+      "countedAs": "checks",
+      "count": 67,
+      "text": "PASS: 67 OfflineFullSet approval contract, native C-volume proof, package/readback, nested ZIP/Directory controls, receipt round-trips and negative integrity cases; additional-volume native qualification remains pending.\r\n"
+    },
+    {
+      "name": "Test-AssistiveCv2NonCConsistency.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveCv2NonCConsistency.ps1 </dev/null",
+      "sha256": "D3606D3784040E9F0FA917D81549F80A55720EED3DCA05A9E29F23BFCAF046EC",
+      "exitCode": 0,
+      "seconds": 5,
+      "countedAs": "checks",
+      "count": 17,
+      "text": "PASS: 17 CV2 NonC consistency checks (judgement truth table, preview and executor share it, every legacy NonC branch guarded)\r\n"
+    },
+    {
+      "name": "Test-RestorableSet.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-RestorableSet.ps1 </dev/null",
+      "sha256": "DEDD9040B5E43AB19ED849BD10B293ABDE0EEC4B68C222C25178B6B4089E9367",
+      "exitCode": 0,
+      "seconds": 10,
+      "countedAs": "checks",
+      "count": 199,
+      "text": "PASS: 199 restorable-set checks (payload / volume / capacity / location / permission / mount point / conflict / backup-media overlap agree between options and preview; option evaluation is read-only; the preview never claims production execution).\r\n"
+    },
+    {
+      "name": "Test-PendingIntentRecovery.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-PendingIntentRecovery.ps1 </dev/null",
+      "sha256": "E088E0F3E099808DB9777ED61C9575CE5EBDFE853ABEF6CF35D617456CACD44D",
+      "exitCode": 0,
+      "seconds": 6,
+      "countedAs": "checks",
+      "count": 31,
+      "text": "PASS: pending intent recovery (31 checks).\r\n"
+    },
+    {
+      "name": "Test-Cv2NonCReservationLifecycle.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-Cv2NonCReservationLifecycle.ps1 </dev/null",
+      "sha256": "2726BEEEE1F6F7244B04352B6175D0196744AD22FCDDA4973BFAC97E1D226774",
+      "exitCode": 0,
+      "seconds": 8,
+      "countedAs": "checks",
+      "count": 55,
+      "text": "PASS: CV2 NonC reservation lifecycle (55 checks).\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "File restore paths are exercised on a fixture C-volume; mount-point and other drive roots use test doubles.",
+    "The write-side check applies when the package carries a Plan (formal packages always do).",
+    "P5 (17.98): adapter and FileScope writers are doubles; the per-file AssistiveFileReplace intent left by a failing real writer is not exercised item by item."
+  ],
+  "openIssues": [
+    "Original-location restore on real non-C volumes is not verified."
+  ]
+}

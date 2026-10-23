@@ -1,0 +1,139 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "B2",
+  "verifiedUtc": "2026-10-23T17:25:52Z",
+  "verifier": "P7 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "f588e0d155632252395e1045825d73bdc534da3c",
+  "snapshotDirectory": "git archive HEAD (f588e0d, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (two snapshots, one per parallel stream, at most two streams) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; the recorded seconds include contention between the two streams",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": ".github/workflows/native-release.yml",
+      "sha256": "9F1A4D23799490F6D57A81E6058D91179D8C9CA9A5933E4FA8419F620DF830FB"
+    },
+    {
+      "path": ".github/workflows/native-round6-gaps.yml",
+      "sha256": "6082A15936B835E629A58D80885B04114C3C5B1FA08E68D185361A6AEB86A9C0"
+    },
+    {
+      "path": "tests/native-evidence.js",
+      "sha256": "F3BA88CC7290BFACD96125AF5DC56C126CFB05F3E9AAF19ADC2388B9763E81B9"
+    },
+    {
+      "path": "tests/Test-NativeEvidence.js",
+      "sha256": "8B45CAF33ED526990A1BB313F4EA50BC21ACF9813952399F0E2A40F418C4D317"
+    },
+    {
+      "path": "tests/Test-NativeHtmlBridge.js",
+      "sha256": "C480296802E6E72CDC5A3A0F68840A2DD1BA9F2C53A8005511F79804BDA8D6D1"
+    },
+    {
+      "path": "tests/Test-ReleaseNativeLauncher.js",
+      "sha256": "0CF5C7AE29A015A97AE2421B299EDAFDCB6AE3F1B0546EBECE16661B4081A2C0"
+    },
+    {
+      "path": "tests/Test-NativeWizardRuntimeHandler.js",
+      "sha256": "71A4E1C24FB129FBD5577724F580CF2908994870F98757A990DC2F7196CFE1D5"
+    },
+    {
+      "path": "tests/Test-NativeWizardManagerJourney.js",
+      "sha256": "94E36F99595E86A4C5B73172C9D2B2EAD5CF769AB888DB21BCBDCCADEB006019"
+    },
+    {
+      "path": "tests/Test-NativeProbeRoles.js",
+      "sha256": "53AE9C890910CE43D7960B01C37CEC0046CBFD551E19D819F17903C8DBE4D46A"
+    },
+    {
+      "path": "tests/Test-ReleaseWizardSmoke.ps1",
+      "sha256": "3117DBE2438B5DD8E685DE12752549E9363053B655914018A51792A140087344"
+    },
+    {
+      "path": "tests/Start-WizardRuntimeTestServer.ps1",
+      "sha256": "B5AD89423F6AA69494C5106104B89B5955A411921038E26CDD26B56315C8D181"
+    },
+    {
+      "path": "tests/Test-NativeLauncherCleanup.js",
+      "sha256": "0AA3D6E67D6985BFE189763C474407AC2A2D20FC8614EFF0366059D011513DA7"
+    },
+    {
+      "path": "tests/native-diagnostics.js",
+      "sha256": "C9F19CD7227AC4FCDE00FA859D7C6626B6DB17C1EED7392EDFE7E8A427631750"
+    },
+    {
+      "path": "tests/Test-NativeDiagnostics.js",
+      "sha256": "14496C8E9593B10E515BDEF44C79CABB569F158A89F6A27D3939FBA286DA1618"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 38,
+  "result": "Rebound to f588e0d bytes after P1 to P5 (previous binding 23054c1); every command below exited 0 on WinPS 5.1: NativeWizardRuntimeHandler 1, NativeDiagnostics 27, NativeLauncherCleanup 9, NativeProbeRoles 1. The stage stays in-progress: native CI evidence is bound to earlier commits and is historical here; only the locally runnable native suites were re-run.",
+  "logs": [
+    {
+      "name": "Test-NativeWizardRuntimeHandler.js.log",
+      "command": "node tests/Test-NativeWizardRuntimeHandler.js </dev/null",
+      "sha256": "D9C374E30F8B8BF972DF8BF75FBF0FCCCC138280F0A2DAA9B11F6468DD4BBBB2",
+      "exitCode": 0,
+      "seconds": 367,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: immutable runtime/UI snapshot -> real Edge UI -> actual HTML handler -> actual Source core backup (default ItemByItem Directory and Automatic ZIP 512 MiB) and actual Target Directory receive/comparison/decision/restore; exact package, payload, journal hashes and operation replay verified. Transport mode: formal writer capture bridge; native transport/origin not asserted. Controlled host/software fixtures are used; live SMB, actual services and production qualification are not asserted.\r\n"
+    },
+    {
+      "name": "Test-NativeDiagnostics.js.log",
+      "command": "node tests/Test-NativeDiagnostics.js </dev/null",
+      "sha256": "E2F7B6046B6512B89C24F7A7759BF49959118A3558D4AA4403528DE8EF8D015A",
+      "exitCode": 0,
+      "seconds": 5,
+      "countedAs": "checks",
+      "count": 27,
+      "text": "PASS Test-NativeDiagnostics: 27 refusal, lifecycle, redaction, safe-error, cleanup and scope checks.\r\n"
+    },
+    {
+      "name": "Test-NativeLauncherCleanup.js.log",
+      "command": "node tests/Test-NativeLauncherCleanup.js </dev/null",
+      "sha256": "27310196CC4432D64C5C357E46F6066F9F033F52493E16C36ED206CB767AFABF",
+      "exitCode": 0,
+      "seconds": 2,
+      "countedAs": "checks",
+      "count": 9,
+      "text": "PASS Test-NativeLauncherCleanup: 9 listener, error classification, child ownership and teardown checks.\r\n"
+    },
+    {
+      "name": "Test-NativeProbeRoles.js.log",
+      "command": "node tests/Test-NativeProbeRoles.js </dev/null",
+      "sha256": "7AFF532A66735C3C08B15BE2699F4DB7F59B3AB5307BDD544BC836072012F3A8",
+      "exitCode": 0,
+      "seconds": 42,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS Test-NativeProbeRoles: Source/Manager/Target UI Probe, same-workspace query/cancel, cross-workspace job denial, isolated real Edge contexts, ZIP/HTML/JSON/file-index hashes, collector manifest semantics, and unchanged migration authority. CLI=passed\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host; the earlier two-engine native CI runs are historical evidence bound to earlier commits.",
+    "Locally re-run: NativeWizardRuntimeHandler, NativeDiagnostics, NativeLauncherCleanup, NativeProbeRoles (real Edge, loopback). NativeProbeRoles failed its first attempt with net::ERR_UNSAFE_PORT (the random port 6000 is blocked by Chromium; a test-environment effect) and passed on the single rerun; both attempts are recorded here, only the passing log is bound.",
+    "Not re-run in this binding: Test-NativeEvidence (needs pwsh, spawn failed with exit 1 on this host), Test-NativeHtmlBridge, Test-NativeWizardManagerJourney, Test-ReleaseNativeLauncher, Test-ReleaseWizardSmoke (needs the git index) and the GitHub workflows; their current bytes are hashed as inputs but were not executed.",
+    "Actual loopback helper checks do not replace native Edge release journey.",
+    "Earlier 6eac316 WinPS51 runtime and Probe failures remain unresolved."
+  ],
+  "openIssues": [
+    "Prior 6eac316 WinPS51 TargetRestore and Probe fetch causes remain unresolved; later green runs do not prove repair.",
+    "f510 native PS5.1 TargetRestore run39205239611 failed journal chain/sequence/identity validation; exact predicate/root cause unresolved. Original two 6eac failures remain separately unresolved.",
+    "354ca5c native PS5.1 Manager DeveloperProbe terminal Failed in run39207067746; 2/3 journeys completed. Root cause and new diagnostic capture native integration await CI.",
+    "CI original I/O exception is unavailable; the reproduced sequence-gap mechanism matches retained CI facts but its particular triggering I/O operation is not proven.",
+    "Partial Write was fault-injected; Flush was not independently fault-injected.",
+    "Runtime read/write contention remains separately tracked; this commit prevents journal corruption but does not claim every concurrent reader is fixed.",
+    "Prior 6eac and 354 native failures remain unresolved.",
+    "No whole-round, production or external Server acceptance."
+  ],
+  "failedFirstAttempts": [
+    {
+      "command": "node tests/Test-NativeProbeRoles.js </dev/null",
+      "outcome": "exit 1: page.goto net::ERR_UNSAFE_PORT at http://127.0.0.1:6000/#wizard (unsafe random port; rerun passed)"
+    },
+    {
+      "command": "node tests/Test-NativeEvidence.js </dev/null",
+      "outcome": "exit 1: spawnSync pwsh failed (PowerShell 7 is not installed); not bound"
+    }
+  ]
+}

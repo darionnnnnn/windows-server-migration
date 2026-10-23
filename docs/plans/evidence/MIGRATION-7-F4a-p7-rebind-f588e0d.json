@@ -1,0 +1,206 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "F4a",
+  "verifiedUtc": "2026-10-23T17:25:52Z",
+  "verifier": "P7 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "f588e0d155632252395e1045825d73bdc534da3c",
+  "snapshotDirectory": "git archive HEAD (f588e0d, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (two snapshots, one per parallel stream, at most two streams) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; the recorded seconds include contention between the two streams",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/Adapters.ps1",
+      "sha256": "F37FC2C77627AC3BE959BAB7A9FBF6B930F26450FD1119B5121DF91878AC0A6B"
+    },
+    {
+      "path": "src/AssistiveResources.ps1",
+      "sha256": "23F847B0386D025CF8F3DDF50A3CC11A211F0683549522A2CFBED5D107C2DF1D"
+    },
+    {
+      "path": "src/AssistiveRestore.ps1",
+      "sha256": "B3F496349678319199B1DD1ACC3228D7BCF8E46C532A7EE19AEFC273A3F98909"
+    },
+    {
+      "path": "src/AssistiveReviewForms.ps1",
+      "sha256": "6539B22F3B78D8C0CA48E8357F328F947CB675B44845DED5D61B71F027581BEF"
+    },
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "BB4A20E354A8AE98271A37764A292042F802EDE9E6DE79323F2DF7DF471CDE37"
+    },
+    {
+      "path": "src/IisAdapter.ps1",
+      "sha256": "BE048ED50CC7F882A95ADB4FEC651641287C03DE20C9263F01C91CEF6C1A2936"
+    },
+    {
+      "path": "src/Inventory.ps1",
+      "sha256": "4FD459A94185C4BEFE1F7566565B76522DF5E10D4A3DC936A9393E87FCED7242"
+    },
+    {
+      "path": "src/MigrationWizard.ps1",
+      "sha256": "012D9B41D7E23059B87665F992A3B6A7590291426B794BA69F5E17D2727F76E5"
+    },
+    {
+      "path": "src/Restore.ps1",
+      "sha256": "DE008F8327D192A68F1ECEE27ECDC1F4A6697202851065B5E24A642C6256C128"
+    },
+    {
+      "path": "src/WizardPreparation.ps1",
+      "sha256": "0ACB7BA775A589D01EA51B5B4C137C3FBE0EFA631DA2FD190B35D7B97F88042D"
+    },
+    {
+      "path": "src/WizardRestore.ps1",
+      "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+    },
+    {
+      "path": "src/WizardRuntime.ps1",
+      "sha256": "BFA5A06BE8462F6A2FF41BFA5C61F56F9B034167F2739EC0BE9AED99D4DDF2D3"
+    },
+    {
+      "path": "tests/Test-AssistiveRestore.ps1",
+      "sha256": "850F933E30B4C37D1732ACD2797F23DBDCDDA98D199724DCAEC5FFBCDBE0C02B"
+    },
+    {
+      "path": "tests/Test-CredentialDeferral.ps1",
+      "sha256": "402E7A7CA1432525699131741BAB7F78FC10EED8BD4C244ED1052AF4AFE2039C"
+    },
+    {
+      "path": "tests/Test-ServiceCredentialChallenge.ps1",
+      "sha256": "DCCB5E64B2A6BDDBCD423DF3A3AD6002ADD47B5873B1F2A89D4F67917538B562"
+    },
+    {
+      "path": "src/OperationRequests.ps1",
+      "sha256": "794D513B54619EE944D5F5568B335404043F36865C79C7483206113DE00AE47B"
+    },
+    {
+      "path": "tests/Test-CredentialPromptRedirected.ps1",
+      "sha256": "7E755AFA62BC7FB5EE5613ACE1C5415A6116EC010FC098EE9A05D450AF4491AD"
+    },
+    {
+      "path": "tests/Test-CliWaitingForInput.ps1",
+      "sha256": "329E87D83835E17480E1E4A9D657ADAC01D831B67D978A391F47CACDFD852C83"
+    },
+    {
+      "path": "tests/Test-AssistiveCv2NonCConsistency.ps1",
+      "sha256": "69A100313D75AF44245EA8E818EBFCF5117EF3F6EC00A17BBEA96C9C2028D337"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "C00D0A52907F54A1297081AF7EE9AC84571C4F346034C04A35D60C30B8F1D15C"
+    },
+    {
+      "path": "src/WindowsSettingsReview.ps1",
+      "sha256": "902B5A029FEA4276CA4C33F5D6E7501EB1E727AB76336239C6BD4E17831A039C"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "DACB74DF59B506B06E02AEADE60D6C58D640409A0E262BC88B856F6105A35DD0"
+    },
+    {
+      "path": "tests/Test-ProductionFlagProjection.ps1",
+      "sha256": "D8B01E725A7B4B79E8848234A06DFFFA1A6292F7B2AA440701B759BAEC141E18"
+    },
+    {
+      "path": "src/WizardDetails.ps1",
+      "sha256": "37E524A209ABD008BACA36A4BAEFA04C34F0C5324527B8DFE84A5A9F15FB55FF"
+    },
+    {
+      "path": "tests/Test-UnresolvedPathNoPrefill.ps1",
+      "sha256": "F3B161585831F760E7AEE177EAE736E39AB42C2DE3655A5AFAF1C84732C700BC"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 443,
+  "result": "Rebound to f588e0d bytes after P1 to P5 (previous binding 23054c1); every command below exited 0 on WinPS 5.1: ServiceCredentialChallenge 46, CredentialDeferral 68, AssistiveRestore 178, CredentialPromptRedirected 1, CliWaitingForInput 13, AssistiveCv2NonCConsistency 17, ProductionFlagProjection 48, UnresolvedPathNoPrefill 72. Added for P1 to P5: ProductionFlagProjection (P1, PLAN 17.93; HtmlConsole, WizardHtmlRuntime, WindowsSettingsReview, console.js); UnresolvedPathNoPrefill (P3, 17.96; MigrationWizard, WizardDetails, WizardPreparation, console.js).",
+  "logs": [
+    {
+      "name": "Test-ServiceCredentialChallenge.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ServiceCredentialChallenge.ps1 </dev/null",
+      "sha256": "1427D9CD7C576F9C18161394D141069D326D8724ED16601C5E038513EAEB4422",
+      "exitCode": 0,
+      "seconds": 8,
+      "countedAs": "checks",
+      "count": 46,
+      "text": "PASS: 46 durable Service/task/IIS-pool challenge and credential-binding checks.\r\n"
+    },
+    {
+      "name": "Test-CredentialDeferral.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-CredentialDeferral.ps1 </dev/null",
+      "sha256": "309ACC0A94F48136859A8D4973E4852D10CC00AA72480F459620221F5B427968",
+      "exitCode": 0,
+      "seconds": 10,
+      "countedAs": "checks",
+      "count": 68,
+      "text": "PASS: 68 credential deferral, refusal classification and retry-limit checks.\r\n"
+    },
+    {
+      "name": "Test-AssistiveRestore.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveRestore.ps1 </dev/null",
+      "sha256": "EEEB0885D420BFC10707FE01EE41FB1C90AE65A1920DC826FB9F21DD80437B8C",
+      "exitCode": 0,
+      "seconds": 16,
+      "countedAs": "checks",
+      "count": 178,
+      "text": "PASS: 178 Assistive file ownership, per-file conflict, typed IIS mapping, safe manual-gap and backup-media overlap writer checks.\r\n"
+    },
+    {
+      "name": "Test-CredentialPromptRedirected.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-CredentialPromptRedirected.ps1 </dev/null",
+      "sha256": "72031266245B976B5CD0EE5A0F14B95EE54F4324F830920629A00653D587B122",
+      "exitCode": 0,
+      "seconds": 4,
+      "countedAs": "one suite (no count printed)",
+      "count": 1,
+      "text": "PASS: the Target credential prompt refuses redirected console input (EndOfStreamException -> WaitingForInput) without calling Get-Credential.\r\n"
+    },
+    {
+      "name": "Test-CliWaitingForInput.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-CliWaitingForInput.ps1 </dev/null",
+      "sha256": "539DAF2538AAB4CD81B6B7E33F0105386C17A4067D3F06C8D385702E38099EF2",
+      "exitCode": 0,
+      "seconds": 43,
+      "countedAs": "checks",
+      "count": 13,
+      "text": "PASS: CLI end-of-input returns 2 with the missing fields for a general action and a credential action; credentials are never read from stdin, nothing typed is persisted (13 checks).\r\n"
+    },
+    {
+      "name": "Test-AssistiveCv2NonCConsistency.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveCv2NonCConsistency.ps1 </dev/null",
+      "sha256": "D3606D3784040E9F0FA917D81549F80A55720EED3DCA05A9E29F23BFCAF046EC",
+      "exitCode": 0,
+      "seconds": 5,
+      "countedAs": "checks",
+      "count": 17,
+      "text": "PASS: 17 CV2 NonC consistency checks (judgement truth table, preview and executor share it, every legacy NonC branch guarded)\r\n"
+    },
+    {
+      "name": "Test-ProductionFlagProjection.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ProductionFlagProjection.ps1 </dev/null",
+      "sha256": "1DD208F2DF5FC7BB7D58E33A5F272284675593F7D0705E52EAF99592478BBE1B",
+      "exitCode": 0,
+      "seconds": 14,
+      "countedAs": "checks",
+      "count": 48,
+      "text": "PASS Test-ProductionFlagProjection checks=48; projections force false for true, \"true\" and 1; absent fields are not invented.\r\n"
+    },
+    {
+      "name": "Test-UnresolvedPathNoPrefill.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-UnresolvedPathNoPrefill.ps1 </dev/null",
+      "sha256": "F426594190FE60FFEE2112B79B04DC4021D573C9F909FEAA64BB89C6B4687276",
+      "exitCode": 0,
+      "seconds": 10,
+      "countedAs": "checks",
+      "count": 72,
+      "text": "PASS: 72 unresolved source path no-prefill checks (predicate, draft, approval, form, bulk, supplied path).\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Task and IIS pool native consumers are test doubles; no enterprise account was exercised.",
+    "Adapters, IisContracts and InventoryFixture suites were not re-run for this record.",
+    "The real registry state of a Service reservation after a rejected password is verified only through doubles."
+  ],
+  "openIssues": [
+    "Real HTTP routes for defer and rejected flows are covered at parser level here; the dialog suites are recorded under F4b."
+  ]
+}

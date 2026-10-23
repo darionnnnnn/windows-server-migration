@@ -1798,6 +1798,48 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - HTML／CLI 的「重新保存選擇再重試」入口沒有走 UI 驗證。
   - 項目之間的取消邊界沒有測。
 
+### 17.99 P7 證據帳本重綁（以 f588e0d 為準，接在 P1～P5 之後）
+
+- Sonnet 5.5 medium subagent 執行，規格見 `work/r7/specs/P7-ledger-rebind.md`。本段只改帳本與 `docs/plans/evidence/` 下的新增檔，`tools/Test-PlanEvidence.ps1` 未改。
+- 方法沿用 17.92：
+  - 以 `git archive HEAD` 建兩份快照（f588e0d，不含 `work/`）。
+  - 最多兩條串流並行，前景執行並加 `timeout 900`。
+  - 新綁定一律記 LF 形式，舊證據移入 `historicalEvidence`。
+- 過期階段共 17 個：B2、C2、D1、D2、D3a、D3b、E0、E1、E2、E3a、E3b、F1、F2、F3、F4a、F4b、G。A1、B1、C1 的雜湊仍吻合，未改動。
+- P 系列測試的歸屬規則：只要階段的輸入含有某個 P 改過的 src，就把該 P 的測試與 src 加進這個階段，並實際執行。
+  - P1 ProductionFlagProjection（48）：C2、D1、D2、D3b、E3a、E3b、F1、F2、F3、F4a、F4b、G。
+  - P2 RetryPartialIndexPreserved（66）：D3a、D3b、F1、F2、F3、G。
+  - P3 UnresolvedPathNoPrefill（72）：C2、D1、D2、E0、E3b、F4a、F4b。
+  - P4 FailedItemSourcePath：F1、F2、F3。
+  - P5 PendingIntentRecovery（31）與 Cv2NonCReservationLifecycle（55）：E1、E2、E3a、G。G 另加 G4 `-Mutation RepairAndRetry`（37）。
+- 階段狀態：
+  - 已完成且 `-Stage` 通過：A1、B1、C1、D3a、D3b、E0、E1、E2、E3a、E3b、F3、F4a、F4b。
+  - 維持 in-progress：B2、C2、D1、D2、F1、F2、G。
+  - 各階段重跑的檢查數與 17.92 相同，沒有漂移。
+- G：
+  - G2、G3、G4（含 RepairAndRetry）在主工作區執行，原因同 17.92。它們會自建不可變快照，並比對 src 摘要。
+  - 主旅程沒有重跑，維持「使用者執行 n9g001 後再補綁」。
+  - openIssues 新增 17.98 的觀察：同一份 receipt 在 repair 後再 restore，會重放舊的 Partial 結果；要重新保存選擇才會重試。
+  - 「pending intent 能否清除」改寫為已驗證。
+- B2：
+  - 只重跑本機能跑的四支原生測試：NativeWizardRuntimeHandler、NativeDiagnostics 27、NativeLauncherCleanup 9、NativeProbeRoles。
+  - NativeProbeRoles 第一次失敗，原因是隨機埠撞到 Chromium 的 unsafe port（`ERR_UNSAFE_PORT`），單次重跑後通過，兩次嘗試都記在證據檔裡。
+  - Test-NativeEvidence 需要 pwsh，未綁定。其餘原生測試與 workflow 未執行，已寫進 limitations。原本的 CI 證據移為 historical。
+- 新證據檔共 17 個：`docs/plans/evidence/MIGRATION-7-<階段>-p7-rebind-f588e0d.json`。
+- 驗證：
+  - 13 個已完成階段在工作樹與 LF 快照上的 `-Stage` 全部 PASS。
+  - `-WholeRound` 停在 `stage B2 is not implemented`，原因只是 B2 仍在進行中。
+- 突變（皆轉紅，以備份還原並用 cmp 確認）：
+  - subagent：F3 輸入 `tests/Test-FailedItemSourcePath.ps1` 多一個位元組，回報 `input hash is stale`；刪除 E1 的新證據檔，回報 `evidence file is missing`。
+  - 主代理：`src/AssistiveRestore.ps1` 多一個位元組，工具在第一個綁定它的已完成階段 D3a 回報 `input hash is stale`。
+- 主代理審查：在工作樹重跑 13 個已完成階段的 `-Stage` 與 `-WholeRound`，結果同上；另在乾淨的 `git archive` 快照上抽驗。證據檔的 `verifier` 欄位寫的是「主代理尚未審閱」；因為證據檔以雜湊綁定，不回頭修改，本條即為主代理的審查紀錄。
+- 限制：
+  - 所有綁定都沒有 PS7。
+  - `Test-OfflineRestoreJourney` 未執行（17.94）。
+  - Test-ReleaseWizardSmoke 需要 git 索引，未重跑。
+  - P1 的歸屬依「輸入含被改動的檔案」機械判定，範圍可能偏寬。
+  - `casesExecuted` 是各套件印出的檢查數加總；沒印數字的套件以每支一項計。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

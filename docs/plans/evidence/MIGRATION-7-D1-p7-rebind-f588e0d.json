@@ -1,0 +1,171 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "D1",
+  "verifiedUtc": "2026-10-23T17:25:52Z",
+  "verifier": "P7 sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "f588e0d155632252395e1045825d73bdc534da3c",
+  "snapshotDirectory": "git archive HEAD (f588e0d, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (two snapshots, one per parallel stream, at most two streams) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; the recorded seconds include contention between the two streams",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/SourceCandidateDiscovery.ps1",
+      "sha256": "6F8FFFFA8B3CD0A98C1FA30E192A40EB85F73D400D4235133FB4B60E53E20041"
+    },
+    {
+      "path": "tests/Test-SourceCandidateDiscovery.ps1",
+      "sha256": "5AFA4D732E454F77B7AF6AE8ADCC6544FB615E25FB29796C63416CD20A9042A8"
+    },
+    {
+      "path": "src/OperationRequests.ps1",
+      "sha256": "794D513B54619EE944D5F5568B335404043F36865C79C7483206113DE00AE47B"
+    },
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "BB4A20E354A8AE98271A37764A292042F802EDE9E6DE79323F2DF7DF471CDE37"
+    },
+    {
+      "path": "src/WizardFlow.ps1",
+      "sha256": "5221E5F5D9F469F96F54DE7E7346402B00DD098A75A87E0F332C6363D50D473A"
+    },
+    {
+      "path": "src/WindowsServerMigration.psm1",
+      "sha256": "BB23A18D0662D8C2E507DBCE9CFC9AEFD4FADB93DC188F667506B7E757A28E88"
+    },
+    {
+      "path": "src/WindowsServerMigration.psd1",
+      "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "DACB74DF59B506B06E02AEADE60D6C58D640409A0E262BC88B856F6105A35DD0"
+    },
+    {
+      "path": "src/WorkloadDiscovery.ps1",
+      "sha256": "E97FA3FD90F5CDF58A9B41F16B1915AEDAB00B56F19D17FF1009A7F7CD8990BA"
+    },
+    {
+      "path": "tests/Test-WorkloadPathCoverage.ps1",
+      "sha256": "C10FABC7D3B8256D5479A4FEF585BF7E1ABA5B036FB781731D632075EAB837DF"
+    },
+    {
+      "path": "tests/Test-WorkloadActionIndex.ps1",
+      "sha256": "368E056F05048F3C68CC376712957EBB25C4A8272EEF2D115293A657E6263C12"
+    },
+    {
+      "path": "tests/Test-WorkloadDiscovery.ps1",
+      "sha256": "BCD76D15934C7ED03C9F561FFFEE69A04BA63659272968AD170340F32E4124EF"
+    },
+    {
+      "path": "src/MigrationWizard.ps1",
+      "sha256": "012D9B41D7E23059B87665F992A3B6A7590291426B794BA69F5E17D2727F76E5"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "C00D0A52907F54A1297081AF7EE9AC84571C4F346034C04A35D60C30B8F1D15C"
+    },
+    {
+      "path": "src/WindowsSettingsReview.ps1",
+      "sha256": "902B5A029FEA4276CA4C33F5D6E7501EB1E727AB76336239C6BD4E17831A039C"
+    },
+    {
+      "path": "tests/Test-ProductionFlagProjection.ps1",
+      "sha256": "D8B01E725A7B4B79E8848234A06DFFFA1A6292F7B2AA440701B759BAEC141E18"
+    },
+    {
+      "path": "src/WizardDetails.ps1",
+      "sha256": "37E524A209ABD008BACA36A4BAEFA04C34F0C5324527B8DFE84A5A9F15FB55FF"
+    },
+    {
+      "path": "src/WizardPreparation.ps1",
+      "sha256": "0ACB7BA775A589D01EA51B5B4C137C3FBE0EFA631DA2FD190B35D7B97F88042D"
+    },
+    {
+      "path": "tests/Test-UnresolvedPathNoPrefill.ps1",
+      "sha256": "F3B161585831F760E7AEE177EAE736E39AB42C2DE3655A5AFAF1C84732C700BC"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 235,
+  "result": "Rebound to f588e0d bytes after P1 to P5 (previous binding 23054c1); every command below exited 0 on WinPS 5.1: SourceCandidateDiscovery 68, WorkloadPathCoverage 18, WorkloadActionIndex 28, WorkloadDiscovery 1, ProductionFlagProjection 48, UnresolvedPathNoPrefill 72. Added for P1 to P5: ProductionFlagProjection (P1, PLAN 17.93; HtmlConsole, WizardHtmlRuntime, WindowsSettingsReview, console.js); UnresolvedPathNoPrefill (P3, 17.96; MigrationWizard, WizardDetails, WizardPreparation, console.js). The stage stays in-progress (partial D1 only).",
+  "logs": [
+    {
+      "name": "Test-SourceCandidateDiscovery.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SourceCandidateDiscovery.ps1 </dev/null",
+      "sha256": "E581ED2E81BEC093243BDFA5907B3DD24B346780B0683069DCA4713DD3B6AEC2",
+      "exitCode": 0,
+      "seconds": 24,
+      "countedAs": "checks",
+      "count": 68,
+      "text": "PASS arbitrary HTML paths are not published as source scan reports\r\nTOTAL CHECKS: 68\r\n"
+    },
+    {
+      "name": "Test-WorkloadPathCoverage.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WorkloadPathCoverage.ps1 </dev/null",
+      "sha256": "5DBEED1AF9B396D944F5628C15B64F4B384D1417BC04B1EC9CF7545017C78D06",
+      "exitCode": 0,
+      "seconds": 5,
+      "countedAs": "checks",
+      "count": 18,
+      "text": "PASS: 18 workload path coverage checks; unresolved Source context remains manual.\r\n"
+    },
+    {
+      "name": "Test-WorkloadActionIndex.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WorkloadActionIndex.ps1 </dev/null",
+      "sha256": "55831B0736ED3EE2FA579FD2F669A22AA1F8E5F84879E3940389B140045C3B8D",
+      "exitCode": 0,
+      "seconds": 5,
+      "countedAs": "checks",
+      "count": 28,
+      "text": "PASS: E0 original action indices, typed draft consumer, opaque argument redaction, Exec-only and same-location regression, and ambiguous/unsupported action handling. Assertions: 28\r\n"
+    },
+    {
+      "name": "Test-WorkloadDiscovery.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WorkloadDiscovery.ps1 </dev/null",
+      "sha256": "CB91958F43FCBAC3DA8A8FA0A29B3D8BE420E6D78AFD23C17A278D75430D5501",
+      "exitCode": 0,
+      "seconds": 6,
+      "countedAs": "one public-regression suite (no count printed)",
+      "count": 1,
+      "text": "PASS: R3-B workload graph and schema3 public draft consumer. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-workload-9c0b99e49863482eb2adbb8e842061bf\r\n"
+    },
+    {
+      "name": "Test-ProductionFlagProjection.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ProductionFlagProjection.ps1 </dev/null",
+      "sha256": "1DD208F2DF5FC7BB7D58E33A5F272284675593F7D0705E52EAF99592478BBE1B",
+      "exitCode": 0,
+      "seconds": 14,
+      "countedAs": "checks",
+      "count": 48,
+      "text": "PASS Test-ProductionFlagProjection checks=48; projections force false for true, \"true\" and 1; absent fields are not invented.\r\n"
+    },
+    {
+      "name": "Test-UnresolvedPathNoPrefill.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-UnresolvedPathNoPrefill.ps1 </dev/null",
+      "sha256": "F426594190FE60FFEE2112B79B04DC4021D573C9F909FEAA64BB89C6B4687276",
+      "exitCode": 0,
+      "seconds": 10,
+      "countedAs": "checks",
+      "count": 72,
+      "text": "PASS: 72 unresolved source path no-prefill checks (predicate, draft, approval, form, bulk, supplied path).\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Rebound on WinPS 5.1 only: the earlier two-engine (WinPS 5.1 + PowerShell 7.6.5) D1 evidence and native CI artifacts are historical and keep their own numbers; the casesExecuted value of this binding is the sum of the printed checks of the suites below.",
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Fixture root resolver; not live entire C drive or native browser acceptance.",
+    "50k cumulative cap is terminal; controlled segmented continuation remains unfinished.",
+    "Full D1 workload reference matrix and D2 candidate confirmation/sealing remain pending.",
+    "Partial D1 only: candidate confirmation into approval and full dependency matrix remain incomplete.",
+    "Metadata-only bounded C discovery, not full-volume coverage or content approval.",
+    "Cooperative time checks cannot bound a single blocked filesystem call; replay exhaustion is a visible terminal gap.",
+    "Public CLI and HTML projection tests use controlled inventory/host fixtures; no new live browser end-to-end claim.",
+    "Production policy: 5000 entries per segment, eight segments, 40000 aggregate, 4 MiB path metadata; workload detail 10000 links/2 MiB. Remaining paths require explicit review.",
+    "HTML regression used the prior immutable snapshot with identical HtmlConsole/console.js bytes; final source continuation suite re-ran after the aggregate boundary correction.",
+    "External Server/IIS/SMB/PKI/business qualification remains NotTested; production gates remain false."
+  ],
+  "openIssues": [
+    "Full dependency/opaque-path matrix and candidate confirmation to fresh-hash sealed plan remain incomplete; bounded continuation does not prove full C coverage."
+  ]
+}
