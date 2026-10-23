@@ -2276,12 +2276,31 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     return { ok:false, stale:b5StaleCodes.has(code), message:text, code, output };
   }
   function b5Repaint(kind) { const panel = document.querySelector(`[data-b5-panel="${kind}"]`); if (panel) b5Paint(kind); }
+  // 焦點保存：忙碌或重繪中，焦點所在的按鈕可能暫時不在畫面上（例如載入中只畫狀態列）。
+  // b5Paint 記下焦點鍵（focusWant）；只有在焦點掉到 body 時才在之後的重繪還原，不搶走使用者移到別處的焦點。
+  // 流程結束時由 b5FinishFocus 收尾：原按鈕可用就回到它，否則移到結果訊息（tabindex=-1），不讓焦點留在 body。
+  function b5FocusIsLost() { const a = document.activeElement; return !a || a === document.body || a === document.documentElement || !a.isConnected; }
+  function b5RestoreFocus(kind, panel, key) {
+    const want = b5.focusWant, wanted = key || (want && want.kind === kind ? want.key : ''); if (!wanted) return false;
+    const active = document.activeElement; if (!key && !b5FocusIsLost() && !panel.contains(active)) return false;
+    const next = panel.querySelector(`[data-b5-focus="${wanted}"]`); if (!next || next.disabled) return false;
+    next.focus({ preventScroll:true }); return true;
+  }
+  function b5FinishFocus(kind, resultSelector) {
+    const want = b5.focusWant; if (want && want.kind === kind) b5.focusWant = null; else return;
+    const panel = document.querySelector(`[data-b5-panel="${kind}"]`); if (!panel || !b5FocusIsLost()) return;
+    const next = panel.querySelector(`[data-b5-focus="${want.key}"]`);
+    if (next && !next.disabled && next.getAttribute('aria-disabled') !== 'true') { next.focus({ preventScroll:true }); return; }
+    const results = resultSelector ? [...panel.querySelectorAll(resultSelector)] : [], result = results[results.length - 1] || panel.querySelector('h2');
+    if (result) { if (!result.hasAttribute('tabindex')) result.tabIndex = -1; result.focus({ preventScroll:true }); }
+  }
   function b5Paint(kind) {
     const panel = document.querySelector(`[data-b5-panel="${kind}"]`); if (!panel) return;
     const focused = document.activeElement && panel.contains(document.activeElement) ? document.activeElement.dataset.b5Focus : '', scrollY = window.scrollY;
     panel.replaceChildren();
     if (kind === 'source') b5RenderSource(panel); else if (kind === 'd2') b5RenderD2(panel); else if (kind === 'c2') b5RenderC2(panel);
-    if (focused) { const next = panel.querySelector(`[data-b5-focus="${focused}"]`); if (next) next.focus({ preventScroll:true }); }
+    if (focused) b5.focusWant = { kind, key:focused };
+    b5RestoreFocus(kind, panel, focused);
     if (typeof window.scrollTo === 'function' && window.scrollY !== scrollY) window.scrollTo(0, scrollY);
   }
   function b5Confirm(config) {
@@ -2411,9 +2430,9 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
         if (outcome.ok) { imp.result = outcome.output; b5.review.itemId = String(outcome.output.ItemId || ''); b5.review.data = null; b5.mapping.data = null; b5.mapping.open = false; announce('已匯入候選確認材料；項目待審閱，尚未核准。'); }
         else { imp.error = outcome.message; if (outcome.stale) imp.error += ' 請確認材料與目前管理端版本，必要時重新讀取後再填寫；不會自動重送。'; }
       } catch (error) { if (error.message !== 'session expired') imp.error = b5FriendlyError(error, '匯入未完成。'); }
-      finally { imp.busy = false; b5Repaint('d2'); if (imp.result) b5LoadReview(true); }
+      finally { imp.busy = false; b5Repaint('d2'); if (imp.result) b5LoadReview(true); else b5FinishFocus('d2', '.b5-step-import .b5-status'); }
     }, 'import-submit');
-    submit.disabled = imp.busy; box.appendChild(submit);
+    if (imp.busy) submit.setAttribute('aria-disabled', 'true'); box.appendChild(submit);
     if (imp.error) box.appendChild(b5Status('error', `錯誤：${imp.error}`));
     if (imp.result) box.appendChild(b5Status('ok', `完成：已匯入，項目 ${b5Short(imp.result.ItemId)}，成員 ${safeText(imp.result.MemberCount)} 個。項目仍待你審閱，尚未核准。`));
   }
@@ -2422,7 +2441,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     rv.loading = true; rv.error = ''; rv.stale = false; b5Repaint('d2');
     try { if (force && state.sessionReconnectRequired !== true) await refreshSession(false); rv.data = await b5Read('SourceCandidateConfirmReview', { ItemId:rv.itemId }); }
     catch (error) { if (error.message !== 'session expired') { rv.data = null; rv.stale = b5IsStale(error); rv.error = b5FriendlyError(error, '無法讀取確認內容。'); } }
-    finally { rv.loading = false; b5Repaint('d2'); }
+    finally { rv.loading = false; b5Repaint('d2'); b5FinishFocus('d2', '.b5-step-import .b5-status'); }
   }
   function b5MembersTable(data) {
     const wrap = el('div', 'table-wrap'), table = el('table', 'b5-table'), caption = el('caption', '', `確認成員（顯示 ${data.MembersShown != null ? data.MembersShown : (data.Members || []).length} / ${data.MemberCount}）`);
@@ -2454,7 +2473,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     mp.loading = true; mp.error = ''; mp.stale = false; b5Repaint('d2');
     try { if (force) await refreshSession(false); mp.data = await b5Read('SourceCandidateMappingReview', { CandidateItemId:rv.itemId }); }
     catch (error) { if (error.message !== 'session expired') { mp.data = null; mp.stale = b5IsStale(error); mp.error = b5FriendlyError(error, '無法讀取工作負載對應審閱。'); } }
-    finally { mp.loading = false; b5Repaint('d2'); }
+    finally { mp.loading = false; b5Repaint('d2'); b5FinishFocus('d2', '.b5-step-mapping .b5-status'); }
   }
   function b5MappingChoiceOptions(row) {
     const canInclude = row.DiscoveryStatus === 'Mapped' && b5HashPattern.test(String(row.SuggestedFileScopeItemId || '')) && !row.Opaque;
@@ -2506,7 +2525,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       const list = el('ul', 'wizard-runtime-confirm-list'); [`對應：${final.Include} 筆`, `不對應：${final.Exclude} 筆`, `人工處理：${final.Manual} 筆`].forEach(text => list.appendChild(el('li', '', text)));
       b5Confirm({ title:'確認送出工作負載對應審閱', intro:'送出後，使用這些路徑的相依項目會回到「待審閱」，需要重新審閱並重新核准。', nodes:[list, el('p', 'credential-warning', '若盤點、確認雜湊或版本已被更新，系統會拒絕並要求重新讀取，不會自動重送。')], confirmLabel:'確認送出', backLabel:'返回修改', opener:button, onConfirm:() => b5SubmitMapping() });
     }, 'mapping-submit');
-    submit.disabled = mp.busy; box.appendChild(submit);
+    if (mp.busy) submit.setAttribute('aria-disabled', 'true'); box.appendChild(submit);
     if (mp.submitError) box.appendChild(b5Status('error', `錯誤：${mp.submitError}`));
     if (mp.result) box.appendChild(b5Status('ok', mp.result));
   }
@@ -2520,7 +2539,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       if (outcome.ok) { mp.result = `完成：已記錄 ${safeText(outcome.output.MappingCount)} 筆對應。相依項目已回到待審閱，需重新審閱並重新核准。`; announce('已送出工作負載對應審閱；相依項目需重新審閱並重新核准。'); }
       else { mp.submitError = outcome.message; if (outcome.stale) { mp.stale = true; mp.submitError = '資料已過期（盤點、確認雜湊或版本已變更）。請按「重新讀取」確認最新內容後再決定是否送出；不會自動重送。'; } }
     } catch (error) { if (error.message !== 'session expired') { mp.submitError = b5FriendlyError(error, '送出未完成。'); if (b5IsStale(error)) { mp.stale = true; mp.submitError = '資料已過期。請按「重新讀取」確認最新內容後再決定是否送出；不會自動重送。'; } } }
-    finally { mp.busy = false; b5Repaint('d2'); if (mp.result) b5LoadMapping(false); }
+    finally { mp.busy = false; b5Repaint('d2'); if (mp.result) b5LoadMapping(false); else b5FinishFocus('d2', '.b5-step-mapping .b5-status'); }
   }
   function b5RenderD2(panel) {
     const title = el('h2', '', '來源候選確認與工作負載對應（管理端）'); title.id = 'b5-d2-title'; panel.setAttribute('aria-labelledby', title.id);
@@ -2538,7 +2557,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     c2.attempted = marker; c2.loading = true; c2.error = ''; b5Repaint('c2');
     try { if (force) await refreshSession(false); c2.data = await b5Read('SoftwareDispositionReview', {}); c2.stale = false; const ids = new Set((c2.data.Rows || []).map(row => row.SoftwareId)); [...c2.selected].forEach(id => { if (!ids.has(id)) c2.selected.delete(id); }); [...c2.pending.keys()].forEach(id => { if (!ids.has(id)) c2.pending.delete(id); }); }
     catch (error) { if (error.message !== 'session expired') { c2.data = null; c2.error = b5FriendlyError(error, '無法讀取軟體處置審閱。'); } }
-    finally { c2.loading = false; b5Repaint('c2'); }
+    finally { c2.loading = false; b5Repaint('c2'); b5FinishFocus('c2', '.b5-footer .b5-ok, .b5-footer .b5-error, .b5-footer .b5-warn'); }
   }
   function b5C2Rows() { return (b5.c2.data && b5.c2.data.Rows) || []; }
   function b5C2StateText(row) { return row.DecisionState === 'Reviewed' ? `✔ 已審閱：${b5Dispositions[row.Disposition] || row.Disposition}` : row.DecisionState === 'Stale' ? '⚠ 證據已變更，需重新審閱' : '○ 尚未審閱'; }
@@ -2610,7 +2629,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       nodes.push(el('p', 'b5-hint', `預覽雜湊 ${b5Short(c2.data.PreviewHash)}，決策 revision ${c2.data.DecisionRevision}；若期間資料被更新，系統會拒絕並要求重新讀取。`));
       b5Confirm({ title:'確認送出軟體處置', intro:'送出會把下列處置記錄到管理端；處置不代表就緒或核准。', nodes, ackLabel:'我已核對上述內容，確認送出（Ack）', confirmLabel:'確認送出', backLabel:'返回修改', opener:button, onConfirm:() => b5SubmitC2() });
     }, 'c2-submit');
-    submit.disabled = c2.busy || !c2.pending.size || c2.stale; box.appendChild(submit);
+    submit.disabled = !c2.pending.size || c2.stale; if (c2.busy) submit.setAttribute('aria-disabled', 'true'); box.appendChild(submit);
     if (c2.pending.size) box.appendChild(b5Button('清除暫存', 'quiet-button', () => { c2.pending.clear(); b5Repaint('c2'); }, 'c2-clear'));
     if (c2.stale) box.appendChild(b5Status('warn', '資料已過期：軟體清單或版本已被更新。請先重新讀取，核對暫存項目後再送出；不會自動重送。'));
     if (c2.submitError) box.appendChild(b5Status('error', `錯誤：${c2.submitError}`));
@@ -2628,13 +2647,13 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       if (outcome.ok) { c2.result = `完成：已套用 ${safeText(outcome.output.SubmittedCount)} 筆處置，決策 revision 更新為 ${safeText(outcome.output.DecisionRevision)}。`; c2.pending.clear(); announce('已套用軟體處置。'); }
       else { c2.submitError = outcome.message; if (outcome.stale) { c2.stale = true; c2.submitError = '預覽已過期（雜湊或 revision 已變更），這次沒有套用任何處置。請按「重新讀取」，核對暫存項目後再決定是否送出。'; } }
     } catch (error) { if (error.message !== 'session expired') { c2.submitError = b5FriendlyError(error, '送出未完成。'); if (b5IsStale(error)) { c2.stale = true; c2.submitError = '預覽已過期，這次沒有套用任何處置。請按「重新讀取」，核對暫存項目後再決定是否送出；不會自動重送。'; } } }
-    finally { c2.busy = false; if (sent && c2.result) { c2.attempted = ''; await b5LoadC2(true); } else b5Repaint('c2'); }
+    finally { c2.busy = false; if (sent && c2.result) { c2.attempted = ''; await b5LoadC2(true); } else b5Repaint('c2'); b5FinishFocus('c2', '.b5-footer .b5-ok, .b5-footer .b5-error, .b5-footer .b5-warn'); }
   }
   function b5RenderC2(panel) {
     const c2 = b5.c2;
     const title = el('h2', '', '軟體處置審閱（管理端）'); title.id = 'b5-c2-title'; panel.setAttribute('aria-labelledby', title.id);
     panel.append(title, el('p', 'b5-intro', '列出來源主機的全部軟體與目前處置。可批次選取後套用處置，送出前會顯示確認摘要，並需明確勾選確認。'));
-    if (c2.loading) { panel.appendChild(b5Status('busy', '讀取中：正在讀取軟體處置審閱…')); return; }
+    if (c2.loading) { const wait = b5Button('重新讀取', 'quiet-button', null, 'c2-refresh'); wait.setAttribute('aria-disabled', 'true'); panel.append(b5Status('busy', '讀取中：正在讀取軟體處置審閱…'), wait); return; }
     if (c2.error) { panel.append(b5Status('error', `錯誤：${c2.error}（此配對可能尚未啟用一般主機模式，或沒有可用的來源軟體清單。）`), b5Button('重新讀取', 'secondary-button', () => { c2.attempted = ''; b5LoadC2(true); }, 'c2-reload')); return; }
     if (!c2.data) { panel.appendChild(b5Button('讀取軟體處置審閱', 'secondary-button', () => { c2.attempted = ''; b5LoadC2(true); }, 'c2-load')); return; }
     const rows = b5C2Rows(); if (!rows.length) { panel.appendChild(b5Status('info', '尚無資料：來源軟體清單是空的。')); return; }

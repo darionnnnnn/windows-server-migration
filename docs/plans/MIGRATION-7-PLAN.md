@@ -1531,6 +1531,31 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 讀取檔頭時 `ContentRead` 維持 false，另以 `BundleHeaderBytesRead` 揭露。
   - 大型安裝根的取消回應最長受單次預算限制。
   - 真實 CV2 端到端沒有實機跑過。
+### 17.89 N9e F1 驗收補測，以及 N9e2 修正四處鍵盤焦點缺陷
+
+- N9e 由 Sonnet 5.5 medium subagent 只修改測試完成；N9e2 由另一個 subagent 修正它找到的 UI 缺陷。主代理補上忙碌狀態的樣式，並負責審查與獨立重跑。
+- 新增 `tests/Test-F1AcceptanceBrowser.js`：以真實 Edge 搭配真實 `src/ui`，資料由真實 PowerShell 產生器產生，API 是有狀態的替身。涵蓋 6 個畫面、317 項檢查：
+  - 畫面：備份結果三分頁、安裝軟體分頁、Target 新機安裝檢查、排除區域表、C2、D2。
+  - 鍵盤：完成主要任務（Tab、Shift+Tab、Enter、Space、方向鍵、Esc），焦點環可見，重繪不會把焦點搶走。
+  - 320px 與 200%（以 640 CSS px、DPR 2 模擬）：頁面不溢位，元素不被截斷。
+  - 重開不重問：已確認的項目在重新整理後維持；重新盤點後只有變動的項目需要重確認；新草稿不會被清掉；送出不會重送。
+  - 每個畫面 console 零錯誤。
+- N9e 找到的四處缺陷：C2 送出、C2 重新讀取、D2 匯入、D2 對應送出，操作完成後鍵盤焦點都會掉到 body。原因是按鈕在忙碌時被設成原生 `disabled`，或是在重繪時被移除。
+- N9e2 的修正（`console.js`）：
+  - 沿用 B5 面板既有的 `data-b5-focus` 鍵。忙碌時改用 `aria-disabled`，並在 click handler 擋下重複觸發，送出語意、CAS 與防重送都不變。
+  - 新增 `b5FinishFocus`：按鈕仍可用時回到原按鈕，否則移到結果訊息。
+  - 「重新讀取」在 loading 期間仍保留在 DOM 中。
+  - 主代理補上 `button[aria-disabled="true"]` 的樣式。
+  - 測試預設改為 strict。
+- 驗證：
+  - F1AcceptanceBrowser 317 項通過（strict）。
+  - C2D2Browser、C2D2HtmlActions 185、AssistiveUi 47、BackupProgressBrowser、WizardBrowserZoom、ScriptEncoding 通過。
+- 突變：
+  - 轉紅：版面加上固定 600px、列印鈕改為 div、重開時清掉已確認狀態、拿掉 C2 送出後的焦點還原、拿掉 D2 匯入的兩層保護。
+  - 存活（預期）：主代理讓「焦點遺失判定」恆為假。因為 `aria-disabled` 已經讓焦點留在按鈕上，還原機制只是第二層保護。
+- 限制：
+  - 200% 是用 DPR 模擬，不是瀏覽器真縮放；真縮放仍由 `Test-WizardBrowserZoom` 涵蓋部分畫面。
+  - F1 的「一份流程清單」依 17.83 定案不做。ledger 的 F1 維持未完成。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
