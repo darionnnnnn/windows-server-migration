@@ -1290,6 +1290,27 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 真實 CV2 候選掃描加備份的端到端流程沒有跑過；綁定以形狀一致的合成材料驗證。若真實值格式不同，會一律顯示「未記錄」（安全方向），建議實機確認。
   - 類別靠原因文字推斷。更嚴格的做法是讓掃描直接寫入類別欄位（`SourceCandidateDiscovery.ps1`），列為後續項目。
   - 失敗項目不顯示來源檔案路徑，以免路徑寫入 attempt 紀錄。要不要顯示由使用者決定。
+### 17.78 N4 可靠性測試 16.6-1／16.6-2／16.6-3（未發現產品缺陷）
+
+- Sonnet 5.5 medium subagent 實作，主代理審查並獨立重跑；`src/` 沒有修改。
+- 新增 `Test-WizardBackupReliability.ps1`（核心層，62 項）與 `Test-StartBackupReplayHttp.js`（真實 `/api/operations` 路由，17 項）。`Start-WizardRuntimeTestServer.ps1` 加了選用開關 `-FreezeFixture`，預設關閉。
+- 16.6-1：202 遺失後以同一個 operationId 重放。
+  - 執行中重放、完成後重放（帶或不帶凍結授權），回傳的都是原作業。
+  - 凍結只發生 1 次；重放期間擷取呼叫為 0；作業紀錄、凍結資料夾、job 紀錄各只有 1 份。
+  - 路由層用原始 socket 送出後斷線，模擬沒收到 202，結果相同。同 id 換新 key、同 key 換新 id 都會被拒。
+- 16.6-2：先擷取的通道完成，後一個通道中斷。
+  - 中斷時作業 Failed，沒有 manifest；改動來源後重試，封存世代只包含新位元組，舊 blob 不會被交付。
+  - 凍結收據過期後，續作被拒，舊 partial 與套件樹不變。改走 SourceResume 加新凍結後，另開新 attempt。
+- 16.6-3：封存後交付中斷，續交付（Directory 與 ZIP 都測）。
+  - 續交付前先改動來源位元組，並加上 deny ACL（測試先證明 ACL 確實擋得住讀取）。
+  - 續交付期間，七個擷取或凍結相關函式的呼叫次數都是 0，凍結資料夾數與封存樹不變。
+  - Directory 交付與一次完成的基準逐檔位元組相同；ZIP 匯入後逐檔等於封存成員。
+- 主代理順帶修正：既有 `Test-WizardBackupRecovery` 模擬「已過期但可驗證」的收據時，只改了 `ExpiresUtc`，沒有改 `ProducedUtc`，結果收據變成不可驗證，測到的是「結果不明」分支而不是「過期」分支（N4 subagent 發現）。現在同時把 `ProducedUtc` 往前調。真正的過期路徑由 N4 的情境 2b 覆蓋。
+- 驗證（WinPS 5.1）：WizardBackupReliability 62、StartBackupReplayHttp 17、WizardBackupRecovery 21（主代理重跑）。subagent 另跑 WizardBackup、WizardBackupProgress、OfflineFullSet、SeparateSource、MixedGenerationZip、HtmlConsole、HtmlSubmission、JournalReplayCoverage、WorkspaceLockReentrancy、ScriptEncoding、NativeWizardRuntimeHandler，全部通過。
+- 突變（皆轉紅）：拿掉核心 operationId 去重、允許跨世代拼接、續交付改為重新擷取、交付時讀來源、過期凍結可續作、拿掉路由層重放。
+- 限制與待決定：
+  - 本機只有 C:，NonC 只能用 TransferChannel 標籤表示。
+  - 重試時 `artifacts.jsonl.partial` 會被新索引取代，舊 blob 仍留在套件工作區。16.6-2 的「舊 partial 保留」目前只保留到重試之前；重試時要不要另存舊 partial，由使用者決定。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

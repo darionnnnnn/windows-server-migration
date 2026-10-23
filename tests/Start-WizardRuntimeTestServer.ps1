@@ -9,12 +9,13 @@
     [switch]$ServiceChallenge,
     [switch]$FailCredentialBeginOnce,
     [switch]$RestartOnly,
+    [switch]$FreezeFixture,
     [ValidateSet('ItemByItem','Automatic')][string]$WizardMode='ItemByItem'
 )
 $ErrorActionPreference='Stop'
 $module=Import-Module (Join-Path $PSScriptRoot '../src/WindowsServerMigration.psd1') -Force -PassThru -DisableNameChecking
 & $module {
-    param($Role,$Workspace,$ReadyPath,$StopFile,$ResponseCapturePath,$PayloadRoot,$WizardMode,$ServiceChallenge,$FailCredentialBeginOnce,$RestartOnly)
+    param($Role,$Workspace,$ReadyPath,$StopFile,$ResponseCapturePath,$PayloadRoot,$WizardMode,$ServiceChallenge,$FailCredentialBeginOnce,$RestartOnly,$FreezeFixture,$FreezeFixturePath)
     $script:FixtureCaptureRoot=$ResponseCapturePath;$script:FixtureCaptureSequence=0;$script:FixtureRole=$Role
     $script:FixtureCorrelationId=''
     $script:FixtureTimingRoot=Join-Path ([IO.Path]::GetDirectoryName($ResponseCapturePath)) 'callee-timings'
@@ -183,7 +184,7 @@ finally{
     $catalog=Enable-WsmAssistiveMode $managerRoot $catalog.PairId $catalog.DecisionRevision
     $targetIdentityPath=Join-Path (Join-Path $targetRoot ('targets\'+$targetProfile.HostId)) 'target-identity.json'
     $targetIdentityHash=(Get-FileHash -LiteralPath $targetIdentityPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $spec=[pscustomobject][ordered]@{Adapter='FileScope';SourcePath=$sourceData;TargetPath=(Join-Path $Workspace 'restored-payload');TransferChannel='C';ContentSelection='WholeScope';ExcludedRelativePaths=@();Consistency='Immutable';Metadata='DaclOwner';AclControlPolicy='AllowAutoInheritedUpgrade';ConflictPolicy='ReplaceOwned';Owner='Fixture source owner';Evidence='Immutable source payload fixture';BusinessChecks=@('Read back each exact fixture file')}
+    $spec=[pscustomobject][ordered]@{Adapter='FileScope';SourcePath=$sourceData;TargetPath=(Join-Path $Workspace 'restored-payload');TransferChannel='C';ContentSelection='WholeScope';ExcludedRelativePaths=@();Consistency=$(if($FreezeFixture){'OwnerFreeze'}else{'Immutable'});Metadata='DaclOwner';AclControlPolicy='AllowAutoInheritedUpgrade';ConflictPolicy='ReplaceOwned';Owner='Fixture source owner';Evidence='Immutable source payload fixture';BusinessChecks=@('Read back each exact fixture file')}
     $specPath=Join-Path $Workspace 'approved-spec.json';Write-WsmJson $specPath $spec
     $catalog=Get-WsmCatalog $managerRoot $catalog.PairId
     Set-WsmMigrationSpec $managerRoot $catalog.PairId $item.ItemId $specPath (Get-FileHash -LiteralPath $specPath -Algorithm SHA256).Hash $catalog.DecisionRevision|Out-Null
@@ -208,6 +209,13 @@ finally{
         $profilePath=Join-Path (Join-Path $sourceRoot 'workspace-control') 'output-profile.json'
         $profileHash=(Get-FileHash -LiteralPath $profilePath -Algorithm SHA256).Hash.ToLowerInvariant()
         $fixture=[pscustomobject][ordered]@{Role='Source';PairId=$catalog.PairId;ItemId=$item.ItemId;SourceData=$sourceData;PlanPath=$approvedPath;PlanHash=$approved.SHA256;ProfilePath=$profilePath;ProfileHash=$profileHash;WizardMode=$WizardMode}
+        if($FreezeFixture){
+            # N4: opt-in OwnerFreeze plan plus a SourceFreezeReady proof, so a route test can count real source freezes in durable state.
+            . $FreezeFixturePath
+            $freezePlan=Read-WsmMigrationPlan $approvedPath $approved.SHA256
+            $freezeProof=New-WsmSourceFreezeEvidenceFixture -Plan $freezePlan -PlanHash $approved.SHA256 -Root $Workspace -Owner 'Replay freeze owner'
+            $fixture|Add-Member NoteProperty FreezeOwner 'Replay freeze owner' -Force;$fixture|Add-Member NoteProperty FreezeEvidenceText 'Synthetic owner-confirmed quiescence; fixture only.' -Force;$fixture|Add-Member NoteProperty FreezeEvidencePath $freezeProof.Path -Force;$fixture|Add-Member NoteProperty FreezeEvidenceHash $freezeProof.SHA256 -Force
+        }
     } else {
         $env:WSM_RUNTIME_TEST_FINGERPRINT='a'*64;$sourceReceived=Import-WsmWizardApprovedPlan $sourceRoot Source $approvedPath $approved.SHA256
         if($sourceReceived.Status -cne 'ImportedVerified'){throw 'Controlled Target setup could not bind the approved plan to Source.'}
@@ -262,4 +270,4 @@ finally{
         [IO.File]::WriteAllText($tracePath,$detail,(New-Object Text.UTF8Encoding($false)))
         throw
     }
-} $Role $Workspace $ReadyPath $StopFile $ResponseCapturePath $PayloadRoot $WizardMode $ServiceChallenge $FailCredentialBeginOnce $RestartOnly
+} $Role $Workspace $ReadyPath $StopFile $ResponseCapturePath $PayloadRoot $WizardMode $ServiceChallenge $FailCredentialBeginOnce $RestartOnly $FreezeFixture (Join-Path $PSScriptRoot 'ExternalReadinessEvidenceFixtures.ps1')

@@ -70,7 +70,7 @@ try {
         Check ($sourceAttempt.State.Status -ceq 'Frozen') 'Runtime read triggered SourceResume automatically.'
         $html=ConvertTo-WsmWizardHtmlValue ([pscustomobject]@{sourceFreeze=$runtime.sourceFreeze;unknownSensitive='private-token'})
         Check ($html.sourceFreeze.resumeAvailable -and $html.sourceFreeze.resumeRoute.sourceAttemptPath -ceq $sourceAttemptPath -and -not $html.PSObject.Properties['unknownSensitive']) 'Safe HTML runtime projection lost resume fields or exposed an unknown sensitive property.'
-        $receipt=Read-WsmJson $receiptPath;$receipt.ExpiresUtc=[DateTimeOffset]::UtcNow.AddHours(-1).ToString('o');Write-WsmJson $receiptPath $receipt;$backup.Freeze.SHA256=(Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash.ToLowerInvariant();Write-WsmJson $backupPath $backup
+        $receipt=Read-WsmJson $receiptPath;$receipt.ProducedUtc=[DateTimeOffset]::UtcNow.AddHours(-2).ToString('o');$receipt.ExpiresUtc=[DateTimeOffset]::UtcNow.AddHours(-1).ToString('o');Write-WsmJson $receiptPath $receipt;$backup.Freeze.SHA256=(Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash.ToLowerInvariant();Write-WsmJson $backupPath $backup
         $expired=Get-WsmWizardRuntimeSource $sourceRoot $catalog.PairId $profile @($backupJob)
         $expiredStart=@($expired.actions|Where-Object id -ceq 'StartBackup'|Select-Object -First 1);$expiredResume=@($expired.actions|Where-Object id -ceq 'SourceResume'|Select-Object -First 1)
         Check ($expiredStart.Count -eq 1 -and -not $expiredStart[0].available -and $expiredResume.Count -eq 1 -and $expiredResume[0].available -and $expired.sourceFreeze.resumeRequired) 'An expired but verifiable receipt must permit recovery guidance while blocking continuation of the old final backup.'
