@@ -1667,6 +1667,15 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 突變（皆轉紅）：subagent 對 8 個點各做一個突變；主代理對新增的 outputs 強制另做一個，丟出「Stored job outputs copied a Production flag」。
 - 驗證（WinPS 5.1）：ProductionFlagProjection 48、HtmlConsole、WizardHtmlRuntimeProjection、WindowsSettingsReview、HtmlSubmission、WizardBackup、ScriptEncoding；AssistiveUi（node --test）、BackupProgressBrowser（Edge）。
 
+### 17.94 P6 待決定項目定案（2026-10-23 使用者授權、主代理評估定案；不改程式）
+
+- **D1 方向（17.91）定案**：確認材料以 Source workspace 根為受控位置。理由是寫入端 `SourceCandidateConfirmation`、讀取端 `WizardBackupProjection`、NonC 材料 `AssistiveNonC` 三處本來就以根為準，Manager 端驗證也以 workspace 相對參照為準。匯出器的 `MaterialWorkspace` 參數維持 N9h 的設計。
+- **MIGRATION-3-PLAN.md 不排除（不改）**：`tests/Test-Qualification.ps1:64` 規定離線發行包必須保留 `docs/MIGRATION-3-PLAN.md` 這份契約文件，README（:33、:45、:79）也以它作為現行文件連結，所以維持在發行包內。
+- **掃描直接寫入分類：結案**。N9d（17.88）已在排除區域加入結構化 `Category`／`Contents`（`SourceCandidateDiscovery.ps1` 約 :271），新掃描優先讀這兩個欄位，舊掃描回退到原因文字推斷，不需要另外處理。
+- **GitHub `required-checks` 暫不設為必要檢查**。依 17.74，`required-checks` 目前因為 `Test-AssistiveWorkloadIntegration` 與 `Test-ObservationWorkflow` 判定失敗；這兩支在第六輪基準就已失敗（17.71）。現在設為必要檢查會擋住 dev／main 的合併，等這些測試修好再設。
+- **G 主旅程**：n9g001 由使用者自行允許執行，結果出來後再補綁帳本 G 階段。主代理與 subagent 都不會嘗試繞過權限分類器去執行它（17.92）。
+- 其餘待決項目由同日的 P1～P5 實作：投影旗標見 17.93，重試另存舊 partial、解析失敗不預填、失敗項目顯示來源路徑，以及 pending intent 與 reservation 補測，見後續各節。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
