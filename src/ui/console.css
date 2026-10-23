@@ -231,6 +231,7 @@ body.printing-checklist .print-checklist{display:block;margin:0;padding:0;color:
 .progress-facts{display:grid;grid-template-columns:minmax(120px,.35fr) minmax(0,1fr);gap:4px 12px;margin:0;font-size:13px;min-width:0}
 .progress-facts dt{color:var(--muted)}
 .progress-facts dd{margin:0;min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+@media (max-width:360px){.progress-facts{grid-template-columns:minmax(0,1fr)}.progress-facts dt{margin-top:4px}}
 .progress-recent summary{cursor:pointer;font-weight:650;min-height:32px;display:flex;align-items:center}
 .progress-recent summary:focus-visible{outline:3px solid #bd5a13;outline-offset:2px}
 .progress-recent-list{margin:6px 0 0;padding-left:22px;max-height:240px;overflow:auto;font-size:13px}

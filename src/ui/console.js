@@ -166,7 +166,7 @@
     const barRow = el('div', 'progress-bar-row'), bar = document.createElement('progress'), percent = el('span', 'progress-percent');
     bar.max = 100; bar.className = 'progress-meter'; bar.setAttribute('aria-labelledby', `progress-title-${hostId}`); barRow.append(bar, percent);
     const facts = el('dl', 'progress-facts'), nodes = {};
-    [['workload', '目前工作負載'], ['file', '目前檔案'], ['items', '項目（已完成／總數）'], ['bytes', '位元組（已處理／總數）'], ['elapsed', '經過時間'], ['updated', '最後更新']].forEach(([key, label]) => { const dd = el('dd'); nodes[key] = dd; facts.append(el('dt', '', label), dd); });
+    [['workload', '目前工作負載'], ['itemId', '目前項目識別碼'], ['type', '目前項目型別'], ['channel', '通道'], ['file', '目前檔案'], ['files', '檔案（已處理／總數）'], ['items', '項目（已完成／總數）'], ['bytes', '位元組（已處理／總數）'], ['elapsed', '經過時間'], ['updated', '最後更新']].forEach(([key, label]) => { const dd = el('dd'); nodes[key] = dd; facts.append(el('dt', '', label), dd); });
     const recent = el('details', 'progress-recent'), recentSummary = el('summary', ''), recentList = el('ol', 'progress-recent-list'); recent.append(recentSummary, recentList);
     const actions = el('div', 'progress-actions'), cancel = el('button', 'danger-button progress-cancel', '取消備份'); cancel.type = 'button'; cancel.dataset.focusKey = `progress-cancel:${hostId}`; actions.appendChild(cancel);
     const live = el('div', 'progress-live'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite'); live.setAttribute('aria-atomic', 'true');
@@ -191,6 +191,10 @@
     if (percent === null) { if (card.bar.hasAttribute('value')) card.bar.removeAttribute('value'); } else if (Number(card.bar.getAttribute('value')) !== percent || !card.bar.hasAttribute('value')) card.bar.value = percent;
     setNodeText(card.percent, percent === null ? '進度：未知' : `${percent}%`); card.bar.setAttribute('aria-valuetext', percent === null ? '未知' : `${percent}%`);
     setNodeText(card.nodes.workload, view.Workload || '—'); setNodeText(card.nodes.file, view.CurrentFile || '—');
+    // N2: the item fields come from the producer record; an older record that never carried them reads as "未記錄", never as empty or zero.
+    const itemRecorded = view.ItemFieldsRecorded === true;
+    setNodeText(card.nodes.itemId, itemRecorded ? (view.CurrentItemId || '—') : '未記錄'); setNodeText(card.nodes.type, itemRecorded ? (view.CurrentItemTypeLabel || '—') : '未記錄'); setNodeText(card.nodes.channel, itemRecorded ? (view.CurrentChannelLabel || '未知') : '未記錄');
+    setNodeText(card.nodes.files, itemRecorded ? `檔案 ${view.FilesDone == null ? '未知' : view.FilesDone}/${view.FilesTotal == null ? '未知' : view.FilesTotal}` : '未記錄');
     setNodeText(card.nodes.items, progressCountText(view.ItemsDone, view.ItemsTotal)); setNodeText(card.nodes.bytes, progressBytesText(view.BytesDone, view.BytesTotal));
     setNodeText(card.nodes.updated, formatEvidenceTime(view.UpdatedUtc)); tickProgressCard(card);
     const rows = Array.isArray(view.Recent) ? view.Recent.slice(-20) : [], signature = JSON.stringify(rows);

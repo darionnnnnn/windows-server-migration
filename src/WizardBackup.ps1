@@ -43,6 +43,11 @@ function Write-WsmWizardBackupAttempt([string]$Path,$Attempt,[string]$Workspace)
 #     writes at stage changes and at the end, so a flood of small files cannot inflate disk or fsync traffic;
 #   * the record is capped at 4 KiB; Recent keeps the newest 20 completed items (FIFO) with only ItemId and Result;
 #   * unknown totals are stored as null (never 0) so the UI can say "unknown".
+#   * N2: the current item is published as independent fields (CurrentItemId, CurrentItemType = adapter code,
+#     CurrentItemTypeLabel from Get-WsmWizardItemTypeLabel, CurrentChannel = C | NonC | Unknown) plus the file sequence
+#     (FilesDone = files the exporter already finished, FilesTotal = null until the package is sealed). The channel is
+#     derived from the approved item spec, not parsed from display text. When a record would pass 4 KiB the stored item
+#     names shrink first (the UI falls back to the ItemId), never the new fields; Recent rows are the last resort.
 # Stage codes follow the real sub-stages of Invoke-WsmWizardStartBackup: Capture (source freeze + core export, which
 # also seals the package), Verify (Test-WsmMigrationPackage), Deliver (enrolled delivery + item results + report).
 function Get-WsmWizardBackupProgressStageCodes { @('Capture','Verify','Deliver') }
@@ -65,18 +70,29 @@ function New-WsmWizardBackupProgress([string]$Workspace,[string]$PairId,[string]
     $interval=1000
     if(Get-Variable -Name WsmWizardBackupProgressIntervalMs -Scope Script -ErrorAction SilentlyContinue){$interval=[int]$script:WsmWizardBackupProgressIntervalMs}
     $ids=New-Object 'System.Collections.Generic.List[string]';$names=New-Object 'System.Collections.Generic.List[string]';$roots=New-Object 'System.Collections.Generic.List[string]'
+    $types=New-Object 'System.Collections.Generic.List[string]';$typeLabels=New-Object 'System.Collections.Generic.List[string]';$channels=New-Object 'System.Collections.Generic.List[string]'
     foreach($progressItem in @($ProgressItems)){
         $ids.Add([string]$progressItem.ItemId)
         $name=if($progressItem.PSObject.Properties['NaturalKey'] -and [string]$progressItem.NaturalKey){[string]$progressItem.NaturalKey}else{[string]$progressItem.Kind}
         $names.Add((ConvertTo-WsmProgressText $name))
         $root='';if($progressItem.MigrationSpec -and $progressItem.MigrationSpec.PSObject.Properties['SourcePath'] -and $progressItem.MigrationSpec.Adapter -ceq 'FileScope'){$root=[string]$progressItem.MigrationSpec.SourcePath}
         $roots.Add($root)
+        $adapter='';if($progressItem.MigrationSpec -and $progressItem.MigrationSpec.PSObject.Properties['Adapter']){$adapter=[string]$progressItem.MigrationSpec.Adapter}
+        $types.Add((ConvertTo-WsmProgressText $adapter))
+        $typeLabel=$adapter;if(Get-Command Get-WsmWizardItemTypeLabel -CommandType Function -ErrorAction SilentlyContinue){$typeLabel=Get-WsmWizardItemTypeLabel $adapter ([string]$progressItem.Kind)}
+        $typeLabels.Add((ConvertTo-WsmProgressText $typeLabel))
+        $channel='Unknown'
+        if($adapter -ceq 'FileScope'){
+            $transfer='C';if($progressItem.MigrationSpec.PSObject.Properties['TransferChannel']){$transfer=[string]$progressItem.MigrationSpec.TransferChannel}
+            if($transfer -ceq 'NonC'){$channel='NonC'}elseif($transfer -ceq 'C'){$channel='C'}
+        }
+        $channels.Add($channel)
     }
     $total=$null;if($null -ne $ItemsTotal){$total=[int]$ItemsTotal}elseif($ids.Count){$total=$ids.Count}
     @{
         Path=(Get-WsmWizardBackupProgressPath $Workspace $PairId $OperationId);IntervalMs=$interval;LastWriteTicks=[long]0;Writes=0;LastError=''
-        Ids=$ids;Names=$names;Roots=$roots;CurrentIndex=0;DoneCount=0;NameMap=@{}
-        Record=[ordered]@{SchemaVersion=1;Kind='WizardBackupProgress';PairId=$PairId;OperationId=$OperationId;AttemptId=$AttemptId;Stage='Capture';StageIndex=1;StageCount=(Get-WsmWizardBackupProgressStageCodes).Count;Workload='';CurrentFile='';ItemsDone=0;ItemsTotal=$total;BytesDone=[long]0;BytesTotal=$null;FailedCount=0;Terminal=$false;Outcome='';StartedUtc=(Get-WsmUtc);UpdatedUtc=(Get-WsmUtc);Recent=@();ItemNames=[ordered]@{}}
+        Ids=$ids;Names=$names;Roots=$roots;Types=$types;TypeLabels=$typeLabels;Channels=$channels;CurrentIndex=0;DoneCount=0;NameMap=@{}
+        Record=[ordered]@{SchemaVersion=1;Kind='WizardBackupProgress';PairId=$PairId;OperationId=$OperationId;AttemptId=$AttemptId;Stage='Capture';StageIndex=1;StageCount=(Get-WsmWizardBackupProgressStageCodes).Count;Workload='';CurrentFile='';CurrentItemId='';CurrentItemType='';CurrentItemTypeLabel='';CurrentChannel='Unknown';FilesDone=[long]0;FilesTotal=$null;ItemsDone=0;ItemsTotal=$total;BytesDone=[long]0;BytesTotal=$null;FailedCount=0;Terminal=$false;Outcome='';StartedUtc=(Get-WsmUtc);UpdatedUtc=(Get-WsmUtc);Recent=@();ItemNames=[ordered]@{}}
     }
 }
 
@@ -93,9 +109,9 @@ function Write-WsmWizardBackupProgressFile([string]$Path,[string]$Json) {
     }finally{if([IO.File]::Exists($temporary)){[IO.File]::Delete($temporary)}}
 }
 
-function ConvertTo-WsmWizardBackupProgressJson($Progress,$Recent) {
+function ConvertTo-WsmWizardBackupProgressJson($Progress,$Recent,[int]$NameCap=256) {
     $record=$Progress.Record;$record.Recent=@($Recent);$names=[ordered]@{}
-    foreach($entry in @($Recent)){if($Progress.NameMap.ContainsKey([string]$entry.ItemId)){$names[[string]$entry.ItemId]=[string]$Progress.NameMap[[string]$entry.ItemId]}}
+    foreach($entry in @($Recent)){if($NameCap -gt 0 -and $Progress.NameMap.ContainsKey([string]$entry.ItemId)){$name=[string]$Progress.NameMap[[string]$entry.ItemId];if($name.Length -gt $NameCap){$name=$name.Substring(0,$NameCap)};$names[[string]$entry.ItemId]=$name}}
     $record.ItemNames=$names
     $record|ConvertTo-Json -Depth 6 -Compress
 }
@@ -113,8 +129,19 @@ function Write-WsmWizardBackupProgressRecord($Progress,[switch]$Force) {
             if(([string]$record.Workload).Length -gt 80){$record.Workload=([string]$record.Workload).Substring(0,80)}
             $json=ConvertTo-WsmWizardBackupProgressJson $Progress $recent
         }
+        # Keep all 20 Recent rows: shrink the remembered display names first (the UI falls back to the ItemId), then the
+        # free text, and only as the very last resort drop the oldest rows. The new item/channel/file fields are never cut.
+        foreach($nameCap in 40,24,12,0){
+            if([Text.Encoding]::UTF8.GetByteCount($json) -le 4096){break}
+            $json=ConvertTo-WsmWizardBackupProgressJson $Progress $recent $nameCap
+        }
+        if([Text.Encoding]::UTF8.GetByteCount($json) -gt 4096){
+            if($record.CurrentFile.Length -gt 32){$record.CurrentFile='…'+$record.CurrentFile.Substring($record.CurrentFile.Length-31)}
+            if(([string]$record.Workload).Length -gt 32){$record.Workload=([string]$record.Workload).Substring(0,32)}
+            $json=ConvertTo-WsmWizardBackupProgressJson $Progress $recent 0
+        }
         while([Text.Encoding]::UTF8.GetByteCount($json) -gt 4096 -and $recent.Count -gt 0){
-            $recent=@($recent|Select-Object -Skip 1);$json=ConvertTo-WsmWizardBackupProgressJson $Progress $recent
+            $recent=@($recent|Select-Object -Skip 1);$json=ConvertTo-WsmWizardBackupProgressJson $Progress $recent 0
         }
         Write-WsmWizardBackupProgressFile $Progress.Path $json
         $Progress.LastWriteTicks=$nowTicks;$Progress.Writes=[int]$Progress.Writes+1
@@ -146,7 +173,7 @@ function Complete-WsmWizardBackupProgressItems($Progress,[int]$UpTo) {
 
 # Called for every file the core export starts. ItemIndex is 1-based and identifies the item in the same ordered
 # list the exporter uses, so a new index means every earlier item has completed.
-function Update-WsmWizardBackupProgressItem($Progress,[int]$ItemIndex,[int]$ItemCount,[string]$ItemName,[string]$FilePath,[long]$BytesDone) {
+function Update-WsmWizardBackupProgressItem($Progress,[int]$ItemIndex,[int]$ItemCount,[string]$ItemName,[string]$FilePath,[long]$BytesDone,[long]$FilesDone=0) {
     if(-not $Progress){return}
     try{
         $record=$Progress.Record
@@ -157,12 +184,16 @@ function Update-WsmWizardBackupProgressItem($Progress,[int]$ItemIndex,[int]$Item
         $root='';if($ItemIndex -ge 1 -and $ItemIndex -le $Progress.Roots.Count){$root=$Progress.Roots[$ItemIndex-1]}
         $record.CurrentFile=ConvertTo-WsmProgressText (Get-WsmWizardBackupProgressRelativePath $root $FilePath)
         $record.BytesDone=[Math]::Max([long]0,$BytesDone)
+        $itemId='';$itemType='';$itemTypeLabel='';$channel='Unknown'
+        if($ItemIndex -ge 1 -and $ItemIndex -le $Progress.Ids.Count){$itemId=[string]$Progress.Ids[$ItemIndex-1];$itemType=[string]$Progress.Types[$ItemIndex-1];$itemTypeLabel=[string]$Progress.TypeLabels[$ItemIndex-1];$channel=[string]$Progress.Channels[$ItemIndex-1]}
+        $record.CurrentItemId=$itemId;$record.CurrentItemType=$itemType;$record.CurrentItemTypeLabel=$itemTypeLabel;$record.CurrentChannel=$channel
+        $record.FilesDone=[Math]::Max([long]0,$FilesDone)
         [void](Write-WsmWizardBackupProgressRecord $Progress)
     }catch{$Progress.LastError=[string]$_.Exception.Message}
 }
 
 # Enter a sub-stage. Stage changes are always written. Leaving Capture means every item has completed.
-function Set-WsmWizardBackupProgressStage($Progress,[string]$Stage,[long]$Bytes=-1) {
+function Set-WsmWizardBackupProgressStage($Progress,[string]$Stage,[long]$Bytes=-1,[long]$Files=-1) {
     if(-not $Progress){return}
     try{
         $codes=@(Get-WsmWizardBackupProgressStageCodes);$index=[Array]::IndexOf($codes,$Stage)
@@ -171,10 +202,11 @@ function Set-WsmWizardBackupProgressStage($Progress,[string]$Stage,[long]$Bytes=
         if($index -ge 1){
             $all=$Progress.Ids.Count;if($null -ne $record.ItemsTotal){$all=[Math]::Max($all,[int]$record.ItemsTotal)}
             Complete-WsmWizardBackupProgressItems $Progress $all
-            $record.Workload='';$record.CurrentFile=''
+            $record.Workload='';$record.CurrentFile='';$record.CurrentItemId='';$record.CurrentItemType='';$record.CurrentItemTypeLabel='';$record.CurrentChannel='Unknown'
         }
         $record.Stage=$Stage;$record.StageIndex=$index+1
         if($Bytes -ge 0){$record.BytesDone=$Bytes;$record.BytesTotal=$Bytes}
+        if($Files -ge 0){$record.FilesDone=$Files;$record.FilesTotal=$Files}
         [void](Write-WsmWizardBackupProgressRecord $Progress -Force)
     }catch{$Progress.LastError=[string]$_.Exception.Message}
 }
@@ -435,7 +467,7 @@ function Invoke-WsmWizardStartBackup {
             $progressItemHook=$progress
             if($progressItemHook){
                 $originalItemProgress=Get-Command Write-WsmBackupItemProgress -CommandType Function
-                function Write-WsmBackupItemProgress {param([int]$ItemIndex,[int]$ItemCount,[string]$ItemName,[string]$Channel,[string]$FilePath,[long]$FilesDone,[long]$BytesDone);& $originalItemProgress @PSBoundParameters;Update-WsmWizardBackupProgressItem $progressItemHook $ItemIndex $ItemCount $ItemName $FilePath $BytesDone}
+                function Write-WsmBackupItemProgress {param([int]$ItemIndex,[int]$ItemCount,[string]$ItemName,[string]$Channel,[string]$FilePath,[long]$FilesDone,[long]$BytesDone);& $originalItemProgress @PSBoundParameters;Update-WsmWizardBackupProgressItem $progressItemHook $ItemIndex $ItemCount $ItemName $FilePath $BytesDone $FilesDone}
             }
             $core=Export-WsmMigrationPackage @exportArgs
             $record.CoreExport=[pscustomobject]@{Status='Succeeded';ManifestPath=[IO.Path]::GetFullPath($core.ManifestPath);SHA256=[string]$core.SHA256;Generation=[int]$core.Generation;Files=[long]$core.Files;Bytes=[long]$core.Bytes;Final=[bool]$core.Final;Sealed=[bool]$core.Sealed;SoftwareScopeCoverage=@($(if($core.PSObject.Properties['SoftwareScopeCoverage']){@($core.SoftwareScopeCoverage)}else{@()}));ProductionVerified=$false};$record.Stage='CoreExported';$record.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $path $record $Workspace
@@ -447,12 +479,12 @@ function Invoke-WsmWizardStartBackup {
         }
     }
     if($record.Stage -eq 'CoreExported'){
-        try{Set-WsmWizardBackupProgressStage $progress 'Verify' ([long]$record.CoreExport.Bytes);Assert-WsmCancellationBoundary $CancellationToken 'BeforePackageTest';$test=Test-WsmMigrationPackage -ManifestPath $record.CoreExport.ManifestPath -ExpectedHash $record.CoreExport.SHA256 -CancellationToken $CancellationToken;$record.PackageTest=[pscustomobject]@{Status='Succeeded';Valid=[bool]$test.Valid;ManifestPath=[IO.Path]::GetFullPath($record.CoreExport.ManifestPath);SHA256=[string]$record.CoreExport.SHA256;PlanHash=[string]$test.Manifest.PlanHash;Generation=[int]$test.Manifest.Generation;Files=[long]$test.Manifest.Files;Bytes=[long]$test.Manifest.Bytes;Final=[bool]$test.Manifest.Final;ProductionVerified=$false};$record.Stage='PackageVerified';$record.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $path $record $Workspace}
+        try{Set-WsmWizardBackupProgressStage $progress 'Verify' ([long]$record.CoreExport.Bytes) ([long]$record.CoreExport.Files);Assert-WsmCancellationBoundary $CancellationToken 'BeforePackageTest';$test=Test-WsmMigrationPackage -ManifestPath $record.CoreExport.ManifestPath -ExpectedHash $record.CoreExport.SHA256 -CancellationToken $CancellationToken;$record.PackageTest=[pscustomobject]@{Status='Succeeded';Valid=[bool]$test.Valid;ManifestPath=[IO.Path]::GetFullPath($record.CoreExport.ManifestPath);SHA256=[string]$record.CoreExport.SHA256;PlanHash=[string]$test.Manifest.PlanHash;Generation=[int]$test.Manifest.Generation;Files=[long]$test.Manifest.Files;Bytes=[long]$test.Manifest.Bytes;Final=[bool]$test.Manifest.Final;ProductionVerified=$false};$record.Stage='PackageVerified';$record.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $path $record $Workspace}
         catch{$resumeStage='CoreExported';$record.ResumeStage=$resumeStage;$record.Stage=if($_.Exception.Data['CancellationRequested']){'Cancelled'}else{'Failed'};if($freezeRequired -and $record.Freeze){$record.SourceResumeRequired=$true};$record.Error=[pscustomobject]@{Code=$(if($record.Stage -eq 'Cancelled'){'cancelled'}else{'package_test_failed'});Message='封裝核驗未完成；檔案保留，請先檢查作業紀錄。'};$record.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $path $record $Workspace;Complete-WsmWizardBackupProgress $progress $(if($record.Stage -ceq 'Cancelled'){'Cancelled'}else{'Failed'});throw}
     }
     if($record.Stage -eq 'PackageVerified'){
         try{
-            Set-WsmWizardBackupProgressStage $progress 'Deliver' ([long]$record.CoreExport.Bytes)
+            Set-WsmWizardBackupProgressStage $progress 'Deliver' ([long]$record.CoreExport.Bytes) ([long]$record.CoreExport.Files)
             Assert-WsmCancellationBoundary $CancellationToken 'BeforeDelivery'
             # The delivery API re-verifies the sealed package and uses the same immutable OutputAttemptId.
             # Cancellation is checked at this stage boundary; the package's own resumable transport checkpoints prevent rebuilding prior work.

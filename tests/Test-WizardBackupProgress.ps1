@@ -5,6 +5,7 @@
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
+$evidenceFixturePath=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'ExternalReadinessEvidenceFixtures.ps1'))
 $tempBase=[IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $driveLetter=(@('R','S','T','U','V','W','X','Y','Z') | Where-Object { -not (Test-Path -LiteralPath ($_+':\')) } | Select-Object -First 1)
 if(-not $driveLetter){throw 'No free temporary drive letter is available for the short-path payload test.'}
@@ -14,7 +15,8 @@ $root=Join-Path ($driveLetter+':\') ('wsmbp-'+[Guid]::NewGuid().ToString('N').Su
 [void][IO.Directory]::CreateDirectory($root)
 try {
     & $module {
-        param($Root)
+        param($Root,$EvidenceFixturePath)
+        . $EvidenceFixturePath
         $script:checks=0
         function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 
@@ -105,6 +107,90 @@ try {
         Check ($null -ne (Read-WsmWizardBackupProgress $workspace $pair $bigOp)) 'The worst-case record could not be read back.'
         Write-Host 'PASS: worst-case names and paths stay within the 4 KiB bound.'
 
+        # ---------------------------------------------------------------- N2: current item id / type / channel / file sequence
+        $zhChannelC=[regex]::Unescape('C \u69fd');$zhChannelNonC=[regex]::Unescape('\u975e C \u69fd');$zhUnknown=[regex]::Unescape('\u672a\u77e5');$zhUnrecorded=[regex]::Unescape('\u672a\u8a18\u9304')
+        $n2Spec={param($Adapter,$Channel,$Root) $s=[ordered]@{Adapter=$Adapter;SourcePath=$Root};if($null -ne $Channel){$s.TransferChannel=$Channel};[pscustomobject]$s}
+        $n2Items=@(
+            [pscustomobject]@{ItemId='n2-c';NaturalKey='C scope';Kind='DataRoot';MigrationSpec=(& $n2Spec 'FileScope' 'C' 'D:\n2c')}
+            [pscustomobject]@{ItemId='n2-nonc';NaturalKey='NonC scope';Kind='DataRoot';MigrationSpec=(& $n2Spec 'FileScope' 'NonC' 'E:\n2d')}
+            [pscustomobject]@{ItemId='n2-cert';NaturalKey='Certificate';Kind='Certificate';MigrationSpec=(& $n2Spec 'Certificate' $null '')}
+            [pscustomobject]@{ItemId='n2-default';NaturalKey='No channel property';Kind='DataRoot';MigrationSpec=(& $n2Spec 'FileScope' $null 'D:\n2e')}
+            [pscustomobject]@{ItemId='n2-odd';NaturalKey='Unexpected channel value';Kind='DataRoot';MigrationSpec=(& $n2Spec 'FileScope' 'Mystery' 'D:\n2f')}
+        )
+        $n2Expect=@(@{Channel='C';Label=$zhChannelC;Type='FileScope'},@{Channel='NonC';Label=$zhChannelNonC;Type='FileScope'},@{Channel='Unknown';Label=$zhUnknown;Type='Certificate'},@{Channel='C';Label=$zhChannelC;Type='FileScope'},@{Channel='Unknown';Label=$zhUnknown;Type='FileScope'})
+        $n2Op=[Guid]::NewGuid().ToString('D');$script:WsmWizardBackupProgressIntervalMs=0
+        $n2=New-WsmWizardBackupProgress $workspace $pair $n2Op ([Guid]::NewGuid().ToString('D')) $n2Items
+        for($i=1;$i -le 5;$i++){
+            Update-WsmWizardBackupProgressItem $n2 $i 5 $n2Items[$i-1].NaturalKey ($n2Items[$i-1].MigrationSpec.SourcePath+'\f.bin') ([long]($i*100)) ([long]($i*10))
+            $raw=Read-WsmWizardBackupProgress $workspace $pair $n2Op;$want=$n2Expect[$i-1]
+            Check ($raw.CurrentItemId -ceq $n2Items[$i-1].ItemId) ('CurrentItemId is not the current item at step '+$i+': '+$raw.CurrentItemId)
+            Check ($raw.CurrentItemType -ceq $want.Type) ('CurrentItemType wrong at step '+$i+': '+$raw.CurrentItemType)
+            Check ($raw.CurrentItemTypeLabel -ceq (Get-WsmWizardItemTypeLabel $want.Type ([string]$n2Items[$i-1].Kind))) ('The type label must come from Get-WsmWizardItemTypeLabel at step '+$i)
+            Check ($raw.CurrentChannel -ceq $want.Channel) ('CurrentChannel wrong at step '+$i+': expected '+$want.Channel+', got '+$raw.CurrentChannel)
+            Check ($raw.FilesDone -eq $i*10 -and $null -eq $raw.FilesTotal) ('FilesDone must follow the exporter and FilesTotal stay null while unknown, step '+$i+': '+$raw.FilesDone+'/'+$raw.FilesTotal)
+            $view=ConvertTo-WsmWizardBackupProgressView $raw 'Running'
+            Check ($view.ItemFieldsRecorded -eq $true -and $view.CurrentChannel -ceq $want.Channel -and $view.CurrentChannelLabel -ceq $want.Label -and $view.CurrentItemId -ceq $n2Items[$i-1].ItemId -and $view.FilesDone -eq $i*10 -and $null -eq $view.FilesTotal) ('The projection lost an item field at step '+$i)
+        }
+        Check ($n2.Record.CurrentChannel -ceq 'Unknown') 'The last mocked item has an unexpected channel and must read Unknown.'
+        Set-WsmWizardBackupProgressStage $n2 'Verify' 500 77
+        $raw=Read-WsmWizardBackupProgress $workspace $pair $n2Op
+        Check ($raw.CurrentItemId -ceq '' -and $raw.CurrentChannel -ceq 'Unknown' -and $raw.FilesDone -eq 77 -and $raw.FilesTotal -eq 77) 'Leaving Capture must clear the current item and publish the sealed file count as done and total.'
+        Write-Host 'PASS: current item id, type code and label, channel (C / NonC / Unknown) and file sequence are independent fields.'
+
+        # Worst cases: the item fields are never cut; the stored names shrink and Recent still keeps 20 rows.
+        $zhLong=([string][char]0x7db2)*300;$escapeHeavy=('<>&''"'*50)
+        foreach($case in @(@{Name='CJK';Text=$zhLong},@{Name='escape-heavy';Text=$escapeHeavy})){
+            $worstOp=[Guid]::NewGuid().ToString('D')
+            $worstItems=@(for($i=1;$i -le 30;$i++){[pscustomobject]@{ItemId=(([Guid]::NewGuid().ToString('N'))+([Guid]::NewGuid().ToString('N')));NaturalKey=$case.Text;Kind='DataRoot';MigrationSpec=[pscustomobject]@{Adapter='FileScope';SourcePath='D:\a';TransferChannel='NonC'}}})
+            $worst=New-WsmWizardBackupProgress $workspace $pair $worstOp ([Guid]::NewGuid().ToString('D')) $worstItems
+            for($i=1;$i -le 30;$i++){Update-WsmWizardBackupProgressItem $worst $i 30 $case.Text ('D:\a\'+(([string][char]0x6a94)*200)+'\'+('f'*200)) 9999999999 ([long]1234567890+$i)}
+            $worstPath=Get-WsmWizardBackupProgressPath $workspace $pair $worstOp
+            $rawWorst=Read-WsmWizardBackupProgress $workspace $pair $worstOp
+            Check ((New-Object IO.FileInfo($worstPath)).Length -le 4096) ('The '+$case.Name+' worst case exceeded 4 KiB: '+(New-Object IO.FileInfo($worstPath)).Length)
+            Check (@($rawWorst.Recent).Count -eq 20) ('The '+$case.Name+' worst case must still keep 20 Recent rows, got '+@($rawWorst.Recent).Count)
+            Check ($rawWorst.CurrentItemId -ceq $worstItems[29].ItemId -and $rawWorst.CurrentChannel -ceq 'NonC' -and $rawWorst.CurrentItemType -ceq 'FileScope' -and $rawWorst.CurrentItemTypeLabel -ceq (Get-WsmWizardItemTypeLabel 'FileScope' 'DataRoot') -and $rawWorst.FilesDone -eq 1234567920) ('The '+$case.Name+' worst case cut a new field.')
+        }
+        Write-Host 'PASS: 4 KiB worst case keeps every new field untruncated and still holds 20 Recent rows.'
+
+        # Chinese, spaces and markup are persisted verbatim (JSON-escaped on disk) and projected unchanged.
+        $zhName=[regex]::Unescape('\u7db2\u7ad9 \u7532 <script>alert(1)</script> "q" \u0027a\u0027');$zhDir=[regex]::Unescape('D:\\\u7db2\u7ad9 \u8cc7\u6599\\My Data');$zhRel=[regex]::Unescape('\u5b50 \u76ee\u9304\\<img src=x onerror=1> \u5831\u8868 (\u6700\u7d42) 1.txt')
+        $oddOp=[Guid]::NewGuid().ToString('D')
+        $oddItems=@([pscustomobject]@{ItemId='odd-1';NaturalKey=$zhName;Kind='DataRoot';MigrationSpec=[pscustomobject]@{Adapter='FileScope';SourcePath=$zhDir;TransferChannel='C'}},[pscustomobject]@{ItemId='odd-2';NaturalKey='next';Kind='DataRoot';MigrationSpec=[pscustomobject]@{Adapter='FileScope';SourcePath='D:\next';TransferChannel='C'}})
+        $odd=New-WsmWizardBackupProgress $workspace $pair $oddOp ([Guid]::NewGuid().ToString('D')) $oddItems
+        Update-WsmWizardBackupProgressItem $odd 1 2 $zhName ($zhDir+'\'+$zhRel) 10 3
+        Update-WsmWizardBackupProgressItem $odd 2 2 'next' 'D:\next\x' 20 4
+        $oddPath=Get-WsmWizardBackupProgressPath $workspace $pair $oddOp
+        $oddText=[IO.File]::ReadAllText($oddPath,(New-Object Text.UTF8Encoding($false,$true)))
+        $oddParsed=$oddText|ConvertFrom-Json
+        Check ($oddParsed.Recent[0].ItemId -ceq 'odd-1' -and $oddParsed.ItemNames.'odd-1' -ceq $zhName) 'The remembered item name was not stored verbatim (valid JSON, exact text).'
+        $oddRaw=Read-WsmWizardBackupProgress $workspace $pair $oddOp
+        Update-WsmWizardBackupProgressItem $odd 1 2 $zhName ($zhDir+'\'+$zhRel) 10 3
+        $oddRaw=Read-WsmWizardBackupProgress $workspace $pair $oddOp
+        Check ($oddRaw.Workload -ceq $zhName -and $oddRaw.CurrentFile -ceq $zhRel) 'Chinese, spaces and markup must reach the progress file verbatim.'
+        Check ($oddText.Contains([regex]::Unescape('\u7db2\u7ad9')) -and -not $oddText.Contains('<script>')) 'The file must keep Chinese literally and JSON-escape markup instead of storing it raw.'
+        $oddView=ConvertTo-WsmWizardBackupProgressView $oddRaw 'Running'
+        Check ($oddView.Workload -ceq $zhName -and $oddView.CurrentFile -ceq $zhRel -and $oddView.Recent[0].ItemName -ceq $zhName) 'The projection must pass text through unchanged (the UI escapes it).'
+        Write-Host 'PASS: Chinese names, paths with spaces and markup land verbatim and JSON-escaped, and project unchanged.'
+
+        # A record written before the item fields existed reads as "not recorded".
+        $legacyOp=[Guid]::NewGuid().ToString('D')
+        $legacyObject=(Get-Content -LiteralPath (Get-WsmWizardBackupProgressPath $workspace $pair $n2Op) -Raw -Encoding UTF8)|ConvertFrom-Json
+        $legacyObject.OperationId=$legacyOp
+        foreach($dropped in 'CurrentItemId','CurrentItemType','CurrentItemTypeLabel','CurrentChannel','FilesDone','FilesTotal'){[void]$legacyObject.PSObject.Properties.Remove($dropped)}
+        Write-WsmWizardBackupProgressFile (Get-WsmWizardBackupProgressPath $workspace $pair $legacyOp) ($legacyObject|ConvertTo-Json -Depth 6 -Compress)
+        $legacyRaw=Read-WsmWizardBackupProgress $workspace $pair $legacyOp
+        Check ($null -ne $legacyRaw -and -not $legacyRaw.PSObject.Properties['CurrentChannel']) 'The legacy fixture must really lack the new fields.'
+        $legacyView=ConvertTo-WsmWizardBackupProgressView $legacyRaw 'Running'
+        Check ($legacyView.ItemFieldsRecorded -eq $false -and $legacyView.CurrentChannelLabel -ceq $zhUnrecorded -and $legacyView.CurrentItemTypeLabel -ceq $zhUnrecorded -and $null -eq $legacyView.FilesDone -and $null -eq $legacyView.FilesTotal -and $legacyView.CurrentItemId -ceq '') 'An old record must read as not recorded (never as an empty channel or a zero file count).'
+        $legacyJob=@{Record=[pscustomobject]@{action='StartBackup';status='Interrupted';workspace=$workspace;pairId=$pair;jobId=$legacyOp;role='Source'};Path=(Join-Path $workspace 'legacy.json');Handle=$null;PowerShell=$null}
+        $legacyProjected=(Get-WsmHtmlProgressProjection $legacyJob).backup
+        Check ($legacyProjected.ItemFieldsRecorded -eq $false -and $legacyProjected.CurrentChannelLabel -ceq $zhUnrecorded) 'The job projection of an old record must say not recorded.'
+        $newJob=@{Record=[pscustomobject]@{action='StartBackup';status='Running';workspace=$workspace;pairId=$pair;jobId=$n2Op;role='Source'};Path=(Join-Path $workspace 'n2.json');Handle=$null;PowerShell=$null}
+        $newProjected=(Get-WsmHtmlProgressProjection $newJob).backup
+        foreach($field in 'ItemFieldsRecorded','CurrentItemId','CurrentItemType','CurrentItemTypeLabel','CurrentChannel','CurrentChannelLabel','FilesDone','FilesTotal'){Check (@($newProjected.PSObject.Properties.Name) -ccontains $field) ('The WizardHtmlRuntime allow-list dropped '+$field)}
+        Check ($newProjected.ItemFieldsRecorded -eq $true -and $newProjected.FilesDone -eq 77 -and $newProjected.FilesTotal -eq 77) 'The job projection of a new record lost its file sequence.'
+        Write-Host 'PASS: records without the new fields read as not recorded; the allow-list passes the new fields.'
+
         # Projection from the durable file: restart readback and Interrupted keeps the last progress.
         $interruptedOp=[Guid]::NewGuid().ToString('D')
         $partial=New-WsmWizardBackupProgress $workspace $pair $interruptedOp ([Guid]::NewGuid().ToString('D')) (New-FakeItems 6 $fakeRoot)
@@ -125,7 +211,7 @@ try {
         $leak=[pscustomobject]@{Kind='WizardBackupProgress';PairId=$pair;OperationId=$op;Stage='Capture';StageIndex=1;StageCount=3;Workload='x';CurrentFile='y';ItemsDone=0;ItemsTotal=1;BytesDone=0;BytesTotal=$null;FailedCount=0;Terminal=$false;Outcome='';StartedUtc=(Get-WsmUtc);UpdatedUtc=(Get-WsmUtc);Recent=@();ItemNames=[pscustomobject]@{};SecretToken='must-not-pass';PlanPath='C:\secret\plan.json'}
         $safeView=ConvertTo-WsmWizardBackupProgressView $leak 'Running'
         $names=@($safeView.PSObject.Properties.Name)
-        foreach($required in @('Stage','StageLabel','StageIndex','StageCount','Workload','CurrentFile','ItemsDone','ItemsTotal','BytesDone','BytesTotal','StartedUtc','UpdatedUtc','Recent','State')){Check ($names -ccontains $required) ('The HTML view lost the allowed field '+$required)}
+        foreach($required in @('Stage','StageLabel','StageIndex','StageCount','Workload','CurrentFile','ItemFieldsRecorded','CurrentItemId','CurrentItemType','CurrentItemTypeLabel','CurrentChannel','CurrentChannelLabel','FilesDone','FilesTotal','ItemsDone','ItemsTotal','BytesDone','BytesTotal','StartedUtc','UpdatedUtc','Recent','State')){Check ($names -ccontains $required) ('The HTML view lost the allowed field '+$required)}
         foreach($forbidden in @('SecretToken','PlanPath','OperationId','PairId','AttemptId','ItemNames')){Check ($names -cnotcontains $forbidden) ('The HTML view leaked '+$forbidden)}
         Write-Host 'PASS: HTML projection passes the closed allow-list and drops everything else.'
 
@@ -135,7 +221,9 @@ try {
         function script:Get-WsmPreflight {[pscustomobject]@{OS='Fixture Windows Server';Version='10.0';IsServer=$true;Administrator=$true;Is64Bit=$true;PowerShellVersion='5.1';ExecutionPolicy='AllSigned';LanguageMode='FullLanguage'}}
         $script:backupFixtureInventoryPath=''
         function script:Export-WsmInventory {param([string]$OutputDirectory,[switch]$DeepDiscovery);if(-not $script:backupFixtureInventoryPath){throw 'Fixture inventory observation was not initialized.'};[pscustomobject]@{Path=$script:backupFixtureInventoryPath;SHA256=(Get-FileHash -LiteralPath $script:backupFixtureInventoryPath -Algorithm SHA256).Hash.ToLowerInvariant()}}
-        $sourceRoot=Join-Path $Root 'source-work';$targetRoot=Join-Path $Root 'target-work';$managerRoot=Join-Path $Root 'manager-work'
+        # Fixture builder: dot-sourced once per scenario ($sfx = directory suffix, $fixtureChannels = TransferChannel per item).
+        $buildFixture={
+        $sourceRoot=Join-Path $Root ('source-work'+$sfx);$targetRoot=Join-Path $Root ('target-work'+$sfx);$managerRoot=Join-Path $Root ('manager-work'+$sfx)
         $sourceEnrollment=Initialize-WsmOutputWorkspace $sourceRoot Source
         $script:backupFixtureFingerprint=('b'*64);$targetEnrollment=Initialize-WsmOutputWorkspace $targetRoot Target
         $targetIdentityPath=Join-Path (Join-Path $targetRoot ('targets\'+$targetEnrollment.HostId)) 'target-identity.json';$targetIdentityHash=(Get-FileHash -LiteralPath $targetIdentityPath -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -145,7 +233,7 @@ try {
         $sentinel='SENTINEL-Zq8-secret-value'
         $dirNames=@('alpha','bravo','charlie');$fileCounts=@(2,3,1);$items=@();$dirs=@();$expectedBytes=[long]0;$expectedFiles=0
         for($n=0;$n -lt 3;$n++){
-            $dir=Join-Path $Root ('source-data-'+$dirNames[$n]);[void][IO.Directory]::CreateDirectory($dir);[void][IO.Directory]::CreateDirectory((Join-Path $dir 'nested'))
+            $dir=Join-Path $Root ('source-data-'+$dirNames[$n]+$sfx);[void][IO.Directory]::CreateDirectory($dir);[void][IO.Directory]::CreateDirectory((Join-Path $dir 'nested'))
             for($f=1;$f -le $fileCounts[$n];$f++){
                 $fileName=if($n -eq 2){'password='+$sentinel+'.txt'}else{('file'+$f+'.txt')}
                 $text=('payload '+$dirNames[$n]+' '+$f);[IO.File]::WriteAllText((Join-Path (Join-Path $dir 'nested') $fileName),$text);$expectedBytes+=[Text.Encoding]::UTF8.GetByteCount($text);$expectedFiles++
@@ -155,23 +243,26 @@ try {
             $dirs+=@($dir)
             $items+=@(New-WsmItem $source.HostId Storage DataRoot $label $naturalKey @{Path=$dir})
         }
-        $inventory=New-WsmInventory $source 1 $items;$inventoryPath=Join-Path $Root 'inventory.json';Write-WsmJson $inventoryPath $inventory;$script:backupFixtureInventoryPath=$inventoryPath
+        $inventory=New-WsmInventory $source 1 $items;$inventoryPath=Join-Path $Root ('inventory'+$sfx+'.json');Write-WsmJson $inventoryPath $inventory;$script:backupFixtureInventoryPath=$inventoryPath
         Initialize-WsmWorkspace $managerRoot|Out-Null
         $catalog=Import-WsmInventory $managerRoot $inventoryPath (Get-FileHash -LiteralPath $inventoryPath -Algorithm SHA256).Hash 'fixture-target'
         $revision=0
         for($n=0;$n -lt 3;$n++){
             $item=$items[$n];$dataDir=[string]$dirs[$n]
-            $spec=[pscustomobject]@{Adapter='FileScope';SourcePath=$dataDir;TargetPath=(Join-Path $Root ('restored-'+$dirNames[$n]));TransferChannel='C';ContentSelection='WholeScope';ExcludedRelativePaths=@();Consistency='Immutable';Metadata='DaclOwner';AclControlPolicy='AllowAutoInheritedUpgrade';ConflictPolicy='ReplaceOwned';Owner='Fixture owner';Evidence='Isolated actual bytes test';BusinessChecks=@('Read back each source file')}
-            $specPath=Join-Path $Root ('spec-'+$dirNames[$n]+'.json');Write-WsmJson $specPath $spec
+            $spec=[pscustomobject]@{Adapter='FileScope';SourcePath=$dataDir;TargetPath=(Join-Path $Root ('restored-'+$dirNames[$n]+$sfx));TransferChannel=$fixtureChannels[$n];ContentSelection='WholeScope';ExcludedRelativePaths=@();Consistency='Immutable';Metadata='DaclOwner';AclControlPolicy='AllowAutoInheritedUpgrade';ConflictPolicy='ReplaceOwned';Owner='Fixture owner';Evidence='Isolated actual bytes test';BusinessChecks=@('Read back each source file')}
+            $specPath=Join-Path $Root ('spec-'+$dirNames[$n]+$sfx+'.json');Write-WsmJson $specPath $spec
             Set-WsmMigrationSpec $managerRoot $catalog.PairId $item.ItemId $specPath (Get-FileHash -LiteralPath $specPath -Algorithm SHA256).Hash $revision
             $revision++
         }
         Set-WsmDecision $managerRoot $catalog.PairId @($items|ForEach-Object {$_.ItemId}) Include 'Explicit fixture selection' $revision|Out-Null
-        $planPath=Join-Path $Root 'approved-plan.json';$approved=Approve-WsmMigrationPlan $managerRoot $catalog.PairId $targetIdentityPath $targetIdentityHash $planPath ($revision+1) 'ISOLATED-PILOT'
+        $planPath=Join-Path $Root ('approved-plan'+$sfx+'.json');$approved=Approve-WsmMigrationPlan $managerRoot $catalog.PairId $targetIdentityPath $targetIdentityHash $planPath ($revision+1) 'ISOLATED-PILOT'
         $script:backupFixtureFingerprint=('a'*64)
         $import=Import-WsmWizardApprovedPlan $sourceRoot Source $planPath $approved.SHA256
         Check ($import.Status -ceq 'ImportedVerified') 'Source did not import the three-item sealed plan.'
         $attemptRoot=Get-WsmWizardBackupRoot $sourceRoot $catalog.PairId
+        }
+        $sfx='';$fixtureChannels=@('C','C','C');. $buildFixture
+        $planRefMain=Get-WsmWizardCurrentApprovedPlan $sourceRoot $catalog.PairId (Read-WsmOutputProfile $sourceRoot) $null @()
 
         # Wrap the progress file writer only to record every progress write as it happens.
         $originalWriteJson=(Get-Command Write-WsmWizardBackupProgressFile -CommandType Function).ScriptBlock
@@ -261,8 +352,59 @@ try {
         Check (@($controlHits|Where-Object {$_ -like 'inventory.json:*'}).Count -ge 1) 'Negative control failed: the sweep did not find the sentinel in the inventory that really contains it.'
         Write-Host 'PASS: secret sentinel sweep finds nothing in progress files (and finds it in the negative control).'
 
-        Write-Host ('PASS: B1 backup progress producer/projection checks: '+$script:checks)
-    } $root
+        # ---------------------------------------------------------------- N2: item fields over the real one-click backup (C only, then C + NonC)
+        $assertItemSequence={
+            param($Seen,$ExpectedOrder,$ChannelById,[long]$ExpectedFiles,[string]$Label)
+            $capture=@($Seen|Where-Object {[int]$_.StageIndex -eq 1})
+            $withItem=@($capture|Where-Object {$_.CurrentItemId})
+            Check ($withItem.Count -ge $ExpectedOrder.Count) ($Label+': too few Capture writes carried a current item.')
+            foreach($snapshot in $withItem){
+                Check ($ChannelById.ContainsKey([string]$snapshot.CurrentItemId)) ($Label+': an unknown ItemId was published: '+$snapshot.CurrentItemId)
+                Check ($snapshot.CurrentChannel -ceq $ChannelById[[string]$snapshot.CurrentItemId]) ($Label+': channel '+$snapshot.CurrentChannel+' is wrong for item '+$snapshot.CurrentItemId+' (expected '+$ChannelById[[string]$snapshot.CurrentItemId]+')')
+                Check ($snapshot.CurrentItemType -ceq 'FileScope' -and $snapshot.CurrentItemTypeLabel -ceq (Get-WsmWizardItemTypeLabel 'FileScope' 'DataRoot')) ($Label+': item type code/label wrong.')
+            }
+            $firstSeen=@();foreach($snapshot in $withItem){if($firstSeen -cnotcontains [string]$snapshot.CurrentItemId){$firstSeen+=@([string]$snapshot.CurrentItemId)}}
+            Check (($firstSeen -join ',') -ceq ($ExpectedOrder -join ',')) ($Label+': items did not advance in plan order: '+($firstSeen -join ',')+' vs '+($ExpectedOrder -join ','))
+            foreach($group in @($withItem|Group-Object {[int]$_.ItemsDone})){Check (@($group.Group|ForEach-Object {$_.CurrentItemId}|Sort-Object -Unique).Count -eq 1) ($Label+': one ItemsDone step mapped to more than one current item.')}
+            $channelsSeen=@($withItem|ForEach-Object {$_.CurrentChannel}|Sort-Object -Unique)
+            Check (($channelsSeen -join ',') -ceq (@($ChannelById.Values|Sort-Object -Unique) -join ',')) ($Label+': channels observed were '+($channelsSeen -join ',')+'.')
+            $filesSeq=@($Seen|ForEach-Object {[long]$_.FilesDone})
+            for($i=1;$i -lt $filesSeq.Count;$i++){Check ($filesSeq[$i] -ge $filesSeq[$i-1]) ($Label+': FilesDone went backwards.')}
+            $captureFiles=@($capture|ForEach-Object {[long]$_.FilesDone}|Sort-Object -Unique)
+            Check (($captureFiles -join ',') -ceq ((0..([int]$ExpectedFiles-1)) -join ',')) ($Label+': FilesDone must advance one file at a time during Capture, saw '+($captureFiles -join ','))
+            Check (@($capture|Where-Object {$null -ne $_.FilesTotal}).Count -eq 0) ($Label+': FilesTotal must stay null until the package is sealed.')
+            $verify=@($Seen|Where-Object {[int]$_.StageIndex -eq 2})
+            Check ($verify.Count -ge 1 -and @($verify|Where-Object {[long]$_.FilesDone -ne $ExpectedFiles -or [long]$_.FilesTotal -ne $ExpectedFiles -or $_.CurrentItemId}).Count -eq 0) ($Label+': the Verify record must carry the sealed file count as done and total and no current item.')
+        }
+        $c1Plan=@($planRefMain.Plan.Items|Where-Object {$_.Decision -ceq 'Include'}|ForEach-Object {[string]$_.ItemId})
+        $c1Channels=@{};foreach($id in $c1Plan){$c1Channels[$id]='C'}
+        & $assertItemSequence $seen $c1Plan $c1Channels $expectedFiles 'C-only run'
+        $mainFinal=Read-WsmWizardBackupProgress $sourceRoot $catalog.PairId $okOp
+        Check ($mainFinal.CurrentItemId -ceq '' -and $mainFinal.CurrentChannel -ceq 'Unknown' -and $mainFinal.FilesDone -eq $expectedFiles -and $mainFinal.FilesTotal -eq $expectedFiles) 'The finished record must show no current item and the sealed file count.'
+        Write-Host 'PASS: real C-only backup publishes item id, type, channel C and a monotonic file sequence ending at the sealed count.'
+
+        $sfx='-mixed';$fixtureChannels=@('C','NonC','C');. $buildFixture
+        $mixedPlanRef=Get-WsmWizardCurrentApprovedPlan $sourceRoot $catalog.PairId (Read-WsmOutputProfile $sourceRoot) $null @()
+        $mixedOrder=@($mixedPlanRef.Plan.Items|Where-Object {$_.Decision -ceq 'Include'}|ForEach-Object {[string]$_.ItemId})
+        $mixedChannels=@{};for($n=0;$n -lt 3;$n++){$mixedChannels[[string]$items[$n].ItemId]=$fixtureChannels[$n]}
+        $mixedProof=New-WsmSourceFreezeEvidenceFixture -Plan $mixedPlanRef.Plan -PlanHash $mixedPlanRef.SHA256 -Root $Root -Owner 'Fixture freeze owner'
+        $mixedOp=[Guid]::NewGuid().ToString('D');$mixedToken=New-WsmCancellationToken -StateDirectory (Join-Path $sourceRoot 'pairs') -PairId $catalog.PairId -PlanHash $approved.SHA256 -OperationId $mixedOp
+        $script:progressOriginalWriteJson=$originalWriteJson;$script:progressSeen.Clear()
+        function script:Write-WsmWizardBackupProgressFile {param([string]$Path,[string]$Json);if($Path -like '*\wizard-backups\*\progress\*.json'){$script:progressSeen.Add(($Json|ConvertFrom-Json))};& $script:progressOriginalWriteJson $Path $Json}
+        try{
+            $mixedResult=Invoke-WsmWizardStartBackup -Workspace $sourceRoot -PairId $catalog.PairId -OperationId $mixedOp -Owner 'Fixture freeze owner' -Evidence 'Synthetic quiescence evidence for the progress fixture.' -FreezeAuthorization -FreezeExternalEvidencePath $mixedProof.Path -FreezeExternalEvidenceHash $mixedProof.SHA256 -Jobs @() -CancellationToken $mixedToken -DeliveryMode Directory -VolumeBytes 0
+            $seenMixed=@($script:progressSeen.ToArray())
+        }finally{
+            Set-Item -Path Function:\script:Write-WsmWizardBackupProgressFile -Value $originalWriteJson
+            Remove-Variable progressOriginalWriteJson -Scope Script -ErrorAction SilentlyContinue
+        }
+        Check ($null -ne $mixedResult.CoreExport -and $mixedResult.CoreExport.Status -ceq 'Succeeded') 'The C + NonC fixture backup did not seal its package.'
+        Check ($mixedOrder.Count -eq 3 -and @($mixedChannels.Values|Sort-Object -Unique).Count -eq 2) 'The mixed fixture must really contain a C and a NonC item.'
+        & $assertItemSequence $seenMixed $mixedOrder $mixedChannels ([long]$mixedResult.CoreExport.Files) 'C + NonC run'
+        Write-Host 'PASS: real C + NonC backup moves item id, type and channel (C then NonC then C) in plan order with a monotonic file sequence.'
+
+        Write-Host ('PASS: B1/N2 backup progress producer/projection checks: '+$script:checks)
+    } $root $evidenceFixturePath
 }
 finally {
     $rootFull=[IO.Path]::GetFullPath($root)

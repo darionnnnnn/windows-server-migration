@@ -33,7 +33,8 @@ function backupView(over) {
   return Object.assign({
     Stage: 'Capture', StageLabel: '擷取與封存', StageIndex: 1, StageCount: 3, Workload: '網站 A', CurrentFile: 'nested\\file1.txt', ItemsDone: 1, ItemsTotal: 4,
     BytesDone: 5242880, BytesTotal: null, Percent: 25, StartedUtc: iso(-65000), UpdatedUtc: iso(-1000), Recent: [{ ItemId: 'item-1', ItemName: '網站 A 設定', Result: 'Succeeded' }],
-    FailedCount: 0, Terminal: false, Outcome: '', State: 'Running', EndReason: ''
+    FailedCount: 0, Terminal: false, Outcome: '', State: 'Running', EndReason: '',
+    ItemFieldsRecorded: true, CurrentItemId: 'item-1', CurrentItemType: 'FileScope', CurrentItemTypeLabel: '檔案範圍', CurrentChannel: 'C', CurrentChannelLabel: 'C 槽', FilesDone: 3, FilesTotal: null
   }, over || {});
 }
 function backupJob(viewOver, jobOver) {
@@ -80,7 +81,9 @@ async function openPage(browser, scenario, hash, contextOptions) {
 const card = page => page.locator('.progress-card[data-progress-card="wizard"]');
 const waitCard = async page => { await page.waitForSelector('.progress-card[data-progress-card="wizard"]:not([hidden])', { timeout: 30000 }); };
 const refresh = page => page.evaluate(() => window.WsmConsole.refreshJobs());
-const parseClock = text => { const parts = text.split(':').map(Number); return parts.reduce((total, part) => total * 60 + part, 0); };
+// The facts list is a <dl>; look a value up by its label so adding a row never shifts the checks.
+const fact = (page, label) => page.locator(`.progress-card[data-progress-card="wizard"] .progress-facts dt:text-is("${label}") + dd`);
+const parseClock =text => { const parts = text.split(':').map(Number); return parts.reduce((total, part) => total * 60 + part, 0); };
 const noHorizontalOverflow = async (page, width) => { const overflow = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth })); assert.ok(overflow.scroll <= overflow.client + 1, `horizontal overflow at ${width}px: ${JSON.stringify(overflow)}`); };
 
 (async () => {
@@ -112,9 +115,9 @@ const noHorizontalOverflow = async (page, width) => { const overflow = await pag
       await details.locator('summary').click(); assert.equal(await details.evaluate(n => n.open), true);
       await details.locator('summary').click(); assert.equal(await details.evaluate(n => n.open), false);
       // elapsed time advances without any API call
-      const first = parseClock((await c.locator('.progress-facts dd').nth(4).textContent()).trim());
-      await page.waitForFunction(from => { const dd = document.querySelectorAll('.progress-card[data-progress-card="wizard"] .progress-facts dd')[4]; return !!dd && dd.textContent.trim().split(':').map(Number).reduce((total, part) => total * 60 + part, 0) >= from + 2; }, first, { timeout: 30000 });
-      const second =parseClock((await c.locator('.progress-facts dd').nth(4).textContent()).trim());
+      const first = parseClock((await fact(page, '經過時間').textContent()).trim());
+      await page.waitForFunction(from => { const dt = [...document.querySelectorAll('.progress-card[data-progress-card="wizard"] .progress-facts dt')].find(n => n.textContent === '經過時間'); const dd = dt && dt.nextElementSibling; return !!dd && dd.textContent.trim().split(':').map(Number).reduce((total, part) => total * 60 + part, 0) >= from + 2; }, first, { timeout: 30000 });
+      const second =parseClock((await fact(page, '經過時間').textContent()).trim());
       assert.ok(second >= first + 2, `elapsed time did not advance (${first} -> ${second})`);
       counts.cardChecks += 14;
       await page.screenshot({ path: path.join(screens, 'b1-desktop-wizard-running.png'), fullPage: false });
@@ -169,7 +172,7 @@ const noHorizontalOverflow = async (page, width) => { const overflow = await pag
       assert.equal((await liveLog()).length, 1, 'file/byte/clock changes must not touch the live region: ' + JSON.stringify(await liveLog()));
       assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.tagName), 'SUMMARY', 'refresh must not steal focus from the recent-list summary');
       assert.equal(await page.evaluate(() => document.querySelector('.progress-card[data-progress-card="wizard"]').dataset.mark), 'same-node', 'refresh must update the card in place');
-      assert.match(await card(page).locator('.progress-facts dd').nth(1).textContent(), /file6\.txt/);
+      assert.match(await fact(page, '目前檔案').textContent(), /file6\.txt/);
       // a stage change announces exactly once more
       ctl.jobs = [backupJob({ Stage: 'Verify', StageLabel: '驗證封裝', StageIndex: 2, Workload: '', CurrentFile: '', Percent: null, ItemsDone: 4 })]; await refresh(page); await refresh(page);
       let log = await liveLog(); assert.equal(log.length, 2, 'stage change must announce once: ' + JSON.stringify(log));
@@ -252,6 +255,87 @@ const noHorizontalOverflow = async (page, width) => { const overflow = await pag
       await noHorizontalOverflow(page, 390);
       await page.screenshot({ path: path.join(screens, 'b1-390-results-card.png'), fullPage: true });
       counts.cardChecks += 2; mainErrors.push(...errors); await page.close();
+    }
+
+    // ============ N2-1. the item fields are shown; a record without them reads "未記錄" ============
+    {
+      const { page, errors, ctl } = await openPage(browser, { jobs: [backupJob({ CurrentItemId: 'abc123', CurrentItemTypeLabel: '檔案範圍', CurrentChannel: 'NonC', CurrentChannelLabel: '非 C 槽', FilesDone: 7, FilesTotal: 12 })] });
+      await waitCard(page);
+      assert.equal((await fact(page, '目前項目識別碼').textContent()).trim(), 'abc123');
+      assert.equal((await fact(page, '目前項目型別').textContent()).trim(), '檔案範圍');
+      assert.equal((await fact(page, '通道').textContent()).trim(), '非 C 槽');
+      assert.equal((await fact(page, '檔案（已處理／總數）').textContent()).trim(), '檔案 7/12');
+      assert.equal((await fact(page, '目前工作負載').textContent()).trim(), '網站 A', 'the item name is still shown');
+      ctl.jobs = [backupJob({ CurrentChannel: 'Unknown', CurrentChannelLabel: '未知', CurrentItemTypeLabel: '憑證', FilesDone: 0, FilesTotal: null })]; await refresh(page);
+      await page.waitForFunction(() => { const dt = [...document.querySelectorAll('.progress-card[data-progress-card="wizard"] .progress-facts dt')].find(n => n.textContent === '通道'); return dt && dt.nextElementSibling.textContent === '未知'; }, null, { timeout: 10000 });
+      assert.equal((await fact(page, '檔案（已處理／總數）').textContent()).trim(), '檔案 0/未知', 'an unknown file total reads 未知, a zero count stays 0');
+      // an older record: the projection says the fields were never recorded
+      const old = backupView({}); for (const key of ['CurrentItemId', 'CurrentItemType', 'CurrentItemTypeLabel', 'CurrentChannel', 'CurrentChannelLabel', 'FilesDone', 'FilesTotal']) delete old[key]; delete old.ItemFieldsRecorded;
+      ctl.jobs = [Object.assign(backupJob(), { progress: Object.assign({}, backupJob().progress, { backup: old }) })]; await refresh(page);
+      await page.waitForFunction(() => { const dt = [...document.querySelectorAll('.progress-card[data-progress-card="wizard"] .progress-facts dt')].find(n => n.textContent === '通道'); return dt && dt.nextElementSibling.textContent === '未記錄'; }, null, { timeout: 10000 });
+      for (const label of ['目前項目識別碼', '目前項目型別', '通道', '檔案（已處理／總數）']) assert.equal((await fact(page, label).textContent()).trim(), '未記錄', label + ' of an old record');
+      assert.equal((await fact(page, '目前工作負載').textContent()).trim(), '網站 A', 'the old record keeps showing what it did record');
+      counts.cardChecks += 11; mainErrors.push(...errors); await page.close();
+    }
+
+    // ============ N2-2. injected / Chinese / spaced strings are shown as text and never run ============
+    const hostile = {
+      Workload: '<img src=x onerror="window.__pwn=1"> 網站 甲', CurrentFile: '子目錄 一\\<script>window.__pwn=2</script> 報表 (最終) 2026.txt',
+      CurrentItemId: 'id"><b id="injected-b">x</b>', CurrentItemTypeLabel: '<i id="injected-i">型別</i> 含空白', CurrentChannelLabel: '<u id="injected-u">C 槽</u>'
+    };
+    const hostileRecent = [{ ItemId: 'r1', ItemName: '<img src=x onerror="window.__pwn=3"> 最近項目', Result: 'Succeeded' }];
+    const assertEscaped = async page => {
+      const c = card(page);
+      assert.equal(await page.evaluate(() => typeof window.__pwn), 'undefined', 'an injected handler or script ran');
+      assert.equal(await c.locator('img, script, b, i, u, [onerror]').count(), 0, 'an injected element reached the DOM');
+      assert.equal(await page.locator('#injected-b, #injected-i, #injected-u').count(), 0, 'an injected id reached the DOM');
+      assert.equal((await fact(page, '目前工作負載').textContent()), hostile.Workload);
+      assert.equal((await fact(page, '目前檔案').textContent()), hostile.CurrentFile);
+      assert.equal((await fact(page, '目前項目識別碼').textContent()), hostile.CurrentItemId);
+      assert.equal((await fact(page, '目前項目型別').textContent()), hostile.CurrentItemTypeLabel);
+      assert.equal((await fact(page, '通道').textContent()), hostile.CurrentChannelLabel);
+      assert.equal(await c.locator('.progress-recent-name').first().textContent(), hostileRecent[0].ItemName);
+      assert.ok((await c.locator('.progress-live').textContent()).includes(hostile.Workload), 'the live region carries the text, not markup');
+    };
+    {
+      const { page, errors } = await openPage(browser, { jobs: [backupJob(Object.assign({ Recent: hostileRecent }, hostile))] });
+      await waitCard(page); await assertEscaped(page);
+      assert.deepEqual(errors, [], 'no pageerror or console error while rendering injected strings');
+      counts.cardChecks += 12; mainErrors.push(...errors); await page.close();
+    }
+
+    // ============ N2-3. 320px and 390px: no page overflow, nothing clipped, key boxes inside the viewport ============
+    const assertLayout = async (page, width) => {
+      const measured = await page.evaluate(() => {
+        const doc = document.documentElement, cardEl = document.querySelector('.progress-card[data-progress-card="wizard"]'), viewport = doc.clientWidth;
+        const keys = [cardEl, ...cardEl.querySelectorAll('.progress-step, progress, .progress-percent, .progress-facts, .progress-facts dt, .progress-facts dd, .progress-recent, .progress-recent summary, .progress-recent-list li, .progress-cancel, .progress-status')];
+        const describe = n => (n.className && n.className.baseVal === undefined ? n.className : n.tagName) + ':' + (n.textContent || '').slice(0, 24);
+        const rects = keys.filter(n => !n.hidden && n.getClientRects().length).map(n => ({ name: describe(n), rect: n.getBoundingClientRect() }));
+        return {
+          viewport, docScroll: doc.scrollWidth, bodyScroll: document.body.scrollWidth, cardScroll: cardEl.scrollWidth, cardClient: cardEl.clientWidth, inner: window.innerWidth, count: rects.length,
+          outside: rects.filter(x => x.rect.left < -0.5 || x.rect.right > viewport + 0.5).map(x => x.name + ' ' + Math.round(x.rect.left) + '..' + Math.round(x.rect.right)),
+          clipped: keys.filter(n => !n.hidden && n.getClientRects().length && n.scrollWidth > n.clientWidth + 1).map(describe)
+        };
+      });
+      assert.ok(measured.docScroll <= measured.viewport + 1, `page overflows horizontally at ${width}px: ${JSON.stringify(measured)}`);
+      assert.ok(measured.bodyScroll <= measured.viewport + 1, `body overflows at ${width}px: ${JSON.stringify(measured)}`);
+      assert.ok(measured.cardScroll <= measured.cardClient + 1, `card content is wider than the card at ${width}px: ${JSON.stringify(measured)}`);
+      assert.deepEqual(measured.outside, [], `key boxes leave the ${width}px viewport`);
+      assert.deepEqual(measured.clipped, [], `card content is clipped at ${width}px`);
+      assert.ok(measured.count >= 12, 'the layout assertion measured too few elements: ' + measured.count);
+    };
+    for (const width of [320, 390]) {
+      const longFile = '子目錄 一\\' + 'x'.repeat(150) + '\\檔案 名稱 ' + 'y'.repeat(90) + '.txt';
+      const recent = Array.from({ length: 20 }, (_, i) => ({ ItemId: 'item-' + (i + 1), ItemName: '很長的工作負載名稱用來檢查窄螢幕換行 ' + 'z'.repeat(60) + (i + 1), Result: 'Succeeded' }));
+      const { page, errors } = await openPage(browser, { jobs: [backupJob(Object.assign({ Recent: recent }, hostile, { CurrentFile: longFile + hostile.CurrentFile, CurrentItemId: 'f'.repeat(64), FilesDone: 123456, FilesTotal: 7654321, BytesDone: 99999999999, BytesTotal: 99999999999 }))] }, '#wizard', { viewport: { width, height: 800 } });
+      await waitCard(page); await card(page).locator('summary').click();
+      await assertLayout(page, width);
+      assert.equal(await card(page).locator('img, script, b, i, u').count(), 0);
+      assert.equal(await page.evaluate(() => typeof window.__pwn), 'undefined');
+      await page.evaluate(() => { location.hash = '#jobs?filter=backup'; });
+      await page.waitForSelector('.progress-card[data-progress-card="jobs"]:not([hidden])', { timeout: 15000 });
+      await noHorizontalOverflow(page, width);
+      counts.cardChecks += 8; mainErrors.push(...errors); await page.close();
     }
 
     // ============ G. F2: five connection failures, each with its own prompt and next step ============
@@ -392,5 +476,20 @@ async function realConsoleReadback(browser, errorSink) {
     assert.equal(served.status, 'Interrupted'); assert.equal(served.progress.backup.ItemsDone, 2); assert.equal(served.progress.backup.UpdatedUtc, updated);
     assert.ok(!('ItemNames' in served.progress.backup) && !('OperationId' in served.progress.backup), 'the HTML view is the closed projection');
     await context.close();
+    // N2: this record predates the item fields, so the real projection must say so and the card must read 未記錄.
+    assert.equal(served.progress.backup.ItemFieldsRecorded, false, 'an old record reports its item fields as unrecorded');
+    assert.ok(text.includes('未記錄'), 'the card shows 未記錄 for the item fields of an old record: ' + text);
+    assert.ok(!('CurrentItemId' in raw), 'sanity: the old fixture really has no item fields');
+    // N2: a record that carries the fields goes through the real $allowed projection untouched (and unexecuted markup stays text).
+    const newJob = 'eeeeeeee-2222-4333-8444-555555555555', hostileFile = '子目錄 一\\<script>window.__pwn=2</script> 報表.txt';
+    await stop();
+    fs.writeFileSync(path.join(progressDir, newJob + '.json'), JSON.stringify(Object.assign({}, raw, { OperationId: newJob, AttemptId: newJob, Workload: '<img src=x onerror=1> 網站 甲', CurrentFile: hostileFile, CurrentItemId: 'item-xyz', CurrentItemType: 'FileScope', CurrentItemTypeLabel: '檔案範圍', CurrentChannel: 'NonC', FilesDone: 5, FilesTotal: null })), 'utf8');
+    fs.writeFileSync(path.join(dir, 'console-jobs', newJob + '.json'), JSON.stringify(Object.assign({}, record, { jobId: newJob })), 'utf8');
+    origin = await start();
+    const api2 = await (await fetch(origin + '/api/jobs', { headers: { 'X-Wsm-Token': (await (await fetch(origin + '/api/session')).json()).token } })).json();
+    const view2 = api2.items.find(j => j.jobId === newJob).progress.backup;
+    assert.equal(view2.ItemFieldsRecorded, true); assert.equal(view2.CurrentItemId, 'item-xyz'); assert.equal(view2.CurrentItemType, 'FileScope'); assert.equal(view2.CurrentItemTypeLabel, '檔案範圍');
+    assert.equal(view2.CurrentChannel, 'NonC'); assert.equal(view2.CurrentChannelLabel, '非 C 槽'); assert.equal(view2.FilesDone, 5); assert.equal(view2.FilesTotal, null);
+    assert.equal(view2.CurrentFile, hostileFile, 'markup and Chinese with spaces pass the projection as the exact string'); assert.equal(view2.Workload, '<img src=x onerror=1> 網站 甲');
   } finally { await stop(); fs.rmSync(dir, { recursive: true, force: true }); }
 }

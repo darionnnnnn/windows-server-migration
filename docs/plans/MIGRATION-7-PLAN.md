@@ -1228,6 +1228,27 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - MountPointNotSupported 的掛載點觀測以替身驗證。
   - PermissionDenied 以真實拒絕 ACL 驗證，但帶備份權限的 token 可能不受影響。
   - `Test-WizardRuntime` 曾偶發一次失敗（訊息為「A uniquely verified received schema-3 approved plan is required」），重跑兩次都通過，根因未明，列為後續追查。
+### 17.76 N2 進度紀錄補上獨立欄位與 18.3 驗收缺口
+
+- Sonnet 5.5 medium subagent 實作，主代理審查並獨立重跑。
+- 進度 Record 新增欄位：
+  - `CurrentItemId`。
+  - `CurrentItemType`（adapter 代碼）與 `CurrentItemTypeLabel`，標籤沿用 `Get-WsmWizardItemTypeLabel`。
+  - `CurrentChannel`（C、NonC、Unknown），由核准項目的 `MigrationSpec.TransferChannel` 推導，不解析顯示文字。
+  - `FilesDone`、`FilesTotal`。擷取期間 `FilesTotal` 為 null，因為預先估算需要多列舉一次檔案；封存後的驗證階段才補上。
+- 4 KiB 上限：新欄位不截斷，Recent 維持 20 筆。超過上限時，依序縮短 Recent 保存的名稱、`CurrentFile` 與 `Workload`。
+- 投影新增 `ItemFieldsRecorded` 與 `CurrentChannelLabel`；舊進度檔顯示「未記錄」。
+- 進度卡新增「目前項目、型別、通道、檔案 n/N」，全部用 `textContent` 寫入。live region 規則不變。另外加上 ≤360px 單欄排版。
+- 18.3 驗收：
+  - 中文、空白、`<script>`、`<img onerror>`、引號會原樣落盤，畫面上不會被執行。
+  - 320px 與 390px 寬度下，頁面與卡片都不溢出，約 49 個關鍵元素落在視窗內。
+- 型別只有 FileScope 與 Certificate 兩種：網站與排程不在擷取階段的進度項目內。
+- NonC 的真實一鍵備份會停在 ReviewRequired，所以通道以「C、NonC、C 混合」的真實 fixture 另外驗證。
+- 驗證（WinPS 5.1、真實 Edge）：
+  - WizardBackupProgress 265、BackupProgressBrowser 92 項加 6 個 F2 案例、WizardHtmlRuntimeProjection 214、AssistiveUi 47、ScriptEncoding（主代理重跑）。
+  - subagent 另跑：WizardBackup、WizardBackupRecovery 21、HtmlConsole 175、BackupWorkbenchBrowser、NativeWizardRuntimeHandler、SecretSentinelSweep 16。
+- 突變（皆轉紅）：通道寫錯、檔案序沒有前進、改用 innerHTML、320px 溢位；主代理另將非 C 標籤改成「C 槽」。
+- 限制：通道與檔案序的突變是在單元層被擋下，沒有另外證明真實備份層的同名斷言能獨立轉紅。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

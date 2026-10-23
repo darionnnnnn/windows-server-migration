@@ -177,9 +177,20 @@ function ConvertTo-WsmWizardBackupProgressView($Raw,[string]$JobStatus,[string]$
     $percent=$null
     if([string]$Raw.Stage -ceq 'Capture' -and $null -ne $itemsTotal -and $itemsTotal -gt 0 -and $null -ne $itemsDone){$percent=[int][Math]::Min(99,[Math]::Floor(100*[double]$itemsDone/[double]$itemsTotal))}
     elseif([bool]$Raw.Terminal -and [string]$Raw.Outcome -ceq 'Succeeded'){$percent=100}
+    # N2: records written before the item fields existed are shown as unrecorded, never as an empty or zero value.
+    $itemRecorded=[bool]($Raw.PSObject.Properties['CurrentItemId'] -and $Raw.PSObject.Properties['CurrentChannel'] -and $Raw.PSObject.Properties['FilesDone'])
+    $channelCode='Unknown';$channelLabel='未記錄';$itemId='';$itemType='';$itemTypeLabel='未記錄';$filesDone=$null;$filesTotal=$null
+    if($itemRecorded){
+        $channelCode=[string]$Raw.CurrentChannel;$channelLabel=switch -CaseSensitive ($channelCode){'C'{'C 槽'}'NonC'{'非 C 槽'}default{'未知'}}
+        if($channelLabel -ceq '未知'){$channelCode='Unknown'}
+        $itemId=ConvertTo-WsmProgressText $Raw.CurrentItemId;$itemType=ConvertTo-WsmProgressText $Raw.CurrentItemType;$itemTypeLabel=ConvertTo-WsmProgressText $Raw.CurrentItemTypeLabel
+        if($null -ne $Raw.FilesDone){$filesDone=[long]$Raw.FilesDone}
+        if($Raw.PSObject.Properties['FilesTotal'] -and $null -ne $Raw.FilesTotal){$filesTotal=[long]$Raw.FilesTotal}
+    }
     $view=[ordered]@{
         Stage=[string]$Raw.Stage;StageLabel=(Get-WsmBackupProgressStageLabel ([string]$Raw.Stage));StageIndex=[int]$Raw.StageIndex;StageCount=[int]$Raw.StageCount
         Workload=(ConvertTo-WsmProgressText $Raw.Workload);CurrentFile=(ConvertTo-WsmProgressText $Raw.CurrentFile)
+        ItemFieldsRecorded=$itemRecorded;CurrentItemId=$itemId;CurrentItemType=$itemType;CurrentItemTypeLabel=$itemTypeLabel;CurrentChannel=$channelCode;CurrentChannelLabel=$channelLabel;FilesDone=$filesDone;FilesTotal=$filesTotal
         ItemsDone=$itemsDone;ItemsTotal=$itemsTotal;BytesDone=$(if($null -ne $Raw.BytesDone){[long]$Raw.BytesDone}else{$null});BytesTotal=$bytesTotal;Percent=$percent
         StartedUtc=[string]$Raw.StartedUtc;UpdatedUtc=[string]$Raw.UpdatedUtc;Recent=$recent;FailedCount=$failed;Terminal=[bool]$Raw.Terminal;Outcome=[string]$Raw.Outcome
         State=[string]$stateRow.State;EndReason=[string]$stateRow.EndReason
