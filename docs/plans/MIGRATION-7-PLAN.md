@@ -1450,6 +1450,41 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 少一個 export
   - 還原位元組多寫一個 byte
 - 待決定：`docs/MIGRATION-3-PLAN.md` 位於 docs 根層，依現行規則會進入發行包。是否要排除，由使用者決定。
+### 17.86 N9c 環境變數與相對路徑改依來源 context 解析（D1／R7-07；定案：機器層＋ProfileList）
+
+- Sonnet 5.5 medium subagent 實作，主代理審查並獨立重跑。
+- Source 盤點時，以唯讀方式建立 `SourceResolutionContext` 並寫入 inventory，內容如下：
+  - 主機、觀測時間。
+  - 機器層環境變數：取自 Machine 環境，再從 HKLM 補上 SystemRoot、SystemDrive、ProgramFiles、ProgramData 等。名稱看起來像機密的變數，以及單值超過 2048 字元的變數，只記名稱、不存值。
+  - 服務與排程帳號：每個帳號的 SID，以及 ProfileList 中未展開的 ProfileImagePath。
+  - 不載入 NTUSER，也不碰 HKU。
+- 新增 `SourceResolutionContextHash`，納入軟體投影雜湊；舊 inventory 的雜湊不變。
+- 單一解析函式 `Resolve-WsmSourcePath` 只看 context。Basis 分四種：
+  - `Machine`
+  - `ProfileDerived`：`%USERPROFILE%`、`%APPDATA%`、`%LOCALAPPDATA%`
+  - `Literal`
+  - `Unresolved`：自訂或重新導向的變數、沒有 profile 的帳號、相對路徑、`..`、被排除的機密變數；真實使用者帳號的 TEMP 也歸此類。
+- 原本用目前程序環境展開的五處，改走新函式：
+  - SoftwareInventory 排程命令
+  - IIS physicalPath
+  - Discovery 候選
+  - DeveloperProbe
+  - WorkloadDiscovery 的 web.config 根
+
+  src 內已不再呼叫任何 `ExpandEnvironmentVariables`，並由靜態守門測試把關。
+- 解析不出結果時，不會退回本機展開：
+  - 軟體 consumer 比對改記 `ConsumerPathResolution` coverage，視為「未知」。
+  - 舊 inventory 沒有 context 時，一律標為 Unresolved。這是行為變更：過去在 Manager 或 Source 本機展開的路徑，現在會變成人工處置項。
+- 驗證（WinPS 5.1）：
+  - 主代理重跑：SourceContextResolution 87、SoftwareInventory、WorkloadDiscovery、WorkloadPathCoverage 18、DeveloperProbe、AdvancedReview 32、SourceCandidateDiscovery、ScriptEncoding。
+  - subagent 另跑：EnterpriseDiscovery、IisConfigurationCoverage 37、R7SoftwareAssessment、AssistiveComparison 42、SourceCandidateConfirmation 41、Mapping 19、InventoryFixture、EnvironmentConfirmation（842 秒）。
+  - 三端一致性：用兩個環境不同的子程序（模擬 Target 與重開後的 Manager）載入同一份 context，10 組解析結果與 Source 逐字相同。
+- 突變（皆轉紅）：解析函式退回本機展開、Profile 改用目前使用者、五個呼叫點各自退回展開、沒有 context 時退回、src 新增 `ExpandEnvironmentVariables`；主代理另做一個獨立突變：拿掉機密變數名稱排除，轉紅。
+- 限制：
+  - 真實 Server 上的 `Export-WsmInventory` 沒有實際跑過，只以靜態比對與單元驗證。
+  - 網域帳號的 NTAccount 解析以替身驗證。
+  - IIS 站台沒有解析 app pool 身分，所以 IIS 路徑中的 `%USERPROFILE%` 會是 Unresolved。
+  - 顯示原字串、解析結果與 Basis 的 UI 牽涉白名單外的投影層，另由 N9c2 處理。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

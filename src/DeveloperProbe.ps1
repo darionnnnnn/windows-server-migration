@@ -255,22 +255,22 @@ function Install-WsmDeveloperProbeInventoryGuards {
             }
         }
         $iis=Get-Command Get-WsmIisWebConfigInventoryItems -CommandType Function -ErrorAction SilentlyContinue
-        if($iis){$script:WsmDeveloperProbeOriginalIisWebConfig=$iis.ScriptBlock
+        if($iis){$script:WsmDeveloperProbeOriginalIisWebConfig=$iis.ScriptBlock;$script:WsmDeveloperProbeOriginalIisSupportsContext=[bool]$iis.Parameters.ContainsKey('Context')
             Set-Item Function:\script:Get-WsmIisWebConfigInventoryItems -Value {
-                param([string]$HostId,[object[]]$SiteItems,[int]$MaxDirectories=4096,[int]$MaxFiles=8192,[long]$MaxBytes=67108864,[int]$MaxFileBytes=4194304)
+                param([string]$HostId,[object[]]$SiteItems,[int]$MaxDirectories=4096,[int]$MaxFiles=8192,[long]$MaxBytes=67108864,[int]$MaxFileBytes=4194304,[object]$Context=$null)
                 $safeSites=New-Object System.Collections.Generic.List[object]
                 $gapItems=New-Object System.Collections.Generic.List[object]
                 foreach($site in @($SiteItems)){
                     try{$xml=Read-WsmXml ([string]$site.Settings.Xml)}catch{$safeSites.Add($site);continue}
                     $blocked=$false
                     foreach($node in @($xml.SelectNodes("//*[local-name()='virtualDirectory'][@physicalPath]"))){
-                        $raw=[string]$node.GetAttribute('physicalPath');$expanded=[Environment]::ExpandEnvironmentVariables($raw)
+                        $raw=[string]$node.GetAttribute('physicalPath');$resolution=Resolve-WsmSourcePath $raw $Context $null;if($null -eq $resolution.Resolved){continue};$expanded=[string]$resolution.Resolved
                         $check=Test-WsmDeveloperProbeSafeLocalPath $expanded
                         if(-not $check.Allowed){$blocked=$true;Add-WsmDeveloperProbeScopeGap 'NativeInventory' 'IISWebConfigEnumeration' $check.ReasonCode $raw ([string]$site.ItemId) $check.ReparseAncestor;[void]$node.ParentNode.RemoveChild($node);continue}
                     }
                     if($blocked){$clone=[pscustomobject]@{ItemId=[string]$site.ItemId;NaturalKey=[string]$site.NaturalKey;Settings=[pscustomobject]@{Xml=$xml.OuterXml}};$safeSites.Add($clone)}else{$safeSites.Add($site)}
                 }
-                $localItems=@(& $script:WsmDeveloperProbeOriginalIisWebConfig $HostId $safeSites.ToArray() $MaxDirectories $MaxFiles $MaxBytes $MaxFileBytes)
+                $localItems=@($(if($script:WsmDeveloperProbeOriginalIisSupportsContext){& $script:WsmDeveloperProbeOriginalIisWebConfig $HostId $safeSites.ToArray() $MaxDirectories $MaxFiles $MaxBytes $MaxFileBytes $Context}else{& $script:WsmDeveloperProbeOriginalIisWebConfig $HostId $safeSites.ToArray() $MaxDirectories $MaxFiles $MaxBytes $MaxFileBytes}))
                 foreach($gap in @($script:WsmDeveloperProbeScopeGaps | Where-Object {$_.Collector -eq 'NativeInventory' -and $_.Operation -eq 'IISWebConfigEnumeration'})){
                     $gapItems.Add((New-WsmItem $HostId Web IISWebConfigObservation 'IIS web.config scope skipped by developer probe safety boundary' ('developer-probe-scope-gap|iis|'+[string]$gap.ItemId+'|'+[string]$gap.ReasonCode) ([pscustomobject][ordered]@{Status='SkippedUnsafeScope';ErrorKind=[string]$gap.ReasonCode;Path=[string]$gap.Path;ReparseAncestor=[string]$gap.ReparseAncestor;PotentialConsumerItemIds=@([string]$gap.ItemId);Reason='Developer probe did not enumerate remote, device or reparse paths.';RawEvidenceProtected=$true}) @() Partial))
                 }

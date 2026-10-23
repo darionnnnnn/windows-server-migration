@@ -160,7 +160,7 @@ function Resolve-WsmIisConfigSourceCandidates([string]$HostId,[object[]]$Items,[
     @($result.ToArray())
 }
 
-function Get-WsmIisWebConfigInventoryItems([string]$HostId,[object[]]$SiteItems,[int]$MaxDirectories=4096,[int]$MaxFiles=8192,[long]$MaxBytes=67108864,[int]$MaxFileBytes=4194304) {
+function Get-WsmIisWebConfigInventoryItems([string]$HostId,[object[]]$SiteItems,[int]$MaxDirectories=4096,[int]$MaxFiles=8192,[long]$MaxBytes=67108864,[int]$MaxFileBytes=4194304,[object]$Context=$null) {
     # Capture only web.config files below physical roots explicitly present in
     # captured IIS XML. Reparse points are skipped and every limit is explicit.
     $items=New-Object 'System.Collections.Generic.List[object]';$seen=@{};$directories=0;$files=0;[long]$bytesRead=0
@@ -170,8 +170,8 @@ function Get-WsmIisWebConfigInventoryItems([string]$HostId,[object[]]$SiteItems,
         $roots=@($xml.SelectNodes("//*[local-name()='virtualDirectory'][@physicalPath]")|ForEach-Object {[string]$_.GetAttribute('physicalPath')}|Select-Object -Unique)
         if(-not $roots.Count){$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config root unknown for '+$siteName) ('webconfig-observation|'+$siteId+'|root') ([pscustomobject][ordered]@{Status='NoPhysicalRoot';PhysicalRoot='';PotentialConsumerItemIds=@($siteId);Reason='No captured IIS physicalPath identifies a bounded web.config search root.';RawEvidenceProtected=$true}) @() Partial));continue}
         foreach($rawRoot in $roots){
-            $root=[Environment]::ExpandEnvironmentVariables($rawRoot)
-            if($root -match '%[^%]+%' -or $root -notmatch '^(?:[A-Za-z]:\\|\\\\[^\\]+\\[^\\]+\\)'){$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config root requires resolution for '+$siteName) ('webconfig-observation|'+$siteId+'|'+(Get-WsmHashText $rawRoot)) ([pscustomobject][ordered]@{Status='UnresolvedPhysicalRoot';PhysicalRoot=$rawRoot;PotentialConsumerItemIds=@($siteId);Reason='Physical root is environment-dependent, relative, or outside safe absolute-path projection.';RawEvidenceProtected=$true}) @() Partial));continue}
+            $rootResolution=Resolve-WsmSourcePath ([string]$rawRoot) $Context $null;$root=$(if($null -ne $rootResolution.Resolved){[string]$rootResolution.Resolved}else{[string]$rawRoot})
+            if($null -eq $rootResolution.Resolved -or $root -notmatch '^(?:[A-Za-z]:\\|\\\\[^\\]+\\[^\\]+\\)'){$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config root requires resolution for '+$siteName) ('webconfig-observation|'+$siteId+'|'+(Get-WsmHashText $rawRoot)) ([pscustomobject][ordered]@{Status='UnresolvedPhysicalRoot';PhysicalRoot=$rawRoot;ResolutionBasis=[string]$rootResolution.Basis;ResolutionReason=[string]$rootResolution.Reason;PotentialConsumerItemIds=@($siteId);Reason='Physical root is environment-dependent, relative, or outside safe absolute-path projection.';RawEvidenceProtected=$true}) @() Partial));continue}
             try{$root=ConvertTo-WsmCanonicalPath $root}catch{$root=''}
             if(-not $root -or -not [IO.Directory]::Exists($root)){$items.Add((New-WsmItem $HostId Web IISWebConfigObservation ('web.config root unavailable for '+$siteName) ('webconfig-observation|'+$siteId+'|'+(Get-WsmHashText $rawRoot)) ([pscustomobject][ordered]@{Status='RootUnavailable';PhysicalRoot=$root;PotentialConsumerItemIds=@($siteId);Reason='Captured IIS physical root is missing or inaccessible; web.config could not be enumerated.';RawEvidenceProtected=$true}) @() Partial));continue}
             $stack=New-Object 'System.Collections.Generic.Stack[string]';$stack.Push($root);$rootFound=$false;$reparseSkipped=$false;$scanIncomplete=$false

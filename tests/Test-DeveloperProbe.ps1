@@ -70,10 +70,11 @@ try{
         $fixtureManifest=Join-Path $fixtureModuleRoot 'WindowsServerMigration.psd1'
         [IO.File]::WriteAllText($fixtureManifest,"@{ RootModule='WindowsServerMigration.psm1'; ModuleVersion='0.0.1'; GUID='c54ed8aa-4fa4-49b3-a93a-7fb0fdfad213'; PowerShellVersion='5.1'; FunctionsToExport='*' }",(New-Object Text.UTF8Encoding($true)))
         $fixtureModule=@'
-$script:Calls=[ordered]@{FileMetadata=@();Adjacent=@();IisRoots=@();Dfs=0;ConfigSource=0;Hosts=0;Redirection=0}
+$script:Calls=[ordered]@{FileMetadata=@();Adjacent=@();Resolve=@();IisRoots=@();Dfs=0;ConfigSource=0;Hosts=0;Redirection=0}
 function Get-WsmPreflight { [pscustomobject]@{IsServer=$true;Administrator=$true;Is64Bit=$true;OS='Fixture';Version='1';Build='1'} }
 function New-WsmItem { param($HostId,$Category,$Kind,$Name,$NaturalKey,$Settings,$Dependencies,$Status) [pscustomobject]@{HostId=$HostId;ItemId=([guid]::NewGuid().ToString());Category=$Category;Kind=$Kind;Name=$Name;NaturalKey=$NaturalKey;Settings=$Settings;Dependencies=@($Dependencies);Status=$Status} }
 function Read-WsmXml([string]$Text) { $xml=New-Object Xml.XmlDocument;$xml.PreserveWhitespace=$true;$xml.LoadXml($Text);$xml }
+function Resolve-WsmSourcePath { param([string]$Raw,$Context,[string]$AccountSid) $script:Calls.Resolve+=@($Raw);if($Raw -match '%'){[pscustomobject]@{Raw=$Raw;Resolved=$null;Basis='Unresolved';Variables=@();Reason='FixtureNoContext'}}else{[pscustomobject]@{Raw=$Raw;Resolved=$Raw;Basis='Literal';Variables=@();Reason=''}} }
 function Get-WsmSoftwareModuleSnapshot { param([int]$MaxEntries=2000) [pscustomobject]@{Status='Success';Rows=@([pscustomobject]@{Name='LocalFixtureModule';Version='1.0';Path=$env:WSM_GUARD_LOCAL;ModuleBase=$env:WSM_GUARD_LOCAL});ErrorKind=$null;Count=1;Budget=@{MaxEntries=$MaxEntries}} }
 function Get-WsmSoftwareFileMetadataSnapshot { param([string]$Path) $script:Calls.FileMetadata+=@($Path);[pscustomobject]@{Status='Success';ErrorKind=$null;Row=[pscustomobject]@{Name='fixture';Version='1';Path=$Path}} }
 function Get-WsmSoftwareAdjacentRuntimeSnapshot { param([string]$ExecutablePath,[int]$MaxEntries=200,[long]$MaxMetadataBytes=1048576) $script:Calls.Adjacent+=@($ExecutablePath);[pscustomobject]@{Status='Success';Rows=@();Gaps=@();Count=0;MetadataBytes=0} }

@@ -63,7 +63,7 @@ function Get-WsmExtendedDiscovery([string]$HostId) {
         foreach ($branch in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings','HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL')) { if (Test-Path -LiteralPath $branch) { New-WsmItem $HostId Network RegistryEndpoint $branch $branch @{ Properties=(Get-ItemProperty -LiteralPath $branch -ErrorAction Stop) } } }
     }
 }
-function Get-WsmPathCandidates([string]$HostId,[object[]]$Items) {
+function Get-WsmPathCandidates([string]$HostId,[object[]]$Items,[object]$Context=$null) {
     $roots=@{}; $serviceIndex=@{}; foreach ($i in $Items) { if ($i.Kind -eq 'Service') { $serviceIndex[$i.NaturalKey]=$i } }
     foreach ($i in $Items) {
         $paths=New-Object 'System.Collections.Generic.List[string]'
@@ -92,10 +92,10 @@ function Get-WsmPathCandidates([string]$HostId,[object[]]$Items) {
         if ($i.Kind -eq 'Share') { $paths.Add([string]$i.Settings.Definition.Path) }
         foreach ($path in $paths) {
             if (-not $path) { continue }
-            $expanded=[Environment]::ExpandEnvironmentVariables($path); $status='Unsupported'; $resolved=''
-            if ($expanded -notmatch '%[^%]+%' -and $expanded -match '^(?:[a-zA-Z]:\\|\\\\[^\\]+\\[^\\]+)') { try { $resolved=ConvertTo-WsmCanonicalPath $expanded } catch { $resolved='' } }
+            $resolution=Resolve-WsmSourcePath ([string]$path) $Context $null; $status='Unsupported'; $resolved=''
+            if ($null -ne $resolution.Resolved) { try { $resolved=ConvertTo-WsmCanonicalPath ([string]$resolution.Resolved) } catch { $resolved='' } }
             # A candidate is evidence, not permission to recursively copy its directory.
-            $key=$path.ToLowerInvariant(); if (-not $roots.ContainsKey($key)) { $root=New-WsmItem $HostId Storage PathCandidate $path ('candidate:'+ $key) @{ OriginalPath=$path; ResolvedCandidate=$resolved; RequiresScopeApproval=$true; Reason='Confirm data/config root, exclusions, ACL, reparse points and external dependencies before export.' } @() $status; $roots[$key]=$root }
+            $key=$path.ToLowerInvariant(); if (-not $roots.ContainsKey($key)) { $root=New-WsmItem $HostId Storage PathCandidate $path ('candidate:'+ $key) @{ OriginalPath=$path; ResolvedCandidate=$resolved; ResolutionBasis=[string]$resolution.Basis; ResolutionVariables=@($resolution.Variables); RequiresScopeApproval=$true; Reason='Confirm data/config root, exclusions, ACL, reparse points and external dependencies before export.' } @() $status; $roots[$key]=$root }
             $i.Dependencies=@($i.Dependencies)+@([pscustomobject]@{ ItemId=$roots[$key].ItemId; Type='Optional'; Evidence='Parsed configuration path; owner confirmation required'; Confidence='Candidate' })
         }
     }

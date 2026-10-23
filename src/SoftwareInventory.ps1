@@ -231,7 +231,7 @@ function Get-WsmSoftwareInventoryProjectionHash {
         Revision=[int]$Inventory.Revision
         Items=@(foreach($item in @($Inventory.Items | Where-Object { -not (($_.PSObject.Properties['Present'] -and $_.Present -eq $false) -or ($_.PSObject.Properties['ManualEntry'] -and $_.ManualEntry -eq $true)) } | Sort-Object ItemId)){[ordered]@{ItemId=[string]$item.ItemId;Category=[string]$item.Category;Kind=[string]$item.Kind;NaturalKey=[string]$item.NaturalKey;SettingsHash=[string]$item.SettingsHash;Status=[string]$item.Status}})
     }
-    Get-WsmHashText ($projection | ConvertTo-Json -Depth 40 -Compress)
+    $sourceContext=Get-WsmInventorySourceResolutionContext $Inventory;if($null -ne $sourceContext){$projection['SourceResolutionContextHash']=Get-WsmSourceResolutionContextHash $sourceContext}; Get-WsmHashText ($projection | ConvertTo-Json -Depth 40 -Compress)
 }
 
 function Get-WsmSoftwareCatalogProjectionHash {
@@ -349,14 +349,14 @@ function Get-WsmSoftwareCatalog {
     }
 
     # Existing source inventory provides bounded consumer metadata; do not store command arguments.
-    $consumerRuntimeBytes=[long]0
+    $consumerRuntimeBytes=[long]0;$sourceContext=Get-WsmInventorySourceResolutionContext $Source
     foreach($item in @($Source.Items | Where-Object { $_.Kind -in @('Service','ScheduledTask','IISSite','IISPool','PathCandidate') })) {
-        $safePath='';$settings=$item.Settings
+        $safePath='';$unresolvedConsumerPath=$null;$settings=$item.Settings
         foreach($field in @('ExecutablePath','WorkingDirectory','ScriptPath','Path','ApplicationPath')){$v=Get-WsmSoftwareSafeValue $settings $field;if($v -and -not $safePath){$safePath=$v}}
         if($item.Kind -eq 'Service'){$raw=Get-WsmSoftwareSafeValue $settings PathName;if($raw){$safePath=([regex]::Match($raw,'^(?:"([^"]+\.exe)"|([^\s]+\.exe))',[System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Groups[1].Value;if(-not $safePath){$safePath=([regex]::Match($raw,'^(?:"([^"]+\.exe)"|([^\s]+\.exe))',[System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Groups[2].Value}}}
-        if($item.Kind -eq 'ScheduledTask'){$taskText=Get-WsmSoftwareSafeValue $settings Xml;if($taskText -and $taskText -notmatch '(?i)(password|pwd|secret|token)\s*[:=]' -and $taskText -notmatch '<!DOCTYPE|<!ENTITY'){try{$taskXml=[xml]$taskText;$commandNode=$taskXml.SelectSingleNode("//*[local-name()='Command']");if($commandNode){$command=[Environment]::ExpandEnvironmentVariables([string]$commandNode.InnerText);if([IO.Path]::IsPathRooted($command)){$safePath=$command}}}catch{}}}
-        if($item.Kind -eq 'IISSite'){$siteText=Get-WsmSoftwareSafeValue $settings Xml;if($siteText -and $siteText -notmatch '(?i)(password|pwd|secret|token)\s*[:=]' -and $siteText -notmatch '<!DOCTYPE|<!ENTITY'){try{$siteXml=[xml]$siteText;$physical=$siteXml.SelectSingleNode("//*[@physicalPath]");if($physical){$sitePath=[Environment]::ExpandEnvironmentVariables([string]$physical.GetAttribute('physicalPath'));if([IO.Path]::IsPathRooted($sitePath)){$safePath=$sitePath}}}catch{}}}
-        if($safePath){
+        if($item.Kind -eq 'ScheduledTask'){$taskText=Get-WsmSoftwareSafeValue $settings Xml;if($taskText -and $taskText -notmatch '(?i)(password|pwd|secret|token)\s*[:=]' -and $taskText -notmatch '<!DOCTYPE|<!ENTITY'){try{$taskXml=[xml]$taskText;$commandNode=$taskXml.SelectSingleNode("//*[local-name()='Command']");if($commandNode){$resolution=Resolve-WsmSourcePath ([string]$commandNode.InnerText) $sourceContext (Get-WsmSourceAccountSid $sourceContext (Get-WsmTaskPrincipalAccount $taskText));if($null -ne $resolution.Resolved){if([IO.Path]::IsPathRooted([string]$resolution.Resolved)){$safePath=[string]$resolution.Resolved}}elseif(([string]$commandNode.InnerText) -match '[%\\/]'){$unresolvedConsumerPath=$resolution}}}catch{}}}
+        if($item.Kind -eq 'IISSite'){$siteText=Get-WsmSoftwareSafeValue $settings Xml;if($siteText -and $siteText -notmatch '(?i)(password|pwd|secret|token)\s*[:=]' -and $siteText -notmatch '<!DOCTYPE|<!ENTITY'){try{$siteXml=[xml]$siteText;$physical=$siteXml.SelectSingleNode("//*[@physicalPath]");if($physical){$resolution=Resolve-WsmSourcePath ([string]$physical.GetAttribute('physicalPath')) $sourceContext $null;if($null -ne $resolution.Resolved){if([IO.Path]::IsPathRooted([string]$resolution.Resolved)){$safePath=[string]$resolution.Resolved}}elseif(-not [string]::IsNullOrWhiteSpace([string]$physical.GetAttribute('physicalPath'))){$unresolvedConsumerPath=$resolution}}}catch{}}}
+        if($null -ne $unresolvedConsumerPath -and -not $safePath){$coverage.Add([pscustomobject]@{Probe='ConsumerPathResolution';Scope=[string]$item.Kind;SID='';View='Inventory';Status='Partial';EvidenceKind='SourceContextPath';Count=0;Budget=[pscustomobject]@{MaxEntries=$MaxEntries};ErrorKind='SourcePathUnresolved';ObservedUtc=$observed;ItemId=[string]$item.ItemId})}; if($safePath){
             if($entries.Count -ge $MaxEntries){$coverage.Add([pscustomobject]@{Probe='ConsumerFileMetadata';Scope=[string]$item.Kind;SID='';View='Inventory';Status='Partial';EvidenceKind='SourceInventory';Count=0;Budget=[pscustomobject]@{MaxEntries=$MaxEntries};ErrorKind='EntryBudgetExceeded';ObservedUtc=$observed});continue}
             $fileEvidence=Get-WsmSoftwareFileMetadataSnapshot -Path $safePath
             $coverage.Add([pscustomobject]@{Probe='ConsumerFileMetadata';Scope=[string]$item.Kind;SID='';View='Inventory';Status=[string]$fileEvidence.Status;EvidenceKind='FileVersionMetadata';Count=$(if($fileEvidence.Row){1}else{0});Budget=[pscustomobject]@{MaxEntries=$MaxEntries;MaxMetadataBytes=$MaxMetadataBytes};ErrorKind=$fileEvidence.ErrorKind;ObservedUtc=$observed;ItemId=[string]$item.ItemId})
