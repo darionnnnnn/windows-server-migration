@@ -1370,6 +1370,13 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 每次交付都會重算一次工具指紋（雜湊整個 src），`Test-WizardBackup` 因此從約 36 秒變成約 96 秒。實際使用時每次備份只算一次；沒有加快取，以免掩蓋熱換工具的偵測。
   - 說明檔不設唯讀屬性。
   - 文件位置只寫成文字路徑，不做成連結。
+### 17.81 N8a 秘密哨兵掃描加入摘要變體（16.6-12 前半）
+
+- Haiku 5.5 low subagent 照寫死的規格實作，主代理補上漏掉的負向控制，並獨立驗收。
+- `Test-SecretSentinelSweep.ps1` 的 needle 新增秘密摘要：SHA256（UTF-8 小寫／大寫 hex、Base64，以及 UTF-16LE 輸入）、SHA1、MD5。目的是證明產品不會把秘密的摘要寫入磁碟，因為這類摘要可以離線比對。
+- 負向控制由 6 個增為 12 個，每一種新 needle 都至少有一個刻意洩漏的檔案。Haiku 依規格只做了 3 個；SHA1、SHA256-b64、SHA256（UTF-16LE）缺負向控制，是規格本身的缺口，由主代理補上。
+- 驗證：SecretSentinelSweep 22 項、ScriptEncoding。突變（略過 SHA256 大寫、MD5、SHA1）皆轉紅。
+- 掃描範圍擴大到備份輸出的部分，由 N8b 處理。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

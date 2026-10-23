@@ -43,6 +43,16 @@ try {
                     $needles.Add([pscustomobject]@{Encoding=($variant.Name+'@'+$shift);Needle=$text.Substring($skip);Base64=$true})
                 }
             }
+            # Digest needles: a hash of the secret leaks the same secret, so the sweep also looks for SHA256 / SHA1 / MD5 digests of it.
+            $sha256=[Security.Cryptography.SHA256]::Create();$sha1=[Security.Cryptography.SHA1]::Create();$md5=[Security.Cryptography.MD5]::Create()
+            try{$sha256Utf8=$sha256.ComputeHash($utf8);$sha256Utf16=$sha256.ComputeHash($utf16);$sha1Utf8=$sha1.ComputeHash($utf8);$md5Utf8=$md5.ComputeHash($utf8)}finally{$sha256.Dispose();$sha1.Dispose();$md5.Dispose()}
+            $sha256Hex=[BitConverter]::ToString($sha256Utf8).Replace('-','')
+            $needles.Add([pscustomobject]@{Encoding='SHA256-hex-lower(UTF-8)';Needle=$sha256Hex.ToLowerInvariant();Base64=$false})
+            $needles.Add([pscustomobject]@{Encoding='SHA256-hex-upper(UTF-8)';Needle=$sha256Hex;Base64=$false})
+            $needles.Add([pscustomobject]@{Encoding='SHA256-b64(UTF-8)';Needle=[Convert]::ToBase64String($sha256Utf8).TrimEnd('=');Base64=$false})
+            $needles.Add([pscustomobject]@{Encoding='SHA256-hex-lower(UTF-16LE)';Needle=([BitConverter]::ToString($sha256Utf16).Replace('-','')).ToLowerInvariant();Base64=$false})
+            $needles.Add([pscustomobject]@{Encoding='SHA1-hex-lower(UTF-8)';Needle=([BitConverter]::ToString($sha1Utf8).Replace('-','')).ToLowerInvariant();Base64=$false})
+            $needles.Add([pscustomobject]@{Encoding='MD5-hex-lower(UTF-8)';Needle=([BitConverter]::ToString($md5Utf8).Replace('-','')).ToLowerInvariant();Base64=$false})
             ,$needles.ToArray()
         }
         function Invoke-SecretSweep([string[]]$Roots,[string]$Secret){
@@ -123,6 +133,8 @@ try {
             # ---- negative controls: plant the secret in each encoding; the sweep must report each file by name ----
             $utf8Bytes=[Text.Encoding]::UTF8.GetBytes($secret)
             function Get-Base64Planted([int]$Shift){$filler=[Text.Encoding]::ASCII.GetBytes('xy'.Substring(0,$Shift));$buffer=New-Object byte[] ($filler.Length+$utf8Bytes.Length);[Array]::Copy($filler,0,$buffer,0,$filler.Length);[Array]::Copy($utf8Bytes,0,$buffer,$filler.Length,$utf8Bytes.Length);'cred='+[Convert]::ToBase64String($buffer)+' trailer'}
+            $sha256=[Security.Cryptography.SHA256]::Create();$md5=[Security.Cryptography.MD5]::Create();$sha1=[Security.Cryptography.SHA1]::Create()
+            try{$secretSha256=[BitConverter]::ToString($sha256.ComputeHash($utf8Bytes)).Replace('-','');$secretMd5=[BitConverter]::ToString($md5.ComputeHash($utf8Bytes)).Replace('-','');$secretSha1=[BitConverter]::ToString($sha1.ComputeHash($utf8Bytes)).Replace('-','');$secretSha256B64=[Convert]::ToBase64String($sha256.ComputeHash($utf8Bytes)).TrimEnd('=');$secretSha256Utf16=[BitConverter]::ToString($sha256.ComputeHash([Text.Encoding]::Unicode.GetBytes($secret))).Replace('-','')}finally{$sha256.Dispose();$md5.Dispose();$sha1.Dispose()}
             $planted=[ordered]@{
                 'leak-utf8.log'=@{Dir=$workspaceRoot;Bytes=[Text.Encoding]::UTF8.GetBytes('2026-10-22 restore failed password='+$secret+"`r`n");Expect='UTF-8'}
                 'leak-utf16.log'=@{Dir=$workspaceRoot;Bytes=[Text.Encoding]::Unicode.GetBytes("restore failed password="+$secret+"`r`n");Expect='UTF-16LE'}
@@ -130,6 +142,12 @@ try {
                 'leak-b64-a1.json'=@{Dir=$consoleRoot;Bytes=[Text.Encoding]::ASCII.GetBytes('{"job":"'+(Get-Base64Planted 1)+'"}');Expect='Base64@1'}
                 'leak-b64-a2.json'=@{Dir=$consoleRoot;Bytes=[Text.Encoding]::ASCII.GetBytes('{"job":"'+(Get-Base64Planted 2)+'"}');Expect='Base64@2'}
                 'leak-job-utf8.json'=@{Dir=$consoleRoot;Bytes=[Text.Encoding]::UTF8.GetBytes((($consoleRecord|Add-Member NoteProperty leaked $secret -PassThru -Force)|ConvertTo-Json -Depth 6 -Compress));Expect='UTF-8'}
+                'leak-sha256-lower.log'=@{Dir=$workspaceRoot;Bytes=[Text.Encoding]::UTF8.GetBytes('prefix='+$secretSha256.ToLowerInvariant()+';suffix');Expect='SHA256-hex-lower(UTF-8)'}
+                'leak-sha256-upper.json'=@{Dir=$workspaceRoot;Bytes=[Text.Encoding]::UTF8.GetBytes('{"d":"'+$secretSha256+'"}');Expect='SHA256-hex-upper(UTF-8)'}
+                'leak-md5.log'=@{Dir=$workspaceRoot;Bytes=[Text.Encoding]::UTF8.GetBytes($secretMd5.ToLowerInvariant());Expect='MD5-hex-lower(UTF-8)'}
+                'leak-sha1.log'=@{Dir=$workspaceRoot;Bytes=[Text.Encoding]::UTF8.GetBytes('sha1='+$secretSha1.ToLowerInvariant());Expect='SHA1-hex-lower(UTF-8)'}
+                'leak-sha256-b64.json'=@{Dir=$consoleRoot;Bytes=[Text.Encoding]::UTF8.GetBytes('{"h":"'+$secretSha256B64+'="}');Expect='SHA256-b64(UTF-8)'}
+                'leak-sha256-utf16.log'=@{Dir=$workspaceRoot;Bytes=[Text.Encoding]::UTF8.GetBytes($secretSha256Utf16.ToLowerInvariant());Expect='SHA256-hex-lower(UTF-16LE)'}
             }
             foreach($leakName in $planted.Keys){[IO.File]::WriteAllBytes((Join-Path $planted[$leakName].Dir $leakName),$planted[$leakName].Bytes)}
             $negative=Invoke-SecretSweep $roots $secret
@@ -144,7 +162,7 @@ try {
             $after=Invoke-SecretSweep $roots $secret
             Check ($after.Hits.Count -eq 0 -and $after.FileCount -eq $positive.FileCount) 'Sweep after removing the planted files is not clean.'
             Write-Host ('SWEEP: scanned '+$after.FileCount+' files (positive) / '+$negative.FileCount+' files (with '+$planted.Count+' planted) under: '+($roots -join ' ; '))
-            Write-Host ('PASS: '+$script:checks+' single-secret sentinel sweep over workspace and console roots with UTF-8, UTF-16LE and Base64 negative controls.')
+            Write-Host ('PASS: '+$script:checks+' single-secret sentinel sweep over workspace and console roots with UTF-8, UTF-16LE and Base64 negative controls and SHA256/SHA1/MD5 digest negative controls.')
         } finally {
             foreach($n in $names){try{Set-Item ('Function:\'+$n) -Value $originals[$n]}catch{Write-Warning ('Could not restore '+$n+': '+$_.Exception.Message)}}
         }
