@@ -44,6 +44,9 @@ const adapters = [
     { key: 'FileScope/ExcludedRelativePaths', type: 'lines', value: ['cache', 'temp'], required: false, editable: true, label: '不搬移的子資料夾（每行一個）' },
     { key: 'IisSite/Name', type: 'text', value: 'fixture-site', editable: false, label: '網站名稱' }
   ] },
+  { name: '來源路徑未解析', unresolvedPath: true, group: '項目設定', label: '新電腦要存放的位置', fields: [
+    { key: 'TargetPath', type: 'text', value: '', required: true, editable: true, label: '新電腦要存放的位置', origin: 'NeedsHumanDecision', provenance: { kind: 'UnresolvedSourcePath', originalPath: '<img src=x onerror="window.__pwn=1"> %APPDATA%\\App', reason: '自訂或來源未記錄的環境變數', nextStep: '請補登此項目實際的來源絕對路徑（確認變數在新機的值）；補登前不預填、不採用原字串，也不能核准。', freshness: '來源路徑未解析，沒有可信的來源路徑可帶入；原字串只供顯示。' } }
+  ] },
 ];
 
 // Model the safe HtmlConsole job projection at the API boundary. The review form
@@ -120,8 +123,28 @@ function normalizeJobs(rows) {
       assert.match(await card.innerText(), new RegExp(adapter.name));
       assert.match(await card.innerText(), new RegExp(adapter.group));
       assert.match(await card.innerText(), new RegExp(adapter.label));
+      if (adapter.unresolvedPath) {
+        const cardText = await card.innerText();
+        assert.match(cardText, /來源路徑未解析/);
+        assert.match(cardText, /<img src=x onerror="window\.__pwn=1"> %APPDATA%\\App/, 'the original string is shown as literal text');
+        assert.match(cardText, /下一步：請補登此項目實際的來源絕對路徑/);
+        assert.doesNotMatch(cardText, /依目前來源盤點自動帶入/, 'an unresolved path must not be presented as a trusted source value');
+        const unresolvedInput = card.locator('[data-preparation-key="TargetPath"]');
+        assert.equal(await unresolvedInput.inputValue(), '', 'an unresolved source path must not prefill the target');
+        assert.equal(await unresolvedInput.getAttribute('data-preparation-required'), 'true');
+        assert.equal(await card.locator('img').count(), 0, 'the original string must not become markup');
+        assert.equal(await page.evaluate(() => window.__pwn), undefined);
+        await card.locator('[data-preparation-meta="Owner"]').fill('Fixture reviewer');
+        await card.locator('[data-preparation-meta="Evidence"]').fill('已與服務負責人核對本次設定');
+        await card.getByRole('button', { name: '保存此項目設定審閱' }).click();
+        assert.equal(await unresolvedInput.getAttribute('aria-invalid'), 'true', 'a blank required target must block saving');
+        assert.equal(savedRequests.filter(request => request.action === 'SavePreparationReview').length, 0, 'no save request may be sent while the unresolved target is blank');
+        await card.locator('[data-preparation-meta="Owner"]').fill('');
+        await card.locator('[data-preparation-meta="Evidence"]').fill('');
+      } else {
       assert.match(await card.innerText(), /依目前來源盤點自動帶入/);
       assert.match(await card.innerText(), /fixture snapshot captured for this work/);
+      }
       assert.equal(await card.locator('[data-preparation-meta="Owner"]').inputValue(), '', 'owner must be a deliberate review entry');
       assert.equal(await card.locator('[data-preparation-meta="Evidence"]').inputValue(), '', 'review evidence must be a deliberate review entry');
       assert.doesNotMatch(await card.innerText(), /S-1-5-|\bSID\b|\{"|\}\}/, 'normal review UI must not expose raw identity values or JSON');
@@ -130,7 +153,7 @@ function normalizeJobs(rows) {
       assert.equal(await card.locator('[data-preparation-meta="Owner"]').evaluate(node => node === document.activeElement), true, 'invalid submission should focus the first missing field');
       assert.match(await card.locator('[data-preparation-meta="Owner"]').getAttribute('aria-invalid'), /true/);
       const formFields = adapter.fields || [{ key: adapter.key, type: adapter.type || 'text', value: adapter.value }];
-      if (adapter.fields) {
+      if (adapter.fields && !adapter.unresolvedPath) {
         assert.match(await card.innerText(), /網站名稱/);
         assert.match(await card.innerText(), /fixture-site/, 'read-only IIS values should remain visible while the review form is active');
       }

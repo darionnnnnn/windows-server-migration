@@ -103,9 +103,13 @@ function Get-WsmWizardPreparationReview {
     $accountMode=if($review.TypedFields.PSObject.Properties['AccountMode']){[string]$review.TypedFields.AccountMode}else{''}
     $form=@(Get-WsmWizardPreparationForm $values ([string]$review.Adapter) $accountMode)
     $hash=Get-WsmWizardPreparationBindingHash $review $itemContext.Catalog $itemContext.Spec $sourceEvidence $softwareScope
-    $candidate='';if($sourceEvidence -and $sourceEvidence.Item.Settings.PSObject.Properties['ResolvedCandidate'] -and [string]$sourceEvidence.Item.Settings.ResolvedCandidate){$candidate=[string]$sourceEvidence.Item.Settings.ResolvedCandidate}elseif($sourceEvidence -and $sourceEvidence.Item.Settings.PSObject.Properties['OriginalPath']){$candidate=[string]$sourceEvidence.Item.Settings.OriginalPath}
+    # P3: 來源路徑解析失敗時沒有可信候選：不用原字串當候選、不標 TrustedSourceInventory，改要求人工補登。
+    $pathUnresolved=$false;$unresolvedSettings=$null
+    if(-not $savedSpec -and [string]$review.Adapter -ceq 'FileScope'){if($sourceEvidence -and $sourceEvidence.Item.PSObject.Properties['Settings']){$unresolvedSettings=$sourceEvidence.Item.Settings}elseif($itemContext.Item.PSObject.Properties['Settings']){$unresolvedSettings=$itemContext.Item.Settings};if($null -ne $unresolvedSettings -and (Test-WsmPathCandidateUnresolved $unresolvedSettings)){$pathUnresolved=$true}}
+    $candidate='';if(-not $pathUnresolved -and $sourceEvidence -and $sourceEvidence.Item.Settings.PSObject.Properties['ResolvedCandidate'] -and [string]$sourceEvidence.Item.Settings.ResolvedCandidate){$candidate=[string]$sourceEvidence.Item.Settings.ResolvedCandidate}elseif(-not $pathUnresolved -and $sourceEvidence -and $sourceEvidence.Item.Settings.PSObject.Properties['OriginalPath']){$candidate=[string]$sourceEvidence.Item.Settings.OriginalPath}
     foreach($field in $form){
         if(-not $field.PSObject.Properties['provenance']){$field|Add-Member NoteProperty provenance $null}
+        if($pathUnresolved -and $field.key -in @('SourcePath','TargetPath')){$field.origin='NeedsHumanDecision';$field.provenance=(New-WsmUnresolvedSourcePathProvenance $unresolvedSettings $hash);continue}
         $isCandidate=($sourceEvidence -and $candidate -and $field.key -in @('SourcePath','TargetPath') -and [string]$field.value -ceq $candidate)
         $isInstalledSuggestion=($field.key -ceq 'ExcludedRelativePaths' -and -not $savedSpec -and @($softwareScope.Candidates).Count -gt 0 -and ([string]$field.value -split '\r?\n'|Sort-Object -Unique) -join '|' -ceq (@($softwareScope.Candidates|ForEach-Object {$_.RelativePath}|Sort-Object -Unique) -join '|'))
         if($field.origin -ceq 'NeedsHumanDecision'){$field.provenance=[pscustomobject][ordered]@{kind='NeedsHumanDecision';freshness='No trusted value is available.';reviewHash=$hash}}

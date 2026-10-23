@@ -1705,6 +1705,38 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1，主代理重跑）：RetryPartialIndexPreserved 66、WizardBackupReliability 62、WizardBackup、WizardBackupRecovery、OfflineFullSet 67、OfflineFullSetControlsRetry 15、WizardMixedGenerationZip 12、ScriptEncoding。subagent 另跑 G2 RetryAfterSealFailure 35。
 - 限制：測試以一般 FileScope 計畫走同一段 Core 程式，CV2 的重試由 OfflineFullSet 與 G2 涵蓋；檢查與搬移之間的競態沒有專門測試，由 `Invoke-WsmLocked` 的鎖保護。
 
+### 17.96 P3 來源路徑解析失敗時不預填、不標可信（2026-10-23 使用者授權定案）
+
+- 原本的缺口（17.87）：PathCandidate 解析失敗時，草稿（`MigrationWizard.ps1` 約 :55）與準備表單（`WizardPreparation.ps1` 約 :106）會用原字串（例如 `%APPDATA%\App`、相對路徑）預填 SourcePath／TargetPath，並標成 `TrustedSourceInventory`，bulk 也會把它當成自動答案。
+- Sonnet 5.5 medium subagent 實作；主代理審查、補上測試缺口並獨立重跑。
+- 共用判定 `Test-WsmPathCandidateUnresolved`（`WizardDetails.ps1`），草稿端與表單端都用它。下列情況視為解析失敗：
+  - `ResolutionBasis=Unresolved`。
+  - 有 Basis 但沒有解析結果（fail-closed）。主代理已確認兩個 PathCandidate 產出端：Discovery 解析成功時一定會寫 ResolvedCandidate；WorkloadDiscovery 的 configSource 不寫 Basis，但一定寫 ResolvedCandidate。所以這條規則不會誤判成功項。
+  - 舊資料沒有 Basis、也沒有 ResolvedCandidate，且原字串不是絕對本機路徑或 UNC。
+- 草稿端：
+  - SourcePath 留空。
+  - TargetPath 只取使用者明確給的 Mapping，否則留空。
+  - 不寫 TransferChannel，所以空值不會被判成 NonC。
+  - 因此無法通過 `Assert-WsmMigrationSpec`，審閱無法保存，也無法核准。
+- 表單端：
+  - TargetPath 標 `NeedsHumanDecision`。
+  - provenance 為 `UnresolvedSourcePath`，內容包括 `originalPath`（經 N9c2 安全投影）、`reason`、`nextStep`。
+  - 不會進入 bulk 自動答案。
+  - console.js 以 textContent 顯示「來源路徑未解析」、原字串與下一步。
+- 解析成功（Machine、ProfileDerived、Literal、舊資料已解析）的行為不變。
+- 消費端盤點（subagent，列出 檔案:行號）：保存審閱、規格驗證、指派與核准、下游讀 MigrationSpec 的程式、bulk、HTML 必填，都會擋下空值，或只讀已驗證的 spec。`WizardPreparationBulk.ps1` 不需要修改。
+- 測試：
+  - `Test-UnresolvedPathNoPrefill.ps1` 72 項。主代理補了三個舊資料案例：純相對路徑 `App\Data`、磁碟機相對路徑 `C:Data`、不完整 UNC。原有案例都含 `%` 或 `..`，所以「舊資料非絕對路徑」這條規則的突變原本會存活。
+  - `Test-WizardPreparationUi.js`（Edge）新增未解析 adapter，驗證：
+    - 敵意字串以純文字顯示。
+    - 欄位為空且必填。
+    - 點保存時不會送出請求。
+- 突變（皆轉紅）：
+  - subagent：草稿端退回原字串、表單端換回舊版、表單永遠判為已解析、判定有 Basis 就回 false、拿掉 `-ceq 'Unresolved'`、console.js 換回舊版。
+  - 主代理：舊資料的非絕對路徑規則改為一律視為已解析。
+- 驗證（WinPS 5.1，主代理重跑）：UnresolvedPathNoPrefill 72、WizardPreparation 30、WizardPreparationAdapters 88、WizardPreparationBulk 43、PathResolutionDisplay、SourceContextResolution 87、AdvancedReview 32、AssistiveReviewForms 53、HtmlConsole 175、WizardNonCPreparation、G4 30、ScriptEncoding；AssistiveUi（node --test）、WizardPreparationUi 與 PathResolutionBrowser（Edge）。
+- 限制：沒有專用的補登介面。表單沒有 SourcePath 欄位，要補登實際路徑，目前只能重新盤點，或走既有的候選確認（SourceCandidateConfirmation）流程；Mapping 只能補 TargetPath，不能讓項目通過核准。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

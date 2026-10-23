@@ -1169,6 +1169,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       const freshness = String(provenance.freshness || provenance.Freshness || '');
       const originText = ({SameWorkSavedReview:'此值來自同一搬移工作已保存的審閱；請確認目前仍適用。',TrustedSourceInventory:'此值依目前來源盤點自動帶入；提交前請核對主機、路徑與資料新鮮度。',SavedWorkDraft:'此值來自本工作草稿，尚未確認。',ConservativeDefault:'這是保守建議值，請由負責人確認。',NeedsHumanDecision:'此欄需要負責人依目前環境作出決定。'}[origin] || '');
       if (originText || freshness) wizardMessage(group, [originText, freshness].filter(Boolean).join(' '), 'wizard-field-hint');
+      if (provenance.kind === 'UnresolvedSourcePath') wizardMessage(group, `來源路徑未解析：原字串「${String(provenance.originalPath || '')}」（${String(provenance.reason || '未記錄原因')}）。下一步：${String(provenance.nextStep || '請補登實際的來源路徑。')}`, 'wizard-field-hint wizard-unresolved-source-path');
     });
     const save = el('button', 'primary-button', '保存此項目設定審閱'); save.type = 'button';
     const draftState = el('p', 'wizard-preparation-draft-state');

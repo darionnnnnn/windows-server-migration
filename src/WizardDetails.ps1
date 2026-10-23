@@ -121,6 +121,27 @@ function Get-WsmConsumerPathResolutionView($Item,$Context=$null) {
     $view
 }
 
+# P3: PathCandidate 來源路徑「解析失敗」的唯一判定，草稿端（Get-WsmMigrationSpecDraft）與表單端（Get-WsmWizardPreparationReview）共用。
+# 解析失敗：ResolutionBasis 為 Unresolved；有 Basis 但沒有解析結果；舊資料（無 Basis）沒有 ResolvedCandidate 且原字串不是絕對本機路徑或 UNC（含 %、相對路徑、. 或 .. 區段）。
+function Test-WsmPathCandidateUnresolved($Settings) {
+    if($null -eq $Settings){return $true}
+    $original=[string](Get-WsmWorkloadSettingValue $Settings 'OriginalPath')
+    $resolved=[string](Get-WsmWorkloadSettingValue $Settings 'ResolvedCandidate')
+    $basis=Get-WsmWorkloadSettingValue $Settings 'ResolutionBasis'
+    if($null -ne $basis){return ([string]$basis -ceq 'Unresolved' -or [string]::IsNullOrWhiteSpace($resolved))}
+    if(-not [string]::IsNullOrWhiteSpace($resolved)){return $false}
+    if([string]::IsNullOrWhiteSpace($original)){return $true}
+    if($original.Contains('%') -or $original -match '(^|[\\/])\.{1,2}([\\/]|$)'){return $true}
+    return -not ($original -match '^[A-Za-z]:[\\/]' -or $original -match '^\\\\[^\\/]+[\\/][^\\/]+')
+}
+
+function New-WsmUnresolvedSourcePathProvenance($Settings,[string]$ReviewHash) {
+    $original=[string](Get-WsmWorkloadSettingValue $Settings 'OriginalPath')
+    $variables=@(Get-WsmWorkloadSettingValue $Settings 'ResolutionVariables'|Where-Object {$null -ne $_})
+    $view=New-WsmPathResolutionView -Original $original -Resolved '' -Basis 'Unresolved' -Reason '' -Variables $variables
+    [pscustomobject][ordered]@{kind='UnresolvedSourcePath';originalPath=$view.original;reasonCode=$view.reasonCode;reason=$view.reasonLabel;nextStep=('請補登此項目實際的來源絕對路徑（'+$view.nextStep+'）；補登前不預填、不採用原字串，也不能核准。');reviewHash=$ReviewHash;freshness='來源路徑未解析，沒有可信的來源路徑可帶入；原字串只供顯示。'}
+}
+
 function Get-WsmWizardFileDetails($Item) {
     # Projection only: never touch a source filesystem during GET/polling.
     $rows=New-Object 'System.Collections.Generic.List[object]'
