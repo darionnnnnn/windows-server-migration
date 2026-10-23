@@ -1,0 +1,223 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "G",
+  "verifiedUtc": "2026-10-23T12:40:36Z",
+  "verifier": "N9g sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "23054c1f145d74a62c1a4b01c8802ffbe115dc4b",
+  "snapshotDirectory": "git archive HEAD (23054c1, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (one snapshot per parallel test stream) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; streams ran concurrently on one 8-core host, so the recorded seconds include contention",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "F09CABA74D3A4CAA7A94A91CF67AD719B23710D4A6A2561335A18BD48AD9C75C"
+    },
+    {
+      "path": "src/MigrationContracts.ps1",
+      "sha256": "9015DF2FA626CF979679A748C6B89A2A0E9AFE1639582F70CE6A29F34DDA10C7"
+    },
+    {
+      "path": "src/WindowsServerMigration.psd1",
+      "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+    },
+    {
+      "path": "src/WizardBackup.ps1",
+      "sha256": "351E447E54EF7A09614728A1A52F3F08599D91FF6372E34FD2C540878A91F510"
+    },
+    {
+      "path": "src/WizardFlow.ps1",
+      "sha256": "5221E5F5D9F469F96F54DE7E7346402B00DD098A75A87E0F332C6363D50D473A"
+    },
+    {
+      "path": "src/WizardRuntime.ps1",
+      "sha256": "BFA5A06BE8462F6A2FF41BFA5C61F56F9B034167F2739EC0BE9AED99D4DDF2D3"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "560CF7F33AAF8CE3B16E8698C6321D0A0080B8A4E7D834EA3A9F313B22EC9C15"
+    },
+    {
+      "path": "tests/G-JourneyHost.ps1",
+      "sha256": "A20D6FBE7CF514062C4205D1A02EFFC0C1B115BBFB55DDA670C6FEB2003B1E90"
+    },
+    {
+      "path": "tests/G-JourneyOverrides.ps1",
+      "sha256": "08E0C951BD3297C977AB8502F116E7BB9EA5C3FE0985CC586BC3BBFED2DBB5FA"
+    },
+    {
+      "path": "tests/G-RuntimeOverlay.ps1",
+      "sha256": "2B200DEB41902578C39CA36FE8A2932D7432638F925C35832B58A8B115B40450"
+    },
+    {
+      "path": "tests/Test-ActionExports.ps1",
+      "sha256": "4DCD36168922C389BF2E418786B7AA1F073C0C99B573568BA169722FA0BFD582"
+    },
+    {
+      "path": "tests/Test-OfflineFullSetSeparateSource.ps1",
+      "sha256": "9FE04083E7E3CC06CCAC00029A73349ACF6F70BCC599E520D8FC533FA922BF62"
+    },
+    {
+      "path": "tests/Test-OfflineRestoreJourney.ps1",
+      "sha256": "224713A957EE2D20CD570AFC8FEC0155F39AD47D475F1EAA2568D5EE7F544814"
+    },
+    {
+      "path": "src/AssistiveRestore.ps1",
+      "sha256": "B3F496349678319199B1DD1ACC3228D7BCF8E46C532A7EE19AEFC273A3F98909"
+    },
+    {
+      "path": "src/Payload.ps1",
+      "sha256": "5BF652D6D9AAFFAE1F5DFD42765CFE6D5820F01A5CA693F3CF2D57897BEA71E7"
+    },
+    {
+      "path": "src/Core.ps1",
+      "sha256": "5D7C6EE9FC9FE6674DE71B5B11E033331A151A0D81CBBCFB3BB623EB598068D5"
+    },
+    {
+      "path": "src/GeneralHostContracts.ps1",
+      "sha256": "AE289D86F1828DFFD1C5E4D2C3775EC63389FB1AF9530F3609CE9525AC4FC619"
+    },
+    {
+      "path": "tests/G-ScenarioCommon.ps1",
+      "sha256": "33BA384E7AC9593B33E1FFACBE0A47D61223B8E51DBEFAC87773CD233B9724CE"
+    },
+    {
+      "path": "tests/Test-G2DiscoveryToDelivery.ps1",
+      "sha256": "CF79067FFAF4D893EDD83999E336C57FBCC109B2F72FCA5AA9E3938EFA7229E3"
+    },
+    {
+      "path": "tests/Test-G3NonCFailureFreeze.ps1",
+      "sha256": "1EA2AD388C7609ECEB6B86004CB425B9EB4EEAD1E17309A52EF7F8141708B9B7"
+    },
+    {
+      "path": "tests/Test-G4MixedScope.ps1",
+      "sha256": "F28C8366E594ABF6A15AED5B3E88E9ADAF1AAD4ABF936096BF48A3566B8FEC5B"
+    },
+    {
+      "path": "tests/Test-ManagerCatalogSourceContext.ps1",
+      "sha256": "7A6344031AD858BD261F6354A374136A652202A37F72D64C733AE3286CD0DD03"
+    },
+    {
+      "path": "tests/Test-OfflineFullSetMaterialWorkspace.ps1",
+      "sha256": "2153A3DC5A459F5AA928473A7B1D5F92537C78E4DBA0E32493A34B46F176CA70"
+    },
+    {
+      "path": "tests/Test-OfflineFullSetControlsRetry.ps1",
+      "sha256": "869FB9C8490AE25F0F4C92B1B1580671B67004D881A9314892CED36561339704"
+    },
+    {
+      "path": "tests/Test-AssistiveCv2NonCConsistency.ps1",
+      "sha256": "69A100313D75AF44245EA8E818EBFCF5117EF3F6EC00A17BBEA96C9C2028D337"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 376,
+  "result": "Rebound to 23054c1 bytes after N1 to N9h; every command below exited 0 on WinPS 5.1: G2DiscoveryToDelivery 34, G3NonCFailureFreeze 29, G4MixedScope 30, OfflineFullSetSeparateSource 20, ActionExports 203, ManagerCatalogSourceContext 16, OfflineFullSetMaterialWorkspace 12, OfflineFullSetControlsRetry 15, AssistiveCv2NonCConsistency 17. G2 (discovery to delivery), G3 (NonC failure and freeze expiry) and G4 (mixed scope) are machine-judged scripts run from the immutable snapshot; N9h removed the bypasses of G2 and G4 after fixing D1 to D4. The main OfflineRestoreJourney was not re-executed in this record (see limitations). The stage stays in-progress.",
+  "logs": [
+    {
+      "name": "Test-G2DiscoveryToDelivery.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-G2DiscoveryToDelivery.ps1 </dev/null",
+      "sha256": "70B35ED5F37A9FFD4CD29D15A42C245E260E5C62315F2C7F938228AA7DC3B4A7",
+      "exitCode": 0,
+      "seconds": 69,
+      "countedAs": "checks",
+      "count": 34,
+      "text": "Overall: Passed (verdict: C:\\Users\\eldar\\Claude\\Project\\windows-server-migration\\work\\r7\\g-journey\\g2a001\\verdict.json)\nPASS: G2 discovery to delivery (run g2a001, 34 checks, doubles 6)\r\n"
+    },
+    {
+      "name": "Test-G3NonCFailureFreeze.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-G3NonCFailureFreeze.ps1 </dev/null",
+      "sha256": "A19EFD1C8DE6D1EBFA65910CE7BF6174B813398DE7A2643BC80808615EB9565D",
+      "exitCode": 0,
+      "seconds": 78,
+      "countedAs": "checks",
+      "count": 29,
+      "text": "Overall: Passed (verdict: C:\\Users\\eldar\\Claude\\Project\\windows-server-migration\\work\\r7\\g-journey\\g3a001\\verdict.json)\nPASS: G3 NonC failure / freeze / cancel (run g3a001, 29 checks, doubles 6)\r\n"
+    },
+    {
+      "name": "Test-G4MixedScope.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-G4MixedScope.ps1 </dev/null",
+      "sha256": "8640222209C081901B8585D064ABB8CC94734EBFAA254D3BD951F2C0B26DC487",
+      "exitCode": 0,
+      "seconds": 89,
+      "countedAs": "checks",
+      "count": 30,
+      "text": "Overall: Passed (verdict: C:\\Users\\eldar\\Claude\\Project\\windows-server-migration\\work\\r7\\g-journey\\g4a001\\verdict.json)\nPASS: G4 mixed scope (run g4a001, 30 checks, doubles 6)\r\n"
+    },
+    {
+      "name": "Test-OfflineFullSetSeparateSource.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineFullSetSeparateSource.ps1 </dev/null",
+      "sha256": "ADEEA398F6789CA617A54E64C2B71EA354ED9DC92786332C1E4CB4386F3C7443",
+      "exitCode": 0,
+      "seconds": 25,
+      "countedAs": "checks",
+      "count": 20,
+      "text": "PASS: CV2 snapshot attachment emitted by Manager, verified and placed by a separate Source, one-click backup succeeded (20 checks).\r\n"
+    },
+    {
+      "name": "Test-ActionExports.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ActionExports.ps1 </dev/null",
+      "sha256": "AB04A7C2F1AD66D6E8CFD5F7FB8DA8ACF763800259CF200DF38065FB2AE62A1A",
+      "exitCode": 0,
+      "seconds": 5,
+      "countedAs": "checks",
+      "count": 203,
+      "text": "PASS: 203 action commands resolve to exported functions (inline console handlers excluded).\r\n"
+    },
+    {
+      "name": "Test-ManagerCatalogSourceContext.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ManagerCatalogSourceContext.ps1 </dev/null",
+      "sha256": "B8E3B924153D3DB136829E69838C17F5F90B02FBD6AB18E4E08A6D05410379B9",
+      "exitCode": 0,
+      "seconds": 7,
+      "countedAs": "checks",
+      "count": 16,
+      "text": "PASS: 16 Manager catalog source-context checks (import then read back, later revision, control without context, tampered inventory/value/removed/injected/account all rejected)\r\n"
+    },
+    {
+      "name": "Test-OfflineFullSetMaterialWorkspace.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineFullSetMaterialWorkspace.ps1 </dev/null",
+      "sha256": "2DE8C266BE906FE4E68B304178BBEE7CE2CD58581F38CC5FDB31D9C10F84E564",
+      "exitCode": 0,
+      "seconds": 5,
+      "countedAs": "checks",
+      "count": 12,
+      "text": "PASS: 12 OfflineFullSet material workspace checks (real layout, no silent fallback, containment, sibling prefix, hash binding, wizard wiring)\r\n"
+    },
+    {
+      "name": "Test-OfflineFullSetControlsRetry.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineFullSetControlsRetry.ps1 </dev/null",
+      "sha256": "383130ECCA545B71FA8EF76278CD3F5E0A4F43694279047C942C463D008EBA07",
+      "exitCode": 0,
+      "seconds": 6,
+      "countedAs": "checks",
+      "count": 15,
+      "text": "PASS: 15 OfflineFullSet controls retry checks (identical bytes reused, partial directories completed, conflicts refused and preserved, reused files re-checked for reparse points)\r\n"
+    },
+    {
+      "name": "Test-AssistiveCv2NonCConsistency.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveCv2NonCConsistency.ps1 </dev/null",
+      "sha256": "D3606D3784040E9F0FA917D81549F80A55720EED3DCA05A9E29F23BFCAF046EC",
+      "exitCode": 0,
+      "seconds": 6,
+      "countedAs": "checks",
+      "count": 17,
+      "text": "PASS: 17 CV2 NonC consistency checks (judgement truth table, preview and executor share it, every legacy NonC branch guarded)\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "The main OfflineRestoreJourney (Target restore with resume, formerly run m3gj01) was NOT re-executed in this N9g record: it needs git and the working tree, and the attempt to run it from the working tree was refused by the session permission classifier. The 48-check run n9h001 appears only in PLAN 17.91 and is not bound by this evidence.",
+    "Release package: only the smoke test and a small seven-step backup-to-restore flow were run on the release package (N9b, PLAN 17.85); it is not the complete G journey. Test-ReleaseWizardSmoke was not re-run in this snapshot because it needs the git index.",
+    "G2, G3 and G4 ran from the repository working tree (equal to HEAD; no uncommitted tracked changes), not from the git-archive snapshot: they need git and the untracked work/r7/New-StageSnapshot.ps1 helper, and they build their own immutable snapshot of the tracked tree and compare its src digest before and after. The first attempt inside the git-archive snapshot failed only because that helper is absent there. Run outputs are under the git-ignored work/r7/g-journey.",
+    "G2, G3 and G4 call the core in-process (no HTTP console), use typed adapter doubles instead of real IIS and Task Scheduler, and simulate D/E volumes with subst on a short drive.",
+    "Account consumer is a narrow double; the new-machine inventory is a pre-seeded fixture, not a live full capture."
+  ],
+  "openIssues": [
+    "Re-bind the main offline restore journey: run tests/Test-OfflineRestoreJourney.ps1 -RunId <6 chars> in the working tree (needs git and work/) and add its verdict to this stage.",
+    "Four product defects found by N9f (D1 material location, D2 controls retry, D3 Manager catalog source context, D4 CV2 NonC execution guard) are fixed by N9h and G2/G4 no longer use bypasses; whether a pending intent left by a failed IIS restore can be cleared by Resume-WsmWizardTargetRestore or Repair-WsmOperation is not verified.",
+    "Release payload and section 10 deliverables are covered only by the release smoke test (export set, required files, HTML references, small flow) and the offline guide tests, not by a journey; Test-ReleaseNativeLauncher.js needs Playwright in CI.",
+    "The 16.6 failure table is only partly covered; media-swap rows are not in a journey script, and lost-202 is covered at route level by StartBackupReplayHttp.",
+    "Real-machine and enterprise acceptance stay NotTested.",
+    "Tests that already fail at the round-six baseline 6a2329c and at HEAD (PLAN 17.71) are not caused by round seven and are not repaired here: AssistiveWorkloadIntegration, FleetExecutionBindings, FullDirectoryImport, ObservationWorkflow, ShareSourceWorkflow, WorkspaceWorkerIsolation, ZipColdStart, and WorkspaceLockContention (needs pwsh.exe, absent on this host). Test-HtmlBridge also fails at the baseline and at HEAD with an unexplained ECONNRESET."
+  ]
+}

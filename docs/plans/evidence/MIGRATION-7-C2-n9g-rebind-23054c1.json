@@ -1,0 +1,147 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "C2",
+  "verifiedUtc": "2026-10-23T12:40:36Z",
+  "verifier": "N9g sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "23054c1f145d74a62c1a4b01c8802ffbe115dc4b",
+  "snapshotDirectory": "git archive HEAD (23054c1, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (one snapshot per parallel test stream) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; streams ran concurrently on one 8-core host, so the recorded seconds include contention",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "F09CABA74D3A4CAA7A94A91CF67AD719B23710D4A6A2561335A18BD48AD9C75C"
+    },
+    {
+      "path": "src/OperationRequests.ps1",
+      "sha256": "794D513B54619EE944D5F5568B335404043F36865C79C7483206113DE00AE47B"
+    },
+    {
+      "path": "src/SoftwareDispositionReview.ps1",
+      "sha256": "A39B2425FD4A688942C4284F2B6E786C45C23E5B57A051D31C4448D9B65DA04C"
+    },
+    {
+      "path": "src/WindowsServerMigration.psd1",
+      "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+    },
+    {
+      "path": "src/WindowsServerMigration.psm1",
+      "sha256": "BB23A18D0662D8C2E507DBCE9CFC9AEFD4FADB93DC188F667506B7E757A28E88"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "FA74F48A4A21DD16C614F4D153CC34BCA5BA8168C39FE5AC18D1B1A4E71F6126"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "4B1DD81EB59FC7F4B66917EB81FF976D7AA79486BCAAEE72EF5EEE4CEF267ED8"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "560CF7F33AAF8CE3B16E8698C6321D0A0080B8A4E7D834EA3A9F313B22EC9C15"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Start-C2D2TestServer.ps1",
+      "sha256": "F3F18857A9FF8D882FAF6C5C113BE39FE86A011C89799AAD9A1C6D24D1C9547F"
+    },
+    {
+      "path": "tests/Test-C2D2Browser.js",
+      "sha256": "A260D9007FE369DCE164FF54F2976CB0552975C4CC6E5EBA7586CD77559AE530"
+    },
+    {
+      "path": "tests/Test-C2D2HtmlActions.ps1",
+      "sha256": "15AFDB7167747B4450B3E08020F98D25B4EE0C04D9F64937CB394AF83EF1EAB4"
+    },
+    {
+      "path": "tests/Test-SoftwareDispositionReview.ps1",
+      "sha256": "D20119066E82B3CE0623611F2CC5E3FD9FCF5C2F7246EF43C56796C31685C000"
+    },
+    {
+      "path": "src/WizardDetails.ps1",
+      "sha256": "0398A778FD30B06363CA93405482A73693EB3C67C913B2E789D2857136B67A8B"
+    },
+    {
+      "path": "tests/New-PathResolutionFixture.ps1",
+      "sha256": "609E5F1BF16E128FE67D7113F6FABFFB136E8F52DBAC8C9D9FB05AA883F71D51"
+    },
+    {
+      "path": "tests/Test-PathResolutionDisplay.ps1",
+      "sha256": "C3F0EF2944AB597E8CC63E3CC03E57565DAC56BEF5D3BF8254E2E5D9C01E6E7A"
+    },
+    {
+      "path": "tests/Test-PathResolutionBrowser.js",
+      "sha256": "AD6A8BFCB4786D4B632A5ECDF455888692C245127AEA4F1F65E0D2E56374C581"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 261,
+  "result": "Rebound to 23054c1 bytes after N1 to N9h; every command below exited 0 on WinPS 5.1: SoftwareDispositionReview 17, C2D2HtmlActions 185, C2D2Browser 1, PathResolutionDisplay 57, PathResolutionBrowser 1. N9c2 source-path resolution display (PathResolutionDisplay, PathResolutionBrowser) and the N9e2 keyboard-focus fixes are covered. The stage stays in-progress: capture/restore exclusion proof and real-machine panel placement are still open.",
+  "logs": [
+    {
+      "name": "Test-SoftwareDispositionReview.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SoftwareDispositionReview.ps1 </dev/null",
+      "sha256": "B417906680BE90FB56D7538CE3C870A2A9CFF9F737D38D472D8E00FC97882FA4",
+      "exitCode": 0,
+      "seconds": 12,
+      "countedAs": "checks",
+      "count": 17,
+      "text": "PASS Test-SoftwareDispositionReview: 17 formal review, CAS, batch preservation, dependency-gate and root-protection checks.\r\n"
+    },
+    {
+      "name": "Test-C2D2HtmlActions.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-C2D2HtmlActions.ps1 </dev/null",
+      "sha256": "A7A61098C8BA2C54E8D5F7F2D75F9FAEC62CC3D29468AB5BCDB6C70C7C9B2D33",
+      "exitCode": 0,
+      "seconds": 82,
+      "countedAs": "checks",
+      "count": 185,
+      "text": "PASS action SourceCandidateList resolves to Get-WsmHtmlSourceCandidateList\nPASS Get-WsmHtmlSourceCandidateList is exported (worker runspaces and Test-ActionExports resolve it)\nPASS action SourceCandidateList belongs to the Source group\nPASS action SourceCandidateConfirmExport resolves to Export-WsmSourceCandidateConfirmation\nPASS Export-WsmSourceCandidateConfirmation is exported (worker runspaces and Test-ActionExports resolve it)\nPASS action SourceCandidateConfirmExport is in the durable operation table\nPASS action SourceCandidateConfirmExport belongs to the Source group\nPASS action SourceCandidateConfirmImport resolves to Import-WsmSourceCandidateConfirmation\nPASS Import-WsmSourceCandidate ...\r\n"
+    },
+    {
+      "name": "Test-C2D2Browser.js.log",
+      "command": "node tests/Test-C2D2Browser.js </dev/null",
+      "sha256": "5B4AD93669C0809156E7FC5FF6A53435ABDED291C5A7FE193413D996204644CC",
+      "exitCode": 0,
+      "seconds": 74,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS Test-C2D2Browser: source/manager D2 flow, C2 batch, CAS, stale handling, keyboard confirmation, states, 390px layout and zero console errors.\r\n"
+    },
+    {
+      "name": "Test-PathResolutionDisplay.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-PathResolutionDisplay.ps1 </dev/null",
+      "sha256": "C8065D0ACDCB3658D76E7C66F6D7F14F38A49D7770EFA254090F80FBE4F021BA",
+      "exitCode": 0,
+      "seconds": 5,
+      "countedAs": "checks",
+      "count": 57,
+      "text": "Path resolution display projection checks passed: 57\r\n"
+    },
+    {
+      "name": "Test-PathResolutionBrowser.js.log",
+      "command": "node tests/Test-PathResolutionBrowser.js </dev/null",
+      "sha256": "A4B6CCC22D66D948B3C2EE40311692947379044D4313E1125319288BA4A85F3E",
+      "exitCode": 0,
+      "seconds": 15,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: path resolution basis display (review + C2), 390px, zero console errors\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "C2D2Browser uses a fixture API; there is no real-browser plus real-listener integration test.",
+    "The 'incomplete' display lists only undecided (Unreviewed/Stale) software and is not an approval-blocking rule.",
+    "Selected-dependency gate and root guard tests are isolated contract evidence, not actual Server product migration."
+  ],
+  "openIssues": [
+    "Full capture/restore exclusion proof for C2 dispositions is still pending.",
+    "Panel placement on existing wizard steps needs confirmation on a real machine.",
+    "The Manager's imported-candidate list is read from job history; there is no manual-entry fallback once the history is cleared.",
+    "Source-path resolution display (N9c2) is verified on fixtures only; the real Server Export-WsmInventory with a SourceResolutionContext has not been run."
+  ]
+}

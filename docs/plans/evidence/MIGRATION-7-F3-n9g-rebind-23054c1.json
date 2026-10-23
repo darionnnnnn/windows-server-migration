@@ -1,0 +1,298 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "F3",
+  "verifiedUtc": "2026-10-23T12:40:36Z",
+  "verifier": "N9g sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "23054c1f145d74a62c1a4b01c8802ffbe115dc4b",
+  "snapshotDirectory": "git archive HEAD (23054c1, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (one snapshot per parallel test stream) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; streams ran concurrently on one 8-core host, so the recorded seconds include contention",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "F09CABA74D3A4CAA7A94A91CF67AD719B23710D4A6A2561335A18BD48AD9C75C"
+    },
+    {
+      "path": "src/WindowsServerMigration.psd1",
+      "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+    },
+    {
+      "path": "src/WizardBackup.ps1",
+      "sha256": "351E447E54EF7A09614728A1A52F3F08599D91FF6372E34FD2C540878A91F510"
+    },
+    {
+      "path": "src/WizardBackupProjection.ps1",
+      "sha256": "B50A0EACE406273008113A4578DF9BFFC8866CFB1470AF133B63FA6674251CC2"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "FA74F48A4A21DD16C614F4D153CC34BCA5BA8168C39FE5AC18D1B1A4E71F6126"
+    },
+    {
+      "path": "src/WizardRestore.ps1",
+      "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+    },
+    {
+      "path": "src/WizardRuntime.ps1",
+      "sha256": "BFA5A06BE8462F6A2FF41BFA5C61F56F9B034167F2739EC0BE9AED99D4DDF2D3"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "4B1DD81EB59FC7F4B66917EB81FF976D7AA79486BCAAEE72EF5EEE4CEF267ED8"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "560CF7F33AAF8CE3B16E8698C6321D0A0080B8A4E7D834EA3A9F313B22EC9C15"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/New-OfflineReportFixture.ps1",
+      "sha256": "F5315576C2C854452DEA47AC51068ABD08AB6FA2B0667B042EAB630E01FC48C8"
+    },
+    {
+      "path": "tests/New-SoftwareTabFixture.ps1",
+      "sha256": "EE1CFE97CA525597D43F8C7479EB9F8488DAFAAE21B5125F6A1CA45A50A7AE94"
+    },
+    {
+      "path": "tests/Test-BackupResultSetV2.ps1",
+      "sha256": "6A28495C0805E0F682971A81640F80754E740A51E8F97855FBD3BC7209073EF8"
+    },
+    {
+      "path": "tests/Test-BackupWorkbenchBrowser.js",
+      "sha256": "67168AF81C3927FB223E6A005C98CCCE3B44DF62C146D85F2F4419C33A702DAD"
+    },
+    {
+      "path": "tests/Test-OfflineReportBrowser.js",
+      "sha256": "E3696429AFD29F9CED9461911C52B206A127FF3FB055C19DC4A479032A5D8642"
+    },
+    {
+      "path": "tests/Test-SoftwareTab.ps1",
+      "sha256": "6432959EE5E1AD90DD78C7B323B72B8893677D06D5AFC6FBAED2429715E6C093"
+    },
+    {
+      "path": "tests/Test-SoftwareTabBrowser.js",
+      "sha256": "27C38A0546425804A2FB4E2F4F6DB9F4AE3785D097B3D18201EC9DD9FC942048"
+    },
+    {
+      "path": "tests/Test-WizardHtmlRuntimeProjection.ps1",
+      "sha256": "8C8C5F515CC8E4AD295B48EA08C434CCB1A5AAB18389D085EB2E0D577403DC7A"
+    },
+    {
+      "path": "src/Payload.ps1",
+      "sha256": "5BF652D6D9AAFFAE1F5DFD42765CFE6D5820F01A5CA693F3CF2D57897BEA71E7"
+    },
+    {
+      "path": "src/SourceCandidateDiscovery.ps1",
+      "sha256": "6F8FFFFA8B3CD0A98C1FA30E192A40EB85F73D400D4235133FB4B60E53E20041"
+    },
+    {
+      "path": "tests/Test-BackupUnbackedReasons.ps1",
+      "sha256": "36DBA1AF2D25E68B67A068A1A782D91FC3318852EB796757F23D37C19AEBC704"
+    },
+    {
+      "path": "tests/Test-BackupWorkbenchView.ps1",
+      "sha256": "B231846319E64FA62C446991F5690BE7F7D17BF7D03FC58A71B02BAE9C0BFAC5"
+    },
+    {
+      "path": "tests/Test-MixedBundleVisibility.ps1",
+      "sha256": "99A4A3593A60783FD1FA35E6A3E9ACB42EA0B59DA54F80ABC954BFF1B8C7E6E5"
+    },
+    {
+      "path": "tests/Test-WizardBackupReliability.ps1",
+      "sha256": "793182DDFE21C2D8C3919DA6226DDD2BE308210539CBD52CC9841A7899FA00EE"
+    },
+    {
+      "path": "tests/Test-StartBackupReplayHttp.js",
+      "sha256": "447CDEF2DB0ED33DF6521AD0E0B96C33D16011BBC05739B30563B075B2AF92D9"
+    },
+    {
+      "path": "tests/Test-SecretSentinelSweep.ps1",
+      "sha256": "4038FB09293124A790CB2CF67F03138EF0939606AE1FA149F7DB4B1743B69198"
+    },
+    {
+      "path": "tests/Test-SecretSentinelBackupSweep.ps1",
+      "sha256": "869611CEB1F567E4CA249D0C7539A0C288D4C501C982FEFE9D5A3C6F0A60CBEF"
+    },
+    {
+      "path": "tests/SecretSweep.Common.ps1",
+      "sha256": "F113544FBF308E474665A7DA876BAA87220683C8804A60E708820CA6E12AE7B7"
+    },
+    {
+      "path": "tests/Test-OfflineGuide.ps1",
+      "sha256": "343314E00400141C6B55293F081CD0941613C067A99B70B069A66D0E09AF96A1"
+    },
+    {
+      "path": "tests/Test-OfflineGuideBrowser.js",
+      "sha256": "E4E68194336082E2A8B4BDA8F5053EBD43F3B2DB376CBEAEC9349EB6D759D367"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 609,
+  "result": "Rebound to 23054c1 bytes after N1 to N9h; every command below exited 0 on WinPS 5.1: BackupResultSetV2 8, SoftwareTab 9, WizardHtmlRuntimeProjection 214, SoftwareTabBrowser 1, OfflineReportBrowser 1, BackupWorkbenchBrowser 1, BackupUnbackedReasons 7, BackupWorkbenchView 8, MixedBundleVisibility 49, WizardBackupReliability 62, StartBackupReplayHttp 17, SecretSentinelSweep 22, SecretSentinelBackupSweep 151, OfflineGuide 58, OfflineGuideBrowser 1. N3 unbacked reasons and the 2501-row offline report, N4 reliability and lost-202 replay, N6 offline guide, N8 secret sentinel sweeps and N9d mixed-bundle visibility are included.",
+  "logs": [
+    {
+      "name": "Test-BackupResultSetV2.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-BackupResultSetV2.ps1 </dev/null",
+      "sha256": "D3178AF95585B672005CFA78FB93ADF14202125E46316B2678B8BF2E43E4A2B7",
+      "exitCode": 0,
+      "seconds": 6,
+      "countedAs": "PASS sections",
+      "count": 8,
+      "text": "PASS: union invariant.\nPASS: restore condition table.\nPASS: reason codes.\nPASS: workload association.\nPASS: coverage regions and report fields.\nPASS: empty and legacy results.\nPASS: JSON and HTML agree per ItemId.\nPASS: backup result set v2.\r\n"
+    },
+    {
+      "name": "Test-SoftwareTab.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SoftwareTab.ps1 </dev/null",
+      "sha256": "6873A5807EC816D15AC00FC6579847F1AAADB2A8BE7DE750CFB6080EF280500B",
+      "exitCode": 0,
+      "seconds": 47,
+      "countedAs": "PASS sections",
+      "count": 9,
+      "text": "PASS: grouping and workload association.\nPASS: C1 counter-examples.\nPASS: chosen version, note and decision state.\nPASS: empty inventory and report markup.\nPASS: legacy software rows.\nPASS: checklist is not truncated.\nPASS: four-state table.\nPASS: no comparison material.\nPASS: software tab.\r\n"
+    },
+    {
+      "name": "Test-WizardHtmlRuntimeProjection.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardHtmlRuntimeProjection.ps1 </dev/null",
+      "sha256": "E257B3321BFA59251E32B909F0903967FFAA8B24E96A1AACB2B74590B240EE72",
+      "exitCode": 0,
+      "seconds": 20,
+      "countedAs": "checks",
+      "count": 214,
+      "text": "PASS Test-WizardHtmlRuntimeProjection checks=214; genuine unapproved projection and synthetic adversarial result examples; no runtime success or production qualification asserted.\r\n"
+    },
+    {
+      "name": "Test-SoftwareTabBrowser.js.log",
+      "command": "node tests/Test-SoftwareTabBrowser.js </dev/null",
+      "sha256": "1771618F38467EE7C41C5127C91406FC7D2B4009819128ECF8491339393E7889",
+      "exitCode": 0,
+      "seconds": 106,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: software tab browser test (129 rows, 30 required, report + workbench + Target).\r\n"
+    },
+    {
+      "name": "Test-OfflineReportBrowser.js.log",
+      "command": "node tests/Test-OfflineReportBrowser.js </dev/null",
+      "sha256": "1376FE5053347CDC9E5B31853A23F937FB42A071BBA1F986E3CEA723E8A25DA5",
+      "exitCode": 0,
+      "seconds": 100,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: offline report browser test (301 rows, 181 backed, 120 not backed).\r\n"
+    },
+    {
+      "name": "Test-BackupWorkbenchBrowser.js.log",
+      "command": "node tests/Test-BackupWorkbenchBrowser.js </dev/null",
+      "sha256": "6E3A520DF45BF01A4A597B273CA9B3CA98D8C791E3C642EF43A7C2F423F8D068",
+      "exitCode": 0,
+      "seconds": 64,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: backup workbench browser test (301 rows, 181 backed, 120 not backed).\r\n"
+    },
+    {
+      "name": "Test-BackupUnbackedReasons.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-BackupUnbackedReasons.ps1 </dev/null",
+      "sha256": "F223B3CE13665D807FF6C5400EB7935D20CB7D180DA29B338D305DBBBB70F377",
+      "exitCode": 0,
+      "seconds": 30,
+      "countedAs": "PASS sections",
+      "count": 7,
+      "text": "PASS: excluded region classes, reasons and next steps.\nPASS: excluded regions require the scan bound by the sealed plan.\nPASS: result set, report and legacy compatibility for excluded regions.\nPASS: no fabricated per-item CaptureFailed / NotVerified reasons.\nPASS: capture failure is recorded in the attempt and shown by the workbench view; read-back failure is NotVerified at the attempt level.\nPASS: a real backup stores the bound regions and the view/report show them.\nPASS: backup unbacked reasons.\r\n"
+    },
+    {
+      "name": "Test-BackupWorkbenchView.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-BackupWorkbenchView.ps1 </dev/null",
+      "sha256": "67B4B792C39E4FE070C9BC4C4A36061C4A47F052E319192B964EB46CE3B4EE09",
+      "exitCode": 0,
+      "seconds": 101,
+      "countedAs": "PASS sections",
+      "count": 8,
+      "text": "PASS: no receipt shows not verified.\nPASS: excluded regions in the workbench view.\nPASS: valid receipt shows verified with the receipt time.\nPASS: altered, missing, mismatched, legacy, relocated and foreign receipts never read as verified.\nPASS: drill-down pages, total, directory members and refusals.\nPASS: tampered and unsealed packages are refused.\nPASS: BackupItemFiles is exported, role-bound, read-only and survives the closed projection.\nPASS: backup workbench view.\r\n"
+    },
+    {
+      "name": "Test-MixedBundleVisibility.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-MixedBundleVisibility.ps1 </dev/null",
+      "sha256": "D889E68DD9C091267A7A4377E9B003143E70FC4E24F95C07B074BB3784BD0113",
+      "exitCode": 0,
+      "seconds": 8,
+      "countedAs": "checks",
+      "count": 49,
+      "text": "PASS a complete listing within budget is marked complete\nPASS files are classified into bundle/suspected/unknown (bundle=4 suspected=4 unknown=3)\nPASS a junction inside the install root is not followed\nPASS a PE file is bundle by its header even with a non-PE extension\nPASS a .dll that is not a PE file is not treated as bundle\nPASS installer uninstall metadata is bundle\nPASS non-PE files under data/report/log directories are suspected business data (any depth, any case)\nPASS a non-PE file modified after a trusted install time is suspected business data\nPASS other files stay unknown\nPASS bundle file names are kept for same-name tracing\nPASS without a trusted install time the modification-time ...\r\n"
+    },
+    {
+      "name": "Test-WizardBackupReliability.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardBackupReliability.ps1 </dev/null",
+      "sha256": "E3908832AEE1180F0C5B695DC4EF4D13DB1A094F9C8F63275524686DD5CD026C",
+      "exitCode": 0,
+      "seconds": 102,
+      "countedAs": "checks",
+      "count": 62,
+      "text": "PASS: 16.6-1 lost 202, same operation id replayed (in flight and after completion): one freeze, one attempt, original result.\nPASS: 16.6-2 interrupted second channel: partial kept, parent not successful, retry sealed only the new capture.\nPASS: 16.6-2b expired consistency: stale freeze refused, old partial untouched, new attempt sealed only new bytes.\nPASS: 16.6-3 Directory delivery interrupted after sealing; resume read nothing from the source, froze nothing and delivered the sealed bytes.\nPASS: 16.6-3 Zip delivery interrupted after sealing; resume read nothing from the source, froze nothing and delivered the sealed bytes.\nPASS: N4 reliability scenarios (62 checks).\r\n"
+    },
+    {
+      "name": "Test-StartBackupReplayHttp.js.log",
+      "command": "node tests/Test-StartBackupReplayHttp.js </dev/null",
+      "sha256": "B8665BE7ACE43F0316ED62F4B43B4B35506844BAACB5DA3AC0509FD64B91E0EC",
+      "exitCode": 0,
+      "seconds": 40,
+      "countedAs": "checks",
+      "count": 17,
+      "text": "PASS: 17 route-level checks: lost 202, same operation id replayed in flight and after completion, one worker, one freeze, original job returned.\r\n"
+    },
+    {
+      "name": "Test-SecretSentinelSweep.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SecretSentinelSweep.ps1 </dev/null",
+      "sha256": "F03844A559B6C09C06942252D8CB42746E2723B28BF21BAA89DCE6F8B8AE5D9F",
+      "exitCode": 0,
+      "seconds": 9,
+      "countedAs": "checks",
+      "count": 22,
+      "text": "PASS: 22 single-secret sentinel sweep over workspace and console roots with UTF-8, UTF-16LE and Base64 negative controls and SHA256/SHA1/MD5 digest negative controls.\r\n"
+    },
+    {
+      "name": "Test-SecretSentinelBackupSweep.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SecretSentinelBackupSweep.ps1 </dev/null",
+      "sha256": "3C50FAC0B173C7CB5963E912A4DC63FA270FB7BB28C2979BD5E099E5AD1FDD43",
+      "exitCode": 0,
+      "seconds": 29,
+      "countedAs": "checks",
+      "count": 151,
+      "text": "PASS: 151 single-secret sentinel sweep over a real one-click backup (Source and Target workspaces, progress, item results, offline report and guide, delivery folder and index, independent copy and receipt, console jobs) with raw, Base64 and digest negative controls per category.\r\n"
+    },
+    {
+      "name": "Test-OfflineGuide.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineGuide.ps1 </dev/null",
+      "sha256": "33EA414F1B4B89C00764042F71810B1B810004E98B943E25328E84B45B964683",
+      "exitCode": 0,
+      "seconds": 5,
+      "countedAs": "checks",
+      "count": 58,
+      "text": "PASS: offline guide generator content, escaping, no absolute path, hash normalisation and delivery check (58 checks).\r\n"
+    },
+    {
+      "name": "Test-OfflineGuideBrowser.js.log",
+      "command": "node tests/Test-OfflineGuideBrowser.js </dev/null",
+      "sha256": "7A6E89D225131E6F9B833B9321712DDFD1FD33D2A1B3641E29097F8DDBEA1FDC",
+      "exitCode": 0,
+      "seconds": 20,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: offline guide in real Edge via file:// (4 variants x 2 widths): zero console errors, no network, no overflow at 390px, semantic headings, contrast >= 4.5:1, reduced motion, hostile strings stay text.\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Browser suites use fixtures and mock APIs with the real src/ui; Target-side software checking has no real-Target end-to-end test.",
+    "Printing is verified with a stubbed window.print and print-media emulation, not the real print dialog.",
+    "Result set and offline report sit beside the delivery descriptor, not inside the sealed package (PLAN 17.47)."
+  ],
+  "openIssues": [
+    "Pagination beyond 100 rows and search input in the offline report are not automated in a browser.",
+    "Software decision values keep the existing six plus 'undecided' instead of the three-value form in 18.5.",
+    "Install-root bundle exclusion, capture-failure and read-back-failure reasons are covered by BackupUnbackedReasons and MixedBundleVisibility fixtures only; no real Server capture failure was observed."
+  ]
+}

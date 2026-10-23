@@ -1612,6 +1612,38 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - CV2 的 NonC 範圍現在會建立 reservation，渠道標籤仍是 `NonC`；後續釋放與回復只由既有還原測試間接涵蓋。
   - G4 失敗項留下的 pending intent 能否由 `Resume-WsmWizardTargetRestore`／`Repair-WsmOperation` 清除，沒有驗證。
   - 本段沒有跑瀏覽器測試、PS7 與全套測試。
+### 17.92 N9g 證據帳本集中重綁，D3a 標為 implemented／isolated-pass（以 23054c1 為準）
+
+- Sonnet 5.5 subagent 執行，規格 `work/r7/specs/N9g-ledger-rebind.md`；只動帳本、`docs/plans/evidence/` 新增檔與本檔，`tools/Test-PlanEvidence.ps1` 未改。帳本放在 N9a 至 N9h 之後重綁，原因見 17.83：提早綁會讓雜湊再次過期。
+- 取證方式：`git archive HEAD`（23054c1，不含 `work/`）解到暫存快照（用完刪除），分三到四條並行串流（共 8 核，秒數含爭用）以前景方式跑 `timeout 900`；Windows PowerShell 5.1（本機沒有 PS7）加 Node＋Edge。新綁定一律記 LF 形式，舊證據檔不動，移到 `historicalEvidence`（附取代它的新檔與當時記錄的輸入雜湊）。
+  - EnvironmentConfirmation（2501 列）第一次在三路並行下超過 900 秒上限，已丟棄，改在背景單獨重跑（1173 秒，exit 0）；前一次的紀錄不採用。
+  - G2、G3、G4 需要 git 與未追蹤的 `work/r7/New-StageSnapshot.ps1`，在 `git archive` 快照內第一次失敗（找不到輔助腳本，與產品無關），改在主工作區執行（內容等於 HEAD，自建不可變快照並比對 src 摘要）。主旅程 `Test-OfflineRestoreJourney` 在本段**沒有重跑**：從主工作區執行的嘗試被工作階段的權限分類器拒絕，未繞過；17.91 記錄的 n9h001（48 項）不在帳本綁定內。
+- 階段狀態與依據（全部只有 WinPS 5.1、隔離 fixture，外部驗收 not-tested，簽署不變）：
+
+| 階段 | 狀態 | 依據（測試與檢查數） |
+|---|---|---|
+| A1、B1 | implemented／isolated-pass（雜湊仍吻合，未改） | PlanEvidence 27、ScriptEncoding 320 檔本段另行重跑通過 |
+| C1 | 重綁 | R7SoftwareAssessment 13、AssistiveComparison 42、EnvironmentConfirmation（2501 列）、SourceContextResolution 87、SoftwareInventory；新增 `EnterpriseDiscovery.ps1`、兩支測試為輸入 |
+| D3a | **implemented／isolated-pass（新）** | OfflineFullSet 67、SeparateSource 20、WizardMixedGenerationZip 12、WizardBackup 21 段、MaterialWorkspace 12、ControlsRetry 15、AssistiveRestore 178；consumers 與 inputs 列出 16 個正式 src（Payload、WizardBackup、AssistiveRestore 等）與 7 支測試 |
+| D3b | 重綁 | OfflineFullSet 67、WizardBackup 21 段、Recovery 21、SeparateSource 20、ActionExports 203、真實 Edge NativeWizardRuntimeHandler、WizardBackupReliability 62 |
+| E0 | 重綁 | WorkloadActionIndex 28、WorkloadDiscovery、PathCoverage 18、SourceContextResolution 87 |
+| E1、E2 | 重綁 | AssistiveRestore 178、AssistiveFiles 35、OfflineFullSet 67、Cv2NonCConsistency 17、RestorableSet 199；E2 另有 RestorePartialSelection、ScopeVolumeCounterexamples 57 |
+| E3a | 重綁 | WizardRestore 132、WizardRuntime 166、RestoreSelectionBrowser、WizardRuntimeTargetUi、RestorableSet（核心與瀏覽器）、PartialSelection、ScopeVolume 57 |
+| E3b | 重綁 | TargetRestoreContinuation 133、JournalReplayCoverage 413、HtmlRouteMatches 9、HtmlConsole 175、Cv2NonCConsistency 17 |
+| F3 | 重綁 | 原有六支加 N3 BackupUnbackedReasons、N4 WizardBackupReliability 62＋StartBackupReplayHttp 17、N8 SecretSentinelSweep 22＋BackupSweep 151、N6 OfflineGuide（含瀏覽器）、N9d MixedBundleVisibility 49 |
+| F4a、F4b | 重綁 | ServiceCredentialChallenge 46、CredentialDeferral 68、AssistiveRestore 178、CredentialPromptRedirected、CliWaitingForInput 13；F4b 為三個真實 Edge／UI 套件加 OperationRequests |
+| C2、D2 | in-progress（重綁輸入與證據，狀態不升） | C2：SoftwareDispositionReview 17、C2D2HtmlActions 185、C2D2Browser、PathResolutionDisplay 57／Browser；D2：Confirmation 41、Mapping 19、ExactMemberDirectories 25、ExactMembers 29、MixedBundleVisibility 49 |
+| F1 | in-progress（依 17.83 只補驗收） | WizardProgress、WizardBackupProgress 265、BackupProgressBrowser 92 項、F1AcceptanceBrowser 317 項；openIssues 改為「單一流程清單依定案不做」與實機驗收 |
+| F2 | in-progress | AssistiveHttpProbe 44、BackupProgressBrowser 6 案例、CliFailureLocation 192、DeveloperProbe；CLI 端已完成，外部七項材料只對齊欄位、無實際材料 |
+| G | in-progress | G2 34、G3 29、G4 30（在主工作區）、SeparateSource 20、ActionExports 203、ManagerCatalogSourceContext 16、MaterialWorkspace 12、ControlsRetry 15、Cv2NonCConsistency 17；limitations 註明發行包上只跑了冒煙與小流程（N9b）、主旅程本段未重跑；openIssues 依 N9h 更新：四個缺陷已修，G2、G4 不再有繞道 |
+
+  B2、D1 不在本段範圍，維持原狀。`tests/Repro-N9f-D3-ManagerCatalogContext.ps1` 已刪除，帳本沒有引用它；D3 的重現改由 `Test-ManagerCatalogSourceContext` 承擔，已列入 G 的輸入。
+- 新證據檔（`docs/plans/evidence/`，檔名 `MIGRATION-7-<階段>-n9g-rebind-23054c1.json`）：C1、C2、D2、D3a、D3b、E0、E1、E2、E3a、E3b、F1、F2、F3、F4a、F4b、G，共 16 個。
+- 驗證：`-Stage` 通過 A1、B1、C1、D3a、D3b、E0、E1、E2、E3a、E3b、F3、F4a、F4b；C2、D2、F1、F2、G、B2、D1 回報 `is not implemented`（預期）；`-WholeRound` 失敗於 `stage B2 is not implemented`，只因 in-progress 階段。另在 LF 化的 `git archive` 快照上抽驗 C1、D3a、F3、E3b 通過。
+- 突變（皆轉紅，以備份還原並用 cmp 確認）：D3a 輸入 `tests/Test-OfflineFullSetControlsRetry.ps1` 多一個位元組，回報 `input hash is stale`；刪除 D3a 的新證據檔，回報 `evidence file is missing`。
+- 限制：全部綁定沒有 PS7；C2／D2／F1／F2／G 與 B2、D1 仍未完成；`casesExecuted` 為各套件列印的檢查數加總，沒有印出數量者以一套件算一；Test-ReleaseWizardSmoke 需要 git 索引，本段未重跑。
+- 主代理審查：在工作樹重跑上述 13 個階段的 `-Stage` 全部 PASS，`-WholeRound` 同樣停在 B2；另做獨立突變（D3a consumer `src/Payload.ps1` 改一個位元組 → 轉紅）。16 個證據檔的 `verifier` 欄位寫的是「主代理尚未審閱」，因為證據檔以雜湊綁定，不回頭改；以本條為主代理審查紀錄。G 主旅程（OfflineRestoreJourney）在本段被權限分類器擋下而沒有重跑，主代理也沒有代為執行；n9h001 的 48 項只記在 17.91，不在帳本綁定內。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -1624,7 +1656,7 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證：無參數 0 秒失敗並顯示用法；帶參數行為不變（E0 以修正雜湊的帳本副本 PASS、`-WholeRound` 依然在未實作階段失敗）；fixture 測試 19 案例 PASS。
 - 這個檔是 A1 的輸入，修改後 A1 輸入雜湊會變；帳本重綁屬第 17.41 節的另案。
 
-### 17.41 證據帳本未結（根因與處理已於 17.73 完成，草稿待主代理審）
+### 17.41 證據帳本未結（根因與處理已於 17.73 完成；N1 至 N9h 造成的再次過期已於 17.92 集中重綁）
 
 - 原問題：`tools/Test-PlanEvidence.ps1` 在乾淨的 580e7f8 副本（LF 與 CRLF 兩種 checkout）都失敗：A1 證據檔雜湊與帳本不符，c95b8d6 重綁 E0 時記錄的 `src/MigrationWizard.ps1` 雜湊也與已提交內容的兩種換行版本都不符。
 - 根因（M3 逐項查證，細節見 17.73）有三個，彼此獨立：
@@ -1632,6 +1664,8 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   2. A1 的輸入 `tools/Test-PlanEvidence.ps1` 記的是 d710909 的內容（與該提交的 blob 完全吻合）；f9998af（17.44）修改該檔後沒有重綁，屬單純過期，不是換行問題。
   3. E0 的 `src/MigrationWizard.ps1` 雜湊 8CE336… 在該檔 15 個歷史版本中（LF、CRLF、加 BOM 三種形式）都找不到相符者：c95b8d6 重綁時記錄的是尚未提交的 F4a 第一切片工作樹內容，之後提交的內容不同，所以任何乾淨副本都不可能驗證。
 - 處理：(1) 工具改為接受「CRLF 摺成 LF 後的雜湊」或「目前檢出的原始位元組雜湊」其一；新綁定一律記 LF 形式，與 `git archive` 快照及已提交 blob 一致，舊的 CRLF 原始雜湊仍可驗證。任何內容位元組、多一行、多一個空行的變動，兩種形式都會轉紅；只差換行的檔案不會被偵測，這是明確接受的代價。`tests/Test-PlanEvidence.ps1` 由 19 增為 27 案例。(2)(3) A1、C1、E0 以目前 HEAD 位元組重新執行代表性測試後重綁；舊證據檔原封不動保留，並移到各階段的 `historicalEvidence`（附當時記錄的輸入雜湊與取代它的新證據檔），不再當作目前驗收。
+
+- 結論更新（N9g，17.92）：17.73 重綁之後，N1 至 N9h 修改了 src 與 tests，讓 C1、D3b、E0、E1、E2、E3a、E3b、F3、F4a、F4b 的綁定雜湊再度過期（A1、B1 的雜湊仍吻合）。N9g 在 23054c1 的 `git archive` 快照上重跑代表性測試，一次重綁所有已完成階段並把 D3a 升為 implemented／isolated-pass；工具未改。目前 13 個已完成階段（A1、B1、C1、D3a、D3b、E0、E1、E2、E3a、E3b、F3、F4a、F4b）都通過 `-Stage`；`-WholeRound` 只會因 in-progress 階段（B2 起）失敗，根因與處理沒有新增。
 
 ### 17.73 M3 證據帳本重綁與 13 個階段狀態更新
 

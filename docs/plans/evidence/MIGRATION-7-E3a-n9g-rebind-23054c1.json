@@ -1,0 +1,189 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "E3a",
+  "verifiedUtc": "2026-10-23T12:40:36Z",
+  "verifier": "N9g sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "23054c1f145d74a62c1a4b01c8802ffbe115dc4b",
+  "snapshotDirectory": "git archive HEAD (23054c1, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (one snapshot per parallel test stream) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; streams ran concurrently on one 8-core host, so the recorded seconds include contention",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/AssistiveComparison.ps1",
+      "sha256": "6B5C7D9616190A19549EB8FC3DA5330C37FF901724F102848274F4C37FDD2487"
+    },
+    {
+      "path": "src/AssistiveRestore.ps1",
+      "sha256": "B3F496349678319199B1DD1ACC3228D7BCF8E46C532A7EE19AEFC273A3F98909"
+    },
+    {
+      "path": "src/OperationRequests.ps1",
+      "sha256": "794D513B54619EE944D5F5568B335404043F36865C79C7483206113DE00AE47B"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "FA74F48A4A21DD16C614F4D153CC34BCA5BA8168C39FE5AC18D1B1A4E71F6126"
+    },
+    {
+      "path": "src/WizardRestore.ps1",
+      "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+    },
+    {
+      "path": "src/WizardRuntime.ps1",
+      "sha256": "BFA5A06BE8462F6A2FF41BFA5C61F56F9B034167F2739EC0BE9AED99D4DDF2D3"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "4B1DD81EB59FC7F4B66917EB81FF976D7AA79486BCAAEE72EF5EEE4CEF267ED8"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "560CF7F33AAF8CE3B16E8698C6321D0A0080B8A4E7D834EA3A9F313B22EC9C15"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Test-RestoreSelectionBrowser.js",
+      "sha256": "3CE62DBB38FE408C000909402F6CF55FBDA09AD5D6D21D1853FE2E8A8C1234B1"
+    },
+    {
+      "path": "tests/Test-WizardRestore.ps1",
+      "sha256": "642E4795C262F981A4C026DB9CE03E3F2880909290BE9F5A177223567E2A7194"
+    },
+    {
+      "path": "tests/Test-WizardRuntime.ps1",
+      "sha256": "6F3AC64A7096C4C7F9B093E844FFE9DEF82BC3CF8C186731D2F691FF9DB77F49"
+    },
+    {
+      "path": "tests/Test-WizardRuntimeTargetUi.js",
+      "sha256": "28742A4102534C54C3BF91E656A1902045C5F4C712BA5F6BDB2A246F7AD21A1C"
+    },
+    {
+      "path": "tests/Test-RestorableSet.ps1",
+      "sha256": "EC50EB6E1712252E4EF0037CED06D2272D60E2A748F838D6E292E081A8A13D1F"
+    },
+    {
+      "path": "tests/Test-RestorePartialSelection.ps1",
+      "sha256": "25246CABE3229C46075339B401481F57AC6194B9F18F9351544E634F40CFA18F"
+    },
+    {
+      "path": "tests/Test-RestorableSetBrowser.js",
+      "sha256": "BE705BC5F42A0A93A16E4BA2CE0A003FAE98272FF56D69431E7518448866BB6F"
+    },
+    {
+      "path": "tests/Test-ScopeVolumeCounterexamples.ps1",
+      "sha256": "EFCE17CD78B150C16DF74252E5BC1802B8549B8E2599BA459CD85E5EC0F650E9"
+    },
+    {
+      "path": "tests/Test-AssistiveCv2NonCConsistency.ps1",
+      "sha256": "69A100313D75AF44245EA8E818EBFCF5117EF3F6EC00A17BBEA96C9C2028D337"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 575,
+  "result": "Rebound to 23054c1 bytes after N1 to N9h; every command below exited 0 on WinPS 5.1: WizardRestore 132, WizardRuntime 166, RestoreSelectionBrowser 1, WizardRuntimeTargetUi 1, RestorableSet 199, RestorePartialSelection 1, RestorableSetBrowser 1, ScopeVolumeCounterexamples 57, AssistiveCv2NonCConsistency 17. N1 restorable set (core and browser), partial selection, N5 scope/volume counterexamples and N9h D4 consistency are included.",
+  "logs": [
+    {
+      "name": "Test-WizardRestore.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardRestore.ps1 </dev/null",
+      "sha256": "A95F5215EA218FBEB4756BBB688C2C713B7F44CBDB6463056D4246C25C310230",
+      "exitCode": 0,
+      "seconds": 330,
+      "countedAs": "checks",
+      "count": 132,
+      "text": "PASS: 132 Target contracts plus real ZIP/directory wrapper receive, repeated-delivery dedupe, deferred decision, schema-3 preview/restore, pre-write cancellation and cancellation after the first fully written item, safe recovery, staged validation/acceptance gates, frozen activation gate, byte/ACL readback, and exact same-attempt replay verified.\r\n"
+    },
+    {
+      "name": "Test-WizardRuntime.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardRuntime.ps1 </dev/null",
+      "sha256": "D25EB0C1486CDF7B3343349A591C886A2B67D5FE0CE509D590C5FB257F69879E",
+      "exitCode": 0,
+      "seconds": 610,
+      "countedAs": "checks",
+      "count": 166,
+      "text": "Wizard runtime module contract checks passed for fixture scope All: 166\r\n"
+    },
+    {
+      "name": "Test-RestoreSelectionBrowser.js.log",
+      "command": "node tests/Test-RestoreSelectionBrowser.js </dev/null",
+      "sha256": "06188E0A790DDFA4B3F7E1B66624B86CEA7C542944A59F6028215A2FE9F60B43",
+      "exitCode": 0,
+      "seconds": 14,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: R6 restore selection UI — type filter and filtered select/deselect, live n-files/b-bytes summary (single live region, no re-announce on redraw), immediate incomplete-dependency marking, confirm dialog (Esc/back send nothing, focus returns), re-restore confirmation, preview totals and lists, receipt-based preselection after reopening, 390px, zero console errors. API fixture only.\r\n"
+    },
+    {
+      "name": "Test-WizardRuntimeTargetUi.js.log",
+      "command": "node tests/Test-WizardRuntimeTargetUi.js </dev/null",
+      "sha256": "A9535AB377EBB441A8A3B9E869F0D04639FE6730E7A0D94A65AC3787F1732898",
+      "exitCode": 0,
+      "seconds": 24,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: Target runtime action flow preserves independent material hashes, approved friendly item selection, explicit restore confirmation, and separate mechanical/business statuses. API fixture only.\r\n"
+    },
+    {
+      "name": "Test-RestorableSet.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-RestorableSet.ps1 </dev/null",
+      "sha256": "DEDD9040B5E43AB19ED849BD10B293ABDE0EEC4B68C222C25178B6B4089E9367",
+      "exitCode": 0,
+      "seconds": 13,
+      "countedAs": "checks",
+      "count": 199,
+      "text": "PASS: 199 restorable-set checks (payload / volume / capacity / location / permission / mount point / conflict / backup-media overlap agree between options and preview; option evaluation is read-only; the preview never claims production execution).\r\n"
+    },
+    {
+      "name": "Test-RestorePartialSelection.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-RestorePartialSelection.ps1 </dev/null",
+      "sha256": "0A81699D57C8A22761B4BCDCBB0E2AB4B679533574C26BD004AE0A2CE7C2E0CC",
+      "exitCode": 0,
+      "seconds": 119,
+      "countedAs": "one partial-selection suite (no count printed)",
+      "count": 1,
+      "text": "PASS: N1 partial selection �X receipt SelectedItemIds, preview Ready write items, restore results and Target bytes agree; unselected targets do not exist.\r\n"
+    },
+    {
+      "name": "Test-RestorableSetBrowser.js.log",
+      "command": "node tests/Test-RestorableSetBrowser.js </dev/null",
+      "sha256": "F972F50A863CEC11C0AD7F1F5CFD2AC956479E1B7D38512AEDE511FFD7506CC4",
+      "exitCode": 0,
+      "seconds": 11,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: N1 restorable set UI — non-restorable items natively disabled and never ticked (default, receipt preselection, select all, filtered select, group select), reason shown as icon + text + code for every new code with aria-describedby, summary counts only restorable items, 390px without overflow, zero console errors. API fixture only.\r\n"
+    },
+    {
+      "name": "Test-ScopeVolumeCounterexamples.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ScopeVolumeCounterexamples.ps1 </dev/null",
+      "sha256": "FB48D03EE293A4548631CF798F4C9DEE95A01CF657742ABA04A9E56C103D98DA",
+      "exitCode": 0,
+      "seconds": 38,
+      "countedAs": "checks",
+      "count": 57,
+      "text": "PASS: 57 scope/volume counterexamples (same relative paths on two volumes across package members, result set and restore destinations; mixed, duplicate and unknown-version volume contracts; parent/child scope overlap).\r\n"
+    },
+    {
+      "name": "Test-AssistiveCv2NonCConsistency.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveCv2NonCConsistency.ps1 </dev/null",
+      "sha256": "D3606D3784040E9F0FA917D81549F80A55720EED3DCA05A9E29F23BFCAF046EC",
+      "exitCode": 0,
+      "seconds": 6,
+      "countedAs": "checks",
+      "count": 17,
+      "text": "PASS: 17 CV2 NonC consistency checks (judgement truth table, preview and executor share it, every legacy NonC branch guarded)\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Browser suites use API fixtures.",
+    "Target inventory in the journey is a pre-seeded fixture, not a live full capture.",
+    "Two comparison materials created in the same second were resolved by a Sequence field (PLAN 17.62) and are covered by WizardRestore only."
+  ],
+  "openIssues": [
+    "HTML-guided retrieval of an independent trusted hash/approval material (16.3 item 5) has no dedicated evidence in this record.",
+    "Real new-machine inventory and software installation are not verified."
+  ]
+}

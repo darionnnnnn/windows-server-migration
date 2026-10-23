@@ -1,0 +1,121 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "F2",
+  "verifiedUtc": "2026-10-23T12:40:36Z",
+  "verifier": "N9g sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "23054c1f145d74a62c1a4b01c8802ffbe115dc4b",
+  "snapshotDirectory": "git archive HEAD (23054c1, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (one snapshot per parallel test stream) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; streams ran concurrently on one 8-core host, so the recorded seconds include contention",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/AssistiveHttpProbe.ps1",
+      "sha256": "908CC9AC84007BBF5453BA0B42B7C491C5667D17B83A7BC3E0CEA58E34B083FE"
+    },
+    {
+      "path": "src/WizardBackup.ps1",
+      "sha256": "351E447E54EF7A09614728A1A52F3F08599D91FF6372E34FD2C540878A91F510"
+    },
+    {
+      "path": "src/WizardBackupProjection.ps1",
+      "sha256": "B50A0EACE406273008113A4578DF9BFFC8866CFB1470AF133B63FA6674251CC2"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "FA74F48A4A21DD16C614F4D153CC34BCA5BA8168C39FE5AC18D1B1A4E71F6126"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "4B1DD81EB59FC7F4B66917EB81FF976D7AA79486BCAAEE72EF5EEE4CEF267ED8"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "560CF7F33AAF8CE3B16E8698C6321D0A0080B8A4E7D834EA3A9F313B22EC9C15"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Test-AssistiveHttpProbe.ps1",
+      "sha256": "692FB5643F2C84804F63001B40DFCAD9DD6BD1DB35E87BFA98BA3B00DBADCFA8"
+    },
+    {
+      "path": "tests/Test-BackupProgressBrowser.js",
+      "sha256": "F28A0E2029BEFB60F904E699D70BF19BF8B947C14717D0AFE47CCBE8B18B8B13"
+    },
+    {
+      "path": "src/DeveloperProbe.ps1",
+      "sha256": "CC7C6B3DFBB7233C6E7D7952714BAD3009B299E7C773AA396DC41D2296036B59"
+    },
+    {
+      "path": "src/LabValidation.ps1",
+      "sha256": "9DE366C1D266E5E079AC127145274FFF0130F563A928700651ADA12A0420C2BD"
+    },
+    {
+      "path": "tests/Test-CliFailureLocation.ps1",
+      "sha256": "1302F812CAEB78831A382BCFF5B2ABED7EE052B2D35811B7611FD62F9888594C"
+    },
+    {
+      "path": "tests/Test-DeveloperProbe.ps1",
+      "sha256": "6A7871C804CE1C62D1FD42E065ACB60DAD830488F151E5F8C1AD09EFE5757058"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 246,
+  "result": "Rebound to 23054c1 bytes after N1 to N9h; every command below exited 0 on WinPS 5.1: AssistiveHttpProbe 44, BackupProgressBrowser 6, CliFailureLocation 192, DeveloperProbe 4. N9a added the CLI side: FailureCode/Stage/NextAction/FailureClass projection (CliFailureLocation 192 checks) and the LabReport ExternalAcceptance mapping. The stage stays in-progress because real external material is absent.",
+  "logs": [
+    {
+      "name": "Test-AssistiveHttpProbe.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveHttpProbe.ps1 </dev/null",
+      "sha256": "4E744ED822ED735EEF3BC9B2B06FA09AF311EE7EFBE315F250E82657D73BEDD2",
+      "exitCode": 0,
+      "seconds": 12,
+      "countedAs": "checks",
+      "count": 44,
+      "text": "PASS: 44 HTTP probe fixture checks on Desktop 5.1.26100.9711\r\n"
+    },
+    {
+      "name": "Test-BackupProgressBrowser.js.log",
+      "command": "node tests/Test-BackupProgressBrowser.js </dev/null",
+      "sha256": "3CCFF4BADC4C348D3C0577827BB4D24B1B9E4F876DEFF1C6C43D2E481BDE0380",
+      "exitCode": 0,
+      "seconds": 100,
+      "countedAs": "F2 connection cases",
+      "count": 6,
+      "text": "PASS: B1 progress card (92 checks) and F2 connection prompts (6 cases) in Edge; screenshots in work/r7/screens/b1-*.png\r\n"
+    },
+    {
+      "name": "Test-CliFailureLocation.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-CliFailureLocation.ps1 </dev/null",
+      "sha256": "ABD40826B582BC55AA8270823308A5C1DB9B683E7E23E577BAC26329930A5ED2",
+      "exitCode": 0,
+      "seconds": 58,
+      "countedAs": "checks",
+      "count": 192,
+      "text": "PASS: 192 CLI failure-location checks (mapping table, 7 scenarios, redaction, real worker end to end, no HTTP writes from the CLI, external material alignment) on Desktop 5.1.26100.9711\r\n"
+    },
+    {
+      "name": "Test-DeveloperProbe.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-DeveloperProbe.ps1 </dev/null",
+      "sha256": "CFEBFAB1FA6EFF3E2F7C5B6706D28D4AF02DD025C2A926001C2FF6DC8472DC10",
+      "exitCode": 0,
+      "seconds": 55,
+      "countedAs": "PASS sections",
+      "count": 4,
+      "text": "PASS: native CommandsModules worker counts: commands=16; modules=5.\nPASS: actual NativeInventory with UNC PSModulePath sentinel; outcome=NotApplicable.\nPASS: unmocked developer probe OS/build and fixed volumes match native CIM; NativeInventory=NotApplicable.\nPASS: developer probe ZIP, entry hashes, inventory structure, secret redaction, raw/serialized budgets, failure, timeout and cancellation.\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Reset, abort, timeout and HTTP failure categories use controlled response/exception fixtures; only listener-refusal is an actual socket failure in the HTTP probe suite.",
+    "No native browser transport claim; local AdGuard policy remains unchanged.",
+    "BackupProgressBrowser uses a fixture API.",
+    "CLI failure classes are derived from controlled code/exception fixtures; no real network failure other than listener refusal was produced."
+  ],
+  "openIssues": [
+    "The seven external acceptance material classes are mapped to existing LabReport fields only (ExternalAcceptance); no real material has been collected, all stay NotTested and ProductionVerified=false.",
+    "Start-ServerMigration.ps1 -Action DeveloperProbe prints fixed fields only and does not show the location line (the text menu and HTML probe do).",
+    "F2 and the whole round remain incomplete: real-machine qualification stays NotTested."
+  ]
+}

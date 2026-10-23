@@ -1,0 +1,113 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "F1",
+  "verifiedUtc": "2026-10-23T12:40:36Z",
+  "verifier": "N9g sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "23054c1f145d74a62c1a4b01c8802ffbe115dc4b",
+  "snapshotDirectory": "git archive HEAD (23054c1, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (one snapshot per parallel test stream) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; streams ran concurrently on one 8-core host, so the recorded seconds include contention",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/Payload.ps1",
+      "sha256": "5BF652D6D9AAFFAE1F5DFD42765CFE6D5820F01A5CA693F3CF2D57897BEA71E7"
+    },
+    {
+      "path": "src/WizardBackup.ps1",
+      "sha256": "351E447E54EF7A09614728A1A52F3F08599D91FF6372E34FD2C540878A91F510"
+    },
+    {
+      "path": "src/WizardBackupProjection.ps1",
+      "sha256": "B50A0EACE406273008113A4578DF9BFFC8866CFB1470AF133B63FA6674251CC2"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "FA74F48A4A21DD16C614F4D153CC34BCA5BA8168C39FE5AC18D1B1A4E71F6126"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "4B1DD81EB59FC7F4B66917EB81FF976D7AA79486BCAAEE72EF5EEE4CEF267ED8"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "560CF7F33AAF8CE3B16E8698C6321D0A0080B8A4E7D834EA3A9F313B22EC9C15"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Test-BackupProgressBrowser.js",
+      "sha256": "F28A0E2029BEFB60F904E699D70BF19BF8B947C14717D0AFE47CCBE8B18B8B13"
+    },
+    {
+      "path": "tests/Test-WizardBackupProgress.ps1",
+      "sha256": "FA852BB2DBE488183D30FAC6B9EEC9B17BAA9A772C2D665B5148C24313330B64"
+    },
+    {
+      "path": "tests/Test-WizardProgress.ps1",
+      "sha256": "E8EB8C644CF930C7E55274078589BB23932F42AD5F984BE176242EA3BF1D7AB1"
+    },
+    {
+      "path": "tests/Test-F1AcceptanceBrowser.js",
+      "sha256": "ED500538BA2824156C1C5A8AD167FB48AF3DE50A5E4AE1F0010010B7FD368FD4"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 676,
+  "result": "Rebound to 23054c1 bytes after N1 to N9h; every command below exited 0 on WinPS 5.1: WizardProgress 2, WizardBackupProgress 265, BackupProgressBrowser 92, F1AcceptanceBrowser 317. Per the 2026-10-23 decision (PLAN 17.83) F1 only gains acceptance evidence: F1AcceptanceBrowser covers six screens (keyboard, 320px, 200% emulated by DPR 2, reopen without re-asking, zero console errors). The stage stays in-progress by decision.",
+  "logs": [
+    {
+      "name": "Test-WizardProgress.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardProgress.ps1 </dev/null",
+      "sha256": "6658EE90E9D9CC202BE44570097A14C2A257827085F375F9F2CE5C385644904F",
+      "exitCode": 0,
+      "seconds": 12,
+      "countedAs": "PASS sections",
+      "count": 2,
+      "text": "PASS: async HTML progress preserves truthful unknown/numeric percent, bounded safe text and timestamp.\nPASS: backup item progress survives trailing Completed records, formats bytes and truncates long paths from the front.\r\n"
+    },
+    {
+      "name": "Test-WizardBackupProgress.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardBackupProgress.ps1 </dev/null",
+      "sha256": "E5DE6DCCEA329CFC56C0BBFBD7CBD0120C3581F63380F193B808C9AA6C845681",
+      "exitCode": 0,
+      "seconds": 50,
+      "countedAs": "producer/projection checks",
+      "count": 265,
+      "text": "PASS: seven job states map from job status, attempt stage and independent-copy readiness.\nPASS: producer fields, relative current file, 20-row FIFO Recent, step n/m and 4 KiB bound.\nPASS: unknown totals stay null through storage and projection.\nPASS: writes are throttled to one per interval, stage changes are forced.\nPASS: worst-case names and paths stay within the 4 KiB bound.\nPASS: current item id, type code and label, channel (C / NonC / Unknown) and file sequence are independent fields.\nPASS: 4 KiB worst case keeps every new field untruncated and still holds 20 Recent rows.\nPASS: Chinese names, paths with spaces and markup land verbatim and JSON-escaped, and project unchanged.\nPASS: reco ...\r\n"
+    },
+    {
+      "name": "Test-BackupProgressBrowser.js.log",
+      "command": "node tests/Test-BackupProgressBrowser.js </dev/null",
+      "sha256": "3CCFF4BADC4C348D3C0577827BB4D24B1B9E4F876DEFF1C6C43D2E481BDE0380",
+      "exitCode": 0,
+      "seconds": 100,
+      "countedAs": "progress-card checks",
+      "count": 92,
+      "text": "PASS: B1 progress card (92 checks) and F2 connection prompts (6 cases) in Edge; screenshots in work/r7/screens/b1-*.png\r\n"
+    },
+    {
+      "name": "Test-F1AcceptanceBrowser.js.log",
+      "command": "node tests/Test-F1AcceptanceBrowser.js </dev/null",
+      "sha256": "B2B91F0A2264C4C88898102AEBABA8539712F147384E84546759E637FB02B1A1",
+      "exitCode": 0,
+      "seconds": 107,
+      "countedAs": "browser checks over six screens",
+      "count": 317,
+      "text": "PASS Test-F1AcceptanceBrowser: keyboard, 320px, 200% zoom, reopen without re-asking, zero console errors for all six screens.\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Percentage is computed only during capture (capped at 99%); verification and delivery have no fine-grained data.",
+    "BytesTotal is known only after sealing.",
+    "BackupProgressBrowser uses a fixture API.",
+    "200% zoom is emulated (640 CSS px, DPR 2), not a real browser zoom.",
+    "F1AcceptanceBrowser uses a stateful API double with the real src/ui and real PowerShell generators."
+  ],
+  "openIssues": [
+    "The single cross-role checklist from inventory through verification is deliberately not built (user decision 2026-10-23, PLAN 17.83); the ledger keeps F1 in-progress.",
+    "Real-machine acceptance of the F1 screens (real zoom, assistive technology) is not collected."
+  ]
+}

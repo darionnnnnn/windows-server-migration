@@ -1,0 +1,124 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "F4b",
+  "verifiedUtc": "2026-10-23T12:40:36Z",
+  "verifier": "N9g sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "23054c1f145d74a62c1a4b01c8802ffbe115dc4b",
+  "snapshotDirectory": "git archive HEAD (23054c1, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (one snapshot per parallel test stream) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; streams ran concurrently on one 8-core host, so the recorded seconds include contention",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/MigrationWizard.ps1",
+      "sha256": "9851A88389676CD26DA5504F8EB992068C5ED6F93059283581D4D0C417487CFF"
+    },
+    {
+      "path": "src/OperationRequests.ps1",
+      "sha256": "794D513B54619EE944D5F5568B335404043F36865C79C7483206113DE00AE47B"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "FA74F48A4A21DD16C614F4D153CC34BCA5BA8168C39FE5AC18D1B1A4E71F6126"
+    },
+    {
+      "path": "src/WizardRuntime.ps1",
+      "sha256": "BFA5A06BE8462F6A2FF41BFA5C61F56F9B034167F2739EC0BE9AED99D4DDF2D3"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "4B1DD81EB59FC7F4B66917EB81FF976D7AA79486BCAAEE72EF5EEE4CEF267ED8"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "560CF7F33AAF8CE3B16E8698C6321D0A0080B8A4E7D834EA3A9F313B22EC9C15"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Test-CredentialDialogUi.js",
+      "sha256": "FBF28912ED224E898D6AE9CEF7AB3BD6E41DBD2CA9E8DB073972FC0A31D81FA7"
+    },
+    {
+      "path": "tests/Test-OperationRequests.ps1",
+      "sha256": "C2D05CA492E5CF8113F9C1B4246044ABA4BDFED435448472DE84871559D892B9"
+    },
+    {
+      "path": "tests/Test-WaitingConsistencyUi.js",
+      "sha256": "CCF03289A122CD3A48C7C7D60D442204523275107925FB028A1FA77FB47759AC"
+    },
+    {
+      "path": "tests/Test-WizardRuntimeTargetUi.js",
+      "sha256": "28742A4102534C54C3BF91E656A1902045C5F4C712BA5F6BDB2A246F7AD21A1C"
+    },
+    {
+      "path": "tests/Test-CliWaitingForInput.ps1",
+      "sha256": "329E87D83835E17480E1E4A9D657ADAC01D831B67D978A391F47CACDFD852C83"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 19,
+  "result": "Rebound to 23054c1 bytes after N1 to N9h; every command below exited 0 on WinPS 5.1: CredentialDialogUi 1, WaitingConsistencyUi 1, WizardRuntimeTargetUi 1, OperationRequests 3, CliWaitingForInput 13. N6 CLI missing-value waiting code (CliWaitingForInput) is included.",
+  "logs": [
+    {
+      "name": "Test-CredentialDialogUi.js.log",
+      "command": "node tests/Test-CredentialDialogUi.js </dev/null",
+      "sha256": "2E98EBB60930A19CAD5800B06DD493D60AFFD943ED9BF6C920BEF7B48AB6E1C5",
+      "exitCode": 0,
+      "seconds": 14,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: credential dialog UI (structure, focus, rerender survival, validation, defer, rejection, 409, cancel two-step, legacy data, auto-popup, resume, 320px)\r\n"
+    },
+    {
+      "name": "Test-WaitingConsistencyUi.js.log",
+      "command": "node tests/Test-WaitingConsistencyUi.js </dev/null",
+      "sha256": "A7B4EA106511E484484F16E35C2E8AED0E477239C65667C2B97AAD5F044703F9",
+      "exitCode": 0,
+      "seconds": 4,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: WaitingForInput/Interrupted are known responses and unfinished job cards show no end time.\r\n"
+    },
+    {
+      "name": "Test-WizardRuntimeTargetUi.js.log",
+      "command": "node tests/Test-WizardRuntimeTargetUi.js </dev/null",
+      "sha256": "A9535AB377EBB441A8A3B9E869F0D04639FE6730E7A0D94A65AC3787F1732898",
+      "exitCode": 0,
+      "seconds": 24,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: Target runtime action flow preserves independent material hashes, approved friendly item selection, explicit restore confirmation, and separate mechanical/business statuses. API fixture only.\r\n"
+    },
+    {
+      "name": "Test-OperationRequests.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OperationRequests.ps1 </dev/null",
+      "sha256": "3AF4554E01DD80121C2F2F7EB99A54F9271F8EE99AED08895FF0B091AB740FA1",
+      "exitCode": 0,
+      "seconds": 7,
+      "countedAs": "PASS sections",
+      "count": 3,
+      "text": "PASS: WaitingForInput, Interrupted, NeedsNewPreview and Superseded return exit code 2.\nPASS: command/common-parameter/secret injection and missing mandatory noninteractive arguments rejected. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-requests-450fc40cb3774063978c1ad56dc3b9b0\nPASS: operation-request WhatIf creates no output or enrollment for a non-ShouldProcess command.\r\n"
+    },
+    {
+      "name": "Test-CliWaitingForInput.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-CliWaitingForInput.ps1 </dev/null",
+      "sha256": "539DAF2538AAB4CD81B6B7E33F0105386C17A4067D3F06C8D385702E38099EF2",
+      "exitCode": 0,
+      "seconds": 53,
+      "countedAs": "checks",
+      "count": 13,
+      "text": "PASS: CLI end-of-input returns 2 with the missing fields for a general action and a credential action; credentials are never read from stdin, nothing typed is persisted (13 checks).\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "The dialog suite uses a fixture API; the HTTP credential route is covered by the G journey record and the native handler suite, not here.",
+    "Tab walk asserts at least 9 controls cycle inside the dialog; each control is not individually verified.",
+    "After a rejected password the dialog is already closed and must be reopened from the job card."
+  ],
+  "openIssues": [
+    "NativeWizardRuntimeHandler passed 4 of 5 runs during the original F4b slice (one unretained failure); this record has one passing run only."
+  ]
+}

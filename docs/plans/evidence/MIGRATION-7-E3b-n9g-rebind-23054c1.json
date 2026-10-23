@@ -1,0 +1,133 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "E3b",
+  "verifiedUtc": "2026-10-23T12:40:36Z",
+  "verifier": "N9g sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "23054c1f145d74a62c1a4b01c8802ffbe115dc4b",
+  "snapshotDirectory": "git archive HEAD (23054c1, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (one snapshot per parallel test stream) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; streams ran concurrently on one 8-core host, so the recorded seconds include contention",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/AssistiveRestore.ps1",
+      "sha256": "B3F496349678319199B1DD1ACC3228D7BCF8E46C532A7EE19AEFC273A3F98909"
+    },
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "F09CABA74D3A4CAA7A94A91CF67AD719B23710D4A6A2561335A18BD48AD9C75C"
+    },
+    {
+      "path": "src/JournalRecovery.ps1",
+      "sha256": "C77CFBC2632AF2DABA6A0BEC4726209723676F9DBA7CCB75920CE561E23B7EB6"
+    },
+    {
+      "path": "src/MigrationWizard.ps1",
+      "sha256": "9851A88389676CD26DA5504F8EB992068C5ED6F93059283581D4D0C417487CFF"
+    },
+    {
+      "path": "src/Recovery.ps1",
+      "sha256": "2DA0C0BEFF86B12A70FF288BACD63CF41E247F99C650F468CEA3540FE0038CB5"
+    },
+    {
+      "path": "src/Restore.ps1",
+      "sha256": "DE008F8327D192A68F1ECEE27ECDC1F4A6697202851065B5E24A642C6256C128"
+    },
+    {
+      "path": "src/WizardRestore.ps1",
+      "sha256": "6B4A7ED83BBAE2510E2B82EA9281D5A61DDF68CEE0AF860E01BA8383DF916FDD"
+    },
+    {
+      "path": "src/WizardRuntime.ps1",
+      "sha256": "BFA5A06BE8462F6A2FF41BFA5C61F56F9B034167F2739EC0BE9AED99D4DDF2D3"
+    },
+    {
+      "path": "src/WizardTargetPackage.ps1",
+      "sha256": "9F5EAA8385E9E886E907895F1DB1EAE4201DC53E0A329C136A62FDA9D0EC2ECB"
+    },
+    {
+      "path": "tests/Test-HtmlConsole.ps1",
+      "sha256": "AFD75317FCB00B8B921461B362BCF3A022429289590C2F7E4AE0200380AB3E75"
+    },
+    {
+      "path": "tests/Test-HtmlRouteMatches.ps1",
+      "sha256": "E65E2F1E2883D4844848355498152B6C163339D6F6B8158B771A30AA5CD8C26E"
+    },
+    {
+      "path": "tests/Test-JournalReplayCoverage.ps1",
+      "sha256": "29735D1F89BCBDBFDB07AFC58054CB092F0872830224DB52205BB752F83BD24C"
+    },
+    {
+      "path": "tests/Test-TargetRestoreContinuation.ps1",
+      "sha256": "53D5AC3E2FE907C9688E28AF3B19B8D3EF07284071812B13614052BFFC37FA35"
+    },
+    {
+      "path": "tests/Test-AssistiveCv2NonCConsistency.ps1",
+      "sha256": "69A100313D75AF44245EA8E818EBFCF5117EF3F6EC00A17BBEA96C9C2028D337"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 747,
+  "result": "Rebound to 23054c1 bytes after N1 to N9h; every command below exited 0 on WinPS 5.1: TargetRestoreContinuation 133, JournalReplayCoverage 413, HtmlRouteMatches 9, HtmlConsole 175, AssistiveCv2NonCConsistency 17. N9h D4 CV2 NonC consistency (shared preview/executor judgement) is included.",
+  "logs": [
+    {
+      "name": "Test-TargetRestoreContinuation.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-TargetRestoreContinuation.ps1 </dev/null",
+      "sha256": "28E610AEA7FCF196D77D1C6EDC26337D49E084F3B62B14C0B7C656A8762A1170",
+      "exitCode": 0,
+      "seconds": 35,
+      "countedAs": "checks",
+      "count": 133,
+      "text": "PASS: TargetRestore continuation core (133 checks).\r\n"
+    },
+    {
+      "name": "Test-JournalReplayCoverage.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-JournalReplayCoverage.ps1 </dev/null",
+      "sha256": "85748FF8B4160BF3DB2D43F120301EE89F0E6CC235BB190D76B4C9ACC9582495",
+      "exitCode": 0,
+      "seconds": 23,
+      "countedAs": "checks",
+      "count": 413,
+      "text": "PASS: 413 checks; 78 journal actions all replayable or listed fail-closed; 39 replay-equivalence scenarios.\r\n"
+    },
+    {
+      "name": "Test-HtmlRouteMatches.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-HtmlRouteMatches.ps1 </dev/null",
+      "sha256": "B16E56A60D5B6D441CC69AA66DA60A8C3F060FE4A81F6DAB0C2B172F7CF19026",
+      "exitCode": 0,
+      "seconds": 1,
+      "countedAs": "checks",
+      "count": 9,
+      "text": "PASS: 9 HTML route blocks read their $Matches captures before any later regex match.\r\n"
+    },
+    {
+      "name": "Test-HtmlConsole.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-HtmlConsole.ps1 </dev/null",
+      "sha256": "30A93B2C1B707017F4C23F1241241AA1EEAF90D41CB34EEE5A65EB70C2A4C41B",
+      "exitCode": 0,
+      "seconds": 66,
+      "countedAs": "checks",
+      "count": 175,
+      "text": "PASS: 175 native HTTP parser/writer and typed action checks; live browser transport is independently probed.\r\n"
+    },
+    {
+      "name": "Test-AssistiveCv2NonCConsistency.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveCv2NonCConsistency.ps1 </dev/null",
+      "sha256": "D3606D3784040E9F0FA917D81549F80A55720EED3DCA05A9E29F23BFCAF046EC",
+      "exitCode": 0,
+      "seconds": 6,
+      "countedAs": "checks",
+      "count": 17,
+      "text": "PASS: 17 CV2 NonC consistency checks (judgement truth table, preview and executor share it, every legacy NonC branch guarded)\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Resume-WsmWizardTargetRestore is tested with substitute projections/packages here; the real-package resume is only in the G journey.",
+    "Partial (including unknown items) is terminal and needs manual Repair or a new preview.",
+    "Native consumers for tasks and IIS pools are test doubles."
+  ],
+  "openIssues": [
+    "Ownership of an in-progress created directory is persisted at the next journal event, so a crash in that narrow window is judged conflict (safe, not repaired).",
+    "A ContinuationId whose attempt threw midway cannot be reused."
+  ]
+}

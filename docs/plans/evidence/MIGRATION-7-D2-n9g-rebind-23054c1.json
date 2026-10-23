@@ -1,0 +1,203 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "D2",
+  "verifiedUtc": "2026-10-23T12:40:36Z",
+  "verifier": "N9g sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "23054c1f145d74a62c1a4b01c8802ffbe115dc4b",
+  "snapshotDirectory": "git archive HEAD (23054c1, work/ excluded) extracted to a fresh snapshot directory under the session scratchpad (one snapshot per parallel test stream) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; streams ran concurrently on one 8-core host, so the recorded seconds include contention",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/AssistiveFiles.ps1",
+      "sha256": "8EF054777F6F60293D28D7B41001A2CA5974E39B6B338841A1D5FE7BA5BBEB07"
+    },
+    {
+      "path": "src/AssistiveReports.ps1",
+      "sha256": "D0AC1943519A4277EE102A2360AEDF8C4F51811B1FAD63B6B944525F81DFF578"
+    },
+    {
+      "path": "src/AssistiveRestore.ps1",
+      "sha256": "B3F496349678319199B1DD1ACC3228D7BCF8E46C532A7EE19AEFC273A3F98909"
+    },
+    {
+      "path": "src/AssistiveReviewForms.ps1",
+      "sha256": "6539B22F3B78D8C0CA48E8357F328F947CB675B44845DED5D61B71F027581BEF"
+    },
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "F09CABA74D3A4CAA7A94A91CF67AD719B23710D4A6A2561335A18BD48AD9C75C"
+    },
+    {
+      "path": "src/MigrationContracts.ps1",
+      "sha256": "9015DF2FA626CF979679A748C6B89A2A0E9AFE1639582F70CE6A29F34DDA10C7"
+    },
+    {
+      "path": "src/OperationRequests.ps1",
+      "sha256": "794D513B54619EE944D5F5568B335404043F36865C79C7483206113DE00AE47B"
+    },
+    {
+      "path": "src/Payload.ps1",
+      "sha256": "5BF652D6D9AAFFAE1F5DFD42765CFE6D5820F01A5CA693F3CF2D57897BEA71E7"
+    },
+    {
+      "path": "src/SourceCandidateConfirmation.ps1",
+      "sha256": "850DCDE8128ADD5D99DBF09C887971E9D318FAF7EC377812B662E1D3A522F41B"
+    },
+    {
+      "path": "src/SourceCandidateMapping.ps1",
+      "sha256": "5353D467D5EEEB58407725D29E299FE1A656F2819C30DDFB791F93BC974FAAC3"
+    },
+    {
+      "path": "src/WindowsServerMigration.psd1",
+      "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+    },
+    {
+      "path": "src/WindowsServerMigration.psm1",
+      "sha256": "BB23A18D0662D8C2E507DBCE9CFC9AEFD4FADB93DC188F667506B7E757A28E88"
+    },
+    {
+      "path": "src/WizardDetails.ps1",
+      "sha256": "0398A778FD30B06363CA93405482A73693EB3C67C913B2E789D2857136B67A8B"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "FA74F48A4A21DD16C614F4D153CC34BCA5BA8168C39FE5AC18D1B1A4E71F6126"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "4B1DD81EB59FC7F4B66917EB81FF976D7AA79486BCAAEE72EF5EEE4CEF267ED8"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "560CF7F33AAF8CE3B16E8698C6321D0A0080B8A4E7D834EA3A9F313B22EC9C15"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Start-C2D2TestServer.ps1",
+      "sha256": "F3F18857A9FF8D882FAF6C5C113BE39FE86A011C89799AAD9A1C6D24D1C9547F"
+    },
+    {
+      "path": "tests/Test-C2D2Browser.js",
+      "sha256": "A260D9007FE369DCE164FF54F2976CB0552975C4CC6E5EBA7586CD77559AE530"
+    },
+    {
+      "path": "tests/Test-C2D2HtmlActions.ps1",
+      "sha256": "15AFDB7167747B4450B3E08020F98D25B4EE0C04D9F64937CB394AF83EF1EAB4"
+    },
+    {
+      "path": "tests/Test-ExactMemberDirectories.ps1",
+      "sha256": "1068C2CEB3CE7C62357C9A3DBF19476A9D28967DC7307396119B0C83AE9C1312"
+    },
+    {
+      "path": "tests/Test-ExactMembers.ps1",
+      "sha256": "F8916C3FE95BC659286175A8216C8F9F7F4BAD50B52CB5EF0B62626CBABDA986"
+    },
+    {
+      "path": "tests/Test-SourceCandidateConfirmation.ps1",
+      "sha256": "A34C835A6DBAF568362CBE8E21C27B46EF8B46527AC84F9C624375BD24E5E938"
+    },
+    {
+      "path": "tests/Test-SourceCandidateMapping.ps1",
+      "sha256": "20A2F476EBF9EEB8B295C28C6B0C0E0683D4E8B85211A960844A9D0843BCE28C"
+    },
+    {
+      "path": "src/SourceCandidateDiscovery.ps1",
+      "sha256": "6F8FFFFA8B3CD0A98C1FA30E192A40EB85F73D400D4235133FB4B60E53E20041"
+    },
+    {
+      "path": "tests/Test-MixedBundleVisibility.ps1",
+      "sha256": "99A4A3593A60783FD1FA35E6A3E9ACB42EA0B59DA54F80ABC954BFF1B8C7E6E5"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 349,
+  "result": "Rebound to 23054c1 bytes after N1 to N9h; every command below exited 0 on WinPS 5.1: SourceCandidateConfirmation 41, SourceCandidateMapping 19, ExactMemberDirectories 25, ExactMembers 29, C2D2HtmlActions 185, C2D2Browser 1, MixedBundleVisibility 49. N9d mixed-bundle visibility (ExcludedRegions Category/Contents, SameNameLinks) is included. The stage stays in-progress: integrated acceptance is not complete.",
+  "logs": [
+    {
+      "name": "Test-SourceCandidateConfirmation.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SourceCandidateConfirmation.ps1 </dev/null",
+      "sha256": "86146E239E78F5E1ED26653D72BF5A4B587551304CE418FD8AAC903C25A64900",
+      "exitCode": 0,
+      "seconds": 25,
+      "countedAs": "checks",
+      "count": 41,
+      "text": "PASS registered source scan emits a complete fixture artifact with independent hash\nPASS fixture scan discovered the nested-empty and the completely empty directory roots\nPASS fixture scan discovered separate business, empty-directory, content-drift and C-root loose-file candidates\nPASS source confirmation freshly enumerates and hashes exactly the selected business-directory members\nPASS confirmation binds candidate, exact members and shared workload references without granting approval\nPASS confirmed member paths are stable and relative to the selected directory root\nPASS loose C-root file stays a one-member ExactMembers scope and never becomes WholeScope\nPASS workload FieldPointer length 9 ...\r\n"
+    },
+    {
+      "name": "Test-SourceCandidateMapping.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SourceCandidateMapping.ps1 </dev/null",
+      "sha256": "DD5C0D19EB7280D3ECE25C3DB7B3E66633C9D33E8C0208C1F7C2BBC77B20F27A",
+      "exitCode": 0,
+      "seconds": 24,
+      "countedAs": "checks",
+      "count": 19,
+      "text": "PASS candidate confirmation retains typed command, directory and quoted argument references from E0\nPASS typed review uniquely suggests the confirmed ExactMembers command file\nPASS ExactMembers does not claim directory coverage and opaque arguments remain visible for manual handling\nPASS mapping submit rejects a stale independently supplied inventory hash\nPASS mapping submit uses Manager decision revision CAS\nPASS mapping submit rejects incomplete per-reference dispositions\nPASS public submit durably stores explicit path choices and unresolved E0 manual dispositions\nPASS only the explicitly selected Mandatory mapping creates a consumer dependency\nPASS reopened XML draft consumes the durable  ...\r\n"
+    },
+    {
+      "name": "Test-ExactMemberDirectories.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ExactMemberDirectories.ps1 </dev/null",
+      "sha256": "F61683761EEB0856AD14A754B4003F90DCA63FF5100C6D1432933B4008D17EF1",
+      "exitCode": 0,
+      "seconds": 12,
+      "countedAs": "checks",
+      "count": 25,
+      "text": "PASS: 25 ExactMembers empty-directory contract, plan binding, CV2 artifact and original-location restore checks.\r\n"
+    },
+    {
+      "name": "Test-ExactMembers.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ExactMembers.ps1 </dev/null",
+      "sha256": "6FDBBF0122AE7E2A21EA248913B70991CD489A9CAE28889319ACC1E2FA26ADF1",
+      "exitCode": 0,
+      "seconds": 16,
+      "countedAs": "checks",
+      "count": 29,
+      "text": "PASS: 29 ExactMembers contract, source hashing, package set equality, placement and restore checks; source candidate-to-approval hashing remains a separate D1/D2 connection.\r\n"
+    },
+    {
+      "name": "Test-C2D2HtmlActions.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-C2D2HtmlActions.ps1 </dev/null",
+      "sha256": "A7A61098C8BA2C54E8D5F7F2D75F9FAEC62CC3D29468AB5BCDB6C70C7C9B2D33",
+      "exitCode": 0,
+      "seconds": 82,
+      "countedAs": "checks",
+      "count": 185,
+      "text": "PASS action SourceCandidateList resolves to Get-WsmHtmlSourceCandidateList\nPASS Get-WsmHtmlSourceCandidateList is exported (worker runspaces and Test-ActionExports resolve it)\nPASS action SourceCandidateList belongs to the Source group\nPASS action SourceCandidateConfirmExport resolves to Export-WsmSourceCandidateConfirmation\nPASS Export-WsmSourceCandidateConfirmation is exported (worker runspaces and Test-ActionExports resolve it)\nPASS action SourceCandidateConfirmExport is in the durable operation table\nPASS action SourceCandidateConfirmExport belongs to the Source group\nPASS action SourceCandidateConfirmImport resolves to Import-WsmSourceCandidateConfirmation\nPASS Import-WsmSourceCandidate ...\r\n"
+    },
+    {
+      "name": "Test-C2D2Browser.js.log",
+      "command": "node tests/Test-C2D2Browser.js </dev/null",
+      "sha256": "5B4AD93669C0809156E7FC5FF6A53435ABDED291C5A7FE193413D996204644CC",
+      "exitCode": 0,
+      "seconds": 74,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS Test-C2D2Browser: source/manager D2 flow, C2 batch, CAS, stale handling, keyboard confirmation, states, 390px layout and zero console errors.\r\n"
+    },
+    {
+      "name": "Test-MixedBundleVisibility.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-MixedBundleVisibility.ps1 </dev/null",
+      "sha256": "D889E68DD9C091267A7A4377E9B003143E70FC4E24F95C07B074BB3784BD0113",
+      "exitCode": 0,
+      "seconds": 8,
+      "countedAs": "checks",
+      "count": 49,
+      "text": "PASS a complete listing within budget is marked complete\nPASS files are classified into bundle/suspected/unknown (bundle=4 suspected=4 unknown=3)\nPASS a junction inside the install root is not followed\nPASS a PE file is bundle by its header even with a non-PE extension\nPASS a .dll that is not a PE file is not treated as bundle\nPASS installer uninstall metadata is bundle\nPASS non-PE files under data/report/log directories are suspected business data (any depth, any case)\nPASS a non-PE file modified after a trusted install time is suspected business data\nPASS other files stay unknown\nPASS bundle file names are kept for same-name tracing\nPASS without a trusted install time the modification-time ...\r\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Fixture machine identity/inventory and restore journal mocks; not full durable restore or production acceptance.",
+    "Source-side candidate export is tested at function level only.",
+    "C2D2Browser uses a fixture API.",
+    "Non-C ExactMembers under CV2 are exercised only through subst-simulated D/E volumes (G4) and fixtures; no native D/E capture."
+  ],
+  "openIssues": [
+    "Complete D2 integrated acceptance and original-location end-to-end verification beyond the C-volume fixture journey.",
+    "Candidate confirmation does not check blocked extensions of directory names, so 'confirmed but rejected at import' is possible.",
+    "Native (non-simulated) D/E volume capture and cold Target restore of context-aware non-C ExactMembers are not verified."
+  ]
+}
