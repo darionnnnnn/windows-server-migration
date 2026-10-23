@@ -70,7 +70,7 @@ function ConvertTo-WsmWizardHtmlValue($Value,[int]$Depth=0) {
         }elseif($property.Name -ceq 'PathResolutions' -and $property.Value -is [array]){
             # N9c2: C2 軟體處置審閱的消費者路徑解析（原字串／結果／依據／原因／下一步），固定形狀。
             $safe.PathResolutions=@(foreach($row in $property.Value){ConvertTo-WsmWizardPathResolutionRow $row})
-        }elseif($property.Name -in $allowed){$safe[$property.Name]=ConvertTo-WsmWizardHtmlValue $property.Value ($Depth+1)}
+        }elseif($property.Name -in $allowed){if($property.Name -eq 'ProductionVerified'){$safe[$property.Name]=$false}else{$safe[$property.Name]=ConvertTo-WsmWizardHtmlValue $property.Value ($Depth+1)}}
     }
     [pscustomobject]$safe
 }

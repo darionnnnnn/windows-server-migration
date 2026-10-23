@@ -868,3 +868,14 @@ test('concurrent write preflights preserve the first uncertain operation and sen
   await assert.rejects(submit('SaveSelection','third-operation'),/提交結果尚未確認/);
   assert.equal(writes.length,1);
 });
+
+test('production verification flags never render as yes even when a projection carries true', () => {
+  const ui=makeApp(async()=>({ok:true,status:200,json:async()=>({})}),true); ui.state.session={pairId:'p1',role:'Manager'};
+  const flatten=node=>[node.textContent||'',...(node.children||[]).flatMap(flatten)].join(' ');
+  ui.state.jobs.set('prod-job',{jobId:'prod-job',pairId:'p1',role:'Manager',status:'Succeeded',action:'AssistiveReport',outputs:[{Status:'Recorded',ProductionVerified:true,ProductionQualified:true}]}); ui.renderJobs();
+  const jobText=flatten(ui.__getElement('job-list'));
+  assert.match(jobText,/是否已完成正式環境驗證\s*否/); assert.doesNotMatch(jobText,/是否已完成正式環境驗證\s*是/);
+  ui.renderOverview({metrics:{},nextStep:{},provenance:{deliveryProductionVerified:true},steps:[]});
+  const overview=ui.__getElement('overview-provenance').textContent;
+  assert.match(overview,/正式環境驗證 否/); assert.doesNotMatch(overview,/正式環境驗證 是/);
+});

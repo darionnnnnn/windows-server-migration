@@ -1644,6 +1644,29 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 限制：全部綁定沒有 PS7；C2／D2／F1／F2／G 與 B2、D1 仍未完成；`casesExecuted` 為各套件列印的檢查數加總，沒有印出數量者以一套件算一；Test-ReleaseWizardSmoke 需要 git 索引，本段未重跑。
 - 主代理審查：在工作樹重跑上述 13 個階段的 `-Stage` 全部 PASS，`-WholeRound` 同樣停在 B2；另做獨立突變（D3a consumer `src/Payload.ps1` 改一個位元組 → 轉紅）。16 個證據檔的 `verifier` 欄位寫的是「主代理尚未審閱」，因為證據檔以雜湊綁定，不回頭改；以本條為主代理審查紀錄。G 主旅程（OfflineRestoreJourney）在本段被權限分類器擋下而沒有重跑，主代理也沒有代為執行；n9h001 的 48 項只記在 17.91，不在帳本綁定內。
 
+### 17.93 P1 投影層把 ProductionVerified／ProductionQualified 一律輸出 false（2026-10-23 使用者授權、主代理評估定案）
+
+- 定案：src 內沒有任何產出者把這兩個旗標設為 true，所以凡是會把來源物件的旗標帶到 HTML 或報告的投影，一律輸出 false。兩個欄位都強制，不做白名單；日後若有正式驗證來源，另開一段處理。
+- Sonnet 5.5 medium subagent 實作，主代理審 diff、補一處照抄點並獨立重跑。
+- 改為強制 false 的照抄點：
+  - `HtmlConsole.ps1`：總覽 delivery 步驟（約 :384）與 provenance（約 :447）、`Get-WsmHtmlResultProjection` 的 `$fields` 迴圈、`ConvertTo-WsmHtmlPublicJobRecord` 的 DeveloperProbe 白名單。
+  - 主代理補的一處：`ConvertTo-WsmHtmlPublicJobRecord` 對其他 job 的 `outputs` 原本直接照抄。正常流程寫入前都已經過結果投影，但磁碟上未經投影的舊 job 檔仍可能帶 true。現在先複製一份再設為 false，不改動存檔的紀錄。
+  - `WizardHtmlRuntime.ps1` 的 `ConvertTo-WsmWizardHtmlValue`（`$allowed` 內的 ProductionVerified）。
+  - `WindowsSettingsReview.ps1:289` 的預覽雜湊投影。合法預覽本來就是 false，所以雜湊不變。
+  - `console.js`：job 輸出欄位與總覽 provenance 都不會顯示「是」。
+- 保留不動：
+  - 產出端本來就寫死 `$false` 的位置。
+  - `-ne $false`／`-isnot [bool]` 這類拒絕檢查（CrossHostGates、DeliveryReceipts、Fleet、AssistiveProbe、CrossHostCoordination、console.js 的 CommitTargetHandoff 守門）。
+  - `EnvironmentConfirmation.ps1:373` 讀的是同一函式約 :359 寫死的 false，不是照抄點。
+- 測試：`Test-ProductionFlagProjection.ps1` 共 48 項，涵蓋：
+  - 來源值為 true、字串 "true"、1 時，每個照抄點都輸出 false。
+  - 來源為 false 時仍是 false。
+  - 欄位不存在時不憑空新增。
+  - 投影不改動存檔的 job 紀錄。
+  - `Test-AssistiveUi.js` 另補一例，這兩個旗標不顯示「是」。
+- 突變（皆轉紅）：subagent 對 8 個點各做一個突變；主代理對新增的 outputs 強制另做一個，丟出「Stored job outputs copied a Production flag」。
+- 驗證（WinPS 5.1）：ProductionFlagProjection 48、HtmlConsole、WizardHtmlRuntimeProjection、WindowsSettingsReview、HtmlSubmission、WizardBackup、ScriptEncoding；AssistiveUi（node --test）、BackupProgressBrowser（Edge）。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
