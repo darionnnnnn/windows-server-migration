@@ -1767,6 +1767,37 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 計畫檔被改到無法讀取時，工作台沿用既有行為，顯示「尚未匯入已核准計畫」，不會顯示失敗卡片。
   - 瀏覽器 fixture 的 SourcePath 是照投影形狀手寫的。
 
+### 17.98 P5 補測：pending intent 的清除與 CV2 非 C 範圍 reservation 的釋放（只動測試；未發現產品缺陷）
+
+- Sonnet 5.5 medium subagent 實作，產品碼沒有修改；主代理審查、另做一個突變並獨立重跑。
+- **(a) 失敗項目留下的 pending intent**（故障注入：G4 式的 adapter 丟出例外）：
+  - 失敗項目留下 1 筆 `AssistiveAdapterCreating` intent，母作業為 Partial。這筆 intent 會擋下新的母作業，精靈入口也會要求先 repair。
+  - `Resume-WsmWizardTargetRestore` 依設計只接續中斷或等待輸入的母作業，對 Partial 一律拒絕。
+  - `Repair-WsmOperation` 或 `Complete-WsmAssistiveOperationRepair` 可以清除 intent：
+    - native 物件不存在：記錄 `AssistiveAdapterAbandoned`，pending 歸零。
+    - 物件已建好且 readback 吻合：採納為工具建立。
+    - 物件已建好但不吻合：保留 intent，等人工對帳。
+  - 清除後用**新的 decision receipt** 再 restore，只會重試失敗項目，已成功項目依 ownership 不重寫，C、D、E 三棵樹的位元組不變。
+  - 觀察（不是缺陷，留給使用者決定）：用**同一份** receipt 在 repair 後再 restore，會重放舊的 Partial 結果，不會重試（`WizardRestore.ps1` 約 :367～:370）。要重試，使用者得在精靈中重新保存選擇，以產生新 receipt（`WizardRestore.ps1:295`；receipt 含 Guid 與時間，雜湊必然不同）。可行的改善是 repair 清完最後一筆 intent 後把 attempt 標成 Superseded，或在重放結果上提示「請重新確認選擇後再重試」。本段沒有修改。
+- **(b) CV2 非 C 範圍的 reservation**：
+  - 寫入前建立 reservation，標籤仍為 NonC。
+  - 成功時轉為擁有，記錄證據與 `DriftStatus=Match`。
+  - 失敗或取消時保留為 `Unverified`，供對帳，不會自動釋放。
+  - 殘留的 reservation 會擋下重疊的其他消費者，同一項目再 restore 時沿用並補上證據，也可以手動 `Release-WsmAssistiveResource`。
+  - 與 C 範圍的觀察序列逐步相同。產品碼中除了 Service 帳密的預檢與取消之外，沒有自動釋放 reservation 的路徑。
+- 測試：
+  - `Test-PendingIntentRecovery.ps1`：31 項，約 6 秒。
+  - `Test-Cv2NonCReservationLifecycle.ps1`：55 項，約 8 秒。
+  - G4 新增 `-Mutation RepairAndRetry`：37 項，約 104 秒。第二次 restore 要經過 receipt、preview hash 與重放規則，需要完整流程。預設模式的 30 項不變。
+- 突變（皆轉紅）：
+  - subagent：repair 不清 intent、失敗時抹掉 intent、失敗時釋放 reservation（C 與 NonC 各一）、NonC 成功時不寫證據、CV2 的 NonC 不建 reservation、取消時釋放 reservation。
+  - 主代理：CV2 判定固定回 false，lifecycle 測試抓到「NonC success: expected exactly one reservation owner record」。
+- 驗證（主代理重跑）：PendingIntentRecovery 31、Cv2NonCReservationLifecycle 55、AssistiveRestore 178、TargetRestoreContinuation 133、JournalReplayCoverage 413、G4 30、G4 RepairAndRetry 37、ScriptEncoding。
+- 限制：
+  - adapter 與 FileScope 寫入器是替身。真實寫入器失敗時會留下逐檔的 `AssistiveFileReplace` intent，這條路徑沒有逐項實測。
+  - HTML／CLI 的「重新保存選擇再重試」入口沒有走 UI 驗證。
+  - 項目之間的取消邊界沒有測。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

@@ -6,12 +6,13 @@
 # comparison, receipt, preview, restore (typed IIS / task restore doubles, counted) -> original-location readback.
 # Target run: one wizard restore of all five approved items; the typed IIS restore double fails its only call on purpose (a failure unrelated to any product defect):
 # the C / D / E / task successes must not mask it, and the failed item keeps its own status in the core, HTML and runtime projections.
+# -Mutation RepairAndRetry (P5-a): after the restore, repair the pending IIS intent through Repair-WsmOperation and retry through a new decision receipt (see the Notes in the verdict).
 # Output: work\r7\g-journey\<RunId>\verdict.json (same shape as the main journey).
 param(
     [string]$RunId='g4a001',
     [switch]$KeepArtifacts,
     [ValidateSet('Backup','Preview','All')][string]$Through='All',
-    [ValidateSet('','MoveTheBundle')][string]$Mutation=''
+    [ValidateSet('','MoveTheBundle','RepairAndRetry')][string]$Mutation=''
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -36,6 +37,7 @@ try{
 
     $script:GVerdict.Notes+=@('N9h-D1/D3/D4 (fixed): the inventory file carries the SourceResolutionContext (D3), the one-click backup reads the confirmation material where the scan wrote it (D1, no copy into <ws>/pairs), and the NonC-labelled D / E scopes of the CV2 plan are restored by the CV2 FileScope writer inside the wizard restore (D4, no direct writer call).')
     $script:GVerdict.Notes+=@('N9h: the not-masked-failure judgement uses an injected typed IIS adapter failure (stable), not a product defect.')
+    if($Mutation -ceq 'RepairAndRetry'){$script:GVerdict.Notes+=@('P5-a (-Mutation RepairAndRetry): after the injected IIS failure the run continues with the real entrances: a second restore and Resume are refused while the intent is pending, Repair-WsmOperation clears it, and a restore under a NEW decision receipt retries only the failed item (the typed IIS double throws on its first call only). A restore under the SAME receipt replays the earlier Partial result without a native call (recorded in g4-observations.json as SameReceiptRestoreReplaysEarlierPartialWithoutRetry). Run in this mode because the end-to-end chain (receipt, preview hash, replay rules) cannot be reproduced by doubles; the fast version is Test-PendingIntentRecovery.ps1.')}
     Write-GStage 2 'Source scan, confirmation, Manager approval, one-click backup (C + D + E + typed IIS / task)'
     $observations=& $module {
         param($Root,$FixturePath,$MutationName,$Report,$WsRoot,$DRoot,$ERoot,$ThroughStage,$RunDir)
@@ -404,6 +406,59 @@ try{
         & $Report 'runtime_projection_claims_nothing_enabled_verified_or_authoritative_and_offers_no_activation' ($runtime2.ProductionVerified -eq $false -and $runtime2.AuthoritativeApproval -eq $false -and $restore1.ProductionVerified -eq $false -and $activationActions.Count -eq 0) ('ProductionVerified='+$runtime2.ProductionVerified+' activation actions available='+$activationActions.Count)
         & $Report 'typed_items_stay_staged_disabled_by_the_reviewed_spec_and_nothing_was_activated_or_resumed' ($script:g4Run.TaskEnabled -eq $false -and $script:g4Run.SiteAuto -eq $false -and @($recorded|Where-Object {$_.FinalState -ceq 'Disabled'}).Count -eq 2 -and $retire1.Count -eq 0) ('source task enabled='+$script:g4Run.TaskEnabled+' site auto='+$script:g4Run.SiteAuto+' (quiesced by the freeze, not resumed); target specs FinalState=Disabled')
         $obs.Restore=[ordered]@{Status=$obs.Restore1.Status;TypedCalls=@("IIS=$($script:g4Typed.IISSite)","Task=$($script:g4Typed.ScheduledTask)")}
+
+        # ======================= P5-a (-Mutation RepairAndRetry): the failed IIS item left a pending intent; can the user get out, and does a second restore retry only that item? =======================
+        # Real entrances only: Invoke-WsmWizardTargetRestore (a second restore), Resume-WsmWizardTargetRestore, Repair-WsmOperation, then a second restore. The typed IIS double
+        # throws only on its first call, so the retry can succeed.
+        if($MutationName -ceq 'RepairAndRetry'){
+            $retry=[ordered]@{}
+            $jobsAfter=@(@($tJobs)+@($restoreJob1))
+            $siteId=[string]$siteItem.ItemId
+            $pendingBefore=@((Read-WsmJson (Join-Path (Join-Path $restoreStateDirectory $pairId) 'state.json')).PendingOperations)
+            & $Report 'p5a_precondition_the_failed_iis_item_left_exactly_one_pending_adapter_intent' ($pendingBefore.Count -eq 1 -and [string]$pendingBefore[0].ItemId -ceq $siteId -and [string]$pendingBefore[0].Phase -ceq 'AssistiveAdapterCreating') ('pending='+$pendingBefore.Count)
+            $previewAfterFail=Get-WsmWizardTargetRestoreProjection -Workspace $targetRoot -PairId $pairId -Jobs $jobsAfter
+            $retry.PreviewAfterFailStatus=[string]$previewAfterFail.Status;$retry.PreviewAfterFailHashSame=([string]$previewAfterFail.PreviewHash -ceq [string]$preview1.PreviewHash)
+            # (1) a second restore through the wizard entrance is blocked while the intent exists
+            $writesBlocked=$script:g4Typed.IISSite+$script:g4Typed.ScheduledTask
+            $blockedText='';try{$null=Invoke-WsmWizardTargetRestore -Workspace $targetRoot -PairId $pairId -PreviewHash ([string]$previewAfterFail.PreviewHash) -Jobs $jobsAfter}catch{$blockedText=[string]$_.Exception.Message}
+            $retry.BlockedText=$blockedText
+            & $Report 'p5a_second_restore_over_the_pending_intent_is_refused_and_writes_nothing' ($blockedText -match 'unresolved journal intent|blocks a new parent' -and ($script:g4Typed.IISSite+$script:g4Typed.ScheduledTask) -eq $writesBlocked) $blockedText
+            # (2) Resume of the completed-with-failure parent
+            $resumeText='';try{$null=Resume-WsmWizardTargetRestore -Workspace $targetRoot -PairId $pairId -ParentOperationId ([string]$restore1.AttemptOperationId) -ContinuationId ([Guid]::NewGuid().ToString('D')) -Jobs $jobsAfter}catch{$resumeText=[string]$_.Exception.Message}
+            $retry.ResumeText=$resumeText
+            & $Report 'p5a_resume_of_the_partial_parent_is_refused_by_design_and_writes_nothing' ($resumeText -match 'terminal result' -and ($script:g4Typed.IISSite+$script:g4Typed.ScheduledTask) -eq $writesBlocked) $resumeText
+            # (3) Repair-WsmOperation clears the intent
+            $repair=Repair-WsmOperation -ManifestPath ([string]$pkgImport.ManifestPath) -ExpectedHash ([string]$pkgImport.ManifestHash) -StateDirectory $restoreStateDirectory -Confirm:$false
+            $stateAfterRepair=Read-WsmJson (Join-Path (Join-Path $restoreStateDirectory $pairId) 'state.json')
+            $retry.Repaired=@($repair.Repaired);$retry.RemainingAfterRepair=[int]$repair.Remaining
+            & $Report 'p5a_repair_operation_cleared_the_intent_of_the_failed_iis_item_without_touching_the_others' (@($repair.Repaired) -contains $siteId -and [int]$repair.Remaining -eq 0 -and @($stateAfterRepair.PendingOperations).Count -eq 0 -and $script:g4Typed.IISSite -eq 1 -and $script:g4Typed.ScheduledTask -eq 1) ('repaired='+@($repair.Repaired).Count+' remaining='+$repair.Remaining)
+            # (4) a second restore through the wizard: which entrance does the user have now?
+            $previewRetry=Get-WsmWizardTargetRestoreProjection -Workspace $targetRoot -PairId $pairId -Jobs $jobsAfter
+            $retry.PreviewAfterRepair=[ordered]@{Status=[string]$previewRetry.Status;Hash=[string]$previewRetry.PreviewHash;SameAsBefore=([string]$previewRetry.PreviewHash -ceq [string]$previewAfterFail.PreviewHash);Rows=@($previewRetry.Rows|ForEach-Object {([string]$_.ItemId).Substring(0,8)+' '+[string]$_.Status+'/'+[string]$_.Action})}
+            $retryText='';$restore2=$null;try{$restore2=Invoke-WsmWizardTargetRestore -Workspace $targetRoot -PairId $pairId -PreviewHash ([string]$previewRetry.PreviewHash) -Jobs $jobsAfter}catch{$retryText=[string]$_.Exception.Message}
+            $retry.RetryError=$retryText
+            if($restore2){$retry.Restore2=[ordered]@{Status=[string]$restore2.Status;Replay=[bool]($restore2.PSObject.Properties['Replay'] -and $restore2.Replay);Attempt=[string]$restore2.AttemptOperationId;Items=@($restore2.ItemResults|ForEach-Object {([string]$_.ItemId).Substring(0,8)+'='+[string]$_.Status})}}
+            # (4b) observation only: the same receipt replays the earlier Partial result (no native call, the failed item is not retried); a new decision receipt is the way to retry
+            $sameReceiptReplay=($restore2 -and [string]$restore2.AttemptOperationId -ceq [string]$restore1.AttemptOperationId -and ($script:g4Typed.IISSite -eq 1))
+            $retry.SameReceiptRestoreReplaysEarlierPartialWithoutRetry=[bool]$sameReceiptReplay
+            # (5) a new decision receipt that selects only the failed item opens a new parent; the others are not touched
+            $receipt3=Create-WsmWizardTargetDecisionReceipt -Workspace $targetRoot -PairId $pairId -Decision RestoreNow -Owner 'G4 target operator' -Reason 'Retry only the failed IIS site after Repair-WsmOperation cleared its intent.' -SelectedItemIds ([string[]]@($siteId)) -Jobs $tJobs
+            $preview3=Get-WsmWizardTargetRestoreProjection -Workspace $targetRoot -PairId $pairId -Jobs $jobsAfter
+            $retry.Preview3=[ordered]@{Status=[string]$preview3.Status;Rows=@($preview3.Rows|ForEach-Object {([string]$_.ItemId).Substring(0,8)+' '+[string]$_.Status+'/'+[string]$_.Action})}
+            $restore3=Invoke-WsmWizardTargetRestore -Workspace $targetRoot -PairId $pairId -PreviewHash ([string]$preview3.PreviewHash) -Jobs $jobsAfter
+            $state3=Read-WsmJson (Join-Path (Join-Path $restoreStateDirectory $pairId) 'state.json')
+            $r3Site=@($restore3.ItemResults|Where-Object {[string]$_.ItemId -ceq $siteId})
+            $siteRecord3=@($state3.Items|Where-Object {[string]$_.ItemId -ceq $siteId})
+            $retry.Restore3=[ordered]@{Status=[string]$restore3.Status;Attempt=[string]$restore3.AttemptOperationId;NewParent=([string]$restore3.AttemptOperationId -cne [string]$restore1.AttemptOperationId);Items=@($restore3.ItemResults|ForEach-Object {([string]$_.ItemId).Substring(0,8)+'='+[string]$_.Status})}
+            & $Report 'p5a_after_repair_a_new_receipt_restore_retries_only_the_failed_iis_item_which_now_succeeds_the_unselected_rows_stay_deferred_by_selection' (@($restore3.ItemResults).Count -eq 1 -and @($restore3.Deferred|Where-Object {[string]$_.Status -cne 'Deferred' -or [string]$_.Action -cne 'DeferredBySelection'}).Count -eq 0 -and [string]$restore3.AttemptOperationId -cne [string]$restore1.AttemptOperationId -and $r3Site.Count -eq 1 -and [string]$r3Site[0].Status -ceq 'Succeeded' -and $script:g4Typed.IISSite -eq 2 -and $script:g4Typed.ScheduledTask -eq 1 -and @($state3.PendingOperations).Count -eq 0) ('status='+$restore3.Status+' IIS calls='+$script:g4Typed.IISSite+' task calls='+$script:g4Typed.ScheduledTask+' items='+@($restore3.ItemResults).Count)
+            & $Report 'p5a_the_retried_item_is_now_owned_and_the_earlier_succeeded_items_keep_their_ownership_records' ($siteRecord3.Count -eq 1 -and [string]$siteRecord3[0].Status -ceq 'Succeeded' -and @($state3.Items|Where-Object {[string]$_.Status -ceq 'Succeeded'}).Count -eq 5) ('succeeded records='+@($state3.Items|Where-Object {[string]$_.Status -ceq 'Succeeded'}).Count)
+            $afterRetry=[ordered]@{Unrelated=(Get-TreeMap $unrelated);Site=(Get-TreeMap $siteDir);Jobs=(Get-TreeMap $jobsDir)}
+            $retrySame=$true;foreach($key in $afterRetry.Keys){if((Get-Json $before[$key]) -cne (Get-Json $afterRetry[$key])){$retrySame=$false}}
+            & $Report 'p5a_the_retry_left_the_c_d_e_trees_byte_identical_to_the_source' $retrySame 'three restored trees re-hashed after the retry'
+            $retry.TypedCallsAfterRetry="IIS=$($script:g4Typed.IISSite) Task=$($script:g4Typed.ScheduledTask)"
+            $obs.RepairAndRetry=$retry
+            Save-Obs
+        }
         $obs
     } $script:GTestRoot $fixturePath $Mutation ${function:Set-GCheck} ($wsDrive+':'+[char]92) ($dDrive+':'+[char]92) ($eDrive+':'+[char]92) $Through $script:GRunDir
     $script:GVerdict.Observations=$observations
