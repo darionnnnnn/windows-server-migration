@@ -391,31 +391,11 @@ function Get-WsmAssistiveRestorePreview {
             $itemIssues=@(Get-WsmAssistiveItemDependencyIssues $issues ([string]$item.ItemId))
             if($itemIssues.Count -and @($decision.Receipt.AcceptedUnpreparedItemIds | Where-Object {$_ -ceq $item.ItemId}).Count -eq 0){$action='DeferredSoftware';$status='DeferredSoftware';$reason=(@($itemIssues | ForEach-Object Issue | Select-Object -Unique) -join '; ')}
             elseif($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'External'){$action='ExternalManual';$status='ManualEvidenceRequired';$reason='This selected workload depends on an external/non-C location; retain the source reference and complete the reviewed owner-managed transfer/readback procedure.'}
-            elseif($spec.Adapter -eq 'FileScope' -and $cv2 -and ($locationError=$(try{Assert-WsmOfflineFullSetOriginalLocation $package.Plan $spec;''}catch{$_.Exception.Message}))){$action='BlockedLocation';$status='Blocked';$reason=$locationError}
             elseif($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'NonC' -and -not $cv2){$action='DeferredNonC';$status='Deferred';$reason='Required non-C content must have a current trusted D result and live readback before G can mark the workload complete.';if($nonCError){$reason='D evidence validation/readback remains incomplete: '+$nonCError};if($nonCRows.ContainsKey([string]$item.ItemId)){$nonc=$nonCRows[[string]$item.ItemId];$status=[string]$nonc.Status;$reason=[string]$nonc.Reason;if($status -ceq 'Ready'){$action='AcceptVerifiedNonC';$reason='D result is bound to the final package and every required native target file/directory has verified live readback.'}else{$action='DeferredNonC'}}}
             elseif($spec.Adapter -eq 'FileScope'){
-                $target=ConvertTo-WsmCanonicalPath $spec.TargetPath
-                try{
-                    $artifactRows=@(Read-WsmArtifactLines (Join-Path $package.Root 'artifacts.jsonl') $package.Manifest.ArtifactsHash $CancellationToken | Where-Object ItemId -CEQ $item.ItemId);$singleFileScope=($artifactRows.Count -eq 1 -and -not $artifactRows[0].Directory -and [string]::IsNullOrEmpty([string]$artifactRows[0].RelativePath));$requiredBytes=[long]0;foreach($row in @($artifactRows | Where-Object {-not $_.Directory})){if($row.PSObject.Properties['Data'] -and $row.Data -and $row.Data.PSObject.Properties['Bytes']){$requiredBytes+=[long]$row.Data.Bytes}};$mountPoint=Get-WsmAssistiveMountPointAncestor $target;if($mountPoint){$gap=[pscustomobject]@{Action='MountPointNotSupported';Status='Blocked';Reason=('目標路徑位於另一個掛載點（'+$mountPoint+'），工具不會寫入掛載點底下；請改用相同位置的一般目錄或另行處理。')}}else{$gap=Get-WsmAssistiveTargetMissingVolumeGap $target}
-                    if($gap){$action=$gap.Action;$status=$gap.Status;$reason=$gap.Reason}else{
-                    Assert-WsmNoReparse $target
-                    Assert-WsmAssistiveTargetScopeTopology -Path $target -Spec $spec -TargetRoot $target -Kind Root
-                    foreach($artifact in $artifactRows){$artifactTarget=$target;if(-not $singleFileScope -and $artifact.RelativePath){$artifactTarget=Join-Path $target ([string]$artifact.RelativePath)};if([IO.File]::Exists($artifactTarget) -or [IO.Directory]::Exists($artifactTarget)){if($artifact.Directory){Assert-WsmAssistiveTargetScopeTopology -Path $artifactTarget -Spec $spec -TargetRoot $target -Artifact $artifact -Kind Directory -Destination $artifactTarget}else{$trustedExistingHash='';$priorItems=@($state.Items|Where-Object ItemId -CEQ $item.ItemId);if($priorItems.Count -eq 1 -and $priorItems[0].PSObject.Properties['OwnedFiles']){$priorOwners=@($priorItems[0].OwnedFiles|Where-Object {$_.RelativePath -ceq [string]$artifact.RelativePath -and $_.TargetPath -ieq $artifactTarget});if($priorOwners.Count -eq 1){$trustedExistingHash=[string]$priorOwners[0].SHA256}};Assert-WsmAssistiveTargetScopeTopology -Path $artifactTarget -Spec $spec -TargetRoot $target -Artifact $artifact -Kind File -Destination $artifactTarget -TrustedExistingHash $trustedExistingHash}}}
-                    if($singleFileScope){
-                        if([IO.Directory]::Exists($target)){$action='BlockedConflict';$status='BlockedConflict';$reason='A directory occupies the approved single-file target.'}
-                        elseif([IO.File]::Exists($target)){$prior=@($state.Items|Where-Object ItemId -CEQ $item.ItemId);$owner=$null;if($prior.Count -eq 1 -and $prior[0].PSObject.Properties['OwnedFiles']){$matches=@($prior[0].OwnedFiles|Where-Object {$_.RelativePath -ceq '' -and $_.TargetPath -ieq $target});if($matches.Count -eq 1){$owner=$matches[0]}};$current=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant();if(-not $owner -or $current -ine [string]$owner.SHA256){$action='BlockedConflict';$status='BlockedConflict';$reason='Existing single-file target is not owned by an exact prior generation.'}elseif($current -ceq [string]$artifactRows[0].Data.Hash){$map=Resolve-WsmIdentityMap $package.Plan @{};$aclPolicy='Exact';if($spec.PSObject.Properties['AclControlPolicy']){$aclPolicy=[string]$spec.AclControlPolicy};[void](Assert-WsmAssistiveMetadataReadback $target $artifactRows[0].Metadata $map $aclPolicy);$action='VerifyOwnedSingleFile';$status='Ready';$reason='Exact owned single-file bytes and required metadata match the approved artifact.'}else{$action='ReplaceOwnedSingleFile';$status='Ready';$reason='Exact prior single-file ownership is verified; preserve a rollback copy before replacement.'}}
-                        else{$parent=[IO.Path]::GetDirectoryName($target);Assert-WsmNoReparse $parent;$action='CreateSingleFile';$status='Ready';$reason='Approved single-file target is absent; its parent directory will be retained or created without applying source-directory metadata.'}
-                    }elseif([IO.File]::Exists($target)){$action='BlockedConflict';$status='BlockedConflict';$reason='A file occupies the approved directory target.'}
-                    elseif([IO.Directory]::Exists($target)){$action='MergeIntoExistingDirectory';$status='Ready';$reason='Existing directories are retained; only new files and verified tool-owned unchanged files may be written.'}
-                    }
-                    if($status -ceq 'Ready' -and $action -cin @('CreateSingleFile','ReplaceOwnedSingleFile','MergeIntoExistingDirectory','RestoreNow')){
-                        $writeDirectory=Get-WsmAssistiveNearestExistingDirectory $target
-                        $needSubdirectories=($action -cin @('MergeIntoExistingDirectory','RestoreNow') -or [IO.Path]::GetFullPath([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($target))).TrimEnd('\') -ine $writeDirectory.TrimEnd('\'))
-                        if(-not (Test-WsmAssistiveDirectoryWritable $writeDirectory -Subdirectories:$needSubdirectories)){$action='PermissionDenied';$status='Deferred';$reason=('目前帳號無法寫入 '+$writeDirectory+'；請以具權限的帳號執行或調整權限後重新檢查。')}
-                        else{$capacityCandidates.Add([pscustomobject]@{ItemId=[string]$item.ItemId;Root=[IO.Path]::GetPathRoot($target);Key=(Get-WsmAssistiveTargetVolumeKey $target);Bytes=[long]$requiredBytes})}
-                    }
-                }
-                catch{$action='Blocked';$status='Blocked';$reason='Target path could not be verified safely.'}
+                $fileGap=Get-WsmAssistiveFileScopeRestoreGap $item $package $state $cv2 $null $CancellationToken
+                $action=$fileGap.Action;$status=$fileGap.Status;$reason=$fileGap.Reason
+                if($fileGap.Capacity){$capacityCandidates.Add($fileGap.Capacity)}
             }elseif($spec.Adapter -in @('IISSection','IISLocation')){
                 try{Assert-WsmAssistiveIisConfigSpec $spec;$existing=Get-WsmIisConfigState $spec;$prior=@($state.Items | Where-Object ItemId -CEQ $item.ItemId);if(-not $existing.Exists){$action='BlockedConflict';$status='BlockedConflict';$reason='Reviewed IIS section/location is unavailable on the target.'}elseif($prior.Count -and ($prior[0].CreatedByTool -or ($prior[0].PSObject.Properties['UpdatedByTool'] -and $prior[0].UpdatedByTool)) -and $prior[0].AppliedManifestHash -and $prior[0].Status -in @('Succeeded','Partial')){$ownedCheck=Test-WsmAdapterConfiguration $spec Staged;if(-not $ownedCheck.Passed){$action='BlockedConflict';$status='BlockedConflict';$reason='Previously owned IIS section/location drifted from the exact staged configuration.'}else{$action='VerifyOwnedIisConfig'}}else{$candidate=Set-WsmIisConfigChanges (Read-WsmXml ([string]$existing.Xml)) @($spec.Desired.Changes);$desired=Read-WsmXml ([string]$spec.Desired.Xml);if((ConvertTo-WsmXmlComparable $candidate.DocumentElement) -cne (ConvertTo-WsmXmlComparable $desired.DocumentElement)){throw 'Reviewed IIS field changes do not produce the exact staged Desired.Xml.'};$action='ApplyReviewedIisChanges'}}catch{$action='BlockedConflict';$status='BlockedConflict';$reason=$_.Exception.Message}
             }else{
@@ -435,17 +415,11 @@ function Get-WsmAssistiveRestorePreview {
     }
     # 容量依目標卷加總：同一磁碟上所有會寫入的已選項目合計後只比對一次（舊流程 Restore.ps1 亦先依磁碟根加總）。
     # 單看各項都夠、合計不夠時，該卷上所有會寫入的項目一律標 AddTargetCapacity。
-    foreach($volumeGroup in @($capacityCandidates.ToArray() | Group-Object Key)){
-        $volumeMembers=@($volumeGroup.Group);$volumeBytes=[long]0;foreach($volumeMember in $volumeMembers){$volumeBytes+=[long]$volumeMember.Bytes}
-        $volumeGap=$null;$volumeError=$false
-        try{$volumeGap=Get-WsmAssistiveVolumeCapacityGap ([string]$volumeMembers[0].Root) $volumeBytes}catch{$volumeError=$true}
-        if(-not $volumeGap -and -not $volumeError){continue}
-        foreach($volumeMember in $volumeMembers){
-            $volumeRow=@($rows.ToArray() | Where-Object {[string]$_.ItemId -ceq [string]$volumeMember.ItemId})
-            if($volumeRow.Count -ne 1){continue}
-            if($volumeError){$volumeRow[0].Action='Blocked';$volumeRow[0].Status='Blocked';$volumeRow[0].Reason='Target path could not be verified safely.';$problems.Add([pscustomobject]@{ItemId=$volumeMember.ItemId;Reason=$volumeRow[0].Reason})}
-            else{$volumeRow[0].Action=$volumeGap.Action;$volumeRow[0].Status=$volumeGap.Status;$volumeRow[0].Reason=$volumeGap.Reason}
-        }
+    foreach($volumeResult in @(Get-WsmAssistiveVolumeCapacityResults $capacityCandidates.ToArray())){
+        $volumeRow=@($rows.ToArray() | Where-Object {[string]$_.ItemId -ceq [string]$volumeResult.ItemId})
+        if($volumeRow.Count -ne 1){continue}
+        if($volumeResult.Error){$volumeRow[0].Action='Blocked';$volumeRow[0].Status='Blocked';$volumeRow[0].Reason='Target path could not be verified safely.';$problems.Add([pscustomobject]@{ItemId=$volumeResult.ItemId;Reason=$volumeRow[0].Reason})}
+        else{$volumeRow[0].Action=$volumeResult.Action;$volumeRow[0].Status=$volumeResult.Status;$volumeRow[0].Reason=$volumeResult.Reason}
     }
     $decisionBlocked=($decision.Receipt.Decision -eq 'RestoreNow' -and -not $decision.Snapshot)
     if($decisionBlocked){$problems.Add([pscustomobject]@{ItemId='';Reason='Target decision receipt requires a trusted target snapshot file.'})}
@@ -467,12 +441,56 @@ function Get-WsmAssistiveTargetMissingVolumeGap([string]$TargetPath) {
 }
 function Get-WsmAssistiveVolumeCapacityGap([string]$Root,[long]$TotalBytes) {
     # 預覽與單項檢查共用的容量判定：該卷可用空間必須大於同卷已選項目合計需求加 256 MiB 緩衝。
-    if((Get-WsmAvailableBytes $Root) -lt ($TotalBytes + 256MB)){return [pscustomobject]@{Action='AddTargetCapacity';Status='Deferred';Reason=('目標磁碟 '+$Root+' 可用空間不足（同一磁碟上已選項目合計約 '+[math]::Ceiling($TotalBytes/1MB)+' MiB）；請釋出空間後重新檢查。')}}
+    # 另帶出卷代號與需要量／可用量（只供可還原集合顯示；預覽列的 Reason 文字不變）。
+    $available=[long](Get-WsmAvailableBytes $Root)
+    if($available -lt ($TotalBytes + 256MB)){return [pscustomobject]@{Action='AddTargetCapacity';Status='Deferred';Reason=('目標磁碟 '+$Root+' 可用空間不足（同一磁碟上已選項目合計約 '+[math]::Ceiling($TotalBytes/1MB)+' MiB）；請釋出空間後重新檢查。');Root=$Root;RequiredBytes=[long]($TotalBytes + 256MB);AvailableBytes=$available}}
     return $null
 }
 function Get-WsmAssistiveTargetLocationGap([string]$TargetPath,[long]$RequiredBytes) {
     $missing=Get-WsmAssistiveTargetMissingVolumeGap $TargetPath;if($missing){return $missing}
     Get-WsmAssistiveVolumeCapacityGap ([IO.Path]::GetPathRoot($TargetPath)) $RequiredBytes
+}
+function Get-WsmAssistiveFileScopeRestoreGap($Item,$Package,$State,[bool]$ContractV2,$ArtifactRows=$null,$CancellationToken=$null) {
+    # 預覽與「可還原集合」共用的 FileScope 判定：原位置、封裝內容、掛載點、缺卷、既有目標衝突、可寫入性與（單項）容量需求。
+    # 全程唯讀：不建目錄、不寫檔、不取鎖。回傳 Action／Status／Reason，以及會寫入時的容量候選（Capacity；由呼叫端依卷加總）。
+    $spec=$Item.MigrationSpec;$action='RestoreNow';$status='Ready';$reason='';$capacity=$null
+    if($ContractV2){$locationError=$(try{Assert-WsmOfflineFullSetOriginalLocation $Package.Plan $spec;''}catch{$_.Exception.Message});if($locationError){return [pscustomobject]@{Action='BlockedLocation';Status='Blocked';Reason=$locationError;Capacity=$null}}}
+    $target=ConvertTo-WsmCanonicalPath $spec.TargetPath
+    try{
+        if($null -ne $ArtifactRows){$artifactRows=@($ArtifactRows)}else{$artifactRows=@(Read-WsmArtifactLines (Join-Path $package.Root 'artifacts.jsonl') $package.Manifest.ArtifactsHash $CancellationToken | Where-Object ItemId -CEQ $item.ItemId)};if(-not $artifactRows.Count){return [pscustomobject]@{Action='NoPayload';Status='Blocked';Reason='封裝中沒有這個核准項目的備份內容（缺少 artifact），工具不會還原。';Capacity=$null}};$singleFileScope=($artifactRows.Count -eq 1 -and -not $artifactRows[0].Directory -and [string]::IsNullOrEmpty([string]$artifactRows[0].RelativePath));$requiredBytes=[long]0;foreach($row in @($artifactRows | Where-Object {-not $_.Directory})){if($row.PSObject.Properties['Data'] -and $row.Data -and $row.Data.PSObject.Properties['Bytes']){$requiredBytes+=[long]$row.Data.Bytes}};$mountPoint=Get-WsmAssistiveMountPointAncestor $target;if($mountPoint){$gap=[pscustomobject]@{Action='MountPointNotSupported';Status='Blocked';Reason=('目標路徑位於另一個掛載點（'+$mountPoint+'），工具不會寫入掛載點底下；請改用相同位置的一般目錄或另行處理。')}}else{$gap=Get-WsmAssistiveTargetMissingVolumeGap $target}
+        if($gap){$action=$gap.Action;$status=$gap.Status;$reason=$gap.Reason}else{
+        Assert-WsmNoReparse $target
+        Assert-WsmAssistiveTargetScopeTopology -Path $target -Spec $spec -TargetRoot $target -Kind Root
+        foreach($artifact in $artifactRows){$artifactTarget=$target;if(-not $singleFileScope -and $artifact.RelativePath){$artifactTarget=Join-Path $target ([string]$artifact.RelativePath)};if([IO.File]::Exists($artifactTarget) -or [IO.Directory]::Exists($artifactTarget)){if($artifact.Directory){Assert-WsmAssistiveTargetScopeTopology -Path $artifactTarget -Spec $spec -TargetRoot $target -Artifact $artifact -Kind Directory -Destination $artifactTarget}else{$trustedExistingHash='';$priorItems=@($state.Items|Where-Object ItemId -CEQ $item.ItemId);if($priorItems.Count -eq 1 -and $priorItems[0].PSObject.Properties['OwnedFiles']){$priorOwners=@($priorItems[0].OwnedFiles|Where-Object {$_.RelativePath -ceq [string]$artifact.RelativePath -and $_.TargetPath -ieq $artifactTarget});if($priorOwners.Count -eq 1){$trustedExistingHash=[string]$priorOwners[0].SHA256}};Assert-WsmAssistiveTargetScopeTopology -Path $artifactTarget -Spec $spec -TargetRoot $target -Artifact $artifact -Kind File -Destination $artifactTarget -TrustedExistingHash $trustedExistingHash}}}
+        if($singleFileScope){
+            if([IO.Directory]::Exists($target)){$action='BlockedConflict';$status='BlockedConflict';$reason='A directory occupies the approved single-file target.'}
+            elseif([IO.File]::Exists($target)){$prior=@($state.Items|Where-Object ItemId -CEQ $item.ItemId);$owner=$null;if($prior.Count -eq 1 -and $prior[0].PSObject.Properties['OwnedFiles']){$matches=@($prior[0].OwnedFiles|Where-Object {$_.RelativePath -ceq '' -and $_.TargetPath -ieq $target});if($matches.Count -eq 1){$owner=$matches[0]}};$current=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant();if(-not $owner -or $current -ine [string]$owner.SHA256){$action='BlockedConflict';$status='BlockedConflict';$reason='Existing single-file target is not owned by an exact prior generation.'}elseif($current -ceq [string]$artifactRows[0].Data.Hash){$map=Resolve-WsmIdentityMap $package.Plan @{};$aclPolicy='Exact';if($spec.PSObject.Properties['AclControlPolicy']){$aclPolicy=[string]$spec.AclControlPolicy};[void](Assert-WsmAssistiveMetadataReadback $target $artifactRows[0].Metadata $map $aclPolicy);$action='VerifyOwnedSingleFile';$status='Ready';$reason='Exact owned single-file bytes and required metadata match the approved artifact.'}else{$action='ReplaceOwnedSingleFile';$status='Ready';$reason='Exact prior single-file ownership is verified; preserve a rollback copy before replacement.'}}
+            else{$parent=[IO.Path]::GetDirectoryName($target);Assert-WsmNoReparse $parent;$action='CreateSingleFile';$status='Ready';$reason='Approved single-file target is absent; its parent directory will be retained or created without applying source-directory metadata.'}
+        }elseif([IO.File]::Exists($target)){$action='BlockedConflict';$status='BlockedConflict';$reason='A file occupies the approved directory target.'}
+        elseif([IO.Directory]::Exists($target)){$action='MergeIntoExistingDirectory';$status='Ready';$reason='Existing directories are retained; only new files and verified tool-owned unchanged files may be written.'}
+        }
+        if($status -ceq 'Ready' -and $action -cin @('CreateSingleFile','ReplaceOwnedSingleFile','MergeIntoExistingDirectory','RestoreNow')){
+            $writeDirectory=Get-WsmAssistiveNearestExistingDirectory $target
+            $needSubdirectories=($action -cin @('MergeIntoExistingDirectory','RestoreNow') -or [IO.Path]::GetFullPath([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($target))).TrimEnd('\') -ine $writeDirectory.TrimEnd('\'))
+            if(-not (Test-WsmAssistiveDirectoryWritable $writeDirectory -Subdirectories:$needSubdirectories)){$action='PermissionDenied';$status='Deferred';$reason=('目前帳號無法寫入 '+$writeDirectory+'；請以具權限的帳號執行或調整權限後重新檢查。')}
+            else{$capacity=[pscustomobject]@{ItemId=[string]$item.ItemId;Root=[IO.Path]::GetPathRoot($target);Key=(Get-WsmAssistiveTargetVolumeKey $target);Bytes=[long]$requiredBytes}}
+        }
+    }
+    catch{$action='Blocked';$status='Blocked';$reason='Target path could not be verified safely.'}
+    [pscustomobject]@{Action=$action;Status=$status;Reason=$reason;Capacity=$capacity}
+}
+function Get-WsmAssistiveVolumeCapacityResults([object[]]$Candidates) {
+    # 容量依目標卷加總：同一卷上所有會寫入的項目合計後只比對一次；不夠（或無法驗證）時，該卷上每個項目各回傳一列結果。預覽與可還原集合共用。
+    foreach($volumeGroup in @($Candidates | Group-Object Key)){
+        $volumeMembers=@($volumeGroup.Group);$volumeBytes=[long]0;foreach($volumeMember in $volumeMembers){$volumeBytes+=[long]$volumeMember.Bytes}
+        $volumeGap=$null;$volumeError=$false
+        try{$volumeGap=Get-WsmAssistiveVolumeCapacityGap ([string]$volumeMembers[0].Root) $volumeBytes}catch{$volumeError=$true}
+        if(-not $volumeGap -and -not $volumeError){continue}
+        foreach($volumeMember in $volumeMembers){
+            if($volumeError){[pscustomobject]@{ItemId=[string]$volumeMember.ItemId;Error=$true;Action='Blocked';Status='Blocked';Reason='Target path could not be verified safely.';Root=[string]$volumeMembers[0].Root;RequiredBytes=[long]$volumeBytes;AvailableBytes=[long]-1}}
+            else{[pscustomobject]@{ItemId=[string]$volumeMember.ItemId;Error=$false;Action=$volumeGap.Action;Status=$volumeGap.Status;Reason=$volumeGap.Reason;Root=[string]$volumeGap.Root;RequiredBytes=[long]$volumeGap.RequiredBytes;AvailableBytes=[long]$volumeGap.AvailableBytes}}
+        }
+    }
 }
 function Initialize-WsmAssistiveMountPointApi {
     if('WsmAssistiveTargetNative' -as [type]){return}

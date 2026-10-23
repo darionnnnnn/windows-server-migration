@@ -543,12 +543,15 @@
     if (bytes >= 1024) { let size = bytes, index = -1; do { size /= 1024; index++; } while (size >= 1024 && index < units.length - 1); text += `（約 ${size.toFixed(size < 10 ? 2 : 1)} ${units[index]}）`; }
     return text;
   }
+  // 不可還原的代碼對應短標題（與後端 restorableCode 一一對應）；其他既有代碼照實顯示代碼本身。
+  const RESTORABLE_CODE_TEXT = { NoPayload: '缺少備份內容', MissingVolume: '缺少磁碟', InsufficientCapacity: '空間不足', BlockedLocation: '原位置不符', MountPointNotSupported: '掛載點不支援', PermissionDenied: '權限不足', ManualWorkflow: '需人工處理', External: '外部處理', BlockedConflict: '目標衝突', Blocked: '無法安全驗證' };
+  function restorableCodeText(code) { return code ? (RESTORABLE_CODE_TEXT[code] || code) : '無法還原'; }
   function normalizeRestoreOption(option) {
     const read = (lower, upper) => option[lower] !== undefined ? option[lower] : option[upper], list = value => Array.isArray(value) ? value.map(String) : [];
     return {
       value: String(read('value', 'Value') || ''), label: String(read('label', 'Label') || '已核准項目'), detail: String(read('adapter', 'Adapter') || read('kind', 'Kind') || ''),
       group: String(read('group', 'Group') || 'Settings'), typeLabel: String(read('typeLabel', 'TypeLabel') || read('adapter', 'Adapter') || read('kind', 'Kind') || '其他'),
-      restorable: read('restorable', 'Restorable'), reason: String(read('restorableReason', 'RestorableReason') || ''), restored: read('restored', 'Restored') === true,
+      restorable: read('restorable', 'Restorable'), reason: String(read('restorableReason', 'RestorableReason') || ''), code: String(read('restorableCode', 'RestorableCode') || ''), restored: read('restored', 'Restored') === true,
       counts: read('countsAvailable', 'CountsAvailable') === true, files: Math.max(0, Number(read('fileCount', 'FileCount')) || 0), bytes: Math.max(0, Number(read('bytes', 'Bytes')) || 0),
       dependencies: list(read('dependencies', 'Dependencies')), requiredBy: list(read('requiredBy', 'RequiredBy')), preselected: read('preselected', 'Preselected')
     };
@@ -623,7 +626,7 @@
         const meta=el('span','wizard-runtime-item-meta',`${option.typeLabel}${option.counts?` · ${option.files} 檔／${formatByteCount(option.bytes)}`:''}`),reapply=el('span','wizard-runtime-item-badge','↻ 將重新還原'),incomplete=el('span','wizard-runtime-item-badge is-incomplete','');
         reapply.hidden=true;incomplete.hidden=true;reapply.dataset.badge='reapply';incomplete.dataset.badge='incomplete';
         copy.append(el('strong','',option.label+(option.restored?'（已還原）':'')),el('span','',option.detail),meta);
-        if(option.restorable===false)copy.appendChild(el('span','wizard-runtime-item-reason',option.reason));
+        if(option.restorable===false){const why=el('span','wizard-runtime-item-reason',`⛔ 不可還原（${restorableCodeText(option.code)}）${option.reason?'：'+option.reason:''}`);why.id=`wizard-runtime-reason-${option.value}`;why.dataset.restorableCode=option.code;checkbox.setAttribute('aria-describedby',why.id);copy.appendChild(why);}
         copy.append(reapply,incomplete);
         row.append(checkbox,copy);fieldset.appendChild(row);rows.push({option,checkbox,row,reapply,incomplete});
         checkbox.addEventListener('change',()=>{const next=current();checkbox.checked&&canSelect(option)?next.add(option.value):next.delete(option.value);commit(next);});

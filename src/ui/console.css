@@ -161,7 +161,7 @@ body{font-size:18px}
 .wizard-runtime-group-title{display:flex;align-items:center;gap:8px;font-weight:650}
 .wizard-runtime-group-partial{color:var(--muted)}
 .wizard-runtime-item-tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
-.wizard-runtime-item-reason{color:var(--muted)}
+.wizard-runtime-item-reason{display:block;font-weight:650;color:var(--danger)}
 .wizard-runtime-item-filter{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
 .wizard-runtime-item-filter label{font-weight:650}
 .wizard-runtime-item-filter select{min-height:44px;min-width:0;max-width:100%;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 10px}

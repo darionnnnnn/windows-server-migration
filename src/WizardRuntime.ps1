@@ -301,6 +301,68 @@ function Get-WsmWizardTargetArtifactTotals($PackageRecord) {
     $totals
 }
 
+# 項目選擇器的「可還原」判定：核准（計畫內 Include）∩ 有可用 payload ∩ 目標可放置。
+# 判定一律呼叫預覽使用的同一份函式（Get-WsmAssistiveFileScopeRestoreGap／Get-WsmAssistiveVolumeCapacityResults），這裡只負責把預覽動作對應成代碼與中文原因。
+# 全程唯讀：不建目錄、不寫檔、不取鎖。沒有已驗證封裝（尚未匯入）時回傳空表，不假裝知道 payload 與目標狀況。
+function ConvertTo-WsmWizardRestorableCode([string]$PreviewAction) {
+    switch -CaseSensitive ($PreviewAction) {
+        'PrepareSameLocation' {return 'MissingVolume'}
+        'AddTargetCapacity' {return 'InsufficientCapacity'}
+    }
+    $PreviewAction
+}
+function Get-WsmWizardRestorableReason([string]$Code,$Gap) {
+    switch -CaseSensitive ($Code) {
+        'NoPayload' {return '封裝裡沒有這個項目的備份內容（缺少 artifact），工具不會還原。'}
+        'MissingVolume' {return [string]$Gap.Reason}
+        'MountPointNotSupported' {return [string]$Gap.Reason}
+        'PermissionDenied' {return [string]$Gap.Reason}
+        'InsufficientCapacity' {
+            if($Gap.PSObject.Properties['Root'] -and $Gap.PSObject.Properties['RequiredBytes'] -and [long]$Gap.AvailableBytes -ge 0){
+                $needMib=[math]::Ceiling([double]$Gap.RequiredBytes/1MB);$freeMib=[math]::Floor([double]$Gap.AvailableBytes/1MB)
+                return ('目標磁碟 '+[string]$Gap.Root+' 空間不足：同一磁碟上全部可還原項目合計需要約 '+$needMib+' MiB（含 256 MiB 緩衝），目前可用約 '+$freeMib+' MiB。')
+            }
+            return [string]$Gap.Reason
+        }
+        'BlockedLocation' {return ('不符合原位置還原的條件，工具不會還原：'+[string]$Gap.Reason)}
+        'BlockedConflict' {return ('目標位置已有衝突，需要人工處理：'+[string]$Gap.Reason)}
+        'Blocked' {return '無法安全驗證目標路徑，工具不會還原。'}
+    }
+    ('目標位置目前無法還原（'+$Code+'）：'+[string]$Gap.Reason)
+}
+function Get-WsmWizardTargetRestorableGaps($Context,$PackageRecord,$State) {
+    $gaps=@{}
+    if(-not $PackageRecord -or -not $PackageRecord.PSObject.Properties['Package'] -or -not $PackageRecord.Package){return $gaps}
+    $verified=$PackageRecord.Package
+    foreach($required in @('Root','Manifest','Plan')){if(-not $verified.PSObject.Properties[$required] -or -not $verified.$required){return $gaps}}
+    if(-not $verified.Manifest.PSObject.Properties['ArtifactsHash']){return $gaps}
+    $cv2=[bool]($verified.Plan.PSObject.Properties['Assistive'] -and $verified.Plan.Assistive -and $verified.Plan.Assistive.PSObject.Properties['ContractVersion'] -and [int]$verified.Plan.Assistive.ContractVersion -eq 2)
+    $gapState=$State;if(-not $gapState -or -not $gapState.PSObject.Properties['Items']){$gapState=[pscustomobject]@{Items=@()}}
+    # 只評估會由預覽判定的 FileScope：外部處理與舊格式非 C 傳輸由預覽另有流程，這裡不替它們下結論。
+    $candidates=@($Context.Plan.Items|Where-Object {
+        $_.Decision -ceq 'Include' -and $_.MigrationSpec -and [string]$_.MigrationSpec.Adapter -ceq 'FileScope' -and
+        -not ($_.MigrationSpec.PSObject.Properties['TransferChannel'] -and [string]$_.MigrationSpec.TransferChannel -ceq 'External') -and
+        -not ($_.MigrationSpec.PSObject.Properties['TransferChannel'] -and [string]$_.MigrationSpec.TransferChannel -ceq 'NonC' -and -not $cv2)
+    })
+    if(-not $candidates.Count){return $gaps}
+    $rowsById=@{};foreach($candidate in $candidates){$rowsById[[string]$candidate.ItemId]=New-Object 'System.Collections.Generic.List[object]'}
+    Read-WsmArtifactLines (Join-Path ([string]$verified.Root) 'artifacts.jsonl') ([string]$verified.Manifest.ArtifactsHash) | ForEach-Object {$rowId=[string]$_.ItemId;if($rowsById.ContainsKey($rowId)){$rowsById[$rowId].Add($_)}}
+    $capacityCandidates=New-Object 'System.Collections.Generic.List[object]'
+    foreach($candidate in $candidates){
+        $candidateId=[string]$candidate.ItemId
+        try{$gap=Get-WsmAssistiveFileScopeRestoreGap $candidate $verified $gapState $cv2 @($rowsById[$candidateId].ToArray())}
+        catch{$gap=[pscustomobject]@{Action='Blocked';Status='Blocked';Reason='Target path could not be verified safely.';Capacity=$null}}
+        if([string]$gap.Status -cne 'Ready'){$code=ConvertTo-WsmWizardRestorableCode ([string]$gap.Action);$gaps[$candidateId]=[pscustomobject]@{Code=$code;Reason=(Get-WsmWizardRestorableReason $code $gap)};continue}
+        if($gap.Capacity){$capacityCandidates.Add($gap.Capacity)}
+    }
+    # 容量依卷加總（17.62）：以「全部可還原項目都選取」為前提；某卷不夠時，該卷上會寫入的項目全部標 InsufficientCapacity。
+    foreach($volumeResult in @(Get-WsmAssistiveVolumeCapacityResults $capacityCandidates.ToArray())){
+        $volumeCode=ConvertTo-WsmWizardRestorableCode ([string]$volumeResult.Action)
+        $gaps[[string]$volumeResult.ItemId]=[pscustomobject]@{Code=$volumeCode;Reason=(Get-WsmWizardRestorableReason $volumeCode $volumeResult)}
+    }
+    $gaps
+}
+
 function Get-WsmWizardTargetItemOptions($Context,$Package,$State,$Decision=$null) {
     $manifestHash=if($Package){[string]$Package.ManifestHash}else{''}
     $rows=@{};if($Package -and $manifestHash -and $State -and $State.PSObject.Properties['Items']){foreach($row in @($State.Items)){if($row -and $row.PSObject.Properties['ItemId']){$rows[[string]$row.ItemId]=$row}}}
@@ -325,21 +387,23 @@ function Get-WsmWizardTargetItemOptions($Context,$Package,$State,$Decision=$null
         $dependencyMap[$entryId]=$dependsOnList
     }
     $artifactTotals=Get-WsmWizardTargetArtifactTotals $Package
+    $restorableGaps=Get-WsmWizardTargetRestorableGaps $Context $Package $State
     # 最後一份決策收據的選取；沒有收據時 preselected 為 $null（前端改用預設全選未還原項）。
     $chosen=$null
     if($Decision -and $Decision.PSObject.Properties['Receipt'] -and $Decision.Receipt -and $Decision.Receipt.PSObject.Properties['SelectedItemIds']){$chosen=@{};foreach($chosenId in @($Decision.Receipt.SelectedItemIds)){$chosen[[string]$chosenId]=$true}}
     @($included|ForEach-Object {
         $spec=$_.MigrationSpec;$adapter=if($spec){[string]$spec.Adapter}else{''}
         $group=if($adapter -cin @('IISSite','IISPool','IISSection','IISLocation')){'Web'}elseif($adapter -ceq 'ScheduledTask'){'Tasks'}elseif($adapter -ceq 'FileScope'){'Data'}else{'Settings'}
-        $restorable=$true;$reason=''
-        if(-not $spec -or $adapter -ceq 'ManualWorkflow'){$restorable=$false;$reason='需要人工處理，工具不會還原。'}elseif($adapter -ceq 'FileScope' -and $spec.PSObject.Properties['TransferChannel'] -and [string]$spec.TransferChannel -ceq 'External'){$restorable=$false;$reason='標示為外部處理，未包含在備份中。'}
+        $restorable=$true;$reason='';$restorableCode=''
+        if(-not $spec -or $adapter -ceq 'ManualWorkflow'){$restorable=$false;$restorableCode='ManualWorkflow';$reason='需要人工處理，工具不會還原。'}elseif($adapter -ceq 'FileScope' -and $spec.PSObject.Properties['TransferChannel'] -and [string]$spec.TransferChannel -ceq 'External'){$restorable=$false;$restorableCode='External';$reason='標示為外部處理，未包含在備份中。'}
+        if($restorable -and $restorableGaps.ContainsKey([string]$_.ItemId)){$restorable=$false;$restorableCode=[string]$restorableGaps[[string]$_.ItemId].Code;$reason=[string]$restorableGaps[[string]$_.ItemId].Reason}
         $row=$rows[[string]$_.ItemId];$restored=[bool]($row -and -not $unproven.ContainsKey([string]$_.ItemId) -and [string]$row.Status -ceq 'Succeeded' -and $row.PSObject.Properties['AppliedManifestHash'] -and [string]$row.AppliedManifestHash -ceq $manifestHash)
         $optionId=[string]$_.ItemId;$fileCount=[long]0;$byteCount=[long]0
         if($null -ne $artifactTotals -and $artifactTotals.ContainsKey($optionId)){$fileCount=[long]$artifactTotals[$optionId].Files;$byteCount=[long]$artifactTotals[$optionId].Bytes}
         $dependsOn=@();if($dependencyMap.ContainsKey($optionId)){$dependsOn=@($dependencyMap[$optionId].ToArray())}
         $neededBy=@();if($requiredByMap.ContainsKey($optionId)){$neededBy=@($requiredByMap[$optionId].ToArray())}
         $preselected=$null;if($null -ne $chosen){$preselected=[bool]$chosen.ContainsKey($optionId)}
-        [pscustomobject]@{value=$optionId;label=[string]$_.Name;kind=[string]$_.Kind;adapter=$adapter;group=$group;typeLabel=(Get-WsmWizardItemTypeLabel $adapter ([string]$_.Kind));restorable=$restorable;restorableReason=$reason;restored=$restored;fileCount=$fileCount;bytes=$byteCount;countsAvailable=[bool]($null -ne $artifactTotals);dependencies=$dependsOn;requiredBy=$neededBy;preselected=$preselected}
+        [pscustomobject]@{value=$optionId;label=[string]$_.Name;kind=[string]$_.Kind;adapter=$adapter;group=$group;typeLabel=(Get-WsmWizardItemTypeLabel $adapter ([string]$_.Kind));restorable=$restorable;restorableReason=$reason;restorableCode=$restorableCode;restored=$restored;fileCount=$fileCount;bytes=$byteCount;countsAvailable=[bool]($null -ne $artifactTotals);dependencies=$dependsOn;requiredBy=$neededBy;preselected=$preselected}
     })
 }
 

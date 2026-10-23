@@ -1199,6 +1199,35 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - `Windows PowerShell contracts` 已觸發，`required-checks` 如預期判定失敗。失敗的是 `Test-AssistiveWorkloadIntegration` 與 `Test-ObservationWorkflow`，兩者在第六輪基準就已失敗（17.71 有列出）。
   - 另一個 workflow `Native released console` 從 B1（40a3369）起每次都失敗。原因是 B1 讓作業列表的「要求取消」改為先確認，而 CI 的 Source 取消路徑（`WSM_RUNTIME_FORMAL_SOURCE_CANCEL_ONLY`）點下後沒有按確認，就直接等取消的 POST，因此逾時。本機預設路徑不會走到這條。`Test-HtmlBrowser.js` 有同樣的寫法。
   - 已修正：兩支測試在點下後補按「確定取消」。本機在取消模式下跑 `Test-NativeWizardRuntimeHandler.js`、跑 `Test-HtmlBrowser.js`，都通過。
+### 17.75 N1 可還原集合＝核准 ∩ 實際可用 payload ∩ 目標可放置；部分選取的收據與實際寫入一致
+
+- Sonnet 5.5 medium subagent 實作，主代理審查並獨立重跑。
+- 共用判定放在 `AssistiveRestore.ps1`：
+  - `Get-WsmAssistiveFileScopeRestoreGap`：原本預覽 FileScope 分支的判定原樣搬出，涵蓋 BlockedLocation、掛載點、缺卷、目標衝突、可寫入性，以及新增的 NoPayload，全程唯讀。
+  - `Get-WsmAssistiveVolumeCapacityResults`：依卷加總容量。
+  - 預覽與還原選項都改為呼叫這兩個函式，判定只有一份。
+- 選項（`Get-WsmWizardTargetItemOptions`）：
+  - 新增 `restorableCode`：NoPayload、MissingVolume、InsufficientCapacity、BlockedLocation、MountPointNotSupported、PermissionDenied、BlockedConflict、ManualWorkflow、External。
+  - 容量依卷檢查，前提是「全部可還原項目都選取」。原因寫出卷代號、需要量與可用量。
+  - 沒有已驗證封裝時，不對 payload 與目標下結論。
+- 預覽語意改變一處：FileScope 項目在封裝內沒有任何 artifact 時，原本預覽回 Ready，寫入器卻會丟例外。現在預覽標為 `NoPayload／Blocked`，與選項一致，也不會阻擋其他 Ready 項目。
+- 畫面：
+  - 不可還原的項目使用原生 disabled、不預勾。收據預選、全選、選取篩選結果、群組全選都不會勾到它。
+  - 原因以圖示加文字顯示，並以 `aria-describedby` 關聯。
+  - 摘要的「可還原 y」只計可還原項目。
+- 15.6-6 驗收：以真實 handler 部分選取後，預覽 Ready 的寫入項目等於收據選取；ItemResults 等於收據選取；實際寫入是其子集；未勾選項目的目標路徑在還原前後都不存在。
+- 驗證（WinPS 5.1、真實 Edge、G 旅程 n1a001 48 項）：見提交說明。
+- 突變（皆轉紅）：
+  - 選項端略過 payload 檢查。
+  - 選項端略過目標放置檢查。
+  - 可選判定恆真：只改「全選」按鈕不會轉紅，因為 refresh 還有一層防線。
+  - 寫入未勾選項目。
+  - 主代理另做一個獨立突變：缺卷對應成 BlockedConflict，轉紅。
+- 限制：
+  - 選項投影時，對可還原的 FileScope 會掃描 artifact 索引並檢查目標檔案。目標已存在且檔案很多時，成本接近預覽，未量測。
+  - MountPointNotSupported 的掛載點觀測以替身驗證。
+  - PermissionDenied 以真實拒絕 ACL 驗證，但帶備份權限的 token 可能不受影響。
+  - `Test-WizardRuntime` 曾偶發一次失敗（訊息為「A uniquely verified received schema-3 approved plan is required」），重跑兩次都通過，根因未明，列為後續追查。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
