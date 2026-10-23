@@ -300,22 +300,52 @@ function Write-WsmTextJobRecord([string]$Workspace,$Record) {
     Write-WsmJson $path $Record
     $path
 }
+$script:WsmTextProgress=$null
 function Invoke-WsmTypedTextOperation {
+    # 16.4-1：非互動（標準輸入已結束）時，必填值仍缺少不是失敗也不是取消，而是「等待輸入」：
+    # 這裡把核心流程在輸入結束時丟出的 EndOfStreamException 換成帶 WsmWaitingForInput／WsmMissingFields 的例外，
+    # 入口腳本據此回 exit 2 並列出缺少的欄位。只記欄位名稱，不記任何已輸入的值，也不落盤。
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[scriptblock]$PromptReader)
+    $previousProgress=$script:WsmTextProgress
+    $progress=@{Field='';Action='';Required=@();Sensitive=@();Done=(New-Object 'System.Collections.Generic.List[string]')}
+    $script:WsmTextProgress=$progress
+    try{Invoke-WsmTypedTextOperationCore -Workspace $Workspace -PromptReader $PromptReader}
+    catch{
+        $inner=$_.Exception
+        if($inner -isnot [IO.EndOfStreamException] -or $inner.Data.Contains('WsmWaitingForInput')){throw}
+        $secretBlocked=$inner.Data.Contains('WsmSecretInput')
+        $missing=New-Object 'System.Collections.Generic.List[string]'
+        if([string]$progress.Field){$missing.Add([string]$progress.Field)}
+        if($secretBlocked){foreach($name in @($progress.Sensitive)){if($name -and -not $progress.Done.Contains([string]$name) -and -not $missing.Contains([string]$name)){$missing.Add([string]$name)}}}
+        else{foreach($name in @($progress.Required)){if($name -and -not $progress.Done.Contains([string]$name) -and -not $missing.Contains([string]$name)){$missing.Add([string]$name)}}}
+        if(-not $missing.Count){$missing.Add('Input')}
+        $reason=if($secretBlocked){'Credential/secret input is never read from redirected standard input'}else{'Console input ended'}
+        $waiting=New-Object IO.EndOfStreamException($reason+' while required values were still missing (WaitingForInput): '+($missing -join ', ')+'. Nothing was submitted and no entered value was saved.')
+        $waiting.Data['WsmWaitingForInput']=$true
+        $waiting.Data['WsmMissingFields']=($missing -join ',')
+        if([string]$progress.Action){$waiting.Data['WsmAction']=[string]$progress.Action}
+        throw $waiting
+    }
+    finally{$script:WsmTextProgress=$previousProgress}
+}
+function Invoke-WsmTypedTextOperationCore {
     [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[scriptblock]$PromptReader)
     if(-not (Get-Command Get-WsmHtmlActionMetadata -ErrorAction SilentlyContinue)){throw 'Typed forms are unavailable; load the installed HTML schema helpers first.'}
-    $roles=@('Source','Target','Manager');for($i=0;$i -lt $roles.Count;$i++){Write-Host ('{0}. {1}' -f ($i+1),$roles[$i])};$roleAnswer=Read-WsmTextEntry '選擇操作情境角色（只供上下文與指引，不代表授權）' $PromptReader;$roleIndex=0
+    $progress=$script:WsmTextProgress;if($null -eq $progress){$progress=@{Field='';Action='';Required=@();Sensitive=@();Done=(New-Object 'System.Collections.Generic.List[string]')}};$noSecretInput=((-not $PromptReader) -and [Console]::IsInputRedirected)
+    $roles=@('Source','Target','Manager');for($i=0;$i -lt $roles.Count;$i++){Write-Host ('{0}. {1}' -f ($i+1),$roles[$i])};$progress.Field='Role（操作情境角色編號）';$roleAnswer=Read-WsmTextEntry '選擇操作情境角色（只供上下文與指引，不代表授權）' $PromptReader;$roleIndex=0
     if(-not [int]::TryParse($roleAnswer,[ref]$roleIndex) -or $roleIndex -lt 1 -or $roleIndex -gt $roles.Count){throw 'Choose Source, Target, or Manager.'};$role=$roles[$roleIndex-1]
     $pairs=New-Object 'System.Collections.Generic.List[object]';$seenPairIds=@{};$fleetPath=Join-Path ([IO.Path]::GetFullPath($Workspace)) 'fleet.json'
     if([IO.File]::Exists($fleetPath)){$fleet=Get-WsmFleet $Workspace;foreach($fleetPair in @($fleet.Pairs)){if($fleetPair -and $fleetPair.PairId -and -not $seenPairIds.ContainsKey([string]$fleetPair.PairId)){$seenPairIds[[string]$fleetPair.PairId]=$true;$pairs.Add($fleetPair)}}}
     elseif($role -ceq 'Manager'){[void](Get-WsmFleet $Workspace)}
     if($role -in @('Source','Target')){$enrolled=Read-WsmOutputProfile $Workspace;if($enrolled -and [string]$enrolled.Role -ceq $role){foreach($receivedPair in @(Get-WsmWizardReceivedPlanChoices $Workspace $enrolled)){if($receivedPair -and $receivedPair.pairId -and -not $seenPairIds.ContainsKey([string]$receivedPair.pairId)){$seenPairIds[[string]$receivedPair.pairId]=$true;$pairs.Add([pscustomobject]@{PairId=[string]$receivedPair.pairId;TargetName=[string]$receivedPair.targetName})}}}}
     $pairs=@($pairs.ToArray());$pairId=''
-    if($pairs.Count){Write-Host '可用配對：';for($i=0;$i -lt $pairs.Count;$i++){Write-Host ('{0}. {1} — {2}' -f ($i+1),$pairs[$i].PairId,$pairs[$i].TargetName)};$pairAnswer=Read-WsmTextEntry '選配對編號（Enter 使用不指定配對的本機操作）' $PromptReader;if($pairAnswer){$pairIndex=0;if(-not [int]::TryParse($pairAnswer,[ref]$pairIndex) -or $pairIndex -lt 1 -or $pairIndex -gt $pairs.Count){throw 'Invalid pair selection.'};$pairId=[string]$pairs[$pairIndex-1].PairId}}
+    if($pairs.Count){Write-Host '可用配對：';for($i=0;$i -lt $pairs.Count;$i++){Write-Host ('{0}. {1} — {2}' -f ($i+1),$pairs[$i].PairId,$pairs[$i].TargetName)};$progress.Field='PairId（配對編號）';$pairAnswer=Read-WsmTextEntry '選配對編號（Enter 使用不指定配對的本機操作）' $PromptReader;if($pairAnswer){$pairIndex=0;if(-not [int]::TryParse($pairAnswer,[ref]$pairIndex) -or $pairIndex -lt 1 -or $pairIndex -gt $pairs.Count){throw 'Invalid pair selection.'};$pairId=[string]$pairs[$pairIndex-1].PairId}}
     $pairLabel='未指定';if($pairId){$pairLabel=$pairId};Write-Host ('Core context：Workspace='+[IO.Path]::GetFullPath($Workspace)+'；操作情境角色='+$role+'；PairId='+$pairLabel)
     $metadata=@(Get-WsmHtmlActionMetadata -Role $role);$map=Get-WsmHtmlActionMap
     foreach($group in @('Source','Manager','Target')){Write-Host ('['+$(switch($group){Source{'來源端'}Manager{'管理端'}Target{'目標端'}})+']');$rows=@($metadata | Where-Object {(Get-WsmTextActionGroup ([string]$_.action)) -ceq $group});foreach($row in $rows){Write-Host ('  '+$row.action+' — '+(Get-WsmTextActionLabel ([string]$row.action)) )}}
-    $action=Read-WsmTextEntry '輸入完整操作識別碼（0 取消）' $PromptReader;if($action -eq '0'){return [pscustomobject]@{Status='Cancelled';Executed=$false}}
+    $progress.Field='Action（操作識別碼）';$action=Read-WsmTextEntry '輸入完整操作識別碼（0 取消）' $PromptReader;if($action -eq '0'){return [pscustomobject]@{Status='Cancelled';Executed=$false}}
     $entry=$metadata | Where-Object {$_.action -ceq $action} | Select-Object -First 1;if(-not $entry -or -not $map.Contains($action)){throw 'Unknown operation for this installed module.'}
+    $progress.Action=$action;$progress.Required=@($entry.parameters | Where-Object {$_.required -and $_.name -notin @('Workspace','PairId','Role','Secrets')} | ForEach-Object {[string]$_.name});$progress.Sensitive=@($entry.parameters | Where-Object {$_.sensitive} | ForEach-Object {[string]$_.name})
     if($action -ceq 'SourceCandidateScan' -and $pairId){Write-Host '來源 C 槽候選探索使用未配對的來源盤點；本次不套用選取配對。';$pairId=''}
     if($action -ceq 'DeveloperProbe'){
         $probeJobs=@(Get-WsmTextDeveloperProbeJobs $Workspace $role)
@@ -345,7 +375,7 @@ function Invoke-WsmTypedTextOperation {
                 foreach($name in $trustedDefaultNames){
                     if(-not $command.Parameters.ContainsKey($name)){continue}
                     $property=$defaults.args.PSObject.Properties[$name]
-                    if($property -and $null -ne $property.Value -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)){$raw[$name]=$property.Value}
+                    if($property -and $null -ne $property.Value -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)){$raw[$name]=$property.Value;$progress.Done.Add([string]$name)}
                 }
             }
         }
@@ -353,22 +383,24 @@ function Invoke-WsmTypedTextOperation {
             if($parameter.name -in @('Workspace','PairId','Role','Secrets')){continue}
             if(-not $command.Parameters.ContainsKey($parameter.name)){continue}
             if($raw.Contains($parameter.name)){Write-Host ($parameter.name+'：採用目前工作區核對的值；沒有要求重新輸入。');continue}
+            $progress.Field=[string]$parameter.name
             $value=$null
             if($parameter.name -match '^(Expected.*Revision|DecisionRevision)$'){$value=Get-WsmTextCurrentRevision $parameter.name $Workspace $pairId $command.Name}
             if($null -ne $value){Write-Host ($parameter.name+'：目前核心 revision '+$value+'；按 Enter 採用，或輸入其他 revision。');$answer=Read-WsmTextEntry 'revision' $PromptReader;if($answer){$number=0;if(-not [int]::TryParse($answer,[Globalization.NumberStyles]::Integer,[Globalization.CultureInfo]::InvariantCulture,[ref]$number)){throw ('Invalid integer: '+$parameter.name)};$value=$number}else{$value=[int]$value}}
-            elseif($command.Parameters[$parameter.name].ParameterType -eq [Management.Automation.PSCredential]){$credential=Get-Credential -Message ('本次操作認證：'+$parameter.name);if(-not $credential){throw 'Credential entry cancelled.'};$credentialValues[$parameter.name]=$credential;$value=[pscustomobject]@{UserName='typed-memory-only';Password='placeholder-not-a-secret'}}
+            elseif($command.Parameters[$parameter.name].ParameterType -eq [Management.Automation.PSCredential]){if($noSecretInput){$blocked=New-Object IO.EndOfStreamException('Credential input is not read from redirected standard input.');$blocked.Data['WsmSecretInput']=$true;throw $blocked};$credential=Get-Credential -Message ('本次操作認證：'+$parameter.name);if(-not $credential){throw 'Credential entry cancelled.'};$credentialValues[$parameter.name]=$credential;$value=[pscustomobject]@{UserName='typed-memory-only';Password='placeholder-not-a-secret'}}
             else{$value=Read-WsmTextTypedValue $parameter.name $parameter $PromptReader}
-            if($null -ne $value){$raw[$parameter.name]=$value}
+            if($null -ne $value){$raw[$parameter.name]=$value;$progress.Done.Add([string]$parameter.name)}
         }
         if($command.Parameters.ContainsKey('ExpectedRevision') -and -not $raw.Contains('ExpectedRevision')){
+            $progress.Field='ExpectedRevision'
             $revision=Get-WsmTextCurrentRevision 'ExpectedRevision' $Workspace $pairId $command.Name
             if($null -ne $revision){Write-Host ('ExpectedRevision：目前核心 revision '+$revision+'；按 Enter 採用，或輸入要比較的 revision。');$answer=Read-WsmTextEntry '預期 revision' $PromptReader;if($answer){$typed=@{name='ExpectedRevision';type='integer';required=$true};$raw.ExpectedRevision=Read-WsmTextTypedValue 'ExpectedRevision' $typed $PromptReader}else{$raw.ExpectedRevision=[int]$revision}}
             elseif(@($command.Parameters.ExpectedRevision.Attributes | Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.Mandatory}).Count){$typed=@{name='ExpectedRevision';type='integer';required=$true};$raw.ExpectedRevision=Read-WsmTextTypedValue 'ExpectedRevision（請先執行專屬預覽以取得 CAS 值）' $typed $PromptReader}
         }
         if($command.Parameters.ContainsKey('Secrets')){
-            while($true){$ref=Read-WsmTextEntry 'SecretRef（空白結束；秘密僅留在此程序記憶體）' $PromptReader;if(-not $ref){break};if($secretValues.ContainsKey($ref)){throw 'Duplicate SecretRef.'};$kind=Read-WsmTextEntry '秘密類型：Credential 或 SecureString' $PromptReader
-                if($kind -eq 'Credential'){$credential=Get-Credential -Message ('SecretRef '+$ref);if(-not $credential){throw 'Credential entry cancelled.'};$secretValues[$ref]=$credential;$credential=$null}
-                elseif($kind -eq 'SecureString'){if($PromptReader){throw 'SecureString text-console fixture must use the credential provider; interactive secret entry is required.'};$secretValues[$ref]=Read-Host -AsSecureString ('SecretRef '+$ref)}else{throw 'Unsupported secret kind.'}
+            while($true){$progress.Field='Secrets（SecretRef）';$ref=Read-WsmTextEntry 'SecretRef（空白結束；秘密僅留在此程序記憶體）' $PromptReader;if(-not $ref){break};if($secretValues.ContainsKey($ref)){throw 'Duplicate SecretRef.'};$kind=Read-WsmTextEntry '秘密類型：Credential 或 SecureString' $PromptReader
+                if($kind -eq 'Credential'){if($noSecretInput){$progress.Field='Secrets['+$ref+']';$blocked=New-Object IO.EndOfStreamException('Credential input is not read from redirected standard input.');$blocked.Data['WsmSecretInput']=$true;throw $blocked};$credential=Get-Credential -Message ('SecretRef '+$ref);if(-not $credential){throw 'Credential entry cancelled.'};$secretValues[$ref]=$credential;$credential=$null}
+                elseif($kind -eq 'SecureString'){if($noSecretInput){$progress.Field='Secrets['+$ref+']';$blocked=New-Object IO.EndOfStreamException('Secret input is not read from redirected standard input.');$blocked.Data['WsmSecretInput']=$true;throw $blocked};if($PromptReader){throw 'SecureString text-console fixture must use the credential provider; interactive secret entry is required.'};$secretValues[$ref]=Read-Host -AsSecureString ('SecretRef '+$ref)}else{throw 'Unsupported secret kind.'}
             }
         }
         foreach($binding in @(@('Workspace',$Workspace),@('PairId',$pairId),@('Role',$role))){if($command.Parameters.ContainsKey($binding[0]) -and -not $raw.Contains($binding[0]) -and $binding[1]){$raw[$binding[0]]=$binding[1]}}
@@ -390,7 +422,7 @@ function Invoke-WsmTypedTextOperation {
         foreach($row in @($safePreview.items)){$row | Format-List | Out-Host}
         if($previewKind -eq 'ParametersOnly'){Write-Host '此處僅檢查參數形狀，未評估資源就緒、核准、目標讀回或執行閘門。請另用專屬預覽操作；只有確認接受此限制才可明確套用。' -ForegroundColor Yellow}
         if($safePreview.canExecute -eq $false){return [pscustomobject]@{Status='Blocked';Executed=$false;Preview=$safePreview}}
-        $confirmation=Read-WsmTextEntry '若已逐項檢查並決定提交，請輸入大寫 APPLY；其他輸入取消' $PromptReader
+        $progress.Field='APPLY（確認提交）';$progress.Required=@();$confirmation=Read-WsmTextEntry '若已逐項檢查並決定提交，請輸入大寫 APPLY；其他輸入取消' $PromptReader
         if(-not (Test-WsmTextApplyConfirmation $confirmation)){return [pscustomobject]@{Status='Cancelled';Executed=$false;Preview=$safePreview}}
         if($command.Parameters.ContainsKey('Confirm')){$arguments.Confirm=$false}
         if($durableJobAction){

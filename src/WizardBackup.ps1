@@ -555,6 +555,17 @@ function Invoke-WsmWizardStartBackup {
             }else{
                 $record | Add-Member NoteProperty OfflineReport ([pscustomobject]@{Status='Skipped'}) -Force
             }
+            # N6：離線使用說明（HTML＋文字備援）放在交付描述檔旁；雜湊只記在 attempt 與獨立副本收據，不進封裝本體。失敗不擋交付，只記錄原因。
+            try{
+                $guideDirectory=Split-Path -Parent ([string]$record.Delivery.Path)
+                $guideFingerprint='';try{$guideFingerprint=[string](Get-WsmToolFingerprint)}catch{}
+                $guideFacts=[pscustomobject][ordered]@{ToolVersion=[string]$script:ToolVersion;ToolFingerprint=$guideFingerprint;PairId=$PairId;AttemptId=$attemptId;Mode=[string]$record.Delivery.Mode;GeneratedUtc=(Get-WsmUtc);ManifestHash=[string]$record.PackageTest.SHA256;PlanHash=[string]$planRef.SHA256;DeliveryName=[IO.Path]::GetFileName([string]$record.Delivery.Path);DeliverySHA256=[string]$record.Delivery.SHA256;ItemResultsSHA256=$(if($record.ItemResults.Status -ceq 'Generated'){[string]$record.ItemResults.SHA256}else{''});OfflineReportSHA256=$(if($record.OfflineReport.Status -ceq 'Generated'){[string]$record.OfflineReport.SHA256}else{''})}
+                $guideExport=Export-WsmBackupOfflineGuide (Join-Path $guideDirectory 'offline-guide.html') (Join-Path $guideDirectory 'offline-guide.txt') $guideFacts
+                $record | Add-Member NoteProperty OfflineGuide ([pscustomobject]@{Status='Generated';Path=[string]$guideExport.Path;SHA256=[string]$guideExport.SHA256;TextPath=[string]$guideExport.TextPath;TextSHA256=[string]$guideExport.TextSHA256}) -Force
+            }catch{
+                $guideError=[string]$_.Exception.Message;if($guideError.Length -gt 300){$guideError=$guideError.Substring(0,300)}
+                $record | Add-Member NoteProperty OfflineGuide ([pscustomobject]@{Status='Failed';Error=$guideError}) -Force
+            }
             $record.Stage=if($record.ChannelSummary.OverallStatus -eq 'ReviewRequired'){'ReviewRequired'}else{'Delivered'};$record.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $path $record $Workspace
         }catch{$resumeStage='PackageVerified';$record.ResumeStage=$resumeStage;$record.Stage=if($_.Exception.Data['CancellationRequested']){'Cancelled'}else{'Failed'};if($freezeRequired -and $record.Freeze){$record.SourceResumeRequired=$true};$record.Error=[pscustomobject]@{Code=$(if($record.Stage -eq 'Cancelled'){'cancelled'}else{'delivery_failed'});Message='搬移封裝已核驗，但交接材料未完整產生；可從同一作業嘗試續作。'};$record.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $path $record $Workspace;Complete-WsmWizardBackupProgress $progress $(if($record.Stage -ceq 'Cancelled'){'Cancelled'}else{'Failed'});throw}
     }
@@ -585,9 +596,9 @@ function Get-WsmIndependentCopyMediaClass([string]$DestinationRoot) {
     }
 }
 
-function Test-WsmIndependentCopyFiles([string]$CopyRoot,$Delivery,[string]$ItemResultsSHA256,[string]$OfflineReportSHA256,$CancellationToken=$null) {
+function Test-WsmIndependentCopyFiles([string]$CopyRoot,$Delivery,[string]$ItemResultsSHA256,[string]$OfflineReportSHA256,$CancellationToken=$null,[string]$OfflineGuideSHA256='',[string]$OfflineGuideTextSHA256='') {
     $mode=[string]$Delivery.Mode
-    foreach($sidecar in @(@{Name='backup-item-results.json';Label='item results';Hash=$ItemResultsSHA256},@{Name='backup-report.html';Label='offline report';Hash=$OfflineReportSHA256})){
+    foreach($sidecar in @(@{Name='backup-item-results.json';Label='item results';Hash=$ItemResultsSHA256},@{Name='backup-report.html';Label='offline report';Hash=$OfflineReportSHA256},@{Name='offline-guide.html';Label='offline guide';Hash=$OfflineGuideSHA256},@{Name='offline-guide.txt';Label='offline guide text';Hash=$OfflineGuideTextSHA256})){
         if(-not $sidecar.Hash){continue}
         $destSidecarPath=Join-Path $CopyRoot ('transport\'+$sidecar.Name)
         Assert-WsmNoReparse $destSidecarPath
@@ -744,6 +755,14 @@ function Invoke-WsmWizardIndependentCopy {
         $offlineReportSource=Join-Path (Split-Path -Parent $deliveryPath) 'backup-report.html'
         $filesToCopy+=@([pscustomobject]@{Source=$offlineReportSource;Dest=(Join-Path $copyRoot 'transport\backup-report.html');Bytes=((New-Object IO.FileInfo($offlineReportSource)).Length);SHA256=$offlineReportExpectedHash})
     }
+    $offlineGuideExpectedHash='';$offlineGuideTextExpectedHash=''
+    if($attempt.PSObject.Properties['OfflineGuide'] -and $attempt.OfflineGuide -and $attempt.OfflineGuide.PSObject.Properties['Status'] -and $attempt.OfflineGuide.Status -ceq 'Generated'){
+        $offlineGuideExpectedHash=[string]$attempt.OfflineGuide.SHA256;$offlineGuideTextExpectedHash=[string]$attempt.OfflineGuide.TextSHA256
+        $guideSourceDirectory=Split-Path -Parent $deliveryPath
+        $guideSourceHtml=Join-Path $guideSourceDirectory 'offline-guide.html';$guideSourceText=Join-Path $guideSourceDirectory 'offline-guide.txt'
+        $filesToCopy+=@([pscustomobject]@{Source=$guideSourceHtml;Dest=(Join-Path $copyRoot 'transport\offline-guide.html');Bytes=((New-Object IO.FileInfo($guideSourceHtml)).Length);SHA256=$offlineGuideExpectedHash})
+        $filesToCopy+=@([pscustomobject]@{Source=$guideSourceText;Dest=(Join-Path $copyRoot 'transport\offline-guide.txt');Bytes=((New-Object IO.FileInfo($guideSourceText)).Length);SHA256=$offlineGuideTextExpectedHash})
+    }
     try {
         if($Mode -ceq 'Copy'){
             foreach($file in $filesToCopy){
@@ -767,7 +786,7 @@ function Invoke-WsmWizardIndependentCopy {
                 }
             }
         }
-        $verified=Test-WsmIndependentCopyFiles $copyRoot $attempt.Delivery $itemResultsExpectedHash $offlineReportExpectedHash $CancellationToken
+        $verified=Test-WsmIndependentCopyFiles $copyRoot $attempt.Delivery $itemResultsExpectedHash $offlineReportExpectedHash $CancellationToken $offlineGuideExpectedHash $offlineGuideTextExpectedHash
         $availability=if($mediaClass -ceq 'Removable'){'Verified'}else{'VerifiedNetworkAvailabilityUnconfirmed'}
         $backupRoot=Get-WsmWizardBackupRoot $Workspace $PairId
         $receiptDir=Join-Path $backupRoot 'independent-copies'
@@ -786,6 +805,8 @@ function Invoke-WsmWizardIndependentCopy {
             DeliveryMode=$deliveryMode
             DeliverySHA256=$deliverySHA256
             ItemResultsSHA256=$itemResultsExpectedHash
+            OfflineGuideSHA256=$offlineGuideExpectedHash
+            OfflineGuideTextSHA256=$offlineGuideTextExpectedHash
             CopyRoot=[IO.Path]::GetFullPath($copyRoot)
             MediaClass=$mediaClass
             Availability=$availability

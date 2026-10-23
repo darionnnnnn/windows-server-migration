@@ -922,6 +922,128 @@ select(0,false);
     [pscustomobject]@{Path=[IO.Path]::GetFullPath($OutputPath);SHA256=(Get-FileHash -LiteralPath $OutputPath -Algorithm SHA256).Hash.ToLowerInvariant()}
 }
 
+# N6 (16.3-1)：隨交付附上的離線使用說明。靜態、唯讀、不連網、無 script；HTML 與純文字備援由同一份內容產生。
+# 說明檔放在交付描述檔旁，不進封裝本體（16.5：不可循環引用自身 hash）；雜湊記在 attempt 的 OfflineGuide 並進獨立副本收據。
+# 只寫檔名，不寫任何絕對路徑；也不收任何秘密。傳入的字串一律跳脫（HTML）或去除控制字元（文字）。
+function Export-WsmBackupOfflineGuide([string]$HtmlPath,[string]$TextPath,$Facts) {
+    Assert-WsmNoReparse $HtmlPath
+    Assert-WsmNoReparse $TextPath
+    $clean={param($Value)$t=[string]$Value;($t -replace '[\x00-\x1f\x7f]',' ').Trim()}
+    $leaf={param($Value)$t=& $clean $Value;if(-not $t){return ''};[string]($t.Replace('/','\').Split('\')[-1])}
+    $hashOf={param($Value)$t=([string]$Value).Trim().ToLowerInvariant();if($t -match '^[0-9a-f]{64}$'){$t}else{''}}
+    $field={param([string]$Name)if($Facts.PSObject.Properties[$Name]){[string]$Facts.$Name}else{''}}
+    $notRecorded='未記錄'
+    $orNone={param($Value)$v=& $clean $Value;if($v){$v}else{$notRecorded}}
+    $toolVersion=& $orNone (& $field 'ToolVersion')
+    $toolFingerprint=& $orNone (& $hashOf (& $field 'ToolFingerprint'))
+    $pairId=& $orNone (& $field 'PairId')
+    $attemptId=& $orNone (& $field 'AttemptId')
+    $mode=& $clean (& $field 'Mode')
+    $modeText=$(switch($mode){'Directory'{'Directory（交付資料夾）'}'Zip'{'ZIP（分卷壓縮檔）'}default{& $orNone $mode}})
+    $generatedUtc=& $orNone (& $field 'GeneratedUtc')
+    $manifestHash=& $orNone (& $hashOf (& $field 'ManifestHash'))
+    $planHash=& $orNone (& $hashOf (& $field 'PlanHash'))
+    $deliveryName=& $orNone (& $leaf (& $field 'DeliveryName'))
+    $deliveryHash=& $orNone (& $hashOf (& $field 'DeliverySHA256'))
+    $resultsHash=& $orNone (& $hashOf (& $field 'ItemResultsSHA256'))
+    $reportHash=& $orNone (& $hashOf (& $field 'OfflineReportSHA256'))
+    $descriptorLabel=$(if($mode -ceq 'Zip'){'交付描述檔（transport.json）'}else{'交付描述檔（Directory 交付摘要）'})
+
+    $html=New-Object Text.StringBuilder
+    $txt=New-Object Text.StringBuilder
+    $enc={param($v)ConvertTo-WsmHtmlText $v}
+    $addH2={param([string]$Id,[string]$Title)[void]$html.Append('<section aria-labelledby="'+$Id+'"><h2 id="'+$Id+'">'+(& $enc $Title)+'</h2>');[void]$txt.Append("`n"+$Title+"`n"+('-'*30)+"`n")}
+    $endSection={[void]$html.Append('</section>')}
+    $addP={param([string]$Text)[void]$html.Append('<p>'+(& $enc $Text)+'</p>');[void]$txt.Append($Text+"`n")}
+    $addList={param([string]$Tag,[string[]]$Items)[void]$html.Append('<'+$Tag+'>');$n=0;foreach($item in $Items){$n++;[void]$html.Append('<li>'+(& $enc $item)+'</li>');if($Tag -ceq 'ol'){[void]$txt.Append(([string]$n)+'. '+$item+"`n")}else{[void]$txt.Append('- '+$item+"`n")}};[void]$html.Append('</'+$Tag+'>')}
+    $addMeta={param([object[]]$Rows)[void]$html.Append('<dl class="meta">');foreach($row in $Rows){$isHash=($row.Length -gt 2 -and $row[2] -ceq 'hash');[void]$html.Append('<dt>'+(& $enc $row[0])+'</dt><dd>'+$(if($isHash -and $row[1] -cne $notRecorded){'<code class="hash">'+(& $enc $row[1])+'</code>'}else{& $enc $row[1]})+'</dd>');[void]$txt.Append($row[0]+'：'+$row[1]+"`n")};[void]$html.Append('</dl>')}
+    $addCode={param([string]$Text)[void]$html.Append('<pre><code>'+(& $enc $Text)+'</code></pre>');foreach($line in $Text.Split("`n")){[void]$txt.Append('    '+$line+"`n")}}
+
+    $title='新機離線使用說明'
+    [void]$html.Append('<!doctype html>'+"`n"+'<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+"`n"+'<meta http-equiv="Content-Security-Policy" content="default-src ''none''; style-src ''unsafe-inline''">'+"`n"+'<title>'+(& $enc $title)+'</title>'+"`n"+'<style>'+"`n")
+    [void]$html.Append('body{margin:0;font:16px/1.6 system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif;color:#172033;background:#fff}'+"`n")
+    [void]$html.Append('main{max-width:52rem;margin:0 auto;padding:1rem}'+"`n")
+    [void]$html.Append('h1{font-size:1.5rem;margin:.5rem 0}h2{font-size:1.25rem;margin:1.5rem 0 .5rem;border-bottom:2px solid #172033}'+"`n")
+    [void]$html.Append('p,li{overflow-wrap:anywhere}ol,ul{padding-left:1.5rem}li{margin:.35rem 0}'+"`n")
+    [void]$html.Append('dl.meta{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:.25rem 1rem;margin:.5rem 0}dl.meta dt{font-weight:700}dl.meta dd{margin:0;min-width:0;overflow-wrap:anywhere}'+"`n")
+    [void]$html.Append('code,pre{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:.9rem}code.hash{overflow-wrap:anywhere;word-break:break-all}'+"`n")
+    [void]$html.Append('pre{margin:.5rem 0;padding:.5rem .75rem;background:#eef2f7;border:1px solid #bbc4ce;border-radius:4px;white-space:pre-wrap;overflow-wrap:anywhere}'+"`n")
+    [void]$html.Append('.note{border:2px solid #7a5a00;background:#fff6d6;padding:.75rem 1rem;margin:1rem 0;border-radius:4px}'+"`n")
+    [void]$html.Append('a{color:#1b5fc1}a:focus,summary:focus{outline:3px solid #1b5fc1;outline-offset:2px}'+"`n")
+    [void]$html.Append('@media (max-width:480px){main{padding:.5rem}dl.meta{grid-template-columns:minmax(0,1fr)}}'+"`n")
+    [void]$html.Append('@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}'+"`n")
+    [void]$html.Append('</style></head><body><main>'+"`n"+'<h1>'+(& $enc $title)+'</h1>')
+    [void]$txt.Append($title+"`n"+('='*30)+"`n")
+    & $addP '這份說明隨備份交付一併產生，給在新機操作、沒有舊機也不一定能上網的人閱讀。內容是靜態的，不會連網，也不會執行任何動作。'
+    $warning='警語：這份說明只記錄產生當時的狀態，不代表媒體目前仍完整、也不代表備份可以還原。新機匯入時，工具會重新驗證每一個檔案的內容；驗證失敗就不會匯入。'
+    [void]$html.Append('<p class="note" role="note"><strong>'+(& $enc $warning)+'</strong></p>');[void]$txt.Append("`n"+$warning+"`n")
+
+    & $addH2 'sec-backup' '一、這份備份'
+    & $addMeta @(@('配對 ID',$pairId),@('Attempt ID',$attemptId),@('交付方式',$modeText),@('說明產生時間（UTC）',$generatedUtc))
+    & $endSection
+
+    & $addH2 'sec-tool' '二、如何取得相容工具'
+    & $addMeta @(@('工具版本',$toolVersion),@('ToolVersion（交付資料的版本標記）',$toolVersion),@('工具指紋（ToolFingerprint）',$toolFingerprint,'hash'))
+    & $addList 'ul' @(
+        '新機必須使用與上列版本相同的工具；版本不同的工具不保證讀得懂這份備份，也不要自行轉換格式。',
+        '請向舊機的操作人員或貴組織的軟體發行管道，索取該版本的工具發行包（ZIP）、簽章檔與信任政策。',
+        '這份說明不提供下載連結，新機也不必連回舊機下載任何東西。',
+        '不要執行交付資料夾或壓縮檔裡的任何程式；備份內容只當資料讀取。')
+    & $endSection
+
+    & $addH2 'sec-verify' '三、如何驗證工具'
+    & $addList 'ol' @(
+        '用「不是這份交付」的獨立管道（例如當面、電話或公司的發行系統）取得發行包的 SHA256、簽章檔的 SHA256 與信任政策的 SHA256。',
+        '在 Windows PowerShell 5.1 計算發行包的雜湊，並與取得的值逐字比對：',
+        '若手上已有一份可信的同版本工具，用它驗證新取得的發行包簽章：')
+    & $addCode 'Get-FileHash -Algorithm SHA256 -LiteralPath <發行包.zip>'
+    & $addCode "Test-WsmToolRelease -Path <發行包.zip> -ExpectedHash <發行包SHA256> `n  -SignaturePath <簽章檔> -ExpectedSignatureHash <簽章SHA256> `n  -TrustPolicyPath <信任政策檔> -TrustPolicyHash <信任政策SHA256>"
+    & $addP '不要用這份交付裡算出來的雜湊來當授權依據；雜湊與簽章必須來自獨立可信的管道。'
+    & $endSection
+
+    & $addH2 'sec-trust' '四、信任材料'
+    & $addP '匯入時，請把下列值與舊機操作者另外給你的值逐字比對。不要只因為它們出現在這份說明裡就信任。'
+    & $addMeta @(@('封裝 manifest 雜湊（manifest hash）',$manifestHash,'hash'),@('核准計畫雜湊（plan hash）',$planHash,'hash'),@('交付描述檔名稱',$deliveryName),@(($descriptorLabel+' 雜湊'),$deliveryHash,'hash'),@('逐項結果檔雜湊（backup-item-results.json）',$resultsHash,'hash'),@('備份報告雜湊（backup-report.html）',$reportHash,'hash'))
+    & $endSection
+
+    & $addH2 'sec-import' '五、新機匯入步驟'
+    & $addList 'ol' @(
+        '在新機以管理員身分開啟 Windows PowerShell 5.1，啟動上面驗證過的工具（Start-ServerMigration.ps1），選擇「目標」角色，指定專用的固定 WorkRoot。',
+        '登記這台新機的身分；身分要和備份核准時指定的目標主機相符。',
+        '匯入交付：Directory 選擇交付資料夾與其摘要檔，ZIP 選擇描述檔 transport.json 與同資料夾的所有分卷。',
+        '貼上上面「信任材料」中經獨立管道核對過的雜湊；不符就停止，不要繼續。',
+        '工具會重新驗證封裝與每個檔案，並在新機重新檢查目前的環境與軟體，再讓你勾選要還原的項目與預覽。',
+        '還原前先看預覽；工具不會自動安裝軟體，需要的軟體、角色與帳密請依清單在新機補齊。')
+    & $endSection
+
+    & $addH2 'sec-docs' '六、既有文件的離線位置'
+    & $addP '下列文件都在工具發行包內（相對於工具資料夾），可直接用瀏覽器開啟：'
+    & $addList 'ul' @('docs\html\README.html（總覽）','docs\html\OPERATIONS.html（操作）','docs\html\GENERAL-HOST-WORKFLOW.html（一般主機流程）','docs\html\RECOVERY-RUNBOOK.html（中斷與復原）')
+    if($resultsHash -cne $notRecorded){
+        & $addP '同一個交付資料夾內的備份報告（逐項清單，可離線查閱）：'
+        [void]$html.Append('<p><a href="backup-report.html">backup-report.html</a></p>');[void]$txt.Append("backup-report.html`n")
+    }
+    & $endSection
+    [void]$html.Append("`n"+'</main></body></html>'+"`n")
+    $htmlText=$html.ToString().Replace("`r`n","`n")
+    $plainText=($txt.ToString().Replace("`r`n","`n")).Replace("`n","`r`n")
+    [IO.File]::WriteAllText($HtmlPath,$htmlText,(New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText($TextPath,$plainText,(New-Object Text.UTF8Encoding($false)))
+    [pscustomobject]@{Path=[IO.Path]::GetFullPath($HtmlPath);SHA256=(Get-FileHash -LiteralPath $HtmlPath -Algorithm SHA256).Hash.ToLowerInvariant();TextPath=[IO.Path]::GetFullPath($TextPath);TextSHA256=(Get-FileHash -LiteralPath $TextPath -Algorithm SHA256).Hash.ToLowerInvariant()}
+}
+
+# 交付驗證：attempt 記了說明檔雜湊時，兩個檔都必須還在、內容一致；沒有記錄（舊 attempt 或產生失敗）則不檢查。回傳 $null 表示通過，否則是一句原因。
+function Test-WsmBackupOfflineGuideFiles($Attempt) {
+    if(-not $Attempt.PSObject.Properties['OfflineGuide'] -or -not $Attempt.OfflineGuide -or -not $Attempt.OfflineGuide.PSObject.Properties['Status'] -or [string]$Attempt.OfflineGuide.Status -cne 'Generated'){return $null}
+    $guide=$Attempt.OfflineGuide
+    foreach($pair in @(@([string]$guide.Path,[string]$guide.SHA256),@([string]$guide.TextPath,[string]$guide.TextSHA256))){
+        if(-not $pair[0] -or $pair[1] -notmatch '^[a-fA-F0-9]{64}$'){return '離線使用說明的紀錄不完整。'}
+        Assert-WsmNoReparse $pair[0]
+        if(-not [IO.File]::Exists($pair[0]) -or (Get-FileHash -LiteralPath $pair[0] -Algorithm SHA256).Hash -ine $pair[1]){return '離線使用說明檔已不存在或內容被更改，請重新備份。'}
+    }
+    $null
+}
+
 # Latest delivered attempt that carries an item-results record and is bound to the current approved plan.
 # Read-only: the backup root is computed without the owned-directory helper, which would create it.
 function Get-WsmWizardLatestResultAttempt([string]$Workspace,[string]$PairId,$Profile,$PlanRef) {
@@ -1006,6 +1128,9 @@ function Get-WsmWizardIndependentCopyProjection([string]$Workspace,[string]$Pair
         if([string]$receipt.Kind -cne 'IndependentCopyReceipt' -or [string]$receipt.PairId -cne $PairId -or [string]$receipt.AttemptId -cne [string]$Attempt.AttemptId){return (& $unverifiable '收據不屬於此備份。')}
         if(-not $Attempt.Delivery -or -not $receipt.PSObject.Properties['DeliverySHA256'] -or [string]$receipt.DeliverySHA256 -ine [string]$Attempt.Delivery.SHA256){return (& $unverifiable '收據引用的交付與目前備份的交付不同。')}
         if(-not $receipt.PSObject.Properties['ItemResultsSHA256'] -or [string]$receipt.ItemResultsSHA256 -notmatch '^[a-fA-F0-9]{64}$' -or [string]$receipt.ItemResultsSHA256 -ine $ItemResultsSha256){return (& $unverifiable '收據沒有引用、或引用的不是目前的逐項結果集。')}
+        if($Attempt.PSObject.Properties['OfflineGuide'] -and $Attempt.OfflineGuide -and $Attempt.OfflineGuide.PSObject.Properties['Status'] -and [string]$Attempt.OfflineGuide.Status -ceq 'Generated'){
+            if(-not $receipt.PSObject.Properties['OfflineGuideSHA256'] -or -not $receipt.PSObject.Properties['OfflineGuideTextSHA256'] -or [string]$receipt.OfflineGuideSHA256 -ine [string]$Attempt.OfflineGuide.SHA256 -or [string]$receipt.OfflineGuideTextSHA256 -ine [string]$Attempt.OfflineGuide.TextSHA256){return (& $unverifiable '收據沒有引用、或引用的不是目前的離線使用說明。')}
+        }
         [pscustomobject][ordered]@{state='Verified';text='已驗證';verifiedUtc=[string]$receipt.VerifiedUtc;networkUnconfirmed=([string]$receipt.Availability -ceq 'VerifiedNetworkAvailabilityUnconfirmed');reason=''}
     }catch{
         & $unverifiable '收據無法讀取或核對。'
@@ -1029,6 +1154,9 @@ function Get-WsmWizardVerifiedResultSet([string]$Workspace,[string]$PairId,$Prof
     if(-not [IO.File]::Exists($resultPath) -or (Get-FileHash -LiteralPath $resultPath -Algorithm SHA256).Hash -ine [string]$itemResults.SHA256){return [pscustomobject]@{Failure=$failed;Attempt=$attempt;Document=$null;ResultsSha256=''}}
     $document=Read-WsmJson $resultPath
     if($document.Kind -cne 'BackupItemResults' -or $document.PairId -cne $PairId -or $document.AttemptId -cne [string]$attempt.AttemptId){return [pscustomobject]@{Failure=$failed;Attempt=$attempt;Document=$null;ResultsSha256=''}}
+    # N6：說明檔雜湊記在 attempt；說明檔遺失或被改，交付驗證就失敗（舊 attempt 沒有記錄則不檢查）。
+    $guideProblem=Test-WsmBackupOfflineGuideFiles $attempt
+    if($guideProblem){return [pscustomobject]@{Failure=[pscustomobject]@{kind='BackupItemResultsView';available=$false;integrity='Failed';reason=$guideProblem;attemptId=[string]$attempt.AttemptId};Attempt=$attempt;Document=$null;ResultsSha256=''}}
     [pscustomobject]@{Failure=$null;Attempt=$attempt;Document=$document;ResultsSha256=([string]$itemResults.SHA256).ToLowerInvariant()}
 }
 

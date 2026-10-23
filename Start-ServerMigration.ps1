@@ -123,7 +123,8 @@ try {
         }
         exit 0
     }
-    if ([Console]::IsInputRedirected -or [Environment]::GetCommandLineArgs() -contains '-NonInteractive') { throw '非互動環境請指定 -Action；Menu 需要互動主控台。' }
+    # 16.4-1：重新導向的標準輸入可以餵答案給選單；-NonInteractive 連 Read-Host 都不能用，選單必填的選項永遠缺少，所以回「等待輸入」(exit 2) 而不是一般失敗。
+    if ([Environment]::GetCommandLineArgs() -contains '-NonInteractive') { $blocked=New-Object IO.EndOfStreamException('非互動環境請指定 -Action；Menu 需要互動主控台或重新導向的標準輸入（不可加 -NonInteractive）。');$blocked.Data['WsmWaitingForInput']=$true;$blocked.Data['WsmMissingFields']='Menu 選項';throw $blocked }
     while ($true) {
         Write-Host "`nWindows Server Migration 0.3 — 盤點／審核／隔離 pilot 遷移"
         Write-Host '1 本機來源盤點  2 建立管理工作區  3 匯入盤點  4 審核／排除  5 分類 HTML'
@@ -131,7 +132,7 @@ try {
         Write-Host '12 人工補列  13 路徑／帳號／端點映射  14 應用組合／內建分類  15 配對／波次規劃  16 跨主機相依  17 結果包匯入'
         Write-Host '18 循環相依的一致性群組  19 安全匯入盤點ZIP  20 匯出規則模板  21 預覽／套用模板  22 正式搬移／還原／切換階段  23 一般主機範圍評估（只讀）  24 一般主機離線審查模式  25 完整環境／軟體確認文件  0 離開'
         $menuChoice=Read-Host '選項'
-        if ($null -eq $menuChoice) { throw 'Console input ended.' }
+        if ($null -eq $menuChoice) { throw (New-Object IO.EndOfStreamException('Console input ended.')) }
         try {
             switch ($menuChoice) {
                 '0' { exit 0 }
@@ -167,7 +168,7 @@ try {
 } catch {
     [Console]::Error.WriteLine($_.Exception.Message)
     if ($_.Exception -is [IO.InvalidDataException] -or $_.Exception -is [Management.Automation.ParameterBindingException]) { exit 4 }
-    if ($_.Exception -is [IO.EndOfStreamException] -and $_.Exception.Data.Contains('WsmWaitingForInput')) { Write-Host ('Status=WaitingForInput ParentOperationId='+[string]$_.Exception.Data['ParentOperationId']); exit 2 }
+    if ($_.Exception -is [IO.EndOfStreamException] -and $_.Exception.Data.Contains('WsmWaitingForInput')) { $waitingLine='Status=WaitingForInput';if($_.Exception.Data.Contains('ParentOperationId')){$waitingLine+=' ParentOperationId='+[string]$_.Exception.Data['ParentOperationId']};if($_.Exception.Data.Contains('WsmMissingFields')){$waitingLine+=' MissingFields='+[string]$_.Exception.Data['WsmMissingFields']};Write-Host $waitingLine; exit 2 }
     if ($_.Exception -is [IO.EndOfStreamException] -or $_.Exception -is [OperationCanceledException]) { exit 3 }
     exit 1
 }

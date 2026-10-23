@@ -173,6 +173,8 @@ function Read-WsmWizardServiceChallengeInput([string[]]$SecretRefs,[object[]]$Re
         Write-Host ('帳密需求：'+$summary)
         $answer=Read-WsmWizardValue '輸入 DEFER 延後這一整組帳密（相關項目本次不還原，之後在新的還原中再處理）；直接按 Enter 則輸入帳密' -Optional
         if($answer -ceq 'DEFER'){$deferred+=@($ref);continue}
+        # Never read an account and password from redirected console input (a pipe or file); report WaitingForInput instead.
+        if([Console]::IsInputRedirected -and @(Get-Command Get-Credential -CommandType Cmdlet -ErrorAction SilentlyContinue).Count -and (Get-Command Get-Credential).CommandType -eq 'Cmdlet'){throw (New-Object IO.EndOfStreamException('Credentials are not read from redirected console input; run the restore in an interactive console or use the HTML credential dialog.'))}
         if($userName){$credential=Get-Credential -Message $message -UserName $userName}else{$credential=Get-Credential -Message $message}
         if(-not $credential){throw (New-Object OperationCanceledException('Credential entry cancelled; no target write was started.'))}
         $secrets[$ref]=$credential

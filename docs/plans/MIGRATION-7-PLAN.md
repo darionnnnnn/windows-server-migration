@@ -1342,6 +1342,34 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - `Get-WsmHtmlResultProjection` 會原樣放行來源物件的 `ProductionVerified／ProductionQualified=true`。目前真實產出者都是 false；要不要在投影層一律改成 false，由使用者決定（`ProductionQualified` 可能有合法用途）。
   - `Read-WsmMigrationPlan` 讀取已封存計畫時，不會再檢查父子重疊，只有核准端會檢查。
   - 第二個卷是模擬的，沒有實機的第二顆磁碟。
+### 17.80 N6 交付隨附離線使用說明、CLI 非互動缺值回傳等待碼；修正還原帳密從重新導向輸入讀取
+
+- Sonnet 5.5 medium subagent 實作，主代理審查、補修一處安全缺陷並獨立重跑。
+- **16.3-1 離線使用說明**
+  - `Export-WsmBackupOfflineGuide` 在交付描述檔旁產生 `offline-guide.html` 與 `.txt`（Directory 與 ZIP 都有），不進封裝本體。
+  - 內容：工具版本與指紋、取得與驗證方式、信任材料的 hash、匯入步驟、文件位置、警語。不含下載連結，也不含絕對路徑。HTML 為無 script 的靜態頁並帶 CSP。
+  - 說明檔的 hash 記在 attempt 的 `OfflineGuide`，也列入獨立副本的複製、核對與收據（新增 `OfflineGuideSHA256`／`OfflineGuideTextSHA256`），B2 的收據核對會比對這兩個欄位。竄改或遺失時，工作台的 integrity 判定為 Failed。
+  - 偏離說明：外層 `delivery-index` 由 `OutputWorkflow.ps1` 在說明檔產生之前寫好，若列入會讓既有的 IndexSHA256 失效，所以改記在 attempt 與收據，與 17.47 一致。
+- **16.4-1 CLI 非互動缺值**
+  - 型別化操作遇到標準輸入結束時，exit 2，並輸出 `Status=WaitingForInput MissingFields=...`（只列欄位名）。
+  - 從重新導向的輸入不讀帳密，直接列出缺少的帳密欄位。
+  - 加 `-NonInteractive` 時，Menu 回傳 2（原本是 1）。頂層選單遇到輸入結束時，與深層一致，回傳 exit 3。
+- **主代理補修（N6 subagent 回報的疑點，經突變確認是真缺陷）**
+  - Target 還原的帳密提示 `Read-WsmWizardServiceChallengeInput` 在標準輸入被重新導向時，會讓真正的 `Get-Credential` 從管線讀到帳號與明碼，並正常回傳。
+  - 修正後，在呼叫真正的 cmdlet 之前改為丟出 EndOfStreamException；呼叫端原本就會把它轉成 WaitingForInput，並保留耐久 challenge。測試替身換掉 Get-Credential 時不受影響。
+  - 新增 `Test-CredentialPromptRedirected`：以子程序實際管線輸入驗證，並確認明碼不會被回顯。拿掉防線的突變會讓函式正常回傳（轉紅）。
+- **驗證（WinPS 5.1、真實 Edge file://）**
+  - 主代理重跑以下測試，全部通過：OfflineGuide、CliWaitingForInput、CredentialPromptRedirected、CredentialDeferral 68、TargetRestoreContinuation 133、ServiceCredentialChallenge 46、TextConsole、BackupWorkbenchView、ScriptEncoding、OfflineGuideBrowser。
+  - subagent 另跑以下測試，全部通過：WizardBackup、OfflineFullSet、SecretSentinelSweep、EntryPoint、WaitingConsistencyUi、MenuContracts、BackupResultSetV2、BackupUnbackedReasons、ActionExports、OperationRequests。
+- **突變（皆轉紅）**
+  - 說明檔的 hash 沒有列入
+  - 等待改回 exit 1
+  - 說明檔含絕對路徑
+  - 帳密提示拿掉防線（主代理）
+- **限制**
+  - 每次交付都會重算一次工具指紋（雜湊整個 src），`Test-WizardBackup` 因此從約 36 秒變成約 96 秒。實際使用時每次備份只算一次；沒有加快取，以免掩蓋熱換工具的偵測。
+  - 說明檔不設唯讀屬性。
+  - 文件位置只寫成文字路徑，不做成連結。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

@@ -249,11 +249,63 @@ try {
             [IO.File]::WriteAllBytes($copiedReportA, $reportOriginalBytes)
             if(-not $reportTamperRejected){throw 'Case a: a one-byte change to the copied backup-report.html was not rejected by VerifyExisting.'}
 
+            # N6 (16.3-1): offline guide next to the delivery descriptor, hashed in the attempt, carried by the independent copy and its receipt.
+            $assertGuide={param($Attempt,$Delivery,[string]$ManifestHash,[string]$PlanHash,[string]$Label)
+                $g=$null;if($Attempt.PSObject.Properties['OfflineGuide']){$g=$Attempt.OfflineGuide}
+                if(-not $g -or $g.Status -cne 'Generated' -or [string]$g.SHA256 -notmatch '^[a-f0-9]{64}$' -or [string]$g.TextSHA256 -notmatch '^[a-f0-9]{64}$'){throw ($Label+': the attempt does not index the offline guide hashes.')}
+                $guideDirectory=Split-Path -Parent ([string]$Delivery.Path)
+                $guideHtmlPath=Join-Path $guideDirectory 'offline-guide.html';$guideTextPath=Join-Path $guideDirectory 'offline-guide.txt'
+                if([IO.Path]::GetFullPath([string]$g.Path) -ine [IO.Path]::GetFullPath($guideHtmlPath) -or [IO.Path]::GetFullPath([string]$g.TextPath) -ine [IO.Path]::GetFullPath($guideTextPath)){throw ($Label+': the offline guide is not stored next to the delivery descriptor.')}
+                if((Get-FileHash -LiteralPath $guideHtmlPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne [string]$g.SHA256 -or (Get-FileHash -LiteralPath $guideTextPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne [string]$g.TextSHA256){throw ($Label+': the indexed offline guide hashes differ from the files.')}
+                $guideHtml=[IO.File]::ReadAllText($guideHtmlPath);$guideText=[IO.File]::ReadAllText($guideTextPath)
+                $descriptorName=[IO.Path]::GetFileName([string]$Delivery.Path)
+                foreach($doc in @(@('html',$guideHtml),@('txt',$guideText))){
+                    $body=[string]$doc[1]
+                    foreach($needle in @($ManifestHash.ToLowerInvariant(),$PlanHash.ToLowerInvariant(),([string]$Delivery.SHA256).ToLowerInvariant(),[string]$script:ToolVersion,$descriptorName,'ToolVersion','不代表媒體目前仍完整','重新驗證')){if(-not $body.Contains([string]$needle)){throw ($Label+': offline guide '+$doc[0]+' is missing "'+$needle+'".')}}
+                    if($body -match '(?i)[a-z]:\\' -or $body -match '(?i)https?://' -or $body.Contains($Root) -or $body.Contains($sourceRoot)){throw ($Label+': offline guide '+$doc[0]+' carries an absolute path or a network address.')}
+                }
+                if($guideHtml -match '(?i)<script' -or $guideHtml -notmatch '<h1>' -or $guideHtml -notmatch '<h2 id=' -or $guideHtml -notmatch 'lang="zh-Hant"' -or $guideHtml -notmatch 'prefers-reduced-motion' -or $guideHtml -notmatch 'Noto Sans TC'){throw ($Label+': offline guide HTML lost its static, semantic, reduced-motion structure.')}
+                if($Delivery.PSObject.Properties['Directory'] -and $Delivery.Directory -and [IO.Directory]::Exists([string]$Delivery.Directory)){if(@(Get-ChildItem -LiteralPath ([string]$Delivery.Directory) -Recurse -File -Filter 'offline-guide*').Count -ne 0){throw ($Label+': the offline guide must stay out of the sealed delivery body.')}}
+                $g
+            }
+            $attemptGuideA=(Get-WsmWizardBackupAttemptForOperation $sourceRoot $catalog.PairId (Read-WsmOutputProfile $sourceRoot) $successOperationId).Attempt
+            $guideA=& $assertGuide $attemptGuideA $result.Delivery ([string]$result.PackageTest.SHA256) ([string]$approved.SHA256) 'Directory'
+            $copiedGuideHtmlA=Join-Path $copyRootA 'transport\offline-guide.html';$copiedGuideTextA=Join-Path $copyRootA 'transport\offline-guide.txt'
+            if(-not [IO.File]::Exists($copiedGuideHtmlA) -or -not [IO.File]::Exists($copiedGuideTextA)){throw 'Case a: the offline guide was not copied into the independent copy.'}
+            if([string]$receiptA.OfflineGuideSHA256 -cne [string]$guideA.SHA256 -or [string]$receiptA.OfflineGuideTextSHA256 -cne [string]$guideA.TextSHA256){throw 'Case a: the independent copy receipt does not reference the offline guide hashes.'}
+            foreach($guideCopy in @(@($copiedGuideHtmlA,'offline-guide.html'),@($copiedGuideTextA,'offline-guide.txt'))){
+                $guideOriginalBytes=[IO.File]::ReadAllBytes($guideCopy[0]);$guideTamperBytes=[byte[]]$guideOriginalBytes.Clone();$guideTamperBytes[$guideTamperBytes.Length-1]=[byte]($guideTamperBytes[$guideTamperBytes.Length-1] -bxor 0x01)
+                [IO.File]::WriteAllBytes($guideCopy[0],$guideTamperBytes);$guideTamperRejected=$false
+                try{Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destA -Mode VerifyExisting | Out-Null}catch{$guideTamperRejected=($_.Exception.Message -like ('*'+$guideCopy[1]+'*'))}
+                [IO.File]::WriteAllBytes($guideCopy[0],$guideOriginalBytes)
+                if(-not $guideTamperRejected){throw ('Case a: a one-byte change to the copied '+$guideCopy[1]+' was not rejected by VerifyExisting.')}
+            }
+            $resA2=Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destA -Mode VerifyExisting
+            if($resA2.IndependentCopy.Status -cne 'Verified'){throw 'Case a: restoring the copied offline guide bytes did not verify again.'}
+            $attemptGuideA2=(Get-WsmWizardBackupAttemptForOperation $sourceRoot $catalog.PairId (Read-WsmOutputProfile $sourceRoot) $successOperationId).Attempt
+            $projectionA2=Get-WsmWizardIndependentCopyProjection $sourceRoot $catalog.PairId $attemptGuideA2 ([string]$attemptGuideA2.ItemResults.SHA256)
+            if($projectionA2.state -cne 'Verified'){throw ('Case a: the workbench receipt check (B2) no longer accepts a receipt that carries the offline guide fields: '+$projectionA2.state+' '+$projectionA2.reason)}
+            # The receipt check must also bind the guide: a receipt that omits (or changes) the guide hash is not accepted.
+            $receiptA2Path=[string]$attemptGuideA2.IndependentCopy.ReceiptPath;$receiptA2Bytes=[IO.File]::ReadAllBytes($receiptA2Path);$attemptGuideA2Hash=[string]$attemptGuideA2.IndependentCopy.ReceiptSHA256
+            try{
+                $receiptA2=Read-WsmJson $receiptA2Path;$receiptA2.OfflineGuideSHA256=('0'*64);Write-WsmJson $receiptA2Path $receiptA2
+                $attemptGuideA2.IndependentCopy.ReceiptSHA256=(Get-FileHash -LiteralPath $receiptA2Path -Algorithm SHA256).Hash.ToLowerInvariant()
+                $projectionBad=Get-WsmWizardIndependentCopyProjection $sourceRoot $catalog.PairId $attemptGuideA2 ([string]$attemptGuideA2.ItemResults.SHA256)
+                if($projectionBad.state -cne 'Unverifiable'){throw 'Case a: a receipt with a different offline guide hash was still accepted by the workbench receipt check.'}
+            }finally{[IO.File]::WriteAllBytes($receiptA2Path,$receiptA2Bytes);$attemptGuideA2.IndependentCopy.ReceiptSHA256=$attemptGuideA2Hash}
+            Write-Host 'PASS: offline guide (Directory): content, index hashes, independent copy, receipt binding and tamper rejection.'
+
             # Case b: ZIP / Copy / Network
             $destB = Join-Path $Root 'copy-dest-b'; [void][IO.Directory]::CreateDirectory($destB)
             $script:fixtureMediaClass = 'Network'
             $resB = Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $zipOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destB -Mode Copy
             if($resB.OfflineReadiness -cne 'VerifiedNetworkAvailabilityUnconfirmed'){throw 'Case b: ZIP Copy Network OfflineReadiness mismatch.'}
+            $attemptGuideB=(Get-WsmWizardBackupAttemptForOperation $sourceRoot $catalog.PairId (Read-WsmOutputProfile $sourceRoot) $zipOperationId).Attempt
+            $guideB=& $assertGuide $attemptGuideB $zipResult.Delivery ([string]$zipResult.PackageTest.SHA256) ([string]$approved.SHA256) 'ZIP'
+            $receiptB=Read-WsmJson $resB.IndependentCopy.ReceiptPath
+            foreach($guideName in @('offline-guide.html','offline-guide.txt')){if(-not [IO.File]::Exists((Join-Path (Join-Path $resB.IndependentCopy.CopyRoot 'transport') $guideName))){throw ('Case b: ZIP independent copy is missing '+$guideName)}}
+            if([string]$receiptB.OfflineGuideSHA256 -cne [string]$guideB.SHA256 -or [string]$receiptB.OfflineGuideTextSHA256 -cne [string]$guideB.TextSHA256){throw 'Case b: the ZIP independent copy receipt does not reference the offline guide hashes.'}
+            Write-Host 'PASS: offline guide (ZIP).'
 
             # Case c: Tamper
             $blobToTamper = @(Get-ChildItem -LiteralPath $copiedPayloadDir -Filter '*.blob' -File)[0]
@@ -297,6 +349,8 @@ try {
             Copy-Item -LiteralPath $result.Delivery.Directory -Destination $transportE -Recurse -Force
             Copy-Item -LiteralPath $result.ItemResults.Path -Destination $transportE -Force
             Copy-Item -LiteralPath $result.OfflineReport.Path -Destination $transportE -Force
+            Copy-Item -LiteralPath ([string]$attemptA.OfflineGuide.Path) -Destination $transportE -Force
+            Copy-Item -LiteralPath ([string]$attemptA.OfflineGuide.TextPath) -Destination $transportE -Force
             $script:fixtureMediaClass = 'Removable'
             $resE = Invoke-WsmWizardIndependentCopy -Workspace $sourceRoot -PairId $catalog.PairId -BackupOperationId $successOperationId -OperationId ([Guid]::NewGuid().ToString('D')) -DestinationRoot $destE -Mode VerifyExisting
             if($resE.OfflineReadiness -cne 'Verified' -or $resE.IndependentCopy.Status -cne 'Verified'){throw 'Case e: Manual copy VerifyExisting not verified.'}
@@ -513,6 +567,19 @@ try {
             if($tamperedView.available -ne $false -or $tamperedView.integrity -cne 'Failed'){throw 'A modified item results file must make the view fail integrity.'}
         }finally{[IO.File]::WriteAllBytes($viewResultPath,$viewOriginalBytes)}
         if((Get-WsmWizardBackupItemResultsView $sourceRoot $catalog.PairId).integrity -cne 'Verified'){throw 'Restoring the original item results bytes must verify again.'}
+        foreach($guideFileName in @('offline-guide.html','offline-guide.txt')){
+            $viewGuidePath=Join-Path (Split-Path -Parent ([string]$viewBackup.Delivery.Path)) $guideFileName;$viewGuideBytes=[IO.File]::ReadAllBytes($viewGuidePath)
+            try{
+                $guideTamper=[byte[]]$viewGuideBytes.Clone();$guideTamper[$guideTamper.Length-1]=[byte]($guideTamper[$guideTamper.Length-1] -bxor 0x01);[IO.File]::WriteAllBytes($viewGuidePath,$guideTamper)
+                $guideView=Get-WsmWizardBackupItemResultsView $sourceRoot $catalog.PairId
+                if($guideView.available -ne $false -or $guideView.integrity -cne 'Failed' -or $guideView.reason -notlike '*離線使用說明*'){throw ('A modified '+$guideFileName+' must make the delivery verification fail.')}
+                [IO.File]::Delete($viewGuidePath)
+                $guideMissingView=Get-WsmWizardBackupItemResultsView $sourceRoot $catalog.PairId
+                if($guideMissingView.available -ne $false -or $guideMissingView.integrity -cne 'Failed'){throw ('A missing '+$guideFileName+' must make the delivery verification fail.')}
+            }finally{[IO.File]::WriteAllBytes($viewGuidePath,$viewGuideBytes)}
+        }
+        if((Get-WsmWizardBackupItemResultsView $sourceRoot $catalog.PairId).integrity -cne 'Verified'){throw 'Restoring the offline guide bytes must verify the delivery again.'}
+        Write-Host 'PASS: offline guide delivery verification.'
         $targetRejected=$false;try{[void](Get-WsmHtmlView $targetRoot $catalog.PairId 'backup-items' 'Target')}catch{$targetRejected=($_.Exception.Message -like '*only available to the Source role*')}
         if(-not $targetRejected){throw 'The backup-items view must be rejected for the Target role.'}
         Write-Host 'PASS: backup item results view.'
