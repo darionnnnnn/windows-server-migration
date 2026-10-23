@@ -201,8 +201,25 @@ function Write-WsmBackupItemProgress([int]$ItemIndex,[int]$ItemCount,[string]$It
     $percent=[int][Math]::Floor(100*($ItemIndex-1)/[Math]::Max(1,$ItemCount));if($percent -lt 0){$percent=0};if($percent -gt 99){$percent=99}
     Write-Progress -Id 32 -Activity ('正在備份：第 '+$ItemIndex+'/'+$ItemCount+' 項') -Status ($ItemName+'（'+$Channel+'）· 已處理 '+$FilesDone+' 個檔案、'+(Format-WsmBackupBytes $BytesDone)) -CurrentOperation $operation -PercentComplete $percent
 }
+function Get-WsmSafeAttemptIdText([string]$AttemptId) {
+    $safe=[regex]::Replace([string]$AttemptId,'[^A-Za-z0-9-]','');if($safe.Length -gt 64){$safe=$safe.Substring(0,64)};if(-not $safe){$safe='unknown'};$safe
+}
+# P2: a retry of the same attempt reopens the same generation directory. The partial index the failed run left behind is the only record of the
+# blobs it wrote, so it is moved aside (never copied, never overwritten) before a new partial index is opened.
+function Save-WsmPartialArtifactIndex([string]$Root,[string]$AttemptId) {
+    $source=Join-Path $Root 'artifacts.jsonl.partial';if(-not [IO.File]::Exists($source)){return $null}
+    $safe=Get-WsmSafeAttemptIdText $AttemptId;Assert-WsmNoReparse $Root;Assert-WsmNoReparse $source
+    for($number=1;$number -le 99;$number++){
+        $destination=Join-Path $Root ('artifacts.jsonl.attempt-'+$safe+'-'+$number.ToString('00')+'.partial');Assert-WsmNoReparse $destination
+        if([IO.File]::Exists($destination) -or [IO.Directory]::Exists($destination)){continue}
+        try{[IO.File]::Move($source,$destination)}catch [IO.IOException]{if([IO.File]::Exists($destination)){continue};throw}
+        Assert-WsmNoReparse $destination;if([IO.File]::Exists($source)){throw 'Previous partial artifact index is still in place after being set aside.'}
+        return $destination
+    }
+    throw 'Too many preserved partial artifact indexes for this attempt (limit 99); inspect and clear them before retrying.'
+}
 function Export-WsmMigrationPackage {
-    [CmdletBinding()]param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,[string]$FreezeExternalEvidencePath,[string]$FreezeExternalEvidenceHash,$CancellationToken=$null,[string]$MaterialWorkspace='')
+    [CmdletBinding()]param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,[string]$FreezeExternalEvidencePath,[string]$FreezeExternalEvidenceHash,$CancellationToken=$null,[string]$MaterialWorkspace='',[string]$AttemptId='')
     $job=$null;$result=$null;$succeeded=$false
     $preflightPlan=Read-WsmMigrationPlan $PlanPath $ExpectedHash;if($preflightPlan.PSObject.Properties['Assistive'] -and $preflightPlan.Assistive.ContractVersion -eq 2 -and ($BaseManifestPath -or $BaseManifestHash)){throw 'OfflineFullSet CV2 requires a complete generation and rejects external delta bases.'}
     try{$job=Start-WsmAssistiveSourcePackageJob $PlanPath $ExpectedHash $SourceStateDirectory $BaseManifestPath $BaseManifestHash;$result=Export-WsmMigrationPackageCore @PSBoundParameters;$succeeded=$true;$result}catch [OperationCanceledException]{
@@ -211,7 +228,7 @@ function Export-WsmMigrationPackage {
     }finally{Complete-WsmAssistiveSourcePackageJob $job $result $succeeded}
 }
 function Export-WsmMigrationPackageCore {
-    [CmdletBinding()] param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,[string]$FreezeExternalEvidencePath,[string]$FreezeExternalEvidenceHash,$CancellationToken=$null,[string]$MaterialWorkspace='')
+    [CmdletBinding()] param([string]$PlanPath,[string]$ExpectedHash,[string]$SourceStateDirectory,[string]$OutputDirectory,[ValidateRange(65536,67108864)][int]$ChunkBytes=67108864,[ValidateRange(0,1073741824)][int]$BytesPerSecond=0,[string]$BaseManifestPath,[string]$BaseManifestHash,[string]$FreezePath,[string]$FreezeHash,[string]$FreezeExternalEvidencePath,[string]$FreezeExternalEvidenceHash,$CancellationToken=$null,[string]$MaterialWorkspace='',[string]$AttemptId='')
     $plan=Read-WsmMigrationPlan $PlanPath $ExpectedHash;if($BaseManifestPath -and (Test-WsmPlanHasExactMembers $plan)){throw 'ExactMembers delta packaging is not supported; use a complete full generation until the member-set base chain is implemented.'};Assert-WsmMigrationHost (Get-WsmMachineIdentity) $plan.Source.Fingerprint
     $sourceProofs=@();if($plan.PSObject.Properties['Assistive']){
         $approvedVolumes=@();if($plan.Assistive.PSObject.Properties['ApprovedLocalVolumes']){$approvedVolumes=@($plan.Assistive.ApprovedLocalVolumes)}
@@ -250,7 +267,7 @@ function Export-WsmMigrationPackageCore {
         $manifestPath=Join-Path $root 'manifest.json';if([IO.File]::Exists($manifestPath)){throw 'Generation already sealed; use a new generation rather than overwrite evidence.'}
         $blobs=Join-Path $root 'payload';[void][IO.Directory]::CreateDirectory($blobs);Assert-WsmNoReparse $blobs
         $resumePath=Join-Path $root 'export-state.json';if([IO.File]::Exists($resumePath)){$resume=Read-WsmJson $resumePath;if($resume.PlanHash -ine $ExpectedHash -or $resume.ChunkBytes -ne $ChunkBytes){throw 'Resume plan/chunk format mismatch.'}}else{Write-WsmJson $resumePath ([pscustomobject]@{PlanHash=$ExpectedHash;ChunkBytes=$ChunkBytes;Generation=$generation;StartedUtc=(Get-WsmUtc)})}
-        $indexTemp=Join-Path $root 'artifacts.jsonl.partial';$writer=New-Object IO.StreamWriter($indexTemp,$false,(New-Object Text.UTF8Encoding($false)));$files=[long]0;$bytes=[long]0;$records=[long]0
+        [void](Save-WsmPartialArtifactIndex $root $AttemptId);$indexTemp=Join-Path $root 'artifacts.jsonl.partial';$writer=New-Object IO.StreamWriter($indexTemp,$false,(New-Object Text.UTF8Encoding($false)));$files=[long]0;$bytes=[long]0;$records=[long]0
         $progressItems=@($plan.Items | Where-Object {$_.Decision -ceq 'Include' -and (($_.MigrationSpec.Adapter -ceq 'FileScope' -and (Test-WsmAssistivePackageScope $plan $_)) -or $_.MigrationSpec.Adapter -ceq 'Certificate')});$progressCount=$progressItems.Count;$progressIndex=0
         try{foreach($item in $plan.Items){if($item.Decision -ne 'Include'){continue};$spec=$item.MigrationSpec
             # N3: capture is all-or-nothing (no manifest is sealed after a throw). Tag the exception with the item that was being captured so the attempt can name it; no message or path is copied.

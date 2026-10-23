@@ -1310,7 +1310,7 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 突變（皆轉紅）：拿掉核心 operationId 去重、允許跨世代拼接、續交付改為重新擷取、交付時讀來源、過期凍結可續作、拿掉路由層重放。
 - 限制與待決定：
   - 本機只有 C:，NonC 只能用 TransferChannel 標籤表示。
-  - 重試時 `artifacts.jsonl.partial` 會被新索引取代，舊 blob 仍留在套件工作區。16.6-2 的「舊 partial 保留」目前只保留到重試之前；重試時要不要另存舊 partial，由使用者決定。
+  - 重試時 `artifacts.jsonl.partial` 會被新索引取代，舊 blob 仍留在套件工作區。16.6-2 的「舊 partial 保留」目前只保留到重試之前；重試時要不要另存舊 partial，由使用者決定。（2026-10-23 已定案並由 17.95 P2 實作：舊部分索引另存為 `artifacts.jsonl.attempt-<id>-<NN>.partial`。）
 ### 17.79 N5 反例與檢查（15.3-2、15.3-10、15.5-6、15.2-4、16.3-6、16.6-10）
 
 - Sonnet 5.5 medium subagent 實作，主代理審查並獨立重跑。
@@ -1675,6 +1675,35 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - **GitHub `required-checks` 暫不設為必要檢查**。依 17.74，`required-checks` 目前因為 `Test-AssistiveWorkloadIntegration` 與 `Test-ObservationWorkflow` 判定失敗；這兩支在第六輪基準就已失敗（17.71）。現在設為必要檢查會擋住 dev／main 的合併，等這些測試修好再設。
 - **G 主旅程**：n9g001 由使用者自行允許執行，結果出來後再補綁帳本 G 階段。主代理與 subagent 都不會嘗試繞過權限分類器去執行它（17.92）。
 - 其餘待決項目由同日的 P1～P5 實作：投影旗標見 17.93，重試另存舊 partial、解析失敗不預填、失敗項目顯示來源路徑，以及 pending intent 與 reservation 補測，見後續各節。
+
+### 17.95 P2 重試同一 attempt 時另存上一次的部分索引（16.6-2；2026-10-23 使用者授權定案）
+
+- 原本的缺口（17.78）：重試時 `artifacts.jsonl.partial` 會被新索引直接覆寫。舊 blob 雖然還在套件工作區，記錄它們的索引卻遺失了。
+- Sonnet 5.5 medium subagent 實作，主代理審 diff、另做一個突變並獨立重跑。
+- `src/Payload.ps1`：
+  - 新增 `Save-WsmPartialArtifactIndex`。開新索引前，若 `<root>\artifacts.jsonl.partial` 已存在，就用 `[IO.File]::Move` 改名為 `artifacts.jsonl.attempt-<AttemptId>-<NN>.partial`。
+  - 只搬索引，不複製 blob。
+  - NN 取 01～99 中第一個不存在的號碼；目的檔已存在一律不覆寫，超過 99 就拒絕。
+  - 搬移前後都做 `Assert-WsmNoReparse`。
+  - `AttemptId` 只留 `[A-Za-z0-9-]`、最長 64 字元，沒給時用 `unknown`。
+  - 匯出器新增選用參數 `-AttemptId`；`WizardBackup.ps1` 傳入目前的 attempt id（續作時沿用原 id）。
+- 另存檔不影響封存與交付。以下各處都只認固定的成員名單，另存檔不會被驗證、打包或交付；既有完整性檢查沒有放寬：
+  - `Test-WsmMigrationPackage`
+  - ZIP 傳輸（`PackageTransport.ps1:2`、`OutputWorkspace.ps1:297/312-315`）
+  - Directory 交付（`OutputWorkspace.ps1:345` 的集合比對）
+  - 獨立副本與 Delta
+- blob 的寫入與沿用規則不變，16.6-2「不跨世代拼接」也不變。17.78 限制段中「重試時要不要另存舊 partial」已由本節實作。
+- 測試：`Test-RetryPartialIndexPreserved.ps1` 66 項，走真實的一鍵備份路徑，只注入崩潰與主機身分替身。涵蓋：
+  - 失敗一次後成功：`-01` 逐位元組保存，Directory 與 ZIP 交付都不含另存檔。
+  - 失敗兩次：產生 `-01` 與 `-02`。
+  - 已有同名檔：不覆寫，改用下一個號碼；滿 99 時拒絕。
+  - 沒傳 `AttemptId`：使用 `unknown`。
+  - `AttemptId` 含特殊字元：會被安全化。
+- 突變（皆轉紅）：
+  - subagent：拿掉另存、Move 前先刪除既有目的檔、`WizardBackup` 不傳 `AttemptId`。
+  - 主代理：安全化放行 `.` 與 `\`，路徑跳出 generation 目錄，測試以 rc=1 失敗。
+- 驗證（WinPS 5.1，主代理重跑）：RetryPartialIndexPreserved 66、WizardBackupReliability 62、WizardBackup、WizardBackupRecovery、OfflineFullSet 67、OfflineFullSetControlsRetry 15、WizardMixedGenerationZip 12、ScriptEncoding。subagent 另跑 G2 RetryAfterSealFailure 35。
+- 限制：測試以一般 FileScope 計畫走同一段 Core 程式，CV2 的重試由 OfflineFullSet 與 G2 涵蓋；檢查與搬移之間的競態沒有專門測試，由 `Invoke-WsmLocked` 的鎖保護。
 
 ### 17.43 Test-TextConsole 既有失敗修正
 
