@@ -79,6 +79,73 @@ function Assert-WsmLabDeliveryReceiptReferences {
     }
     $safe.ToArray()
 }
+# F2 external material alignment. The seven categories are the seven open items under "當期待辦：外部驗收" in docs/IMPLEMENTATION-0.1.md.
+# This only checks whether fields that existing collectors already put in this report (host/version/workload/owner/material/result)
+# cover each required material. It adds no collector, never changes a gate, and every category stays NotTested.
+function Get-WsmExternalAcceptanceDefinitions {
+    @(
+        [pscustomobject]@{Id='EX1';Name='代表性來源／目標及十台盤點';Materials=@(
+            [pscustomobject]@{Name='主機身分與作業系統版本';Fields=@('OS','OSVersion','ObservedMachineFingerprint');Checks=@()},
+            [pscustomobject]@{Name='產品／runtime／軟體清單（來源盤點快照）';Fields=@();Checks=@('NativeInventoryCollected')},
+            [pscustomobject]@{Name='scope 檔案範圍核對';Fields=@();Checks=@('FileScopeExact')},
+            [pscustomobject]@{Name='owner 與負責人';Fields=@();Checks=@()},
+            [pscustomobject]@{Name='媒體、容量、RPO／RTO 與維護窗';Fields=@();Checks=@()})},
+        [pscustomobject]@{Id='EX2';Name='Server 2016／2025／Core 實際矩陣';Materials=@(
+            [pscustomobject]@{Name='作業系統、版本與安裝類型（Core／桌面）';Fields=@('OS','OSVersion','WindowsInstallationType');Checks=@()},
+            [pscustomobject]@{Name='語系';Fields=@('UICulture','Culture');Checks=@()},
+            [pscustomobject]@{Name='PowerShell 版本與 32／64 位元執行環境';Fields=@('PowerShellVersion','PowerShellEdition','LanguageMode');Checks=@('ProcessArchitecture')},
+            [pscustomobject]@{Name='policy 與權限';Fields=@();Checks=@('Administrator')},
+            [pscustomobject]@{Name='產品原生錯誤分類正反例';Fields=@();Checks=@()})},
+        [pscustomobject]@{Id='EX3';Name='原生 IIS／SCM／任務／分享／憑證／帳號';Materials=@(
+            [pscustomobject]@{Name='本機管理命令可用性';Fields=@();Checks=@('AdapterCommand')},
+            [pscustomobject]@{Name='reboot 後 readback';Fields=@();Checks=@('RebootBarrier')},
+            [pscustomobject]@{Name='名稱／IP／DNS／Kerberos／網域切換證據';Fields=@();Checks=@()})},
+        [pscustomobject]@{Id='EX4';Name='Oracle 與企業信任鏈';Materials=@(
+            [pscustomobject]@{Name='Oracle TNS_ADMIN／TCPS／runtime 帳號與業務驗證';Fields=@();Checks=@()},
+            [pscustomobject]@{Name='企業有效信任鏈與撤銷材料';Fields=@();Checks=@()},
+            [pscustomobject]@{Name='簽章、批准與正式資格';Fields=@();Checks=@()})},
+        [pscustomobject]@{Id='EX5';Name='封裝到還原的耗時與資源量測';Materials=@(
+            [pscustomobject]@{Name='耗時、容量、尖峰記憶體與維護窗量測';Fields=@();Checks=@()})},
+        [pscustomobject]@{Id='EX6';Name='單台 pilot、相依雙台及十台波次';Materials=@(
+            [pscustomobject]@{Name='啟用檢查點（activation）';Fields=@();Checks=@('FinalActivation')},
+            [pscustomobject]@{Name='freeze、fencing、新交易回退與唯一 writer 證據';Fields=@();Checks=@()},
+            [pscustomobject]@{Name='業務接受結果';Fields=@();Checks=@()},
+            [pscustomobject]@{Name='觀察、備份實還原與退役批准';Fields=@();Checks=@()})},
+        [pscustomobject]@{Id='EX7';Name='真實瀏覽器與主控台完整旅程';Materials=@(
+            [pscustomobject]@{Name='真實瀏覽器完整備份、交接與目標還原旅程證據';Fields=@();Checks=@()})}
+    )
+}
+
+# Pure. A material is Covered only when it lists at least one existing field or check code and every listed one is present in this report.
+# Covered means "an existing collector supplies the material", not that the acceptance passed: Status is always NotTested.
+function Get-WsmExternalAcceptanceCoverage {
+    param([Parameter(Mandatory)]$Report)
+    $checkCodes=@{}
+    if($Report.PSObject.Properties['Checks']){foreach($check in @($Report.Checks)){if($check -and $check.PSObject.Properties['Code']){$checkCodes[[string]$check.Code]=$true}}}
+    foreach($category in @(Get-WsmExternalAcceptanceDefinitions)){
+        $covered=New-Object 'System.Collections.Generic.List[string]';$missing=New-Object 'System.Collections.Generic.List[string]'
+        foreach($material in @($category.Materials)){
+            $fields=@($material.Fields);$codes=@($material.Checks);$present=($fields.Count+$codes.Count -gt 0)
+            foreach($field in $fields){if(-not $Report.PSObject.Properties[[string]$field] -or [string]::IsNullOrWhiteSpace([string]$Report.PSObject.Properties[[string]$field].Value)){$present=$false}}
+            foreach($code in $codes){if(-not $checkCodes.ContainsKey([string]$code)){$present=$false}}
+            if($present){$covered.Add([string]$material.Name)}else{$missing.Add([string]$material.Name)}
+        }
+        [pscustomobject][ordered]@{Id=$category.Id;Name=$category.Name;Status='NotTested';CoveredMaterials=@($covered.ToArray());MissingMaterials=@($missing.ToArray())}
+    }
+}
+
+function Get-WsmExternalAcceptanceLines {
+    param($Coverage)
+    $lines=New-Object 'System.Collections.Generic.List[string]'
+    $rows=@($Coverage)
+    $lines.Add(('External acceptance: {0} categories, all NotTested; material alignment against existing collector fields only, never production qualification.' -f $rows.Count))
+    foreach($row in $rows){
+        $lines.Add(('[NotTested] {0} {1} | covered={2} missing={3}' -f $row.Id,$row.Name,@($row.CoveredMaterials).Count,@($row.MissingMaterials).Count))
+        foreach($material in @($row.MissingMaterials)){$lines.Add('缺少：'+$material)}
+    }
+    @($lines.ToArray())
+}
+
 function Export-WsmLabValidationReport {
     [CmdletBinding()]
     param(
@@ -179,8 +246,9 @@ function Export-WsmLabValidationReport {
     $readiness='ReadyForReview';if($counts.FAIL -or $counts.Blocked){$readiness='AttentionRequired'}elseif($counts.NotTested){$readiness='NotTested'}
     $orderedTextChecks=@($checks | Sort-Object @{Expression={switch -Exact ($_.Status){FAIL{0}Blocked{1}NotTested{2}PASS{3}default{4}}}},@{Expression='ItemId'},@{Expression='Code'});$shownTextChecks=@($orderedTextChecks | Select-Object -First $TextCheckLimit);$omittedTextChecks=[Math]::Max(0,$orderedTextChecks.Count-$shownTextChecks.Count)
     $report=[pscustomobject][ordered]@{SchemaVersion=1;ToolVersion=$script:ToolVersion;Kind='LabValidationReport';RunId=[Guid]::NewGuid().ToString();Role=$Role;Phase=$Phase;ScopeMode=$(if($manifest -and $package.Plan.SchemaVersion -eq 2){$package.Plan.ScopeMode}else{'Legacy'});ObservedUtc=(Get-WsmUtc);OS=$osDescription;OSVersion=$osVersion;WindowsInstallationType=$installationType;UICulture=$uiCulture;Culture=$culture;Runtime=(Get-WsmQualificationRuntime);PowerShellEdition=$psEdition;PowerShellVersion=$PSVersionTable.PSVersion.ToString();LanguageMode=$languageMode;ToolFingerprint=$toolFingerprint;ObservedMachineFingerprint=$identity.Fingerprint;PairId=$(if($manifest){$manifest.PairId}else{''});Generation=$(if($manifest){$manifest.Generation}else{$null});ManifestHash=$(if($manifest){$ExpectedHash.ToLowerInvariant()}else{''});PlanHash=$(if($manifest){$manifest.PlanHash}else{''});SourceFingerprint=$(if($manifest){$manifest.Source.Fingerprint}else{''});TargetFingerprint=$(if($manifest){$manifest.Target.Fingerprint}else{''});InventoryRevision=$(if($manifest){$manifest.InventoryRevision}else{$null});DecisionRevision=$(if($manifest){$manifest.DecisionRevision}else{$null});StateSequence=$(if($stateBinding){$stateBinding.State.Sequence}else{$null});JournalHash=$(if($stateBinding){$stateBinding.Journal.JournalHash}else{''});EnvironmentConfirmationReferences=$safeEnvironmentConfirmationReferences;EnvironmentConfirmationReferencesAuthoritativeDecisionInput=$false;EnvironmentConfirmationReferencesReadinessProof=$false;DeliveryReceiptReferences=$safeDeliveryReceiptReferences;DeliveryReceiptReferencesReadinessProof=$false;DeliveryReceiptReferencesProductionVerified=$false;Readiness=$readiness;Counts=[pscustomobject]$counts;Checks=$checks.ToArray();TextCheckLimit=$TextCheckLimit;TextChecksShown=$shownTextChecks.Count;TextChecksOmitted=$omittedTextChecks;BusinessValidationRequired=$true;ProductionVerified=$false;TrustLimitations=@('Local machine identity is fingerprint-bound but the report is not signed.','The copied text block is an integrity checksum, not independent proof of who produced it.','Environment confirmation documents are report-only references and never satisfy readiness or evidence gates.','Delivery receipt references are report-only and never satisfy readiness or production qualification.','Real product behavior and business acceptance require separate owner evidence.','This report never grants production qualification.')}
+    $report|Add-Member NoteProperty ExternalAcceptance @(Get-WsmExternalAcceptanceCoverage $report) -Force
     $reportPath=Join-Path $runRoot 'lab-validation.json';$textPath=Join-Path $runRoot 'lab-validation.txt';$json=$report | ConvertTo-Json -Depth 12; $jsonBytes=(New-Object Text.UTF8Encoding($false)).GetBytes($json+[Environment]::NewLine);$stream=[IO.File]::Open($reportPath,'CreateNew','Write','None');try{$stream.Write($jsonBytes,0,$jsonBytes.Length);$stream.Flush($true)}finally{$stream.Dispose()};$reportHash=(Get-FileHash -LiteralPath $reportPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $lines=New-Object 'System.Collections.Generic.List[string]';$lines.Add('WSM LAB VALIDATION REPORT');$lines.Add('Copy this complete block back to the migration reviewer.');$lines.Add(('Run ID: '+$report.RunId));$lines.Add(('Role: '+$Role+' | Phase: '+$Phase+' | Readiness: '+$readiness));$lines.Add(('Observed UTC: '+$report.ObservedUtc));$lines.Add(('OS: '+$osDescription+' | Version: '+$osVersion+' | PowerShell: '+$report.PowerShellVersion+' | LanguageMode: '+$languageMode));$lines.Add(('Windows installation type: '+$installationType+' | UI culture: '+$uiCulture+' | Culture: '+$culture+' | PowerShell edition: '+$psEdition));$lines.Add(('Tool fingerprint: '+$toolFingerprint+' | Machine fingerprint: '+$identity.Fingerprint));if($manifest){$lines.Add(('Pair: '+$manifest.PairId+' | Generation: '+$manifest.Generation+' | Manifest SHA256: '+$ExpectedHash.ToLowerInvariant()));$lines.Add(('Plan SHA256: '+$manifest.PlanHash+' | Decision revision: '+$manifest.DecisionRevision));if($stateBinding){$lines.Add(('State sequence: '+$stateBinding.State.Sequence+' | Journal hash: '+$stateBinding.Journal.JournalHash))};$lines.Add(('Source fingerprint: '+$manifest.Source.Fingerprint+' | Target fingerprint: '+$manifest.Target.Fingerprint))}else{$lines.Add('Package binding: none; environment readiness only.')};if($safeEnvironmentConfirmationReferences.Count){$lines.Add(('Environment confirmation documents attached: {0}; report-only references, not approval or readiness evidence.' -f $safeEnvironmentConfirmationReferences.Count));foreach($ref in $safeEnvironmentConfirmationReferences){$lines.Add(('Reference: '+$ref.DocumentId+' | '+$ref.Path+' | SHA256='+$ref.SHA256+' | ReportOnly'))}};if($safeDeliveryReceiptReferences.Count){$lines.Add(('Delivery receipts attached: {0}; report-only references, not readiness evidence.' -f $safeDeliveryReceiptReferences.Count));foreach($ref in $safeDeliveryReceiptReferences){$lines.Add(('DeliveryReceipt: '+$ref.ReceiptId+' | '+$ref.Status+' | '+$ref.OperationKind+'/'+$ref.Mode+' | '+$ref.Path+' | SHA256='+$ref.SHA256+' | ReportOnly'))}};$lines.Add(('Counts: PASS={0}; FAIL={1}; Blocked={2}; NotTested={3}' -f $counts.PASS,$counts.FAIL,$counts.Blocked,$counts.NotTested));$lines.Add(('Checks shown: {0} / {1}; omitted from this text block: {2}; full list is in the JSON report.' -f $shownTextChecks.Count,$orderedTextChecks.Count,$omittedTextChecks));$lines.Add('Checks:');foreach($check in $shownTextChecks){$label=$check.ItemId;if(-not $label){$label='host'};$field=$check.Field;if(-not $field){$field=$check.Code};$detail=$check.Hint;if($check.ExpectedSHA256 -or $check.ObservedSHA256){$detail+=' expectedSHA256='+$check.ExpectedSHA256+' observedSHA256='+$check.ObservedSHA256};if($check.FailureCategory){$detail+=' failureCategory='+$check.FailureCategory};if($null -ne $check.NativeCode){$detail+=' nativeCode='+$check.NativeCode};if($check.HResult){$detail+=' hresult='+$check.HResult};$lines.Add(('[{0}] {1} | {2} | {3} | {4}' -f $check.Status,$label,$check.Adapter,$field,$detail))};$lines.Add('Business validation: required and not satisfied by this report.');$lines.Add('ProductionVerified: false');$lines.Add('Limitations: report is unsigned; local admin can alter the source state and report. Integrity hash alone does not prove producer identity.');$lines.Add(('JSON report SHA256: '+$reportHash));$text=[string]::Join("`r`n",$lines.ToArray())+"`r`n";$encoding=New-Object Text.UTF8Encoding($true);$textBytes=$encoding.GetPreamble()+$encoding.GetBytes($text);$stream=[IO.File]::Open($textPath,'CreateNew','Write','None');try{$stream.Write($textBytes,0,$textBytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+    $lines=New-Object 'System.Collections.Generic.List[string]';$lines.Add('WSM LAB VALIDATION REPORT');$lines.Add('Copy this complete block back to the migration reviewer.');$lines.Add(('Run ID: '+$report.RunId));$lines.Add(('Role: '+$Role+' | Phase: '+$Phase+' | Readiness: '+$readiness));$lines.Add(('Observed UTC: '+$report.ObservedUtc));$lines.Add(('OS: '+$osDescription+' | Version: '+$osVersion+' | PowerShell: '+$report.PowerShellVersion+' | LanguageMode: '+$languageMode));$lines.Add(('Windows installation type: '+$installationType+' | UI culture: '+$uiCulture+' | Culture: '+$culture+' | PowerShell edition: '+$psEdition));$lines.Add(('Tool fingerprint: '+$toolFingerprint+' | Machine fingerprint: '+$identity.Fingerprint));if($manifest){$lines.Add(('Pair: '+$manifest.PairId+' | Generation: '+$manifest.Generation+' | Manifest SHA256: '+$ExpectedHash.ToLowerInvariant()));$lines.Add(('Plan SHA256: '+$manifest.PlanHash+' | Decision revision: '+$manifest.DecisionRevision));if($stateBinding){$lines.Add(('State sequence: '+$stateBinding.State.Sequence+' | Journal hash: '+$stateBinding.Journal.JournalHash))};$lines.Add(('Source fingerprint: '+$manifest.Source.Fingerprint+' | Target fingerprint: '+$manifest.Target.Fingerprint))}else{$lines.Add('Package binding: none; environment readiness only.')};if($safeEnvironmentConfirmationReferences.Count){$lines.Add(('Environment confirmation documents attached: {0}; report-only references, not approval or readiness evidence.' -f $safeEnvironmentConfirmationReferences.Count));foreach($ref in $safeEnvironmentConfirmationReferences){$lines.Add(('Reference: '+$ref.DocumentId+' | '+$ref.Path+' | SHA256='+$ref.SHA256+' | ReportOnly'))}};if($safeDeliveryReceiptReferences.Count){$lines.Add(('Delivery receipts attached: {0}; report-only references, not readiness evidence.' -f $safeDeliveryReceiptReferences.Count));foreach($ref in $safeDeliveryReceiptReferences){$lines.Add(('DeliveryReceipt: '+$ref.ReceiptId+' | '+$ref.Status+' | '+$ref.OperationKind+'/'+$ref.Mode+' | '+$ref.Path+' | SHA256='+$ref.SHA256+' | ReportOnly'))}};$lines.Add(('Counts: PASS={0}; FAIL={1}; Blocked={2}; NotTested={3}' -f $counts.PASS,$counts.FAIL,$counts.Blocked,$counts.NotTested));$lines.Add(('Checks shown: {0} / {1}; omitted from this text block: {2}; full list is in the JSON report.' -f $shownTextChecks.Count,$orderedTextChecks.Count,$omittedTextChecks));$lines.Add('Checks:');foreach($check in $shownTextChecks){$label=$check.ItemId;if(-not $label){$label='host'};$field=$check.Field;if(-not $field){$field=$check.Code};$detail=$check.Hint;if($check.ExpectedSHA256 -or $check.ObservedSHA256){$detail+=' expectedSHA256='+$check.ExpectedSHA256+' observedSHA256='+$check.ObservedSHA256};if($check.FailureCategory){$detail+=' failureCategory='+$check.FailureCategory};if($null -ne $check.NativeCode){$detail+=' nativeCode='+$check.NativeCode};if($check.HResult){$detail+=' hresult='+$check.HResult};$lines.Add(('[{0}] {1} | {2} | {3} | {4}' -f $check.Status,$label,$check.Adapter,$field,$detail))};foreach($externalLine in @(Get-WsmExternalAcceptanceLines $report.ExternalAcceptance)){$lines.Add($externalLine)};$lines.Add('Business validation: required and not satisfied by this report.');$lines.Add('ProductionVerified: false');$lines.Add('Limitations: report is unsigned; local admin can alter the source state and report. Integrity hash alone does not prove producer identity.');$lines.Add(('JSON report SHA256: '+$reportHash));$text=[string]::Join("`r`n",$lines.ToArray())+"`r`n";$encoding=New-Object Text.UTF8Encoding($true);$textBytes=$encoding.GetPreamble()+$encoding.GetBytes($text);$stream=[IO.File]::Open($textPath,'CreateNew','Write','None');try{$stream.Write($textBytes,0,$textBytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
     $blocked=($counts.FAIL -gt 0 -or $counts.Blocked -gt 0 -or ($Role -eq 'Target' -and $counts.NotTested -gt 0))
     [pscustomobject][ordered]@{JSONPath=$reportPath;TextPath=$textPath;JSONSHA256=$reportHash;Role=$Role;Readiness=$readiness;Counts=[pscustomobject]$counts;Blocked=$blocked;ProductionVerified=$false;Report=$report}
     } finally {if($operationLock){$operationLock.Dispose()}}

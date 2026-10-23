@@ -1404,6 +1404,33 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - D3a：補齊欄位與新證據後標為 implemented／isolated-pass，實機項目留在 openIssues。
   - F2：CLI 帶出失敗碼、階段與下一步；外部材料只對齊既有 collector 欄位，不新造 collector。
 - 執行順序：F2 CLI → 發行包冒煙 → D1 context → R7-04／05 可見性 → F1 驗收 → G 多劇本 → 最後一次集中重綁證據帳本（含 D3a）。帳本放到最後，因為前幾項會改 inventory 與計畫的資料，提早重綁會讓已綁好的雜湊再次過期。
+### 17.84 N9a F2 的 CLI 端失敗定位
+
+- Sonnet 5.5 medium subagent 實作，主代理審查並獨立重跑。
+- DeveloperProbe 的 HttpProbe 投影：
+  - 保留舊欄位，新增 `FailureCode`、`Stage`、`NextAction`、`FailureClass` 與 `FailureClassName`。
+  - 文字選單 CLI 與探針的 `index.html` 會印出定位行，格式為「定位：<類別>（FailureCode）／階段／下一步」，並經過遮蔽，不會出現 Bearer、token、密碼或絕對路徑。
+- 五類對應寫在純函式 `Get-WsmCliFailureClass` 中，中文名稱直接從 `console.js` 的畫面文案取用，並以測試比對。
+  - 規則與畫面端一致：在 Session 階段發生的 reset 或逾時，歸為 listener 不可達；寫入時發生的傳輸失敗，歸為未知寫入；未登記的代碼歸為未知根因。
+  - 測試會掃描 `AssistiveHttpProbe` 實際可能產出的所有代碼，有代碼沒登記就轉紅。
+- 未知寫入不重送：查證後確認 CLI 一律在同一個程序內直接呼叫核心，不經 HTTP，因此沒有傳輸層的未知寫入。另以 AST 測試證明 src 沒有任何 HTTP 寫入路徑。
+- 外部材料（依 17.83 定案）：
+  - LabReport 新增 `ExternalAcceptance`，對應 `IMPLEMENTATION-0.1.md` 外部驗收的七個待辦，只核對既有欄位，缺少時印出「缺少：<材料>」。
+  - 全部維持 NotTested，ProductionVerified 維持 false。
+- 驗證（WinPS 5.1）：
+  - 主代理獨立重跑：CliFailureLocation 192、AssistiveHttpProbe 44、LabValidation、TextConsole、ScriptEncoding。
+  - subagent 另外跑：DeveloperProbe、LabReportConsumer、CliWaitingForInput、HtmlProbeProjection、WizardTextRuntime 65、HtmlConsole 175。
+- 突變（皆轉紅）：
+  - 投影不帶 NextAction
+  - reset 對應到 listener
+  - 遮蔽失效
+  - LabReport 不印「缺少」
+  - CLI 名稱與畫面不一致
+  - 主代理另做一個：拿掉 Session 階段的重新分類
+- 限制：
+  - `Start-ServerMigration.ps1 -Action DeveloperProbe` 只印固定欄位，不會顯示定位行；文字選單與 HTML 會顯示。
+  - 「七類」以 `IMPLEMENTATION-0.1.md` 外部驗收的七個待辦為準。
+  - InvalidSessionResponse 等歸為「其他」，與畫面端一致。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

@@ -456,7 +456,7 @@ function Invoke-WsmTypedTextOperationCore {
             throw
         }
         Write-Host '核心命令已回傳；以下僅顯示安全欄位。'
-        if($durableJobAction){$result | Format-List | Out-Host}elseif(Get-Command Get-WsmHtmlResultProjection -ErrorAction SilentlyContinue){Get-WsmHtmlResultProjection $result | Format-List | Out-Host}else{$result | Format-List | Out-Host}
+        if($durableJobAction){$result | Format-List | Out-Host}elseif(Get-Command Get-WsmHtmlResultProjection -ErrorAction SilentlyContinue){Get-WsmHtmlResultProjection $result | Format-List | Out-Host}else{$result | Format-List | Out-Host};if($action -ceq 'DeveloperProbe'){foreach($probeRow in @($result)){if($probeRow -and $probeRow.PSObject.Properties['CollectorResults']){foreach($locationLine in @(Get-WsmDeveloperProbeFailureLocationLines $probeRow.CollectorResults)){Write-Host $locationLine}}}}
         [pscustomobject]@{Status='Applied';Executed=$true;Action=$action;Result=$result}
     } catch {
         if($jobRecord -and [string]$jobRecord.status -ceq 'Running'){$jobRecord.status=Get-WsmWorkerFailureStatus $_;$jobRecord.CompletedUtc=Get-WsmUtc;$jobRecord|Add-Member NoteProperty canCancel $false -Force;$jobRecord.outputs=@(Get-WsmTextWizardTerminalOutputs $jobRecord (@($jobHistory)+@($jobRecord)));if($jobPath){Write-WsmJson $jobPath $jobRecord}}

@@ -287,6 +287,132 @@ function Get-WsmDeveloperProbeInventoryScopeGaps($Module) {
     @(& $Module { @($script:WsmDeveloperProbeScopeGaps.ToArray()) })
 }
 
+# Pure CLI-side connection failure classification (aligned with classifyConnectionFailure in src/ui/console.js).
+# The Chinese names are the same titles the browser banner shows (connectionCopy[*].title); a test compares them with console.js.
+function Get-WsmCliFailureClassNames {
+    [ordered]@{
+        'listener-unreachable'='本機工具沒有在執行'
+        'resource-incomplete'='頁面檔案不完整，或和工具版本不一致'
+        'session-expired'='本機工作階段已過期'
+        'reset-timeout'='連線中斷或逾時'
+        'unknown-write'='上一筆操作結果尚未確認'
+        'other'='其他'
+        'unknown-root'='未知根因'
+        'none'='無失敗'
+    }
+}
+
+# Pure. Maps a probe FailureCode (plus the stage it was observed in) to one of the five screen categories, or other / unknown-root / none.
+# Mapping table (FailureCode -> category id):
+#   ListenerUnavailable                                  -> listener-unreachable
+#   ConnectionResetObserved / ConnectionAbortedObserved
+#     / RequestTimedOut                                  -> reset-timeout   (Stage 'Session' = no session established yet -> listener-unreachable, same as the screen rule)
+#   SessionExpired                                       -> session-expired
+#   AssetIntegrityMismatch / AssetHttpFailure / LocalAssetMissing / LocalAssetReadFailure
+#     / SessionAssetHashesMissing / SessionAssetHashMissing / SessionAssetHashInvalid -> resource-incomplete
+#   SessionAccessDenied / SessionHttpFailure / InvalidSessionResponse -> other (the screen also returns no category for 403, 5xx and invalid JSON)
+#   UnknownTransportFailure / anything unrecognised      -> unknown-root (evidence insufficient; never guessed)
+#   None                                                 -> none
+#   -IsWrite with ListenerUnavailable / Reset / Aborted / Timeout / UnknownTransportFailure -> unknown-write (result unconfirmed, never re-sent)
+function Get-WsmCliFailureClass {
+    param([AllowNull()][string]$FailureCode,[AllowNull()][string]$Stage='',[switch]$IsWrite)
+    $names=Get-WsmCliFailureClassNames
+    $transportCodes=@('ListenerUnavailable','ConnectionResetObserved','ConnectionAbortedObserved','RequestTimedOut','UnknownTransportFailure')
+    $category='unknown-root'
+    if([string]::IsNullOrWhiteSpace($FailureCode)){$category='unknown-root'}
+    elseif($FailureCode -ceq 'None'){$category='none'}
+    elseif($FailureCode -ceq 'SessionExpired'){$category='session-expired'}
+    elseif($IsWrite -and $FailureCode -cin $transportCodes){$category='unknown-write'}
+    elseif($FailureCode -ceq 'ListenerUnavailable'){$category='listener-unreachable'}
+    elseif($FailureCode -cin @('ConnectionResetObserved','ConnectionAbortedObserved','RequestTimedOut')){
+        if($Stage -ceq 'Session'){$category='listener-unreachable'}else{$category='reset-timeout'}
+    }
+    elseif($FailureCode -cin @('AssetIntegrityMismatch','AssetHttpFailure','LocalAssetMissing','LocalAssetReadFailure','SessionAssetHashesMissing','SessionAssetHashMissing','SessionAssetHashInvalid')){$category='resource-incomplete'}
+    elseif($FailureCode -cin @('SessionAccessDenied','SessionHttpFailure','InvalidSessionResponse')){$category='other'}
+    [pscustomobject]@{Category=$category;Name=[string]$names[$category]}
+}
+
+# Pure. One text line per failure: 定位：<中文類別>（FailureCode）／階段：<Stage>／下一步：<NextAction>
+function Format-WsmCliFailureLocationLine {
+    param([string]$FailureCode,[string]$Stage,[string]$NextAction,[switch]$IsWrite)
+    $class=Get-WsmCliFailureClass -FailureCode $FailureCode -Stage $Stage -IsWrite:$IsWrite
+    '定位：'+$class.Name+'（'+$FailureCode+'）／階段：'+$Stage+'／下一步：'+$NextAction
+}
+
+# Projects the (untrusted-text-bearing) result of Export-WsmAssistiveHttpProbe into the sanitized HttpProbe collector data.
+# Keeps the legacy ErrorType (equal to FailureCode) and adds FailureCode, Stage, NextAction and the screen-aligned class.
+# Codes and stages must be plain identifiers; free text (NextAction) always goes through ConvertTo-WsmDeveloperProbeSafeText
+# so tokens, session ids, secrets and absolute paths cannot reach probe.json, the HTML summary or the CLI output.
+function ConvertTo-WsmDeveloperProbeHttpProjection {
+    param([Parameter(Mandatory)]$Result,[string]$Salt='')
+    $read={param($Object,[string]$Name) if($null -ne $Object -and $Object.PSObject.Properties[$Name]){$Object.PSObject.Properties[$Name].Value}else{$null}}
+    $identifier={param($Value) $text=[string]$Value; if($text -cmatch '^[A-Za-z][A-Za-z0-9]{0,63}$'){$text}else{'Unknown'}}
+    $safeText={param($Value) if($null -eq $Value){''}else{ConvertTo-WsmDeveloperProbeSafeText ([string]$Value) $Salt}}
+    $describe={
+        param($Row)
+        $code=& $identifier (& $read $Row 'FailureCode');$stage=& $identifier (& $read $Row 'Stage')
+        $class=Get-WsmCliFailureClass -FailureCode $code -Stage $stage
+        [ordered]@{FailureCode=$code;Stage=$stage;NextAction=(& $safeText (& $read $Row 'NextAction'));FailureClass=$class.Category;FailureClassName=$class.Name}
+    }
+    $safeAssets=@(foreach($asset in @(& $read $Result 'Assets')){
+        if($null -eq $asset){continue}
+        $route=[string](& $read $asset 'Route')
+        $transport=& $read $asset 'TransportError'
+        $row=[ordered]@{
+            RouteAlias=$(if($route){Get-WsmDeveloperProbeSafeAlias $route 'route' $Salt}else{''})
+            Status=[string](& $read $asset 'Status')
+            ExpectedBytes=(& $read $asset 'ExpectedBytes')
+            ObservedBytes=(& $read $asset 'ObservedBytes')
+            LocalSHA256=(& $read $asset 'LocalSHA256')
+            ObservedSHA256=(& $read $asset 'ObservedSHA256')
+            BodyMatchesDisk=[bool](& $read $asset 'BodyMatchesDisk')
+            HeadersMatchExpected=[bool](& $read $asset 'HeadersMatchExpected')
+            TransportErrorType=$(if($transport){& $identifier $transport}else{$null})
+        }
+        $detail=& $describe $asset
+        foreach($key in $detail.Keys){$row[$key]=$detail[$key]}
+        [pscustomobject]$row
+    })
+    $top=& $describe $Result
+    $errorValue=& $read $Result 'Error'
+    $projection=[ordered]@{
+        Status=[string](& $read $Result 'Status')
+        AssetCount=$safeAssets.Count
+        Assets=$safeAssets
+        ErrorType=$(if($errorValue){& $identifier $errorValue}else{$null})
+    }
+    foreach($key in $top.Keys){$projection[$key]=$top[$key]}
+    [pscustomobject]$projection
+}
+
+# Returns the location lines (one per distinct failure) for the HttpProbe collector in a list of collector results.
+function Get-WsmDeveloperProbeFailureLocationLines {
+    param($CollectorResults)
+    $lines=New-Object 'System.Collections.Generic.List[string]'
+    $seen=@{}
+    $read={param($Object,[string]$Name) if($null -ne $Object -and $Object.PSObject.Properties[$Name]){$Object.PSObject.Properties[$Name].Value}else{$null}}
+    $collector=@(@($CollectorResults)|Where-Object {$_ -and ([string](& $read $_ 'Id')) -ceq 'HttpProbe'})|Select-Object -First 1
+    if(-not $collector){return @()}
+    $data=& $read $collector 'Data'
+    $add={
+        param($Code,$Stage,$Next)
+        $code=[string]$Code
+        if([string]::IsNullOrWhiteSpace($code) -or $code -ceq 'None'){return}
+        $key=$code+'|'+[string]$Stage
+        if($seen.ContainsKey($key)){return}
+        $seen[$key]=$true
+        $lines.Add((Format-WsmCliFailureLocationLine -FailureCode $code -Stage ([string]$Stage) -NextAction ([string]$Next)))
+    }
+    if($null -ne $data -and $data.PSObject.Properties['FailureCode']){
+        & $add (& $read $data 'FailureCode') (& $read $data 'Stage') (& $read $data 'NextAction')
+        foreach($asset in @(& $read $data 'Assets')){& $add (& $read $asset 'FailureCode') (& $read $asset 'Stage') (& $read $asset 'NextAction')}
+    }elseif([string](& $read $collector 'Status') -cin @('Failed','TimedOut')){
+        $reason=[string](& $read $collector 'ReasonCode')
+        & $add $(if($reason -cmatch '^[A-Za-z][A-Za-z0-9]{0,63}$'){$reason}else{'Unknown'}) 'HttpProbe' '檢查本機服務與連線狀態，再重新執行唯讀檢查。'
+    }
+    @($lines.ToArray())
+}
+
 function New-WsmDeveloperProbeWorker {
     param([string]$ModulePath,[string]$CollectorId,[string]$Role,[string]$Origin,[string]$RawRoot,[string]$Salt,[scriptblock]$Adapter)
     $state=[System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
@@ -370,9 +496,9 @@ switch($CollectorId){
    Import-Module -Name $ModulePath -Force -ErrorAction Stop
    if(-not $Origin){return [pscustomobject]@{Status='NotApplicable';ReasonCode='NoOriginSupplied'}}
    $out=Join-Path $RawRoot 'http';if(-not [IO.Directory]::Exists($out)){[void][IO.Directory]::CreateDirectory($out)}
+   . (Join-Path (Split-Path $ModulePath -Parent) 'DeveloperProbe.ps1')
    $result=Export-WsmAssistiveHttpProbe -Origin ([uri]$Origin) -OutputPath (Join-Path $out 'http-probe.txt')
-   $safeAssets=@(foreach($asset in @($result.Assets)){[pscustomobject]@{RouteAlias=(Get-WorkerAlias ([string]$asset.Route) 'route');Status=[string]$asset.Status;ExpectedBytes=$asset.ExpectedBytes;ObservedBytes=$asset.ObservedBytes;LocalSHA256=$asset.LocalSHA256;ObservedSHA256=$asset.ObservedSHA256;BodyMatchesDisk=[bool]$asset.BodyMatchesDisk;HeadersMatchExpected=[bool]$asset.HeadersMatchExpected;TransportErrorType=$(if($asset.TransportError){[string]$asset.TransportError}else{$null})}})
-   [pscustomobject]@{Status=[string]$result.Status;AssetCount=$safeAssets.Count;Assets=$safeAssets;ErrorType=$(if($result.Error){[string]$result.Error}else{$null})}
+   ConvertTo-WsmDeveloperProbeHttpProjection $result $Salt
  }
  default {throw 'Unknown developer probe collector.'}
 }
@@ -486,7 +612,8 @@ function Export-WsmDeveloperProbe {
         }
         $jsonPath=Join-Path $runRoot 'probe.json';[IO.File]::WriteAllBytes($jsonPath,$bytes)
         $htmlPath=Join-Path $runRoot 'index.html';$rows=foreach($row in $probe.Collectors){'<tr><td>'+[Net.WebUtility]::HtmlEncode([string]$row.Id)+'</td><td>'+[Net.WebUtility]::HtmlEncode([string]$row.Status)+'</td><td>'+[Net.WebUtility]::HtmlEncode([string]$row.ReasonCode)+'</td><td>'+[Net.WebUtility]::HtmlEncode([string]$row.DurationMs)+'</td></tr>'}
-        $page='<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>開發者環境探測</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;color:#172033}table{border-collapse:collapse;width:100%}th,td{border:1px solid #bbc4ce;padding:.5rem;text-align:left;overflow-wrap:anywhere}code{word-break:break-all}</style><h1>開發者環境探測</h1><p>格式版本：1.0　執行識別：'+[Net.WebUtility]::HtmlEncode($runId)+'</p><p>模式：唯讀。結果僅描述本機觀測，不代表正式環境資格或業務驗證。</p><table><thead><tr><th>收集項目</th><th>狀態</th><th>原因</th><th>耗時毫秒</th></tr></thead><tbody>'+($rows -join '')+'</tbody></table><p>資料格式：<code>probe.json</code> 使用 <code>SanitizedDeveloperProbeProjection</code>；這是經匿名化的診斷投影，不是原生盤點 JSON。欄位保留結構、型別、狀態及包內穩定別名。</p><p>讀取示例：PowerShell 可用 <code>[IO.Compression.ZipFile]::OpenRead($path)</code> 讀取 <code>probe.json</code>，再以 <code>ConvertFrom-Json</code> 讀取 <code>Collectors</code>。</p></html>'
+        $locationLines=@(Get-WsmDeveloperProbeFailureLocationLines @($results.ToArray()));$locationHtml=if($locationLines.Count){'<h2>連線失敗定位</h2><ul>'+(($locationLines|ForEach-Object {'<li>'+[Net.WebUtility]::HtmlEncode([string]$_)+'</li>'}) -join '')+'</ul>'}else{''}
+        $page='<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>開發者環境探測</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;color:#172033}table{border-collapse:collapse;width:100%}th,td{border:1px solid #bbc4ce;padding:.5rem;text-align:left;overflow-wrap:anywhere}code{word-break:break-all}</style><h1>開發者環境探測</h1><p>格式版本：1.0　執行識別：'+[Net.WebUtility]::HtmlEncode($runId)+'</p><p>模式：唯讀。結果僅描述本機觀測，不代表正式環境資格或業務驗證。</p><table><thead><tr><th>收集項目</th><th>狀態</th><th>原因</th><th>耗時毫秒</th></tr></thead><tbody>'+($rows -join '')+'</tbody></table>'+$locationHtml+'<p>資料格式：<code>probe.json</code> 使用 <code>SanitizedDeveloperProbeProjection</code>；這是經匿名化的診斷投影，不是原生盤點 JSON。欄位保留結構、型別、狀態及包內穩定別名。</p><p>讀取示例：PowerShell 可用 <code>[IO.Compression.ZipFile]::OpenRead($path)</code> 讀取 <code>probe.json</code>，再以 <code>ConvertFrom-Json</code> 讀取 <code>Collectors</code>。</p></html>'
         [IO.File]::WriteAllText($htmlPath,$page,$encoding)
         $payloads=New-Object 'System.Collections.Generic.List[object]';[void]$payloads.Add(@{Name='probe.json';Path=$jsonPath});[void]$payloads.Add(@{Name='index.html';Path=$htmlPath});$fileIndex=New-Object 'System.Collections.Generic.List[object]'
         foreach($payload in $payloads){[void]$fileIndex.Add([pscustomobject]@{Path=[string]$payload.Name;Length=(Get-Item -LiteralPath $payload.Path).Length;SHA256=(Get-FileHash -LiteralPath $payload.Path -Algorithm SHA256).Hash.ToLowerInvariant();ContentType=$(if($payload.Name -eq 'probe.json'){'application/json'}else{'text/html; charset=utf-8'})})}
