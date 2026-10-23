@@ -89,7 +89,7 @@ async function openWorkbench(browser, fixture, scenario, hash, contextOptions) {
   const session = { token: 'memory-only-test-token', sessionId: 'fixture-session', contextId: 'fixture-context', hostName: 'fixture-host', role: 'Source', workspace: root, pairId: 'fixture-pair', revision: 5, decisionRevision: 7, selectionRevision: 3, sourceSelectionRevision: 3, dataVersion: 'fixture-data-1', principal: 'fixture-user' };
   const viewContext = () => ({ sessionId: session.sessionId, contextId: session.contextId, pairId: 'fixture-pair', role: 'Source', revision: session.revision, decisionRevision: session.decisionRevision, selectionRevision: session.selectionRevision, sourceSelectionRevision: session.sourceSelectionRevision, dataVersion: session.dataVersion, readUtc: new Date().toISOString() });
   const results = scenario.results;
-  const view = () => ({ kind: 'BackupItemResultsView', available: true, integrity: 'Verified', attemptId: 'fixture-attempt', backupOperationId: 'fixture-op', generatedUtc: results.GeneratedUtc, inventorySource: results.InventorySource, offlineReadiness: 'AwaitingIndependentCopy', counts: results.Counts, rows: results.Rows, software: results.Software, schemaVersion: results.SchemaVersion || 1, coverageRegions: Object.prototype.hasOwnProperty.call(results, 'CoverageRegions') ? results.CoverageRegions : null, independentCopy: scenario.copy, viewContext: viewContext() });
+  const view = () => ({ kind: 'BackupItemResultsView', available: true, integrity: 'Verified', attemptId: 'fixture-attempt', backupOperationId: 'fixture-op', generatedUtc: results.GeneratedUtc, inventorySource: results.InventorySource, offlineReadiness: 'AwaitingIndependentCopy', counts: results.Counts, rows: results.Rows, software: results.Software, schemaVersion: results.SchemaVersion || 1, coverageRegions: Object.prototype.hasOwnProperty.call(results, 'CoverageRegions') ? results.CoverageRegions : null, excludedRegions: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegions') ? results.ExcludedRegions : null, excludedRegionsBinding: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegionsBinding') ? results.ExcludedRegionsBinding : null, independentCopy: scenario.copy, viewContext: viewContext() });
   await page.route(/\/api\/.*/, async route => {
     const request = route.request(), parsed = new URL(request.url()), pathname = parsed.pathname;
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -104,6 +104,7 @@ async function openWorkbench(browser, fixture, scenario, hash, contextOptions) {
       if (parsed.searchParams.get('action') === 'backup-items') {
         if (scenario.delayView) await scenario.delayView;
         if (scenario.viewError) return json({ code: 'package_changed', message: '備份明細暫時無法讀取。', nextStep: '稍後重試。', correlationId: 'fixture-view-error' });
+        if (scenario.failedAttempt) return json({ kind: 'BackupItemResultsView', available: false, reason: '目前還沒有已交付的備份。', failedAttempt: scenario.failedAttempt, viewContext: viewContext() });
         return json(view());
       }
       return json({ viewContext: viewContext(), rows: [], items: [] });
@@ -275,6 +276,92 @@ const waitResults = async page => { await page.waitForSelector('#backup-item-res
       assert.deepEqual(errors, []); await page.context().close();
     }
 
+    // N3: excluded regions (BundleExcluded / ProtectedArea) in the pending panel: own table, filter, search, CSV; never item rows.
+    {
+      const { page, errors } = await openWorkbench(browser, fixture, base, '#jobs?filter=backup&tab=pending');
+      await waitResults(page);
+      const pending = page.locator('#backup-panel-pending'), excludedExpected = fixture.results.ExcludedRegions;
+      const region = pending.locator('.backup-excluded');
+      assert.equal(await region.getAttribute('data-excluded'), 'data');
+      assert.ok((await pending.innerText()).includes('套裝本體與受保護區域（依政策不納入備份；以區域列出，不是項目）'));
+      assert.deepEqual(await region.locator('thead th').allInnerTexts(), ['區域', '原因', '下一步']);
+      const regionStatus = region.locator('[role=status][aria-atomic=true]');
+      assert.equal(await regionStatus.innerText(), `顯示 ${excludedExpected.length}／共 ${excludedExpected.length} 筆`);
+      const bundle = excludedExpected.find(r => r.ReasonCode === 'BundleExcluded'), protectedArea = excludedExpected.find(r => r.ReasonCode === 'ProtectedArea');
+      assert.ok(bundle.Reason.includes('套裝軟體本體') && bundle.NextStep.includes('重新安裝') && protectedArea.Reason.includes('受保護區域'));
+      const regionSelect = region.getByLabel('區域類別');
+      const options = await regionSelect.locator('option').allInnerTexts();
+      assert.ok(options.includes(bundle.Reason) && options.includes(protectedArea.Reason), 'both new reasons must be filter options with their Chinese text');
+      await regionSelect.selectOption('BundleExcluded');
+      assert.equal(await regionStatus.innerText(), `顯示 ${excludedExpected.filter(r => r.ReasonCode === 'BundleExcluded').length}／共 ${excludedExpected.length} 筆`);
+      assert.ok((await region.locator('tbody tr').first().innerText()).includes(bundle.NextStep), 'the next step must be shown');
+      assert.equal(await region.locator('tbody tr[data-reason="BundleExcluded"]').count(), await region.locator('tbody tr').count());
+      await regionSelect.selectOption('');
+      await region.getByLabel('搜尋區域路徑').fill('config.msi');
+      assert.equal(await regionStatus.innerText(), `顯示 1／共 ${excludedExpected.length} 筆`);
+      await region.getByLabel('搜尋區域路徑').fill('');
+      const regionCsv = await captureCsv(page, region);
+      assert.deepEqual(regionCsv[0], ['區域', '原因', '下一步', '原因碼']);
+      assert.equal(regionCsv.length - 1, excludedExpected.length);
+      await regionSelect.selectOption('ProtectedArea');
+      const protectedCsv = await captureCsv(page, region);
+      assert.equal(protectedCsv.length - 1, excludedExpected.filter(r => r.ReasonCode === 'ProtectedArea').length);
+      assert.ok(protectedCsv.slice(1).every(r => r[3] === 'ProtectedArea'));
+      await regionSelect.selectOption('');
+      assert.equal(await pending.locator('tbody tr[data-id]').count(), 100, 'regions must not add item rows (first item page is still 100 rows)');
+      await region.locator('table').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(screens, 'n3-workbench-excluded-regions.png') });
+      assert.deepEqual(errors, []); await page.context().close();
+    }
+    // excluded regions: recorded-but-empty, binding not verified (null) and legacy results are three different messages
+    {
+      const emptyResults = { ...fixture.results, ExcludedRegions: [] };
+      const { page, errors } = await openWorkbench(browser, fixture, { ...base, results: emptyResults }, '#jobs?filter=backup&tab=pending');
+      await waitResults(page);
+      const region = page.locator('#backup-panel-pending .backup-excluded');
+      assert.equal(await region.getAttribute('data-excluded'), 'empty');
+      assert.equal((await region.innerText()).trim(), '沒有記錄到被排除的區域');
+      assert.deepEqual(errors, []); await page.context().close();
+    }
+    {
+      const unboundResults = { ...fixture.results, ExcludedRegions: null };
+      const { page, errors } = await openWorkbench(browser, fixture, { ...base, results: unboundResults }, '#jobs?filter=backup&tab=pending');
+      await waitResults(page);
+      const region = page.locator('#backup-panel-pending .backup-excluded');
+      assert.equal(await region.getAttribute('data-excluded'), 'unrecorded');
+      assert.equal((await region.innerText()).trim(), '此結果集未記錄');
+      assert.equal(await region.locator('table').count(), 0);
+      assert.deepEqual(errors, []); await page.context().close();
+    }
+    {
+      const { page, errors } = await openWorkbench(browser, fixture, { ...base, results: legacyFixture.results }, '#jobs?filter=backup&tab=pending');
+      await waitResults(page);
+      const region = page.locator('#backup-panel-pending .backup-excluded');
+      assert.equal(await region.getAttribute('data-excluded'), 'unrecorded');
+      assert.equal((await region.innerText()).trim(), '此結果集未記錄');
+      assert.deepEqual(errors, []); await page.context().close();
+    }
+    // N3: nothing delivered, a failed attempt: capture failure names the failed item, read-back failure is NotVerified; no result set is shown
+    {
+      const failedAttempt = { attemptId: 'fixture-failed', errorCode: 'core_export_failed', classification: 'CaptureFailed', title: '擷取或封存失敗', detail: '封存沒有完成，所以沒有產生任何備份結果集；工具不會把部分擷取的內容當成已備份。', nextStep: '修正失敗項目的問題後，從同一個作業續作。', updatedUtc: '2026-10-23T01:00:00Z', failedItem: { ItemId: 'item-0042', Name: 'Doomed <b>data</b> folder', Kind: 'DataRoot', Channel: 'C', ErrorClass: 'IOError', ErrorKind: 'System.IO.IOException' } };
+      const { page, errors } = await openWorkbench(browser, fixture, { ...base, failedAttempt }, '#jobs?filter=backup');
+      await page.waitForSelector('#backup-item-results .backup-failed-attempt', { timeout: 30000 });
+      const box = page.locator('#backup-item-results .backup-failed-attempt'), text = await box.innerText();
+      assert.equal(await page.locator('#backup-item-results [role=tablist]').count(), 0, 'a failed attempt must not show result tabs');
+      assert.equal(await box.getAttribute('data-classification'), 'CaptureFailed');
+      assert.ok(text.includes('擷取或封存失敗') && text.includes('Doomed <b>data</b> folder') && text.includes('讀寫錯誤') && text.includes('System.IO.IOException') && text.includes('從同一個作業續作') && text.includes('沒有產生任何備份結果集'));
+      assert.equal(await box.locator('b').count(), 0, 'the failed item name must be text, not markup');
+      await page.screenshot({ path: path.join(screens, 'n3-workbench-capture-failed.png') });
+      assert.deepEqual(errors, []); await page.context().close();
+      const verify = await openWorkbench(browser, fixture, { ...base, failedAttempt: { ...failedAttempt, errorCode: 'package_test_failed', classification: 'NotVerified', title: '已封存但讀回驗證未通過', detail: '封存後的讀回驗證沒有通過，這份備份不能視為已備份。', nextStep: '先檢查作業紀錄與儲存空間，再從同一個作業續作驗證。', failedItem: null } }, '#jobs?filter=backup');
+      await verify.page.waitForSelector('#backup-item-results .backup-failed-attempt', { timeout: 30000 });
+      const verifyBox = verify.page.locator('#backup-item-results .backup-failed-attempt'), verifyText = await verifyBox.innerText();
+      assert.equal(await verifyBox.getAttribute('data-classification'), 'NotVerified');
+      assert.ok(verifyText.includes('已封存但讀回驗證未通過') && verifyText.includes('不能視為已備份') && !verifyText.includes('失敗項目') && !verifyText.includes('沒有記錄到特定項目'));
+      await verify.page.screenshot({ path: path.join(screens, 'n3-workbench-not-verified.png') });
+      assert.deepEqual(verify.errors, []); await verify.context.close();
+    }
+
     // ================= D. URL hash state: written by filters, survives reload, back and manual edits =================
     {
       const { page, errors } = await openWorkbench(browser, fixture, { ...base, copy: COPY_STATES.verified }, '#jobs?filter=backup&tab=pending&type=DataRoot');
@@ -438,6 +525,24 @@ const waitResults = async page => { await page.waitForSelector('#backup-item-res
         assert.deepEqual([...w.keys()].sort(), [...r.keys()].sort(), `${label}: same item ids`);
         for (const [id, cells] of w) assert.deepEqual(cells, r.get(id), `${label}: row ${id} differs between workbench and report CSV`);
       }
+
+      // N3: the excluded-regions CSV is identical on both screens (same header, same rows, same reason codes)
+      const reportRegionsContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      await reportRegionsContext.addInitScript(blobCapture);
+      const reportRegionsPage = await reportRegionsContext.newPage(); reportRegionsPage.on('pageerror', e => allErrors.push(e.message)); reportRegionsPage.on('console', m => { if (m.type() === 'error') allErrors.push(m.text()); });
+      await reportRegionsPage.goto(fileUrl(fixture.report)); await reportRegionsPage.waitForSelector('[role=tablist]');
+      await reportRegionsPage.locator('[role=tab]').nth(1).click();
+      const reportRegions = await captureCsv(reportRegionsPage, reportRegionsPage.locator('#pending .toolbar').nth(1));
+      await reportRegionsContext.close();
+      await page.locator('#backup-tab-pending').click();
+      const workbenchRegions = await captureCsv(page, page.locator('#backup-panel-pending .backup-excluded'));
+      assert.deepEqual(workbenchRegions[0], reportRegions[0], 'region CSV header must match on both screens');
+      assert.deepEqual(workbenchRegions[0].slice(-1), ['原因碼']);
+      assert.equal(workbenchRegions.length - 1, fixture.results.ExcludedRegions.length);
+      const sortRows = csv => csv.slice(1).map(r => r.join('\u0001')).sort();
+      assert.deepEqual(sortRows(workbenchRegions), sortRows(reportRegions), 'region CSV rows must be identical on both screens');
+      const regionJson = new Map(fixture.results.ExcludedRegions.map(r => [r.Path, r]));
+      for (const csvName of [workbenchRegions, reportRegions]) for (const row of csvName.slice(1)) { const e = regionJson.get(row[0]); assert.ok(e, 'unknown region ' + row[0]); assert.equal(row[3], e.ReasonCode); assert.equal(row[1], e.Reason); assert.equal(row[2], e.NextStep); }
       // the display-only columns never leak into the CSV
       assert.ok(!workbenchBacked[0].includes('獨立副本') && !workbenchBacked[0].includes('檔案明細'));
 

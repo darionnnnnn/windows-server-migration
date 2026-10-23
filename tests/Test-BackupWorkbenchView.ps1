@@ -66,6 +66,26 @@ try {
         & $check ($v.independentCopy.state -ceq 'NotVerified' -and $v.independentCopy.text -ceq '尚未驗證') 'Without any receipt the column must read not verified.'
         Write-Host 'PASS: no receipt shows not verified.'
 
+        # ---- N3: excluded regions reach the view; a plan that is not bound to a candidate scan reads as not recorded ----
+        & $check ($v.PSObject.Properties['excludedRegions'] -and $null -eq $v.excludedRegions -and $v.excludedRegionsBinding.Status -ceq 'NotRecorded') 'A plan without a bound candidate scan must give a null excludedRegions and a NotRecorded binding.'
+        & $check (-not $v.PSObject.Properties['failedAttempt']) 'A delivered backup must not carry a failed-attempt block.'
+        $resultsFile=[string]$result.ItemResults.Path
+        $originalResultsBytes=& $bytesOf $resultsFile;$originalAttemptBytes=& $bytesOf $attemptPath
+        try{
+            $boundDocument=Read-WsmJson $resultsFile
+            $boundRegions=@(Get-WsmBackupExcludedRegionRows @([pscustomobject]@{Path='C:\Vendor\Contoso';Reason='Protected or package area excluded by policy: C:\Vendor\Contoso'},[pscustomobject]@{Path='C:\Windows';Reason='Protected or package area excluded by policy: C:\Windows'}) '')
+            $rewritten=Export-WsmBackupItemResults $resultsFile @($boundDocument.Rows) ([pscustomobject]@{PairId=$pair;AttemptId=[string]$boundDocument.AttemptId;PlanHash=[string]$boundDocument.PlanHash;ManifestHash=[string]$boundDocument.ManifestHash;InventorySource=[string]$boundDocument.InventorySource;Software=$boundDocument.Software;CoverageRegions=@($boundDocument.CoverageRegions);ExcludedRegions=$boundRegions;ExcludedRegionsBinding=([pscustomobject]@{Status='Bound';Reason='';Scans=@([pscustomobject]@{ScanId='scan-1';CandidateArtifactHash=('c'*64);ScanStatus='Succeeded'})})})
+            $attemptRecord=Read-WsmJson $attemptPath;$attemptRecord.ItemResults.SHA256=$rewritten.SHA256;Write-WsmJson $attemptPath $attemptRecord
+            $vBound=& $view
+            & $check ($vBound.available -and @($vBound.excludedRegions).Count -eq 2 -and $vBound.excludedRegionsBinding.Status -ceq 'Bound' -and (@($vBound.excludedRegions | ForEach-Object ReasonCode | Sort-Object) -join ',') -ceq 'BundleExcluded,ProtectedArea') 'The view must pass the recorded excluded regions and their binding through.'
+            & $check (@($vBound.rows).Count -eq @($v.rows).Count) 'Excluded regions must not change the item rows.'
+        }finally{
+            & $restoreBytes $resultsFile $originalResultsBytes;& $restoreBytes $attemptPath $originalAttemptBytes
+        }
+        $vRestored=& $view
+        & $check ($vRestored.available -and $null -eq $vRestored.excludedRegions) 'Restoring the original result set must restore the not-recorded state.'
+        Write-Host 'PASS: excluded regions in the workbench view.'
+
         # ---- a real independent copy and its receipt ----
         $script:fixtureMediaClass='Removable'
         $origMediaClass=(Get-Command Get-WsmIndependentCopyMediaClass -CommandType Function).ScriptBlock

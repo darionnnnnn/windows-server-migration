@@ -1683,6 +1683,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     section.replaceChildren(); backupResultsHeading(section);
     if (!data || data.available !== true) {
       wizardMessage(section, data && data.reason ? data.reason : '目前無法顯示備份明細。', data && data.integrity === 'Failed' ? 'callout' : 'inline-note');
+      if (data && data.failedAttempt && typeof data.failedAttempt === 'object') renderBackupFailedAttempt(section, data.failedAttempt);
       const again = el('button', 'secondary-button', '重新整理明細'); again.type = 'button'; again.addEventListener('click', () => loadBackupResults(true)); section.appendChild(again); return;
     }
     const sources = { PackageControls: '封裝內的來源盤點', TrustedInventory: '已核驗的來源盤點', Unavailable: '無法取得來源盤點' }, counts = data.counts || {}, allRows = Array.isArray(data.rows) ? data.rows : [];
@@ -1757,6 +1758,32 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     region.dataset.coverage = 'data';
     appendBackupSimpleTable(region, '探索未涵蓋區域', '探索未涵蓋區域', ['區域', '原因', '下一步'], data.coverageRegions.map(r => [backupPlain(r.Region), backupPlain(r.Reason), backupPlain(r.NextStep)]));
   }
+  // N3: nothing was delivered but an attempt failed. Capture is all-or-nothing, so this is the only place a capture failure
+  // (with the failed item when the attempt recorded one) or a failed read-back is shown; it is never a row of the result set.
+  const BACKUP_ERROR_CLASS_TEXT = { PermissionDenied: '權限不足', NotFound: '找不到檔案或目錄', IOError: '讀寫錯誤', Failed: '其他錯誤' };
+  function renderBackupFailedAttempt(section, failed) {
+    const box = el('section', 'backup-failed-attempt'); box.dataset.classification = backupPlain(failed.classification); box.setAttribute('aria-labelledby', 'backup-failed-title');
+    const heading = el('h3', '', `最近一次備份沒有完成：${backupPlain(failed.title)}`); heading.id = 'backup-failed-title'; box.appendChild(heading);
+    wizardMessage(box, backupPlain(failed.detail), 'callout');
+    const item = failed.failedItem;
+    if (item && typeof item === 'object') {
+      appendSummaryRows(box, [['失敗項目', backupPlain(item.Name)], ['項目類型', backupPlain(item.Kind)], ['通道', backupChannelText(item.Channel)], ['錯誤分類', Object.prototype.hasOwnProperty.call(BACKUP_ERROR_CLASS_TEXT, backupPlain(item.ErrorClass)) ? BACKUP_ERROR_CLASS_TEXT[item.ErrorClass] : backupPlain(item.ErrorClass)], ['錯誤型別', backupPlain(item.ErrorKind)]]);
+      box.dataset.failedItem = backupPlain(item.ItemId);
+    } else if (backupPlain(failed.classification) === 'CaptureFailed') wizardMessage(box, '這次失敗沒有記錄到特定項目（失敗不在逐項擷取之內）。', 'inline-note');
+    if (failed.nextStep) wizardMessage(box, `下一步：${backupPlain(failed.nextStep)}`, 'inline-note');
+    section.appendChild(box);
+  }
+  function renderBackupExcludedRegions(panel, data) {
+    panel.appendChild(el('h3', '', '套裝本體與受保護區域（依政策不納入備份；以區域列出，不是項目）'));
+    const region = el('div', 'backup-excluded'); region.dataset.excluded = 'unset'; panel.appendChild(region);
+    if (Number(data.schemaVersion) !== 2 || !Array.isArray(data.excludedRegions)) { region.dataset.excluded = 'unrecorded'; wizardMessage(region, '此結果集未記錄'); return; }
+    if (!data.excludedRegions.length) { region.dataset.excluded = 'empty'; wizardMessage(region, '沒有記錄到被排除的區域'); return; }
+    region.dataset.excluded = 'data';
+    const seen = new Map(); data.excludedRegions.forEach(r => { const code = backupPlain(r.ReasonCode); if (code && !seen.has(code)) seen.set(code, backupPlain(r.Reason) || code); });
+    renderBackupPagedTable(region, { id: 'backup-excluded', name: '套裝本體與受保護區域', caption: '套裝本體與受保護區域', rows: data.excludedRegions, regionRows: true, searchLabel: '搜尋區域路徑', search: r => [r.Path], csvName: 'backup-excluded-regions.csv', csvExtra: { headers: ['原因碼'], cells: r => [backupPlain(r.ReasonCode)] },
+      filters: [{ key: 'reason', label: '區域類別', options: [...seen.entries()].map(([value, text]) => ({ value, text })), match: (r, value) => backupPlain(r.ReasonCode) === value }],
+      columns: [{ h: '區域', text: r => backupPlain(r.Path) }, { h: '原因', text: r => backupPlain(r.Reason) }, { h: '下一步', text: r => backupPlain(r.NextStep) }] });
+  }
   function renderBackupRowsPanel(panel, rows, kind, data, initial) {
     const backed = kind === 'backed', copy = backupCopyInfo(data), uniqueKinds = [...new Set(rows.map(r => backupPlain(r.Kind)).filter(Boolean))].sort();
     const typeFilter = { key: 'type', label: '類型', options: uniqueKinds.map(k => ({ value: k, text: k })), match: (r, value) => backupPlain(r.Kind) === value };
@@ -1781,7 +1808,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       if (copy.code === 'Unverifiable') wizardMessage(panel, `獨立副本收據無法核對，整欄不顯示為已驗證：${copy.reason || '收據檔遺失或內容已被更改。'}`, 'callout');
     }
     const view = renderBackupPagedTable(panel, { id: `backup-${kind}`, name: backed ? '已備份' : '未備份', caption: backed ? '已備份項目' : '未備份項目', columns, rows, filters, initial, csvMeta: true, search: r => [r.Name, r.Location], csvName: backed ? 'backup-backed-up.csv' : 'backup-not-backed-up.csv', drill: backed ? { load: fetchBackupItemFiles } : null, onChange: v => { if (state.backupResultsTab === kind) writeBackupHash(kind, v); } });
-    if (!backed) renderBackupCoverageRegions(panel, data);
+    if (!backed) { renderBackupCoverageRegions(panel, data); renderBackupExcludedRegions(panel, data); }
     return view;
   }
   // ---- B4: 安裝軟體分頁（分組、決策與選用版本、列印檢查表）與 Target 端新機安裝檢查 ----
@@ -1975,7 +2002,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       headers.forEach(h => { const th = el('th', '', h); th.scope = 'col'; head.appendChild(th); }); table.appendChild(el('thead')).appendChild(head);
       const body = el('tbody');
       list.slice(view.page * pageSize, (view.page + 1) * pageSize).forEach(r => {
-        const tr = el('tr'); if (r.ItemId != null) { tr.dataset.id = String(r.ItemId); tr.dataset.status = backupPlain(r.Status); tr.dataset.reason = backupPlain(r.ReasonCode); } else if (r.SoftwareId != null) tr.dataset.sid = String(r.SoftwareId);
+        const tr = el('tr'); if (r.ItemId != null) { tr.dataset.id = String(r.ItemId); tr.dataset.status = backupPlain(r.Status); tr.dataset.reason = backupPlain(r.ReasonCode); } else if (r.SoftwareId != null) tr.dataset.sid = String(r.SoftwareId); else if (cfg.regionRows) tr.dataset.reason = backupPlain(r.ReasonCode);
         cfg.columns.forEach(c => {
           const td = el('td', c.nowrap ? 'backup-nowrap' : '');
           if (c.badge) { td.appendChild(backupBadge(c.badge(r))); const extra = c.extra ? c.extra(r) : ''; if (extra) td.appendChild(el('small', 'backup-badge-extra', extra)); }

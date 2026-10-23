@@ -1,13 +1,14 @@
 ﻿#requires -Version 5.1
 # Builds a >250 row backup result set and its offline report for the real-browser test.
+# -Scale Large builds 2501 backed rows (one table above the 2000-row mark) plus 5 not-backed rows and 250 excluded regions.
 # Rows come from the real Get-WsmBackupItemResultRows so the browser sees production shapes.
-param([Parameter(Mandatory)][string]$OutDir,[ValidateSet('V2','V1')][string]$Shape='V2')
+param([Parameter(Mandatory)][string]$OutDir,[ValidateSet('V2','V1')][string]$Shape='V2',[ValidateSet('Standard','Large')][string]$Scale='Standard')
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru
 [void][IO.Directory]::CreateDirectory($OutDir)
 & $module {
-    param($OutDir,$Shape)
+    param($OutDir,$Shape,$Scale)
     $script:ToolVersion='fixture'
     $item={param([string]$Id,[string]$Name,$Spec,[string]$Decision,[string]$Kind='DataRoot',[string]$Category='Storage',$Deps=@())[pscustomobject]@{ItemId=$Id;Name=$Name;Kind=$Kind;Category=$Category;NaturalKey=('key-'+$Id);Settings=[pscustomobject]@{Path=('C:\settings\'+$Id)};Decision=$Decision;MigrationSpec=$Spec;Dependencies=@($Deps)}}
     $file={param([string]$Channel)[pscustomobject]@{Adapter='FileScope';SourcePath=('D:\scope\'+$Channel);TransferChannel=$Channel}}
@@ -15,7 +16,18 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
     $inventoryItems=New-Object 'System.Collections.Generic.List[object]'
     $artifacts=New-Object 'System.Collections.Generic.List[object]'
     $siteName='Site <img src=x onerror=alert(1)>'
-    for($i=1;$i -le 300;$i++){
+    $itemCount=300;if($Scale -ceq 'Large'){$itemCount=2506}
+    for($i=1;$i -le $itemCount;$i++){
+        if($Scale -ceq 'Large'){
+            $id=('item-{0:D4}' -f $i);$name=$id
+            if($i -le 2501){
+                if($i -eq 2501){$name='zz-final-row-2501'}
+                if($i -eq 1){$name='aa-first-row-0001'}
+                $planItems.Add((& $item $id $name (& $file 'C') 'Include'))
+                $artifacts.Add([pscustomobject]@{ItemId=$id;RelativePath='a.txt';Directory=$false;Data=[pscustomobject]@{Bytes=(100+$i)}})
+            }else{$planItems.Add((& $item $id ('not-backed-'+$id) (& $file 'C') 'Exclude'))}
+            continue
+        }
         $id=('item-{0:D4}' -f $i);$name=$id
         if($i -eq 5){$name='=SUM(1+1)'}
         if($i -eq 6){$name='@cmd|calc'}
@@ -37,7 +49,7 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
             $inventoryItems.Add([pscustomobject]@{ItemId=$id;Name=$name;Kind='DataRoot';Category='Storage';NaturalKey=('key-'+$id);Settings=[pscustomobject]@{Path=('E:\inv\'+$id)};Status=$status})
         }
     }
-    $planItems.Add((& $item 'site-1' $siteName ([pscustomobject]@{Adapter='IISSite'}) 'Include' 'IISSite' 'Web' @([pscustomobject]@{ItemId='item-0001'},[pscustomobject]@{ItemId='item-0002'})))
+    if($Scale -ceq 'Standard'){$planItems.Add((& $item 'site-1' $siteName ([pscustomobject]@{Adapter='IISSite'}) 'Include' 'IISSite' 'Web' @([pscustomobject]@{ItemId='item-0001'},[pscustomobject]@{ItemId='item-0002'})))}
     $plan=[pscustomobject]@{Items=@($planItems.ToArray())}
     $inventory=[pscustomobject]@{Items=@($inventoryItems.ToArray())}
     $rows=@(Get-WsmBackupItemResultRows $plan $inventory @($artifacts.ToArray()) $false)
@@ -46,7 +58,17 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
         FeatureRows=@([pscustomobject]@{Name='Web Server (IIS)';FeatureName='Web-Server'})
         CoverageGaps=@([pscustomobject]@{Status='Partial';Probe='Uninstall';Scope='User';SID='S-1-5-21-<b>x</b>'})}
     $resultsPath=Join-Path $OutDir 'backup-item-results.json'
-    $meta=[pscustomobject]@{PairId='fixture-pair';AttemptId='fixture-attempt';PlanHash=('b'*64);ManifestHash=('a'*64);InventorySource='TrustedInventory';Software=$software}
+    # Excluded regions come from the real classifier on scan-shaped rows (policy reason text as the scanner writes it).
+    $policyPrefix='Protected or package area excluded by policy: '
+    $areas=New-Object 'System.Collections.Generic.List[object]'
+    $areas.Add([pscustomobject]@{Path='C:\Program Files';Reason=($policyPrefix+'C:\Program Files')})
+    $areas.Add([pscustomobject]@{Path='C:\Vendor\=Contoso <b>App</b>';Reason=($policyPrefix+'C:\Vendor\=Contoso <b>App</b>')})
+    $areas.Add([pscustomobject]@{Path='C:\Windows';Reason=($policyPrefix+'C:\Windows')})
+    $areas.Add([pscustomobject]@{Path='C:\Config.Msi';Reason=($policyPrefix+'Config.Msi')})
+    if($Scale -ceq 'Large'){for($n=1;$n -le 246;$n++){$areas.Add([pscustomobject]@{Path=('C:\Vendor\App{0:D3}' -f $n);Reason=($policyPrefix+('C:\Vendor\App{0:D3}' -f $n))})}}
+    $excludedRegions=@(Get-WsmBackupExcludedRegionRows @($areas.ToArray()) '')
+    $binding=[pscustomobject][ordered]@{Status='Bound';Reason='';Scans=@([pscustomobject][ordered]@{ScanId='fixture-scan';CandidateArtifactHash=('d'*64);ScanStatus='Succeeded'})}
+    $meta=[pscustomobject]@{PairId='fixture-pair';AttemptId='fixture-attempt';PlanHash=('b'*64);ManifestHash=('a'*64);InventorySource='TrustedInventory';Software=$software;ExcludedRegions=$excludedRegions;ExcludedRegionsBinding=$binding}
     $export=Export-WsmBackupItemResults $resultsPath $rows $meta
     if($Shape -ceq 'V1'){
         $legacy=Read-WsmJson $resultsPath
@@ -61,7 +83,8 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
         BackedUp=@($rows | Where-Object Status -CEQ 'BackedUp').Count
         NotBackedUp=@($rows | Where-Object Status -CEQ 'NotBackedUp').Count
         Rows=@($rows | ForEach-Object {[pscustomobject]@{ItemId=$_.ItemId;Name=$_.Name;Kind=$_.Kind;Status=$_.Status;ReasonCode=$_.ReasonCode;Reason=$_.Reason}})
+        ExcludedRegions=@($excludedRegions | ForEach-Object {[pscustomobject]@{Path=$_.Path;ReasonCode=$_.ReasonCode;Reason=$_.Reason;NextStep=$_.NextStep}})
     }
     [IO.File]::WriteAllText((Join-Path $OutDir 'expected.json'),($expected | ConvertTo-Json -Depth 6),(New-Object Text.UTF8Encoding($false)))
     Write-Output $report.Path
-} $OutDir $Shape
+} $OutDir $Shape $Scale

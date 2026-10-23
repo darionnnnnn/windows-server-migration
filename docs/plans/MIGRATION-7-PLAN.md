@@ -960,7 +960,7 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 驗證（WinPS 5.1、真實 Edge file://）：見提交說明。瀏覽器測試用 301 列 fixture：翻頁到最後一筆、搜尋、篩選疊加、CSV 內容、JS 關閉、列印模擬、390px、零 console 錯誤；截圖在 `work/r7/screens/b3-*.png`（不進版控）。
 - 突變（皆轉紅）：聯集漏一列、CSV 只匯出當頁、列印不展開隱藏列、報告不 escape、列印展開規則移除（主代理）。
 - 未做與限制：
-  - `BundleExcluded` 與 `CaptureFailed` 沒有可靠資料來源，沒有加。套裝本體路徑在候選探索就被排除，不會進入計畫；逐項擷取失敗也沒有欄位可依。
+  - `BundleExcluded` 與 `CaptureFailed` 沒有可靠資料來源，沒有加。套裝本體路徑在候選探索就被排除，不會進入計畫；逐項擷取失敗也沒有欄位可依。（後續由 17.77 N3 處理：BundleExcluded 改為從綁定的掃描 ExcludedAreas 取得區域列；CaptureFailed 記錄在 attempt 層級。）
   - 未涵蓋區域只有軟體與來源盤點兩類；其他探索缺口需要呼叫端（`WizardBackup.ps1`）提供，目前不在範圍內。
   - 工作負載是依相依關係「可到達」，共用資源會列出多個工作負載。
   - 報告 CSV 在尾端附加項目 ID、狀態碼、原因碼三欄；B2 完成後需要和工作台 CSV 對齊。
@@ -1249,6 +1249,47 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - subagent 另跑：WizardBackup、WizardBackupRecovery 21、HtmlConsole 175、BackupWorkbenchBrowser、NativeWizardRuntimeHandler、SecretSentinelSweep 16。
 - 突變（皆轉紅）：通道寫錯、檔案序沒有前進、改用 innerHTML、320px 溢位；主代理另將非 C 標籤改成「C 槽」。
 - 限制：通道與檔案序的突變是在單元層被擋下，沒有另外證明真實備份層的同名斷言能獨立轉紅。
+### 17.77 N3 未備份原因：套裝本體排除區域、擷取失敗、讀回驗證失敗；離線報告 2501 列驗收
+
+- Sonnet 5.5 medium subagent 實作，主代理審查並獨立重跑。
+- **BundleExcluded（有可靠來源）**
+  - 結果集新增 `ExcludedRegions`，與 `CoverageRegions` 分開：前者是政策刻意略過，後者是探索看不到。新增的是區域列，不是項目。
+  - 來源綁定鏈：封存計畫的 `Assistive.MaterialReferences` → 確認材料的位元組 → `ScanId` 與 `CandidateArtifactHash` → `candidates.json` 的位元組 → `ExcludedAreas`。
+  - 鏈上逐步核對雜湊、指紋與盤點雜湊。任一環節不符就整份顯示「此結果集未記錄」，不做部分合併；有 10 種不符情境的測試。
+  - 類別分兩種：
+    - `BundleExcluded`（套裝本體）
+    - `ProtectedArea`（Windows、工具工作區、Config.Msi、guard 保護路徑）
+  - 類別依掃描列記錄的政策原因文字判斷，不看名稱。
+- **CaptureFailed**
+  - 現行流程只要擷取失敗，整次備份就失敗，所以結果集裡不可能出現這個原因。
+  - 改為記在 attempt 層級：`Payload.ps1` 在前置估算與逐項擷取時，於例外的 `Data` 加上 ItemId，再原樣拋出，流程不變。
+  - `WizardBackup.ps1` 把 ItemId 寫入 `attempt.Error.FailedItem`，內容只有錯誤類別與例外型別，不含路徑或訊息。
+  - 工作台顯示失敗項目。
+- **NotVerified**
+  - 讀回驗證是整包驗證，失敗時整次失敗，不會出現逐項「未驗證」。
+  - 改在 attempt 層級顯示「讀回驗證失敗」（package_test_failed）。
+  - 有測試證明結果集不會捏造這兩個原因。
+- **畫面**
+  - 工作台與報告都新增排除區域表，含「區域類別」篩選、搜尋與 CSV（多「原因碼」欄）。
+  - 兩邊的 CSV 一致，逐列對回 JSON；「未記錄」「已記錄但空」「有資料」三種狀態分開顯示。
+- **2501 列 fixture**
+  - 最後一筆經翻頁（第 26／26 頁）、搜尋、列印模擬都看得到，CSV 共 2501 列。
+  - 250 個區域也能分頁與搜尋。
+- **驗證（WinPS 5.1、真實 Edge）**
+  - 主代理重跑：BackupUnbackedReasons 6 段、BackupResultSetV2、WizardHtmlRuntimeProjection 214、ScriptEncoding、OfflineReportBrowser、BackupWorkbenchBrowser。
+  - subagent 另跑：BackupWorkbenchView、SourceCandidateDiscovery、NativeWizardRuntimeHandler、OfflineFullSet、WizardBackup。
+- **突變（皆轉紅）**
+  - 不核對掃描 artifact 雜湊
+  - 不核對確認材料雜湊
+  - 不傳 profile
+  - 報告或工作台 CSV 少原因碼
+  - 搜尋上限 2000
+  - 擷取迴圈不標記失敗項目
+  - 主代理另做：受保護區域的判定短路
+- **限制與待決定**
+  - 真實 CV2 候選掃描加備份的端到端流程沒有跑過；綁定以形狀一致的合成材料驗證。若真實值格式不同，會一律顯示「未記錄」（安全方向），建議實機確認。
+  - 類別靠原因文字推斷。更嚴格的做法是讓掃描直接寫入類別欄位（`SourceCandidateDiscovery.ps1`），列為後續項目。
+  - 失敗項目不顯示來源檔案路徑，以免路徑寫入 attempt 紀錄。要不要顯示由使用者決定。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

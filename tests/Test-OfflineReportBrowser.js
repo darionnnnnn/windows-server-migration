@@ -12,9 +12,9 @@ const root = path.resolve(__dirname, '..');
 const screens = path.join(root, 'work', 'r7', 'screens');
 fs.mkdirSync(screens, { recursive: true });
 
-function buildFixture(shape) {
+function buildFixture(shape, scale) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wsm-b3-' + shape.toLowerCase() + '-'));
-  const run = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'tests', 'New-OfflineReportFixture.ps1'), '-OutDir', dir, '-Shape', shape], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const run = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'tests', 'New-OfflineReportFixture.ps1'), '-OutDir', dir, '-Shape', shape, '-Scale', scale || 'Standard'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   assert.equal(run.status, 0, 'fixture build failed: ' + run.stderr);
   const expected = JSON.parse(fs.readFileSync(path.join(dir, 'expected.json'), 'utf8').replace(/^\ufeff/, ''));
   return { dir, report: path.join(dir, 'backup-report.html'), results: path.join(dir, 'backup-item-results.json'), expected };
@@ -134,7 +134,7 @@ async function captureCsv(page, panel) {
 
     // Pending tab: reason filter, CSV, coverage regions table.
     await tabs.nth(1).click();
-    const pending = page.locator('#pending'), pendingStatus = pending.locator('table#tbl-pending').locator('xpath=ancestor::section[1]').locator('[role=status]');
+    const pending = page.locator('#pending'), pendingStatus = pending.locator('.toolbar').first().locator('[role=status]');
     assert.equal(await pendingStatus.innerText(), `顯示 ${pendingExpected.length}／共 ${pendingExpected.length} 筆`);
     const reasonSelect = pending.getByLabel('原因');
     const deniedReason = pendingExpected.find(r => r.ReasonCode === 'PermissionDenied').Reason;
@@ -150,6 +150,43 @@ async function captureCsv(page, panel) {
     assert.ok(pendingText.includes('探索未涵蓋區域（以區域列出，不是項目）'));
     assert.ok(await pending.locator('#tbl-coverage').count() === 1 && (await pending.locator('#tbl-coverage').innerText()).includes('Uninstall'));
     await page.screenshot({ path: path.join(screens, 'b3-desktop-pending.png'), fullPage: false });
+
+    // N3 excluded regions (BundleExcluded / ProtectedArea): their own table, filter, search label and CSV; never item rows.
+    {
+      const excludedExpected = expected.ExcludedRegions;
+      assert.ok(excludedExpected.length >= 4 && excludedExpected.some(r => r.ReasonCode === 'BundleExcluded') && excludedExpected.some(r => r.ReasonCode === 'ProtectedArea'), 'fixture needs both region classes');
+      const excludedTable = pending.locator('#tbl-excluded');
+      assert.equal(await excludedTable.count(), 1, 'excluded regions table must exist when the scan binding is recorded');
+      assert.ok((await pending.innerText()).includes('套裝本體與受保護區域（依政策不納入備份；以區域列出，不是項目）'));
+      const excludedStatus = pending.locator('.toolbar').nth(1).locator('[role=status]');
+      assert.equal(await excludedStatus.innerText(), `顯示 ${excludedExpected.length}／共 ${excludedExpected.length} 筆`);
+      const regionSelect = pending.getByLabel('區域類別');
+      const bundleReason = excludedExpected.find(r => r.ReasonCode === 'BundleExcluded').Reason, protectedReason = excludedExpected.find(r => r.ReasonCode === 'ProtectedArea').Reason;
+      const regionOptions = await regionSelect.locator('option').allInnerTexts();
+      assert.ok(regionOptions.includes(bundleReason) && regionOptions.includes(protectedReason), 'new reasons must be filter options with their Chinese text');
+      assert.ok(bundleReason.includes('套裝軟體本體') && excludedExpected.find(r => r.ReasonCode === 'BundleExcluded').NextStep.includes('重新安裝'));
+      await regionSelect.selectOption({ label: bundleReason });
+      const bundleCount = excludedExpected.filter(r => r.ReasonCode === 'BundleExcluded').length;
+      assert.equal(await excludedStatus.innerText(), `顯示 ${bundleCount}／共 ${excludedExpected.length} 筆`);
+      await regionSelect.selectOption('');
+      await pending.getByLabel('搜尋區域路徑').fill('config.msi');
+      assert.equal(await excludedStatus.innerText(), `顯示 1／共 ${excludedExpected.length} 筆`);
+      await pending.getByLabel('搜尋區域路徑').fill('');
+      const regionCsv = await captureCsv(page, pending.locator('.toolbar').nth(1));
+      assert.deepEqual(regionCsv[0], ['區域', '原因', '下一步', '原因碼']);
+      assert.equal(regionCsv.length - 1, excludedExpected.length);
+      const expectedByPath = new Map(excludedExpected.map(r => [r.Path, r]));
+      for (const row of regionCsv.slice(1)) { const e = expectedByPath.get(row[0]); assert.ok(e, 'unknown region in CSV ' + row[0]); assert.equal(row[3], e.ReasonCode); assert.equal(row[1], e.Reason); assert.equal(row[2], e.NextStep); }
+      await regionSelect.selectOption({ label: protectedReason });
+      const protectedCsv = await captureCsv(page, pending.locator('.toolbar').nth(1));
+      assert.equal(protectedCsv.length - 1, excludedExpected.filter(r => r.ReasonCode === 'ProtectedArea').length, 'filtered region CSV must contain only the filtered rows');
+      assert.ok(protectedCsv.slice(1).every(r => r[3] === 'ProtectedArea'));
+      await regionSelect.selectOption('');
+      assert.equal((await pending.locator('#tbl-pending tbody tr').count()), pendingExpected.length, 'regions must not add rows to the item table');
+      assert.equal(await page.evaluate(() => document.querySelectorAll('#tbl-excluded img').length), 0, 'region paths must be escaped');
+      await excludedTable.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(screens, 'n3-report-excluded-regions.png'), fullPage: false });
+    }
 
     // Software tab exports too.
     await tabs.nth(2).click();
@@ -206,8 +243,69 @@ async function captureCsv(page, panel) {
     assert.ok((await legacyPage.locator('#backed tbody tr').first().innerText()).includes('未記錄'));
     await legacyPage.locator('[role=tab]').nth(1).click();
     assert.ok((await legacyPage.locator('#pending').innerText()).includes('此結果集未記錄'));
+    assert.equal(await legacyPage.locator('#tbl-excluded').count(), 0, 'a legacy result set must not show an excluded regions table');
+    assert.ok((await legacyPage.locator('#pending').innerText()).includes('套裝本體與受保護區域'));
     await legacyContext.close();
     fs.rmSync(legacy.dir, { recursive: true, force: true });
+
+
+    // N3 / 16.6-11: a result set above 2000 rows (2501 backed rows in one table): the last row must be reachable by paging,
+    // by search and in print mode, and the CSV must contain every row.
+    {
+      const large = buildFixture('V2', 'Large');
+      try {
+        const lastName = 'zz-final-row-2501';
+        const largeBacked = large.expected.Rows.filter(r => r.Status === 'BackedUp');
+        assert.equal(largeBacked.length, 2501, 'large fixture must have exactly 2501 backed rows');
+        assert.ok(large.expected.ExcludedRegions.length > 200, 'large fixture also pages the region table');
+        const largeContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+        await largeContext.addInitScript(() => { window.__blobs = []; const original = URL.createObjectURL; URL.createObjectURL = function (blob) { window.__blobs.push(blob); return original.call(URL, blob); }; });
+        const largePage = await largeContext.newPage(); largePage.on('pageerror', e => consoleErrors.push(e.message)); largePage.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+        await largePage.goto(fileUrl(large.report)); await largePage.waitForSelector('[role=tablist]');
+        const lbacked = largePage.locator('#backed'), lstatus = lbacked.locator('[role=status][aria-atomic=true]');
+        assert.equal(await lstatus.innerText(), '顯示 2501／共 2501 筆');
+        // paging: 26 pages, the last page holds exactly one row and it is the final one
+        const lastPage = Math.ceil(2501 / 100);
+        assert.equal(lastPage, 26);
+        for (let i = 1; i < lastPage; i++) await lbacked.getByRole('button', { name: '下一頁' }).click();
+        assert.ok((await lbacked.innerText()).includes(`第 ${lastPage}／${lastPage} 頁`));
+        assert.deepEqual(await lbacked.locator('tbody tr:not([hidden])').evaluateAll(rows => rows.map(r => r.cells[0].textContent)), [lastName], 'the last page must show exactly the final row');
+        assert.equal(await lbacked.getByRole('button', { name: '下一頁' }).isDisabled(), true);
+        await largePage.screenshot({ path: path.join(screens, 'n3-large-2501-lastpage.png') });
+        for (let i = 1; i < lastPage; i++) await lbacked.getByRole('button', { name: '上一頁' }).click();
+        assert.ok((await lbacked.innerText()).includes(`第 1／${lastPage} 頁`));
+        // search: the final row is found even though it is beyond row 2000
+        const lsearch = lbacked.getByLabel('搜尋名稱或位置');
+        await lsearch.fill(lastName);
+        assert.equal(await lstatus.innerText(), '顯示 1／共 2501 筆', 'search must reach rows beyond 2000');
+        assert.deepEqual(await lbacked.locator('tbody tr:not([hidden])').evaluateAll(rows => rows.map(r => r.cells[0].textContent)), [lastName]);
+        await largePage.screenshot({ path: path.join(screens, 'n3-large-2501-search.png') });
+        await lsearch.fill('item-2500');
+        assert.equal(await lstatus.innerText(), '顯示 1／共 2501 筆', 'a row just below the last one must be found too');
+        await lsearch.fill('');
+        // CSV: every row, final row included
+        const largeCsv = await captureCsv(largePage, lbacked);
+        assert.equal(largeCsv.length - 1, 2501, 'CSV must contain all 2501 rows');
+        assert.ok(largeCsv.slice(1).some(r => r[0] === lastName));
+        // print mode: every row of the table is displayed, the final one included, controls hidden
+        await largePage.emulateMedia({ media: 'print' });
+        const printed = await largePage.evaluate(name => {
+          const visible = node => { for (let n = node; n; n = n.parentElement) if (getComputedStyle(n).display === 'none') return false; return true; };
+          const rows = [...document.querySelectorAll('#tbl-backed tbody tr')], last = rows.find(r => r.cells[0].textContent === name);
+          return { total: rows.length, visible: rows.filter(visible).length, lastVisible: !!last && visible(last), controlsHidden: [...document.querySelectorAll('.toolbar,.pager,.tabs')].every(e => getComputedStyle(e).display === 'none') };
+        }, lastName);
+        assert.equal(printed.total, 2501); assert.equal(printed.visible, 2501, 'print must show all 2501 rows'); assert.ok(printed.lastVisible, 'the final row must be visible in print'); assert.ok(printed.controlsHidden);
+        await largePage.screenshot({ path: path.join(screens, 'n3-large-2501-print.png') });
+        await largePage.emulateMedia({ media: 'screen' });
+        // the region table also pages (250 regions) and finds its last row by search
+        await largePage.locator('[role=tab]').nth(1).click();
+        const lpending = largePage.locator('#pending'), regionStatus = lpending.locator('.toolbar').nth(1).locator('[role=status]');
+        assert.equal(await regionStatus.innerText(), `顯示 ${large.expected.ExcludedRegions.length}／共 ${large.expected.ExcludedRegions.length} 筆`);
+        await lpending.getByLabel('搜尋區域路徑').fill('App246');
+        assert.equal(await regionStatus.innerText(), `顯示 1／共 ${large.expected.ExcludedRegions.length} 筆`);
+        await largeContext.close();
+      } finally { fs.rmSync(large.dir, { recursive: true, force: true }); }
+    }
 
     assert.deepEqual(consoleErrors, [], 'no console errors expected');
     console.log(`PASS: offline report browser test (${expected.Total} rows, ${backedExpected.length} backed, ${pendingExpected.length} not backed).`);

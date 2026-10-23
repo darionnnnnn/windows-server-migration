@@ -195,6 +195,7 @@ body{font-size:18px}
 .backup-detail table{min-width:36rem}
 .backup-detail-title{margin:0 0 6px;font-size:15px}
 .backup-coverage{margin-top:6px}
+.backup-excluded,.backup-failed-attempt{margin-top:6px}
 @media(max-width:480px){.backup-filter{flex:1 1 100%}.backup-count{margin-left:0;flex-basis:100%}.backup-toolbar input[type=search]{width:100%}}
 .software-tools{align-items:center}
 .software-gaps{margin:0 0 10px;padding-left:20px}

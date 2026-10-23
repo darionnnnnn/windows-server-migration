@@ -279,6 +279,83 @@ function Get-WsmBackupCoverageRegions([string]$InventorySource,[object[]]$Softwa
     @($regions.ToArray())
 }
 
+# N3: policy exclusions (套裝本體 / 受保護區域) of the candidate scan the approved plan is bound to.
+# These are REGIONS, not items, so they live in their own ExcludedRegions list (CoverageRegions means "the discovery could
+# not see this"; ExcludedRegions means "the policy deliberately skipped this"). Keeping them apart also lets the result set
+# say "not recorded" (null) without disturbing the existing coverage states.
+#   BundleExcluded  an installed-software root or Program Files location excluded by the scan policy
+#   ProtectedArea   Windows directory, the tool workspace, Config.Msi or a FileScope-guard protected path
+# The class comes from the recorded policy reason text of the scan row, never from a guess about names.
+function Get-WsmBackupExcludedRegionClass([string]$SourceReason,[string]$Workspace) {
+    $prefix='Protected or package area excluded by policy: '
+    $tail=[string]$SourceReason
+    if($tail.StartsWith($prefix,[StringComparison]::Ordinal)){$tail=$tail.Substring($prefix.Length)}
+    if($tail -like 'FileScope guard: *' -or $tail -notmatch '^[A-Za-z]:\\'){return 'ProtectedArea'}
+    if($tail -imatch '^[A-Za-z]:\\Windows\\?$'){return 'ProtectedArea'}
+    $workspaceFull='';try{if($Workspace){$workspaceFull=[IO.Path]::GetFullPath($Workspace).TrimEnd('\')}}catch{}
+    if($workspaceFull -and $tail.TrimEnd('\') -ieq $workspaceFull){return 'ProtectedArea'}
+    'BundleExcluded'
+}
+
+function Get-WsmBackupExcludedRegionRows([object[]]$ExcludedAreas,[string]$Workspace) {
+    $text=@{
+        BundleExcluded=@('套裝軟體本體（安裝目錄），依政策不納入備份','在新機重新安裝該軟體；需要保留的資料或設定，請另外選入備份項目')
+        ProtectedArea=@('系統、工具或受保護區域，依政策不納入備份','通常不需處理；若其中確有需要搬移的資料，請人工評估後另行處理')
+    }
+    $seen=@{};$rows=New-Object 'System.Collections.Generic.List[object]'
+    foreach($area in @($ExcludedAreas)){
+        if($null -eq $area){continue}
+        $path=[string]$area.Path;if(-not $path){continue}
+        $key=$path.ToLowerInvariant();if($seen.ContainsKey($key)){continue};$seen[$key]=$true
+        $policyReason=[string]$area.Reason;if($policyReason.Length -gt 300){$policyReason=$policyReason.Substring(0,300)}
+        $code=Get-WsmBackupExcludedRegionClass $policyReason $Workspace
+        $rows.Add([pscustomobject][ordered]@{Path=$path;ReasonCode=$code;Reason=$text[$code][0];NextStep=$text[$code][1];PolicyReason=$policyReason})
+    }
+    @($rows.ToArray() | Sort-Object -Property @{Expression={([string]$_.Path).ToLowerInvariant()}})
+}
+
+# Returns Regions=$null (not recorded) unless the whole chain verifies:
+#   sealed plan MaterialReferences (hash-bound) -> confirmation.json bytes -> ScanId + CandidateArtifactHash
+#   -> candidates.json bytes of that scan in the Source workspace -> ExcludedAreas
+# Any link that is missing, altered, or belongs to another host/inventory gives NotRecorded; nothing is partially shown.
+function Get-WsmBackupBoundScanExclusions($Plan,[string]$Workspace,$Profile) {
+    $notRecorded={param([string]$Why)[pscustomobject]@{Regions=$null;Binding=[pscustomobject][ordered]@{Status='NotRecorded';Reason=$Why;Scans=@()}}}
+    try{
+        if(-not $Plan -or -not $Plan.PSObject.Properties['Assistive'] -or -not $Plan.Assistive -or -not $Plan.Assistive.PSObject.Properties['MaterialReferences']){return (& $notRecorded '核准計畫沒有引用候選探索的確認材料。')}
+        $references=@($Plan.Assistive.MaterialReferences | Where-Object {[string]$_.Reference -cmatch '^assistive/materials/source-candidate/[a-f0-9]{64}/confirmation\.json$'})
+        if(-not $references.Count){return (& $notRecorded '核准計畫沒有引用候選探索的確認材料。')}
+        if(-not $Profile -or [string]$Profile.Role -cne 'Source'){return (& $notRecorded '只有已註冊的 Source 工作區能核對候選掃描。')}
+        $materialPrefix=[IO.Path]::GetFullPath((Join-Path $Workspace 'assistive/materials')).TrimEnd('\')+'\'
+        $scans=[ordered]@{};$areas=New-Object 'System.Collections.Generic.List[object]'
+        foreach($reference in $references){
+            $expected=([string]$reference.SHA256).ToLowerInvariant()
+            if($expected -notmatch '^[a-f0-9]{64}$' -or ([string]$reference.Reference) -cne ('assistive/materials/source-candidate/'+$expected+'/confirmation.json')){return (& $notRecorded '計畫中的確認材料參考與雜湊不一致。')}
+            $materialPath=[IO.Path]::GetFullPath((Join-Path $Workspace ([string]$reference.Reference).Replace('/','\')))
+            if(-not $materialPath.StartsWith($materialPrefix,[StringComparison]::OrdinalIgnoreCase)){return (& $notRecorded '確認材料不在來源工作區內。')}
+            Assert-WsmNoReparse $materialPath
+            if(-not [IO.File]::Exists($materialPath) -or (Get-FileHash -LiteralPath $materialPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected){return (& $notRecorded '確認材料遺失或內容與計畫記錄的雜湊不同。')}
+            $confirmation=Read-WsmJson $materialPath
+            if([string]$confirmation.Kind -cne 'SourceCandidateConfirmation'){return (& $notRecorded '確認材料不是候選確認紀錄。')}
+            if([string]$confirmation.SourceFingerprint -ine [string]$Plan.Source.Fingerprint -or [string]$confirmation.InventoryHash -ine [string]$Plan.InventoryHash){return (& $notRecorded '確認材料屬於其他主機或其他盤點。')}
+            $scanId=[string]$confirmation.ScanId;$artifactHash=([string]$confirmation.CandidateArtifactHash).ToLowerInvariant()
+            if($artifactHash -notmatch '^[a-f0-9]{64}$'){return (& $notRecorded '確認材料沒有可用的候選掃描雜湊。')}
+            if($scans.Contains($scanId)){continue}
+            $scanDirectory=Get-WsmSourceCandidateScanDirectory $Workspace $Profile $scanId
+            $candidatePath=Join-Path $scanDirectory 'candidates.json'
+            Assert-WsmNoReparse $candidatePath
+            if(-not [IO.File]::Exists($candidatePath)){return (& $notRecorded '找不到計畫所綁定的候選掃描結果。')}
+            if((Get-FileHash -LiteralPath $candidatePath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $artifactHash){return (& $notRecorded '候選掃描結果已變更，與計畫綁定的雜湊不符。')}
+            $artifact=Read-WsmJson $candidatePath
+            if([string]$artifact.Kind -cne 'SourceCandidateDiscovery' -or [string]$artifact.ScanId -cne $scanId -or [string]$artifact.SourceFingerprint -ine [string]$Plan.Source.Fingerprint -or -not $artifact.PSObject.Properties['ExcludedAreas'] -or $artifact.ExcludedAreas -isnot [array]){return (& $notRecorded '候選掃描結果的身分或格式與計畫不符。')}
+            $scans[$scanId]=[pscustomobject][ordered]@{ScanId=$scanId;CandidateArtifactHash=$artifactHash;ScanStatus=[string]$artifact.Status}
+            foreach($area in @($artifact.ExcludedAreas)){$areas.Add($area)}
+        }
+        [pscustomobject]@{Regions=@(Get-WsmBackupExcludedRegionRows @($areas.ToArray()) $Workspace);Binding=[pscustomobject][ordered]@{Status='Bound';Reason='';Scans=@($scans.Values)}}
+    }catch{
+        & $notRecorded '候選掃描與計畫的綁定無法核對。'
+    }
+}
+
 function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[bool]$OfflineFullSet,$WorkloadDiscovery=$null) {
     $reasonText=@{
         PermissionDenied=@('盤點時權限不足，工具無法讀取此項目','以具備權限的帳號重新盤點並備份，或人工處理')
@@ -472,6 +549,12 @@ function Export-WsmBackupItemResults([string]$Path,[object[]]$Rows,$Meta) {
     if($Meta.Software.PSObject.Properties['CatalogState'] -and [string]$Meta.Software.CatalogState){$softwareDocument['CatalogState']=[string]$Meta.Software.CatalogState}
     $softwareDocument=[pscustomobject]$softwareDocument
     $document=[pscustomobject][ordered]@{SchemaVersion=2;ToolVersion=$script:ToolVersion;Kind='BackupItemResults';PairId=[string]$Meta.PairId;AttemptId=[string]$Meta.AttemptId;PlanHash=[string]$Meta.PlanHash;ManifestHash=[string]$Meta.ManifestHash;InventorySource=[string]$Meta.InventorySource;GeneratedUtc=(Get-WsmUtc);Counts=[pscustomobject]$counts;Software=$softwareDocument;CoverageRegions=@($coverageRegions);Rows=$allRows}
+    # N3: ExcludedRegions is written only by callers that checked the scan binding. ExcludedRegions=null with a NotRecorded binding means "could not be verified"; a missing field means an older writer. Both read as not recorded.
+    if($Meta.PSObject.Properties['ExcludedRegionsBinding'] -and $null -ne $Meta.ExcludedRegionsBinding){
+        $excludedRegions=$null;if($Meta.PSObject.Properties['ExcludedRegions'] -and $null -ne $Meta.ExcludedRegions){$excludedRegions=@($Meta.ExcludedRegions)}
+        $document | Add-Member NoteProperty ExcludedRegions $excludedRegions
+        $document | Add-Member NoteProperty ExcludedRegionsBinding $Meta.ExcludedRegionsBinding
+    }
     Write-WsmJson $Path $document
     [pscustomobject]@{Path=[IO.Path]::GetFullPath($Path);SHA256=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant();Counts=[pscustomobject]$counts;InventorySource=[string]$Meta.InventorySource}
 }
@@ -494,10 +577,10 @@ function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha
     $isV2=($schemaVersion -ge 2)
     # A cell is plain text, or a hashtable @{Text;Icon;Class} rendered as a text badge (status never relies on colour alone).
     $buildTable={
-        param([string]$Id,[string]$Caption,[string]$SearchColumns,[string[]]$Headers,[object[]]$RowCells,[string]$Filters='',[string]$CsvName='',[string[]]$RowAttrs=@(),[string]$CsvMeta='1',[string]$EmptyText='沒有項目')
+        param([string]$Id,[string]$Caption,[string]$SearchColumns,[string[]]$Headers,[object[]]$RowCells,[string]$Filters='',[string]$CsvName='',[string[]]$RowAttrs=@(),[string]$CsvMeta='1',[string]$EmptyText='沒有項目',[string]$SearchLabel='')
         if(@($RowCells).Count -eq 0){return '<p class="empty">'+(& $encode $EmptyText)+'</p>'}
         $sb=New-Object Text.StringBuilder
-        $tableAttrs=' id="'+$Id+'"';if($SearchColumns){$tableAttrs+=' data-search="'+$SearchColumns+'"'};if($Filters){$tableAttrs+=' data-filters="'+(& $encode $Filters)+'"'};if($CsvName){$tableAttrs+=' data-csv="'+(& $encode $CsvName)+'"'};if(@($RowAttrs).Count){$tableAttrs+=' data-csv-meta="'+$CsvMeta+'"'}
+        $tableAttrs=' id="'+$Id+'"';if($SearchColumns){$tableAttrs+=' data-search="'+$SearchColumns+'"'};if($Filters){$tableAttrs+=' data-filters="'+(& $encode $Filters)+'"'};if($CsvName){$tableAttrs+=' data-csv="'+(& $encode $CsvName)+'"'};if(@($RowAttrs).Count){$tableAttrs+=' data-csv-meta="'+$CsvMeta+'"'};if($SearchLabel){$tableAttrs+=' data-search-label="'+(& $encode $SearchLabel)+'"'}
         [void]$sb.Append('<div class="table-wrap" tabindex="0" role="region" aria-label="'+(& $encode $Caption)+'表格"><table'+$tableAttrs+'><caption>'+(& $encode $Caption)+'，共 '+@($RowCells).Count+' 筆</caption><thead><tr>')
         foreach($header in $Headers){[void]$sb.Append('<th scope="col">'+(& $encode $header)+'</th>')}
         [void]$sb.Append('</tr></thead><tbody>')
@@ -614,6 +697,17 @@ function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha
             $coverageHtml=(& $buildTable 'tbl-coverage' '探索未涵蓋區域' '' @('區域','原因','下一步') $regionCells)
         }
     }
+    $excludedHtml=''
+    if(-not $document.PSObject.Properties['ExcludedRegions'] -or $null -eq $document.ExcludedRegions){$excludedHtml='<p class="empty">此結果集未記錄</p>'}
+    else{
+        $excludedRows=@($document.ExcludedRegions | Where-Object {$null -ne $_})
+        if(-not $excludedRows.Count){$excludedHtml='<p class="empty">沒有記錄到被排除的區域</p>'}
+        else{
+            $excludedCells=@(foreach($region in $excludedRows){,@([string]$region.Path,[string]$region.Reason,[string]$region.NextStep)})
+            $excludedAttrs=@(foreach($region in $excludedRows){'data-reason="'+(& $encode $region.ReasonCode)+'"'})
+            $excludedHtml=(& $buildTable 'tbl-excluded' '套裝本體與受保護區域' '0' @('區域','原因','下一步') $excludedCells '1:區域類別' 'backup-excluded-regions.csv' $excludedAttrs 'region' '沒有項目' '搜尋區域路徑')
+        }
+    }
     $noJsNote='<noscript><p class="js-note">需啟用 JavaScript 才能匯出 CSV，也才能使用搜尋、篩選與分頁；目前顯示全部列。</p></noscript>'
     $layerRestore=$(if($isV2){'逐列顯示在已備份清單的「可還原條件」欄：可還原＝可由本工具還原；需前置條件＝可還原，但需先安裝軟體、角色或補齊帳密；僅人工處理＝工具不會自動還原；不適用＝未備份。'}else{'此結果集為舊格式，未記錄可還原條件。'})
     $page=New-Object Text.StringBuilder
@@ -701,7 +795,7 @@ a{color:#000}
         '</ol></div>'+"`n")
     if($inventorySource -ceq 'Unavailable'){[void]$page.Append('<p class="callout">無法取得來源盤點，未備份清單只包含核准計畫內的項目，未選入的已發現項目沒有列出。</p>'+"`n")}
     [void]$page.Append('<section id="backed" data-tab="已備份（'+$backedRows.Count+'）"><h2>已備份（'+$backedRows.Count+'）</h2>'+"`n"+$noJsNote+"`n"+(& $buildTable 'tbl-backed' '已備份項目' '0,3' @('名稱','類型','工作負載','原位置','通道','檔案數','大小','狀態','可還原條件') $backedCells '1:類型;8:可還原條件' 'backup-backed-up.csv' $backedAttrs)+"`n</section>`n")
-    [void]$page.Append('<section id="pending" data-tab="未備份（'+$pendingRows.Count+'）"><h2>未備份（'+$pendingRows.Count+'）</h2>'+"`n"+$noJsNote+"`n"+(& $buildTable 'tbl-pending' '未備份項目' '0,3' @('名稱','類型','工作負載','原位置','原因','下一步','盤點狀態','狀態') $pendingCells '1:類型;4:原因' 'backup-not-backed-up.csv' $pendingAttrs)+"`n"+'<h3>探索未涵蓋區域（以區域列出，不是項目）</h3>'+"`n"+$coverageHtml+"`n</section>`n")
+    [void]$page.Append('<section id="pending" data-tab="未備份（'+$pendingRows.Count+'）"><h2>未備份（'+$pendingRows.Count+'）</h2>'+"`n"+$noJsNote+"`n"+(& $buildTable 'tbl-pending' '未備份項目' '0,3' @('名稱','類型','工作負載','原位置','原因','下一步','盤點狀態','狀態') $pendingCells '1:類型;4:原因' 'backup-not-backed-up.csv' $pendingAttrs)+"`n"+'<h3>探索未涵蓋區域（以區域列出，不是項目）</h3>'+"`n"+$coverageHtml+"`n"+'<h3>套裝本體與受保護區域（依政策不納入備份；以區域列出，不是項目）</h3>'+"`n"+$excludedHtml+"`n</section>`n")
     [void]$page.Append('<section id="software" data-tab="安裝軟體（'+$softwareRows.Count+'）"><h2>安裝軟體（'+$softwareRows.Count+'）</h2>'+"`n"+$noJsNote+"`n"+'<p>這是舊機上發現的軟體清單，供您在新機自行安裝。工具不會自動安裝，也不保證新版相容。</p>'+"`n")
     if($gapCount -gt 0){
         [void]$page.Append('<p class="callout">軟體盤點有 '+$gapCount+' 個範圍未完整取得，清單可能不完整。</p>'+"`n"+'<ul class="software-gaps">')
@@ -733,7 +827,7 @@ function enhanceTable(table){
  var cols=(table.getAttribute('data-search')||'0').split(',');
  var texts=rows.map(function(r){return cols.map(function(c){return r.cells[+c]?r.cells[+c].textContent:'';}).join('\n').toLowerCase();});
  var defs=(table.getAttribute('data-filters')||'').split(';').filter(Boolean).map(function(s){var i=s.indexOf(':');return {col:+s.slice(0,i),label:s.slice(i+1)};});
- var bar=mk('div','','toolbar'),label=mk('label','搜尋名稱或位置'),input=doc.createElement('input');
+ var bar=mk('div','','toolbar'),label=mk('label',table.getAttribute('data-search-label')||'搜尋名稱或位置'),input=doc.createElement('input');
  input.type='search';input.id=table.id+'-q';input.autocomplete='off';label.htmlFor=input.id;bar.appendChild(label);bar.appendChild(input);
  var selects=defs.map(function(f){
   var sel=doc.createElement('select'),lab=mk('label',f.label),seen=Object.create(null),vals=[];
@@ -777,10 +871,10 @@ function enhanceTable(table){
  next.addEventListener('click',function(){page++;draw();});
  if(exportButton)exportButton.addEventListener('click',function(){
   var headers=[].slice.call(table.tHead.rows[0].cells).map(function(c){return c.textContent;});
-  if(csvMeta==='1')headers=headers.concat(['項目 ID','狀態碼','原因碼']);else if(csvMeta==='software')headers=headers.concat(['SoftwareId']);
+  if(csvMeta==='1')headers=headers.concat(['項目 ID','狀態碼','原因碼']);else if(csvMeta==='software')headers=headers.concat(['SoftwareId']);else if(csvMeta==='region')headers=headers.concat(['原因碼']);
   var out=matched.map(function(i){
    var r=rows[i],cells=[].slice.call(r.cells).map(function(c){return c.textContent;});
-   if(csvMeta==='1')cells=cells.concat([r.getAttribute('data-id'),r.getAttribute('data-status'),r.getAttribute('data-reason')]);else if(csvMeta==='software')cells=cells.concat([r.getAttribute('data-sid')]);
+   if(csvMeta==='1')cells=cells.concat([r.getAttribute('data-id'),r.getAttribute('data-status'),r.getAttribute('data-reason')]);else if(csvMeta==='software')cells=cells.concat([r.getAttribute('data-sid')]);else if(csvMeta==='region')cells=cells.concat([r.getAttribute('data-reason')]);
    return cells;
   });
   downloadCsv(csvName,headers,out);
@@ -846,6 +940,44 @@ function Get-WsmWizardLatestResultAttempt([string]$Workspace,[string]$PairId,$Pr
     $latest
 }
 
+# N3: a failed (not delivered) attempt bound to the approved plan. Capture is all-or-nothing, so a failed attempt has no
+# result set; this is the only place a capture failure or a failed read-back can be shown. Read-only, like the helper above.
+function Get-WsmWizardLatestFailedAttempt([string]$Workspace,[string]$PairId,$Profile,$PlanRef) {
+    $viewBackupRoot=Join-Path (Join-Path (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'workspace-control') 'wizard-backups') $PairId
+    if(-not [IO.Directory]::Exists($viewBackupRoot)){return $null}
+    Assert-WsmNoReparse $viewBackupRoot
+    $latest=$null
+    foreach($file in @(Get-ChildItem -LiteralPath $viewBackupRoot -Filter '*.json' -File)){
+        try{
+            $row=Read-WsmJson $file.FullName
+            [void](Assert-WsmWizardBackupAttempt $row $Workspace $PairId $Profile)
+        }catch{continue}
+        if([string]$row.PlanHash -ine [string]$PlanRef.SHA256 -or [string]$row.Stage -cne 'Failed' -or -not $row.PSObject.Properties['Error'] -or $null -eq $row.Error){continue}
+        if(-not $latest -or [string]$row.UpdatedUtc -gt [string]$latest.UpdatedUtc){$latest=$row}
+    }
+    $latest
+}
+
+# Classification comes from the durable error code written by the stage that failed:
+#   core_export_failed  CaptureFailed  capture/seal did not finish; nothing partial is kept as a result set
+#   package_test_failed NotVerified    sealed, but the read-back verification did not pass
+#   delivery_failed     DeliveryFailed verified package, hand-over material incomplete
+function ConvertTo-WsmBackupFailureView($Attempt) {
+    $code=[string]$Attempt.Error.Code
+    $table=@{
+        core_export_failed=@('CaptureFailed','擷取或封存失敗','封存沒有完成，所以沒有產生任何備份結果集；工具不會把部分擷取的內容當成已備份。','修正失敗項目的問題後，從同一個作業續作。')
+        package_test_failed=@('NotVerified','已封存但讀回驗證未通過','封存後的讀回驗證沒有通過，這份備份不能視為已備份。','先檢查作業紀錄與儲存空間，再從同一個作業續作驗證。')
+        delivery_failed=@('DeliveryFailed','交接材料未完整產生','封裝已通過驗證，但交接材料沒有完整產生。','從同一個作業續作。')
+    }
+    $entry=$(if($table.ContainsKey($code)){$table[$code]}else{@('Failed','備份未完成','這次備份沒有完成。','查看作業紀錄後再續作。')})
+    $failedItem=$null
+    if($Attempt.Error.PSObject.Properties['FailedItem'] -and $Attempt.Error.FailedItem){
+        $item=$Attempt.Error.FailedItem
+        $failedItem=[pscustomobject][ordered]@{ItemId=[string]$item.ItemId;Name=[string]$item.Name;Kind=[string]$item.Kind;Channel=[string]$item.Channel;ErrorClass=[string]$item.ErrorClass;ErrorKind=[string]$item.ErrorKind}
+    }
+    [pscustomobject][ordered]@{attemptId=[string]$Attempt.AttemptId;errorCode=$code;classification=$entry[0];title=$entry[1];detail=$entry[2];nextStep=$entry[3];updatedUtc=[string]$Attempt.UpdatedUtc;failedItem=$failedItem}
+}
+
 # Re-checks the independent-copy receipt every time the view is read. The receipt is a set-level record
 # (one per backup set, not per item), so the answer is one state for the whole column:
 #   Verified     the attempt names a receipt that exists, whose bytes match the recorded SHA256, which belongs
@@ -907,9 +1039,14 @@ function Get-WsmWizardBackupItemResultsView([string]$Workspace,[string]$PairId) 
     $planRef=Get-WsmWizardReceivedApprovedPlan $Workspace $PairId $profile
     if(-not $planRef){return [pscustomobject]@{kind='BackupItemResultsView';available=$false;reason='尚未匯入已核准計畫，沒有備份結果可查看。'}}
     $set=Get-WsmWizardVerifiedResultSet $Workspace $PairId $profile $planRef
-    if($set.Failure){return $set.Failure}
+    if($set.Failure){
+        # N3: nothing delivered yet. A failed attempt explains why (capture failed / read-back failed); it never becomes a result row.
+        if(-not $set.Attempt){try{$failedAttempt=Get-WsmWizardLatestFailedAttempt $Workspace $PairId $profile $planRef;if($failedAttempt){$set.Failure | Add-Member NoteProperty failedAttempt (ConvertTo-WsmBackupFailureView $failedAttempt) -Force}}catch{}}
+        return $set.Failure
+    }
     $attempt=$set.Attempt;$document=$set.Document
-    [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software;schemaVersion=$(if($document.PSObject.Properties['SchemaVersion']){[int]$document.SchemaVersion}else{1});coverageRegions=$(if($document.PSObject.Properties['CoverageRegions']){@($document.CoverageRegions)}else{$null});independentCopy=(Get-WsmWizardIndependentCopyProjection $Workspace $PairId $attempt $set.ResultsSha256)}
+    $excludedRecorded=($document.PSObject.Properties['ExcludedRegions'] -and $null -ne $document.ExcludedRegions)
+    [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software;schemaVersion=$(if($document.PSObject.Properties['SchemaVersion']){[int]$document.SchemaVersion}else{1});coverageRegions=$(if($document.PSObject.Properties['CoverageRegions']){@($document.CoverageRegions)}else{$null});excludedRegions=$(if($excludedRecorded){@($document.ExcludedRegions)}else{$null});excludedRegionsBinding=$(if($document.PSObject.Properties['ExcludedRegionsBinding']){$document.ExcludedRegionsBinding}else{$null});independentCopy=(Get-WsmWizardIndependentCopyProjection $Workspace $PairId $attempt $set.ResultsSha256)}
 }
 
 # Read-only drill-down (action BackupItemFiles): the archived files of one backed-up item, 100 per page.

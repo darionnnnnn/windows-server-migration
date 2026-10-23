@@ -262,6 +262,31 @@ function Get-WsmWizardBackupAttemptForOperation([string]$Workspace,[string]$Pair
     $null
 }
 
+# N3: capture is all-or-nothing. When the exporter throws, no manifest exists and no result set is produced, so a
+# "capture failed" row can never appear in the result set. The only reliable record is the exception tag that
+# Payload.ps1 sets on the item being captured (Data['WsmCaptureFailedItemId']). It is stored in the attempt Error as
+# FailedItem: the plan item identity plus an error class/kind taken from the exception TYPE. The exception message
+# is never copied (it can carry paths or other free text). Returns $null when the failure was not inside an item.
+function New-WsmWizardBackupCaptureFailure($Plan,$Exception) {
+    try{
+        if($null -eq $Exception -or $null -eq $Exception.Data -or -not $Exception.Data.Contains('WsmCaptureFailedItemId')){return $null}
+        $failedId=[string]$Exception.Data['WsmCaptureFailedItemId']
+        if(-not $failedId){return $null}
+        $found=@($Plan.Items|Where-Object {[string]$_.ItemId -ceq $failedId})
+        if($found.Count -ne 1){return $null}
+        $planItem=$found[0]
+        $inner=$Exception;$depth=0
+        while($inner.InnerException -and $depth -lt 8){$inner=$inner.InnerException;$depth++}
+        $typeName=[string]$inner.GetType().FullName
+        $errorClass='Failed'
+        if($inner -is [UnauthorizedAccessException]){$errorClass='PermissionDenied'}
+        elseif($inner -is [IO.FileNotFoundException] -or $inner -is [IO.DirectoryNotFoundException]){$errorClass='NotFound'}
+        elseif($inner -is [IO.IOException]){$errorClass='IOError'}
+        $channel='';if($planItem.PSObject.Properties['MigrationSpec'] -and $planItem.MigrationSpec){$spec=$planItem.MigrationSpec;if([string]$spec.Adapter -ceq 'Certificate'){$channel='Certificate'}elseif([string]$spec.Adapter -ceq 'FileScope'){$channel=$(if($spec.PSObject.Properties['TransferChannel'] -and [string]$spec.TransferChannel){[string]$spec.TransferChannel}else{'C'})}}
+        [pscustomobject][ordered]@{ItemId=$failedId;Name=[string]$planItem.Name;Kind=[string]$planItem.Kind;Channel=$channel;ErrorClass=$errorClass;ErrorKind=$typeName}
+    }catch{$null}
+}
+
 function ConvertTo-WsmWizardBackupResult($Attempt,[string]$OperationId) {
     $independentCopy=$(if($Attempt.PSObject.Properties['IndependentCopy']){$Attempt.IndependentCopy}else{$null})
     $itemResults=$(if($Attempt.PSObject.Properties['ItemResults']){$Attempt.ItemResults}else{$null})
@@ -474,7 +499,7 @@ function Invoke-WsmWizardStartBackup {
         }
         catch{
             if($freezeRequired -and -not $record.Freeze -and $record.FreezeAttemptStarted){$record.ResumeStage='';$record.SourceResumeRequired=$true;$record.Stage='ReviewRequired';$record.Error=[pscustomobject]@{Code='source_freeze_interrupted';Message='來源停止寫入流程可能已部分執行；請先檢查來源恢復紀錄，勿直接重送。'}}
-            else{$record.ResumeStage='Authorized';$record.Stage=if($_.Exception.Data['CancellationRequested']){'Cancelled'}else{'Failed'};if($freezeRequired -and $record.Freeze){$record.SourceResumeRequired=$true};$record.Error=[pscustomobject]@{Code=$(if($record.Stage -eq 'Cancelled'){'cancelled'}else{'core_export_failed'});Message=('封裝未完成；已保留目前可核對的資料，請查看作業紀錄後再續作。'+$(if([string]$_.Exception.Message -like 'OfflineFullSet source snapshot is missing*'){' 缺少核准時的來源盤點快照：請把 Manager 交付的 <計畫檔名>.source-snapshot.json 附件放在計畫檔旁，重新匯入核准計畫後再試。'}else{''}))}}
+            else{$record.ResumeStage='Authorized';$record.Stage=if($_.Exception.Data['CancellationRequested']){'Cancelled'}else{'Failed'};if($freezeRequired -and $record.Freeze){$record.SourceResumeRequired=$true};$record.Error=[pscustomobject]@{Code=$(if($record.Stage -eq 'Cancelled'){'cancelled'}else{'core_export_failed'});Message=('封裝未完成；已保留目前可核對的資料，請查看作業紀錄後再續作。'+$(if([string]$_.Exception.Message -like 'OfflineFullSet source snapshot is missing*'){' 缺少核准時的來源盤點快照：請把 Manager 交付的 <計畫檔名>.source-snapshot.json 附件放在計畫檔旁，重新匯入核准計畫後再試。'}else{''}))};if($record.Stage -ceq 'Failed'){$captureFailure=New-WsmWizardBackupCaptureFailure $plan $_.Exception;if($captureFailure){$record.Error | Add-Member NoteProperty FailedItem $captureFailure -Force}}}
             $record.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $path $record $Workspace;Complete-WsmWizardBackupProgress $progress $(if($record.Stage -ceq 'Cancelled'){'Cancelled'}else{'Failed'});throw
         }
     }
@@ -510,8 +535,10 @@ function Invoke-WsmWizardStartBackup {
                 $resultsArtifacts=@(Read-WsmArtifactLines (Join-Path $resultsRoot 'artifacts.jsonl') $resultsPackage.Manifest.ArtifactsHash)
                 $resultsRows=@(Get-WsmBackupItemResultRows $plan $resultsInventory $resultsArtifacts $resultsOfflineFullSet)
                 $resultsSoftware=Get-WsmBackupSoftwareRows $plan $resultsInventory
+                # N3: policy exclusions of the scan the approved plan is bound to; $null Regions means the binding could not be verified (shown as not recorded).
+                $resultsExclusions=Get-WsmBackupBoundScanExclusions $plan $Workspace $profile
                 $resultsFile=Join-Path (Split-Path -Parent ([string]$record.Delivery.Path)) 'backup-item-results.json'
-                $resultsExport=Export-WsmBackupItemResults $resultsFile $resultsRows ([pscustomobject]@{PairId=$PairId;AttemptId=$attemptId;PlanHash=[string]$planRef.SHA256;ManifestHash=[string]$record.PackageTest.SHA256;InventorySource=$resultsInventorySource;Software=$resultsSoftware})
+                $resultsExport=Export-WsmBackupItemResults $resultsFile $resultsRows ([pscustomobject]@{PairId=$PairId;AttemptId=$attemptId;PlanHash=[string]$planRef.SHA256;ManifestHash=[string]$record.PackageTest.SHA256;InventorySource=$resultsInventorySource;Software=$resultsSoftware;ExcludedRegions=$resultsExclusions.Regions;ExcludedRegionsBinding=$resultsExclusions.Binding})
                 $record | Add-Member NoteProperty ItemResults ([pscustomobject]@{Status='Generated';Path=[string]$resultsExport.Path;SHA256=[string]$resultsExport.SHA256;Counts=$resultsExport.Counts;InventorySource=[string]$resultsExport.InventorySource}) -Force
             }catch{
                 $resultsError=[string]$_.Exception.Message;if($resultsError.Length -gt 300){$resultsError=$resultsError.Substring(0,300)}
