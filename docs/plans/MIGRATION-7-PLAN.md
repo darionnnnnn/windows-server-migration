@@ -1195,6 +1195,10 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 從 YAML 取出 `scope` 與 `required-checks` 的腳本，在本機 git 以三種情況實跑：純文件 commit、程式 commit、全零 base。另以五種結果組合實跑 `required-checks`，判定都符合預期。
   - 尚未在 GitHub 實際觸發，要等 push 後看實際執行結果。
 - 未做：分支保護的 required check 設定屬於 GitHub 儲存庫設定，需要使用者在 GitHub 上把 `required-checks` 設為必要檢查。
+- 首次在本分支實際執行（8966669）：
+  - `Windows PowerShell contracts` 已觸發，`required-checks` 如預期判定失敗。失敗的是 `Test-AssistiveWorkloadIntegration` 與 `Test-ObservationWorkflow`，兩者在第六輪基準就已失敗（17.71 有列出）。
+  - 另一個 workflow `Native released console` 從 B1（40a3369）起每次都失敗。原因是 B1 讓作業列表的「要求取消」改為先確認，而 CI 的 Source 取消路徑（`WSM_RUNTIME_FORMAL_SOURCE_CANCEL_ONLY`）點下後沒有按確認，就直接等取消的 POST，因此逾時。本機預設路徑不會走到這條。`Test-HtmlBrowser.js` 有同樣的寫法。
+  - 已修正：兩支測試在點下後補按「確定取消」。本機在取消模式下跑 `Test-NativeWizardRuntimeHandler.js`、跑 `Test-HtmlBrowser.js`，都通過。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

@@ -319,6 +319,8 @@ const server = http.createServer((request, response) => {
       window.WsmConsole.renderJobs();
     });
     await page.locator('#job-list button').filter({ hasText: '要求取消' }).click();
+    // B1 (17.68): the job-list cancel now opens a confirmation dialog before sending.
+    await page.getByRole('button', { name: '確定取消', exact: true }).click();
     await page.waitForFunction(() => window.WsmConsole.state.jobs.get('fixture-job').status === 'CancelRequested');
     assert.ok(cancelRequest);
     assert.equal(cancelRequest.method, 'POST');
