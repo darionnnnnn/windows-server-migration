@@ -1377,6 +1377,33 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 負向控制由 6 個增為 12 個，每一種新 needle 都至少有一個刻意洩漏的檔案。Haiku 依規格只做了 3 個；SHA1、SHA256-b64、SHA256（UTF-16LE）缺負向控制，是規格本身的缺口，由主代理補上。
 - 驗證：SecretSentinelSweep 22 項、ScriptEncoding。突變（略過 SHA256 大寫、MD5、SHA1）皆轉紅。
 - 掃描範圍擴大到備份輸出的部分，由 N8b 處理。
+### 17.82 N8b 秘密哨兵掃描擴大到一鍵備份的全部輸出（16.6-12 後半）
+
+- Sonnet 5.5 medium subagent 實作，主代理補一種負向控制變體並獨立驗收。`src/` 未修改，也沒有測出秘密或其摘要被寫入磁碟。
+- 掃描函式抽到 `tests/SecretSweep.Common.ps1`，兩支測試共用。`Test-SecretSentinelSweep` 的檢查數維持 22。
+- 新增 `Test-SecretSentinelBackupSweep.ps1`：
+  - Source 端：以正式程式跑一鍵備份，計畫含 FileScope、Service、ScheduledTask、IISPool，後三者都帶 SecretRef。接著做獨立副本與收據。
+  - Target 端：匯入交付後，以同一個合成秘密走完帳密等待、延後、被拒、更正後續作。
+  - 掃描範圍：Source、Target、獨立副本目的地、console job 目錄，共 12 類輸出，正向 0 命中。
+  - 負向控制：每一類各在一個實際檔案的副本中附加洩漏，形式有原值、Base64、SHA256 摘要，以及主代理補上的 UTF-16LE，共 48 份，必須剛好全部命中。
+- 驗證：SecretSentinelBackupSweep 151、SecretSentinelSweep 22、ScriptEncoding；subagent 另跑 ServiceCredentialChallenge 46、CredentialDeferral 68、WizardBackup。
+- 突變（皆轉紅）：略過進度檔目錄、略過交付資料夾、略過摘要 needle；主代理另做「略過 UTF-16LE needle」，原本存活，補上變體後轉紅。
+- 限制：
+  - console job 紀錄由測試自己寫入，不是 HtmlConsole 真實的 job store。
+  - Target 還原的宿主 adapter 是替身。
+  - 只測 Directory 交付，ZIP 分卷是壓縮內容，沒有解壓後再掃。
+
+### 17.83 N9 使用者定案（2026-10-23）
+
+- N9 唯讀評估之後，使用者對各項的定案如下（皆為建議選項）：
+  - D1／R7-07 環境變數與相對路徑：只用機器層環境，加上 ProfileList 推導的 %USERPROFILE%／%APPDATA%／%LOCALAPPDATA%（標為「推導」）。其餘標為未解析，不碰使用者 hive。
+  - R7-04／R7-05 混合套裝目錄：只做可見性。安裝根內的檔案要分類列出（本體、疑似業務資料、未知），全部維持不備份並列入人工處置。既有防護不放寬。
+  - F1：只補驗收，包括鍵盤、320px、200% 縮放、重開後不重問已確認項，不重做 UI。ledger 的 F1 如實維持「未完成」。
+  - G 其餘旅程：拆成多支劇本，分別是探索到備份、NonC 失敗與 freeze 失效、混合範圍，各自可由機器判定並綁定證據。
+  - 15.8 發行包：擴充冒煙測試，加入 R7 的 export、必要檔、HTML 引用檢查，以及一條小型的備份到還原流程，並如實標註「不是完整旅程」。
+  - D3a：補齊欄位與新證據後標為 implemented／isolated-pass，實機項目留在 openIssues。
+  - F2：CLI 帶出失敗碼、階段與下一步；外部材料只對齊既有 collector 欄位，不新造 collector。
+- 執行順序：F2 CLI → 發行包冒煙 → D1 context → R7-04／05 可見性 → F1 驗收 → G 多劇本 → 最後一次集中重綁證據帳本（含 D3a）。帳本放到最後，因為前幾項會改 inventory 與計畫的資料，提早重綁會讓已綁好的雜湊再次過期。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
