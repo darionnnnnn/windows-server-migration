@@ -1556,6 +1556,30 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - 限制：
   - 200% 是用 DPR 模擬，不是瀏覽器真縮放；真縮放仍由 `Test-WizardBrowserZoom` 涵蓋部分畫面。
   - F1 的「一份流程清單」依 17.83 定案不做。ledger 的 F1 維持未完成。
+### 17.90 N9f G 其餘旅程拆成三支機器可判定劇本；找到四個產品缺陷
+
+- Sonnet 5.5 medium subagent 實作，只修改 `tests/`；主代理獨立重跑。共用檔為 `tests/G-ScenarioCommon.ps1`。三支劇本都從不可變快照匯入模組，在行程內直接呼叫核心（不經 HTTP console），並輸出與主旅程同格式的 verdict（含 Doubles、Notes、Observations）。
+- `Test-G2DiscoveryToDelivery`（g2a001，33 項判定）：
+  - 流程：Source 候選掃描 → 確認匯出 → Manager 匯入、審閱、CV2 核准 → 一鍵備份 → 獨立副本。
+  - 判定：核准集合等於確認集合；封存 blob 雜湊等於來源；ExcludedRegions 綁定成功，且未宣稱完整；獨立副本逐檔一致；明示未啟用。
+- `Test-G3NonCFailureFreeze`（g3a001，29 項判定）：
+  - C 已擷取、NonC 崩潰：Failed，各層投影都沒有宣稱完整，也沒有退役或啟用的事實。
+  - freeze 過期：續作被拒；走 SourceResume 後另開 attempt，新世代只含新位元組。
+  - 取消後可續作，且不拼接世代。
+- `Test-G4MixedScope`（g4a001，29 項判定）：
+  - 範圍：未關聯的 C 資料、D 槽 IIS、E 槽排程（D、E 以 subst 模擬）；套裝本體不搬。
+  - 判定：兩個通道的封存與原位置還原位元組一致；套裝本體出現在 ExcludedRegions，並附 N9d 分類；型別化替身各呼叫一次；N9c 的 Machine／Unresolved 依據正確；失敗不被遮蔽。
+- G 主旅程 n9f001 的 48 項通過。
+- 突變（皆轉紅）：G2 核准多一項；G3 投影宣稱完整；G3 真實產品突變（WizardBackup 的 NonC 狀態）；G4 搬移套裝本體。
+- **找到的產品缺陷**（劇本目前以標明的繞道通過，由 N9h 修正）：
+  - **D3（N9c 引入的回歸）**：Manager 匯入帶 SourceResolutionContext 與軟體目錄的 inventory 後，`Get-WsmCatalog` 每次都失敗。重現：`tests/Repro-N9f-D3-ManagerCatalogContext.ps1`。
+  - **D1**：Source 確認材料寫在 `assistive\materials`，一鍵備份卻從 `pairs` 讀取，導致 CV2 備份找不到材料。
+  - **D2**：失敗後重試同一個 CV2 attempt 時，`controls\source-inventory.json` 已存在，複製丟出例外。
+  - **D4**：CV2 計畫中標 NonC 的範圍，預覽顯示 Ready，執行迴圈卻走舊的 NonC 分支（`AssistiveRestore.ps1` 約 :1014、:1017 缺少 `-not $cv2` 防護）。
+- 限制：
+  - 型別化 adapter 是替身，沒有驗證真實的 IIS 與工作排程器。
+  - 三支劇本都沒有走 HTTP console。
+  - 工作區放在 subst 短代號上。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
