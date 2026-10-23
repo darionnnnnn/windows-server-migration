@@ -1179,6 +1179,22 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 補上直接呼叫 `Assert-WsmLabStateBinding` 的斷言，要求拒絕原因是「foreign」。改成相符指紋的突變現在會轉紅。
 - `Test-WizardTextRuntime`：305a336（G-D2）讓 `Import-WsmWizardApprovedPlan` 多了可選的 `SourceSnapshotPath`，CLI 因此多問一題。測試在兩處補上空白回答（略過），APPLY 確認不變。
 - 驗證（WinPS 5.1）：見提交說明。
+### 17.74 N7 CI：本輪分支觸發與聚合型必要檢查
+
+- 主代理實作。`.github/workflows/contracts.yml` 的 push 原本只在 main 與 dev 觸發，現在加入 `codex/migration-*`。
+- 原本在 workflow 層用 `paths-ignore` 排除文件。這樣一來，只改文件時整個 workflow 不會執行，被設為必要的檢查會永遠停在 pending（B1-1、B1-4、14.3-5）。
+- 改法：workflow 一律觸發，由 `scope` job 以 git diff 判斷這次是否動到程式。base 未知、或是新分支時，一律視為動到程式。
+  - 四個契約 job 依 `scope` 的判斷決定是否執行。
+  - 新增一律執行的 `required-checks` 聚合 job，作為唯一的必要檢查。下列情況會失敗：
+    - `scope` 本身失敗；
+    - 任一契約 job 失敗或被取消；
+    - 程式有變動，契約 job 卻被略過。
+  - 只有在純文件變更時，略過才算通過。
+- 驗證：
+  - YAML 可正常解析。
+  - 從 YAML 取出 `scope` 與 `required-checks` 的腳本，在本機 git 以三種情況實跑：純文件 commit、程式 commit、全零 base。另以五種結果組合實跑 `required-checks`，判定都符合預期。
+  - 尚未在 GitHub 實際觸發，要等 push 後看實際執行結果。
+- 未做：分支保護的 required check 設定屬於 GitHub 儲存庫設定，需要使用者在 GitHub 上把 `required-checks` 設為必要檢查。
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
