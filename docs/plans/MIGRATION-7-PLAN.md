@@ -2124,6 +2124,46 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - D1 完整的 opaque-path 矩陣維持為 open issue。
   - 第六輪基準就失敗的測試、PS7、實機與企業驗收，維持不在本輪範圍。
 
+### 17.107 Q1 R7-08 還原後重新核對（以 4c6552c 為準）
+
+- 需求（R7-08）：還原成功後，安裝、重啟或權限變更可能改寫已還原的檔案或設定。工具要能重查；漂移的項目由「成功」降為「待核對」，保留舊的成功歷史，不自動覆寫回舊檔。
+- 實作：Sonnet 5.5 effort high subagent。主代理審查、另做一個突變，並獨立重跑（含 subagent 沒跑的 G4 RetryFailedButton 與 Edge 測試）。
+- 定案：
+  - **核對範圍與入口**：唯讀核對最近一次還原中結果為 `Succeeded` 的項目。入口有三個：HTML 動作 `TargetRecheck`（標籤「重新核對」）、`Invoke-WsmWizardTargetRecheck`、CLI 目標選單第 16 項。
+  - **核對紀錄**：存在 `<pair>\rechecks\<sha256>.json`，以內容定址，並以 Sequence 與 PreviousRecheckHash 串成鏈。紀錄綁定當次還原嘗試與 ItemResults 的雜湊。它不寫入 state 與 journal，所以 replay 不受影響。檔名不等於內容雜湊的紀錄會被忽略。
+  - **判定方式**（都沿用既有邏輯）：
+    - FileScope：用 `Get-WsmFilePlacementPreview` 判定內容與擁有權；metadata 用寫入器記下的 MetadataHash 判定，並把 ACL 單獨分出。
+    - 目錄：只比對 ACL 與屬性。
+    - typed 設定：用 `Test-WsmAdapterConfiguration` 判定。
+  - **無法自動核對**：沒有 readback 能力、讀回失敗、NonC 通道、缺擁有紀錄時，一律標為「無法自動核對」，不當成吻合。
+  - **AdoptedExisting**：漂移時標 `ReportOnly`，投影降為待核對，工具不會覆寫。
+  - **投影**：
+    - 漂移項目降為 NeedsRecheck，附上原因，並顯示「曾成功於…，…核對發現漂移」。舊的 ItemResults 原樣保留。
+    - 匯入新的 Target 盤點後，只提示「建議重新核對」，不自動核對。
+  - **與 P8 重試的關係**：待核對項目不進 P8 的重試候選。要重新還原必須明確選取，且仍受 BlockedConflict 與 ownership 保護；測試已確認明確選取時結果為 BlockedConflict，位元組不變。
+- 測試：
+  - `Test-PostRestoreRecheck.ps1`，109 項，用真實 FileScope 寫入器。
+  - `Test-RetryFailedItemsBrowser.js` 擴充 Q1 情境（Edge，390／320px，零 console 錯誤），截圖在 `work/r7/screens/q1-*.png`。
+  - `Test-AdoptedExistingOwnership` 的 OwnedFiles 讀取者守門新增一條分類。
+- 突變（皆轉紅）：
+  - subagent 做 9 個：覆寫回舊檔、漂移仍顯示成功、改寫舊 ItemResults、沒有 readback 卻當吻合（兩種）、待核對進入 P8 重試候選，另有 3 個。
+  - 主代理做 1 個：接受檔名不等於內容雜湊的偽造核對紀錄，測試回報「B4: a record whose name is not its content hash must be ignored」。
+- 驗證：
+  - PowerShell 測試：PostRestoreRecheck 109、AssistiveRestore 178、AssistiveFiles 35、AdoptedExistingOwnership 126、RetryFailedItems 83、FileScopeIncompleteOwnership 164、RestorableSet 199、WizardRestore 132、TargetRestoreContinuation 133、JournalReplayCoverage 413、WizardRuntime 182、HtmlConsole 175、WizardHtmlRuntimeProjection 214、ActionExports 204、OperationRequests、TextConsole、WizardTextRuntime 65、ScriptEncoding。
+  - G4 RetryFailedButton 44。
+  - AssistiveUi 48。
+  - Edge：RetryFailedItemsBrowser、RestorableSetBrowser、RestoreSelectionBrowser、F1AcceptanceBrowser。
+  - WizardRuntime 從 174 增為 182，增加的 8 項是新 action 契約的「不得代填明確欄位」檢查。
+- 限制：
+  - typed 設定只用 MachineEnvironment 替身驗證，沒有 IIS 或排程的真實 readback。
+  - CLI 選單沒有用真實終端互動驗證。
+  - 沒有走真實 HTTP `/api/operations`。
+  - 範圍不含 RebootRequired。
+  - 目錄時間戳不列為漂移。
+  - 「新盤點後提示」靠時間與盤點雜湊判斷；CLI 沒有 Jobs 時只能比時間。
+  - journal 需要 Repair 時，核對會直接丟例外，不會只做部分核對。
+  - 沒有 PS7。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

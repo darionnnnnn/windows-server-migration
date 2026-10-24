@@ -285,6 +285,46 @@ function Get-WsmWizardTargetAcceptEligibleItemIds($PackageRecord,$Comparison,[ob
     $eligible
 }
 
+# Q1：還原後重新核對的投影端（唯讀）。核對本身在 AssistiveRestore.ps1（Get-WsmAssistiveRestoreRecheck／Invoke-WsmTargetRestoreRecheck）；
+# 這裡把「最新一筆綁定目前還原嘗試的核對紀錄」轉成投影用的逐項狀態：Succeeded 的項目若核對發現漂移，投影上降為 NeedsRecheck（待核對）並附原因；
+# 舊的 ItemResults 原樣保留（不改寫、不刪除），投影另附「曾成功於 <時間>，<時間> 核對發現漂移」。
+function ConvertTo-WsmWizardRecheckProjectedStatus([string]$RecordStatus) {
+    switch -CaseSensitive ($RecordStatus) {
+        'NeedsRecheck' {return 'NeedsRecheck'}
+        'Unverifiable' {return 'Unverifiable'}
+        default {return 'Succeeded'}
+    }
+}
+function Format-WsmWizardRecheckTime([string]$Value) {
+    $parsed=[DateTimeOffset]::MinValue
+    if([string]::IsNullOrWhiteSpace($Value) -or -not [DateTimeOffset]::TryParse($Value,[ref]$parsed)){return '時間不明'}
+    $parsed.UtcDateTime.ToString('yyyy-MM-dd HH:mm:ss')+' UTC'
+}
+function Get-WsmWizardTargetRecheckView {
+    [CmdletBinding()]param([Parameter(Mandatory)]$Paths,[Parameter(Mandatory)]$State)
+    if(-not $State.PSObject.Properties['RestoreAttempt'] -or -not $State.RestoreAttempt){return $null}
+    $attempt=$State.RestoreAttempt;$attemptResults=@();if($attempt.PSObject.Properties['ItemResults']){$attemptResults=@($attempt.ItemResults)}
+    $itemResultsHash=Get-WsmHashText ($attemptResults|ConvertTo-Json -Depth 100 -Compress)
+    $latest=Get-WsmAssistiveLatestRecheck $Paths ([string]$attempt.OperationId) $itemResultsHash
+    if(-not $latest){return $null}
+    $record=$latest.Record;$checkedText=Format-WsmWizardRecheckTime ([string]$record.CheckedUtc)
+    $items=@(foreach($item in @($record.Items)){
+        $status=ConvertTo-WsmWizardRecheckProjectedStatus ([string]$item.Status);$succeededText=Format-WsmWizardRecheckTime ([string]$item.SucceededUtc)
+        $statusText=switch -CaseSensitive ($status){'NeedsRecheck'{'待核對'}'Unverifiable'{'無法自動核對'}default{'已核對，目前吻合'}}
+        $historyText=switch -CaseSensitive ($status){'NeedsRecheck'{'曾成功於 '+$succeededText+'，'+$checkedText+' 核對發現漂移'}'Unverifiable'{'曾成功於 '+$succeededText+'，'+$checkedText+' 核對時無法自動確認目前內容'}default{$checkedText+' 核對吻合（原成功於 '+$succeededText+'）'}}
+        [pscustomobject][ordered]@{itemId=[string]$item.ItemId;name=[string]$item.Name;adapter=[string]$item.Adapter;status=$status;recordStatus=[string]$item.Status;previousStatus=[string]$item.PreviousStatus;statusText=$statusText;succeededUtc=[string]$item.SucceededUtc;checkedUtc=[string]$record.CheckedUtc;historyText=$historyText;reasons=@(@($item.Reasons)|ForEach-Object {[pscustomobject][ordered]@{kind=[string]$_.Kind;code=[string]$_.Code;text=[string]$_.Text;relativePath=[string]$_.RelativePath;detail=[string]$_.Detail;reportOnly=[bool]$_.ReportOnly}})}
+    })
+    [pscustomobject][ordered]@{Record=$record;Path=[string]$latest.Path;SHA256=[string]$latest.SHA256;Sequence=[long]$latest.Sequence;CheckedUtc=[string]$record.CheckedUtc;ObservedSnapshotHash=$(if($record.PSObject.Properties['ObservedSnapshotHash']){[string]$record.ObservedSnapshotHash}else{''});Items=$items}
+}
+# 唯讀入口：重新核對最近一次還原中結果為成功的項目，寫入一筆新的核對紀錄（<pair>\rechecks\<sha256>.json）；不覆寫、不刪除、不改 ACL、不開還原。
+function Invoke-WsmWizardTargetRecheck {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[object[]]$Jobs=@(),$CancellationToken=$null)
+    $ctx=Assert-WsmWizardTargetRole $Workspace $PairId
+    $packageRecord=Get-WsmWizardTargetPackage $Workspace $PairId $ctx $Jobs
+    $snapshotHash='';try{$snapshot=Get-WsmWizardTargetSnapshotForRuntime $Workspace $ctx $Jobs;$snapshotHash=[string]$snapshot.SHA256}catch{$snapshotHash=''}
+    Invoke-WsmTargetRestoreRecheck -ManifestPath $packageRecord.ManifestPath -ExpectedHash $packageRecord.ManifestHash -StateDirectory (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs') -ObservedSnapshotHash $snapshotHash -CancellationToken $CancellationToken
+}
+
 # P8：部分完成後的「重試失敗項目」候選（只讀；不寫入、不自動 repair）。
 # 純函式：全部輸入都由呼叫端傳入（最近一次母作業的 operation state、綁定的決策收據、目前的項目可還原判定），方便逐情境驗證。
 # 來源只有最近一次母作業 state.RestoreAttempt（含 ItemResults）與它綁定的最新決策收據；收據不是最新、世代不同或母作業未結束，一律不顯示。
@@ -293,8 +333,8 @@ function Get-WsmWizardTargetAcceptEligibleItemIds($PackageRecord,$Comparison,[ob
 # 未成功項目再經 N1 的共用可還原判定（ItemOptions.restorable，來源是 Get-WsmAssistiveFileScopeRestoreGap 等同一份判定）：可還原才進候選，否則進 Excluded 並附 code 與原因。
 # 有未清除的 pending intent 時整體不可重試（請先 repair），這裡不替操作者 repair。
 function Get-WsmWizardTargetRetryCandidatesCore {
-    [CmdletBinding()]param([Parameter(Mandatory)]$PackageRecord,$State,$DecisionRecord,[object[]]$ItemOptions=@(),$PendingRestore=$null)
-    $out=[ordered]@{Visible=$false;Eligible=$false;ReasonCode='';Reason='';CandidateItemIds=[string[]]@();SucceededItemIds=[string[]]@();NotSucceededItemIds=[string[]]@();Excluded=@();SourceAttemptId='';SourceReceiptHash='';SourceStage='';SourceOwner='';PriorAcceptedUnpreparedItemIds=[string[]]@();SuggestedReason=''}
+    [CmdletBinding()]param([Parameter(Mandatory)]$PackageRecord,$State,$DecisionRecord,[object[]]$ItemOptions=@(),$PendingRestore=$null,[object[]]$RecheckItems=@())
+    $out=[ordered]@{NeedsRecheckItemIds=[string[]]@();Visible=$false;Eligible=$false;ReasonCode='';Reason='';CandidateItemIds=[string[]]@();SucceededItemIds=[string[]]@();NotSucceededItemIds=[string[]]@();Excluded=@();SourceAttemptId='';SourceReceiptHash='';SourceStage='';SourceOwner='';PriorAcceptedUnpreparedItemIds=[string[]]@();SuggestedReason=''}
     if($PendingRestore){$out.ReasonCode='RestoreInProgress';$out.Reason='還原尚未結束（等待輸入或已中斷），請先在還原畫面完成或續作。';return [pscustomobject]$out}
     if(-not $State -or -not $State.PSObject.Properties['RestoreAttempt'] -or -not $State.RestoreAttempt -or -not $DecisionRecord -or -not $DecisionRecord.PSObject.Properties['Receipt'] -or -not $DecisionRecord.Receipt){$out.ReasonCode='NoRestoreAttempt';$out.Reason='還沒有可重試的還原結果。';return [pscustomobject]$out}
     $attempt=$State.RestoreAttempt;$receipt=$DecisionRecord.Receipt;$stage=[string]$State.Stage;$out.SourceStage=$stage
@@ -304,8 +344,11 @@ function Get-WsmWizardTargetRetryCandidatesCore {
     $out.SourceAttemptId=[string]$attempt.OperationId;$out.SourceReceiptHash=([string]$DecisionRecord.SHA256).ToLowerInvariant();$out.SourceOwner=$(if($receipt.PSObject.Properties['Owner']){[string]$receipt.Owner}else{''})
     $results=@{};if($attempt.PSObject.Properties['ItemResults']){foreach($itemResult in @($attempt.ItemResults)){if($itemResult -and $itemResult.PSObject.Properties['ItemId'] -and $itemResult.PSObject.Properties['Status']){$results[[string]$itemResult.ItemId]=[string]$itemResult.Status}}}
     $succeeded=New-Object 'System.Collections.Generic.List[string]';$notSucceeded=New-Object 'System.Collections.Generic.List[string]'
-    foreach($id in $receiptSelected){if($results.ContainsKey($id) -and $results[$id] -cin @('Succeeded','RebootRequired')){$succeeded.Add($id)}else{$notSucceeded.Add($id)}}
-    $out.SucceededItemIds=[string[]]@($succeeded.ToArray());$out.NotSucceededItemIds=[string[]]@($notSucceeded.ToArray())
+    # Q1：重新核對後降為「待核對」的項目不是失敗：ItemResults 仍是 Succeeded，所以它們留在成功那一邊、不進重試候選（要重新還原必須由操作者明確選取，並仍受 BlockedConflict 與 ownership 規則保護）；這裡只另外列出，供畫面說明。
+    $recheckById=@{};foreach($recheckItem in @($RecheckItems)){if($recheckItem -and $recheckItem.PSObject.Properties['itemId'] -and $recheckItem.PSObject.Properties['status']){$recheckById[[string]$recheckItem.itemId]=[string]$recheckItem.status}}
+    $needsRecheck=New-Object 'System.Collections.Generic.List[string]'
+    foreach($id in $receiptSelected){if($results.ContainsKey($id) -and $results[$id] -cin @('Succeeded','RebootRequired')){$succeeded.Add($id);if($recheckById.ContainsKey($id) -and $recheckById[$id] -ceq 'NeedsRecheck'){$needsRecheck.Add($id)}}else{$notSucceeded.Add($id)}}
+    $out.SucceededItemIds=[string[]]@($succeeded.ToArray());$out.NotSucceededItemIds=[string[]]@($notSucceeded.ToArray());$out.NeedsRecheckItemIds=[string[]]@($needsRecheck.ToArray())
     # Partial 的另一個來源是「未選取的項目標為 DeferredBySelection」；所選項目全部成功時那不是失敗，不顯示重試。Partial 且有未清除的 pending intent 時仍要顯示（先修復）。
     $pendingCount=$(if($State.PSObject.Properties['PendingOperations']){@($State.PendingOperations).Count}else{0})
     if($notSucceeded.Count -eq 0 -and -not ($stage -ceq 'Partial' -and $pendingCount -gt 0)){$out.ReasonCode='AllSucceeded';$out.Reason='這次還原所選的項目都已成功，沒有需要重試的項目。';return [pscustomobject]$out}
@@ -334,7 +377,8 @@ function Get-WsmWizardTargetRetryCandidates {
     $paths=Get-WsmOperationPaths (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs') $PairId;$state=$null;if([IO.File]::Exists($paths.State)){$state=Get-WsmOperationState $paths $packageRecord.Package}
     $decisionRecord=Get-WsmWizardTargetDecisionRecord $Workspace $PairId $ctx.Received.SHA256
     $options=@(Get-WsmWizardTargetItemOptions $ctx $packageRecord $state $decisionRecord)
-    Get-WsmWizardTargetRetryCandidatesCore -PackageRecord $packageRecord -State $state -DecisionRecord $decisionRecord -ItemOptions $options -PendingRestore (Get-WsmWizardRuntimeTargetPendingRestore $Workspace $PairId $Jobs)
+    $recheckItems=@();if($state){try{$recheckView=Get-WsmWizardTargetRecheckView $paths $state;if($recheckView){$recheckItems=@($recheckView.Items)}}catch{$recheckItems=@()}}
+    Get-WsmWizardTargetRetryCandidatesCore -PackageRecord $packageRecord -State $state -DecisionRecord $decisionRecord -ItemOptions $options -RecheckItems $recheckItems -PendingRestore (Get-WsmWizardRuntimeTargetPendingRestore $Workspace $PairId $Jobs)
 }
 
 # 「重試失敗項目」用 RetryOfReceiptHash 啟用：選擇由後端重新計算候選決定（不信任前端送來的 ItemIds，只核對它等於目前候選），

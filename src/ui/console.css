@@ -324,3 +324,17 @@ button[aria-disabled="true"]{opacity:.6;cursor:wait}
 .wizard-retry-failed button[aria-disabled="true"]:not([data-busy="true"]){cursor:not-allowed}
 .wizard-retry-result{overflow-wrap:anywhere}
 .wizard-retry-result:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.wizard-recheck{display:grid;gap:10px;margin:14px 0;padding:14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface-soft);min-width:0}
+.wizard-recheck h3{margin:0;font-size:16px;color:var(--navy)}
+.wizard-recheck p,.wizard-recheck li{margin:0;overflow-wrap:anywhere}
+.wizard-recheck-summary{font-weight:650}
+.wizard-recheck-list{margin:0;padding:0;display:grid;gap:8px;min-width:0;list-style:none}
+.wizard-recheck-item{display:grid;gap:2px;min-width:0}
+.wizard-recheck-needs{color:var(--warn)}
+.wizard-recheck-unverifiable{color:var(--danger)}
+.wizard-recheck-history{overflow-wrap:anywhere}
+.wizard-recheck-reasons{margin:2px 0 0;padding-left:1.2em;display:grid;gap:2px;min-width:0}
+.wizard-recheck button{max-width:100%;white-space:normal;text-align:left}
+.wizard-recheck button[aria-disabled="true"]:not([data-busy="true"]){cursor:not-allowed}
+.wizard-recheck-result{overflow-wrap:anywhere}
+.wizard-recheck-result:focus-visible{outline:3px solid var(--focus);outline-offset:2px}

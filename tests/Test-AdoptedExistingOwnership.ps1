@@ -55,6 +55,7 @@ try {
             'AssistiveRestore.ps1:Test-WsmAssistiveFileScopeOwnershipIncomplete'='shape only (property presence), class-agnostic'
             'AssistiveRestore.ps1:Get-WsmAssistiveFileScopeRestoreGap'='N1 single-file: adopted -> VerifyAdoptedExistingFile / BlockedConflict (never replace); directory scope: trusted hash only'
             'AssistiveRestore.ps1:Invoke-WsmAssistiveRestore'='NonC result record has no files; reservation evidence passes rows through unchanged'
+            'AssistiveRestore.ps1:Test-WsmAssistiveRecheckFileScope'='Q1 recheck (read-only): adopted drift -> reported (ReportOnly, AdoptedExistingDrift), never overwritten or deleted; the sealed ACL is not used as the adopted baseline'
             'AssistiveRestore.ps1:Invoke-WsmAssistiveFileScopeRestore'='writer: adopted -> VerifiedOwned without rewrite/ACL assert, drift or new package bytes -> BlockedConflict, skipped by the final metadata pass'
             'Cutover.ps1:Get-WsmAssistiveStageFileResultRows'='stage file rows: Applied with the adopted note as Reason'
             'DeltaWorkflow.ps1:Assert-WsmAssistiveDeltaBaseOwnership'='property presence only'

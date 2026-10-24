@@ -1213,6 +1213,205 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     [pscustomobject]@{PairId=$Package.Manifest.PairId;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;Stage=$state.Stage;Items=$state.Items;Results=$finalResults;Deferred=$remaining;JournalHash=$state.JournalHash;CredentialNotice=$credentialNotice;BusinessValidationRequired=$true;ProductionVerified=$false}
 }
 
+# ---- Q1：還原後重新核對（唯讀）--------------------------------------------------------------------------------------------
+# 安裝、重啟或權限變更可能改寫已還原的檔案或設定。這組函式只重查「最近一次還原中結果為 Succeeded 的項目」：
+#   * 不寫入 Target、不覆寫、不刪除、不改 ACL、不開還原，也不改 state.json 與 journal；唯一的寫入是 <pair>\rechecks\ 下一筆內容定址的核對紀錄。
+#   * FileScope：內容與擁有權沿用 Get-WsmFilePlacementPreview（OwnedFileDrift／AdoptedExisting／VerifiedOwned）的判定；metadata 用寫入器記下的 MetadataHash 與同一個 Get-WsmFileMetadata 重算。
+#   * typed 設定：沿用各 adapter 既有的 Test-WsmAdapterConfiguration（Staged 或 Final 任一通過即吻合，與 Cutover 驗證相同）。
+#   * 沒有 readback 能力、讀不到或沒有擁有紀錄的項目一律標 Unverifiable（無法自動核對），絕不當成吻合。
+#   * AdoptedExisting（P10）：漂移只回報（ReportOnly），工具永遠不會覆寫或刪除它。
+#   * 舊的成功結果不改寫：ItemResults 原樣留在 state；漂移只出現在核對紀錄與投影（Succeeded 降為 NeedsRecheck）。
+function Get-WsmAssistiveRecheckAdapters {
+    # 有原生 readback 比對（Test-WsmAdapterConfiguration）的 typed adapter；不在清單內（例如 ManualWorkflow）一律無法自動核對。
+    @('ScheduledTask','Service','SmbShare','MachineEnvironment','TimeZone','WindowsFeature','LocalUser','LocalGroup','FirewallRule','Certificate','IISPool','IISSite','IISSection','IISLocation')
+}
+function Get-WsmAssistiveRecheckReasonText([string]$Code) {
+    switch -CaseSensitive ($Code) {
+        'Content' {return '內容已變動：目前檔案與還原時記錄的雜湊不同。'}
+        'AdoptedExistingDrift' {return '沿用既有檔已變動：只回報，工具不會覆寫或刪除它。'}
+        'Missing' {return '已不存在：還原過的檔案或資料夾已被移除。'}
+        'Topology' {return '檔案結構異常（例如替代資料流）：保留原樣供人工檢視。'}
+        'Acl' {return '權限（ACL）已變動：與還原時記錄的不同。'}
+        'Metadata' {return '檔案屬性或時間戳已變動：與還原時記錄的不同。'}
+        'Setting' {return '設定已變動：原生讀回與還原時的設定不同。'}
+        'NoReadback' {return '無法自動核對：這個項目類型沒有自動讀回能力，請人工確認。'}
+        'NonCChannel' {return '無法自動核對：這個項目的內容由另一台主機（非 C 通道）處理，本機沒有可重查的擁有紀錄。'}
+        'NoOwnership' {return '無法自動核對：沒有可比對的擁有紀錄。'}
+        'Unreadable' {return '無法自動核對：目前讀不到檔案或權限資訊。'}
+        'ReadbackFailed' {return '無法自動核對：原生讀回失敗，不能當成吻合。'}
+        'DeferredSetting' {return '無法自動核對：這個設定要到切換階段才會套用。'}
+        default {return '無法自動核對。'}
+    }
+}
+function New-WsmAssistiveRecheckReason([string]$Kind,[string]$Code,[string]$RelativePath='',[string]$Detail='',[bool]$ReportOnly=$false) {
+    [pscustomobject][ordered]@{Kind=$Kind;Code=$Code;Text=(Get-WsmAssistiveRecheckReasonText $Code);RelativePath=$RelativePath;Detail=$Detail;ReportOnly=$ReportOnly}
+}
+function Test-WsmAssistiveRecheckFileScope($Item,$StateRow,[object[]]$PlacementRows,[object[]]$ArtifactRows,[hashtable]$SidMap) {
+    $reasons=New-Object 'System.Collections.Generic.List[object]';$checked=0;$spec=$Item.MigrationSpec;$itemId=[string]$Item.ItemId
+    if($StateRow -and $StateRow.PSObject.Properties['OwnershipChannel'] -and [string]$StateRow.OwnershipChannel -ceq 'NonC'){
+        $reasons.Add((New-WsmAssistiveRecheckReason 'Unverifiable' 'NonCChannel'));return [pscustomobject]@{Reasons=$reasons.ToArray();CheckedFiles=0}
+    }
+    $ownedFiles=@();$ownedDirectories=@()
+    if($StateRow -and $StateRow.PSObject.Properties['OwnedFiles']){$ownedFiles=@($StateRow.OwnedFiles)}
+    if($StateRow -and $StateRow.PSObject.Properties['OwnedDirectories']){$ownedDirectories=@($StateRow.OwnedDirectories)}
+    if(-not $ownedFiles.Count -and -not $ownedDirectories.Count){
+        $reasons.Add((New-WsmAssistiveRecheckReason 'Unverifiable' 'NoOwnership'));return [pscustomobject]@{Reasons=$reasons.ToArray();CheckedFiles=0}
+    }
+    $aclPolicy='Exact';if($spec.PSObject.Properties['AclControlPolicy']){$aclPolicy=[string]$spec.AclControlPolicy}
+    foreach($file in $ownedFiles){
+        $relative=[string]$file.RelativePath;$checked++;$adopted=[bool](Test-WsmAssistiveOwnedFileAdopted $file)
+        $placement=@($PlacementRows | Where-Object {[string]$_.ItemId -ceq $itemId -and [string]$_.RelativePath -ceq $relative -and -not $_.Directory})
+        if($placement.Count -ne 1){$reasons.Add((New-WsmAssistiveRecheckReason 'Unverifiable' 'NoOwnership' $relative 'placement row missing'));continue}
+        $status=[string]$placement[0].PlacementStatus
+        if($status -ceq 'OwnedFileDrift'){$reasons.Add((New-WsmAssistiveRecheckReason 'Drift' $(if($adopted){'AdoptedExistingDrift'}else{'Content'}) $relative '' $adopted));continue}
+        if($status -ceq 'CanPlace'){$reasons.Add((New-WsmAssistiveRecheckReason 'Drift' 'Missing' $relative '' $adopted));continue}
+        if($status -ceq 'BlockedConflict'){$reasons.Add((New-WsmAssistiveRecheckReason 'Drift' 'Topology' $relative '' $adopted));continue}
+        if($status -ceq 'UnknownPermission'){$reasons.Add((New-WsmAssistiveRecheckReason 'Unverifiable' 'Unreadable' $relative));continue}
+        if($status -cnotin @('VerifiedOwned','AdoptedExisting')){$reasons.Add((New-WsmAssistiveRecheckReason 'Unverifiable' 'NoOwnership' $relative ('placement '+$status)));continue}
+        # 內容與擁有權吻合；再核對 metadata（與寫入器同一個 MetadataHash 與 Get-WsmFileMetadata）。
+        $entry=@($ArtifactRows | Where-Object {[string]$_.ItemId -ceq $itemId -and [string]$_.RelativePath -ceq $relative -and -not $_.Directory})
+        if($entry.Count -ne 1 -or -not $file.PSObject.Properties['MetadataHash'] -or -not [string]$file.MetadataHash){$reasons.Add((New-WsmAssistiveRecheckReason 'Unverifiable' 'NoOwnership' $relative 'no metadata baseline'));continue}
+        $actual=$null;try{$actual=Get-WsmFileMetadata ([string]$file.TargetPath) ([string]$entry[0].Metadata.MetadataMode)}catch{$reasons.Add((New-WsmAssistiveRecheckReason 'Unverifiable' 'Unreadable' $relative));continue}
+        if((Get-WsmAssistiveMetadataHash $actual) -ine [string]$file.MetadataHash){
+            # 沿用既有檔從未套用過封存 ACL，不能拿封存 ACL 當基準；只有工具寫入的檔案才分出 ACL 與其他 metadata。
+            $code='Metadata'
+            if(-not $adopted){$aclSame=$false;try{$aclSame=[bool](Test-WsmSddlMatch (Convert-WsmMappedSddl ([string]$entry[0].Metadata.Sddl) $SidMap) ([string]$actual.Sddl) $aclPolicy)}catch{$aclSame=$false};if(-not $aclSame){$code='Acl'}}
+            $reasons.Add((New-WsmAssistiveRecheckReason 'Drift' $code $relative '' $adopted))
+        }
+    }
+    foreach($directory in $ownedDirectories){
+        $relative=[string]$directory.RelativePath;$checked++;$path=[string]$directory.TargetPath
+        if(-not [IO.Directory]::Exists($path)){$reasons.Add((New-WsmAssistiveRecheckReason 'Drift' 'Missing' $relative));continue}
+        $entry=@($ArtifactRows | Where-Object {[string]$_.ItemId -ceq $itemId -and [string]$_.RelativePath -ceq $relative -and $_.Directory})
+        $mode='DaclOwner';if($entry.Count -eq 1){$mode=[string]$entry[0].Metadata.MetadataMode}
+        if(-not $directory.PSObject.Properties['CurrentMetadata'] -or -not $directory.CurrentMetadata){$reasons.Add((New-WsmAssistiveRecheckReason 'Unverifiable' 'NoOwnership' $relative 'no directory metadata baseline'));continue}
+        $actual=$null;try{$actual=Get-WsmFileMetadata $path $mode}catch{$reasons.Add((New-WsmAssistiveRecheckReason 'Unverifiable' 'Unreadable' $relative));continue}
+        # 目錄的最後寫入時間會隨裡面的檔案增減而變，不當成漂移；比對 ACL（含擁有者）與屬性。
+        if([string]$actual.Sddl -cne [string]$directory.CurrentMetadata.Sddl){$reasons.Add((New-WsmAssistiveRecheckReason 'Drift' 'Acl' $relative))}
+        elseif([int]$actual.Attributes -ne [int]$directory.CurrentMetadata.Attributes){$reasons.Add((New-WsmAssistiveRecheckReason 'Drift' 'Metadata' $relative))}
+    }
+    [pscustomobject]@{Reasons=$reasons.ToArray();CheckedFiles=$checked}
+}
+function Test-WsmAssistiveRecheckTyped($Item,$Result,$State) {
+    $reasons=New-Object 'System.Collections.Generic.List[object]';$spec=$Item.MigrationSpec;$adapter=[string]$spec.Adapter
+    if($adapter -cnotin @(Get-WsmAssistiveRecheckAdapters)){$reasons.Add((New-WsmAssistiveRecheckReason 'Unverifiable' 'NoReadback'))}
+    elseif($Result.PSObject.Properties['SettingTransitionDeferred'] -and [bool]$Result.SettingTransitionDeferred){$reasons.Add((New-WsmAssistiveRecheckReason 'Unverifiable' 'DeferredSetting'))}
+    else{
+        try{
+            $receipts=@();if($adapter -ceq 'ScheduledTask'){$receipts=@(Get-WsmTaskSecurityReceiptsForSpec $spec (Get-WsmTaskSecurityOwnershipReceipts $State))}
+            $passed=$false;$stagedProblems=@()
+            foreach($phase in @('Staged','Final')){$check=Test-WsmAdapterConfiguration $spec $phase $receipts;if($check.Passed){$passed=$true;break};if($phase -ceq 'Staged'){$stagedProblems=@($check.Problems)}}
+            if(-not $passed){$detail=(@($stagedProblems|Select-Object -First 3|ForEach-Object {[string]$_}) -join '; ');if($detail.Length -gt 300){$detail=$detail.Substring(0,300)};$reasons.Add((New-WsmAssistiveRecheckReason 'Drift' 'Setting' '' $detail))}
+        }catch{$reasons.Add((New-WsmAssistiveRecheckReason 'Unverifiable' 'ReadbackFailed' '' $_.Exception.GetType().FullName))}
+    }
+    [pscustomobject]@{Reasons=$reasons.ToArray();CheckedFiles=0}
+}
+function Get-WsmAssistiveRecheckSucceededTimes($Paths) {
+    # 「曾成功於」的時間取自 journal 最後一筆該項目的 AssistiveItemCompleted；讀不到時呼叫端退回還原開始時間。
+    $times=@{}
+    try{foreach($journalEvent in @(Read-WsmJournalEvents $Paths)){$row=$journalEvent.Row;if($row -and [string]$row.Action -ceq 'AssistiveItemCompleted' -and $row.ItemId -and $row.PSObject.Properties['Detail'] -and $row.Detail -and $row.Detail.PSObject.Properties['Status'] -and [string]$row.Detail.Status -ceq 'Succeeded'){$times[[string]$row.ItemId]=[string]$row.Utc}}}catch{}
+    $times
+}
+function Get-WsmAssistiveRestoreRecheck {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$ManifestPath,[Parameter(Mandatory)][string]$ExpectedHash,[Parameter(Mandatory)][string]$StateDirectory,$CancellationToken=$null)
+    $package=Test-WsmMigrationPackage $ManifestPath $ExpectedHash $CancellationToken
+    Assert-WsmMigrationHost (Get-WsmMachineIdentity) $package.Manifest.Target.Fingerprint
+    $pairId=[string]$package.Manifest.PairId;Assert-WsmId $pairId
+    $statePath=Join-Path (Join-Path ([IO.Path]::GetFullPath($StateDirectory)) $pairId) 'state.json'
+    if(-not [IO.File]::Exists($statePath)){throw 'There is no restore state to recheck for this pair.'}
+    $paths=Get-WsmOperationPaths $StateDirectory $pairId;$state=Get-WsmOperationState $paths $package
+    if(-not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.RestoreAttempt){throw 'There is no restore attempt to recheck for this pair.'}
+    $attempt=$state.RestoreAttempt
+    if([string]$state.Stage -cnotin @('Succeeded','Partial','RebootRequired')){throw ('Recheck needs a finished restore; the current stage is '+[string]$state.Stage+'.')}
+    if([string]$attempt.ManifestHash -ine $ExpectedHash -or [long]$attempt.Generation -ne [long]$package.Manifest.Generation){throw 'The latest restore attempt belongs to another package generation.'}
+    $attemptResults=@();if($attempt.PSObject.Properties['ItemResults']){$attemptResults=@($attempt.ItemResults)}
+    $itemResultsHash=Get-WsmHashText ($attemptResults|ConvertTo-Json -Depth 100 -Compress)
+    $planItems=@{};foreach($planItem in @($package.Plan.Items)){$planItems[[string]$planItem.ItemId]=$planItem}
+    $succeeded=@($attemptResults | Where-Object {$_ -and $_.PSObject.Properties['ItemId'] -and $_.PSObject.Properties['Status'] -and [string]$_.Status -ceq 'Succeeded' -and $planItems.ContainsKey([string]$_.ItemId)})
+    $skippedCount=@($attemptResults).Count-$succeeded.Count
+    $stateRows=@{};foreach($row in @($state.Items)){if($row -and $row.PSObject.Properties['ItemId']){$stateRows[[string]$row.ItemId]=$row}}
+    $fileItems=@($succeeded | Where-Object {[string]$planItems[[string]$_.ItemId].MigrationSpec.Adapter -ceq 'FileScope'})
+    $placementRows=@();$artifactRows=@()
+    if($fileItems.Count){
+        $placementRows=@((Get-WsmFilePlacementPreview -ManifestPath $ManifestPath -ExpectedHash $ExpectedHash -StateDirectory $StateDirectory).Rows)
+        $artifactRows=@(Read-WsmArtifactLines (Join-Path $package.Root 'artifacts.jsonl') $package.Manifest.ArtifactsHash $CancellationToken)
+    }
+    $times=Get-WsmAssistiveRecheckSucceededTimes $paths;$startedUtc='';if($attempt.PSObject.Properties['StartedUtc']){$startedUtc=[string]$attempt.StartedUtc}
+    $items=New-Object 'System.Collections.Generic.List[object]'
+    foreach($result in $succeeded){
+        Assert-WsmCancellationBoundary $CancellationToken 'AssistiveRecheckItem'
+        $itemId=[string]$result.ItemId;$item=$planItems[$itemId];$adapter=[string]$item.MigrationSpec.Adapter;$stateRow=$null;if($stateRows.ContainsKey($itemId)){$stateRow=$stateRows[$itemId]}
+        $outcome=$null
+        if($adapter -ceq 'FileScope'){$outcome=Test-WsmAssistiveRecheckFileScope $item $stateRow $placementRows $artifactRows @{}}
+        else{$outcome=Test-WsmAssistiveRecheckTyped $item $result $state}
+        $reasons=@($outcome.Reasons);$status='Matched'
+        if(@($reasons|Where-Object Kind -CEQ 'Drift').Count){$status='NeedsRecheck'}elseif($reasons.Count){$status='Unverifiable'}
+        $succeededUtc=$startedUtc;if($times.ContainsKey($itemId)){$succeededUtc=[string]$times[$itemId]}
+        $items.Add([pscustomobject][ordered]@{ItemId=$itemId;Name=[string]$item.Name;Adapter=$adapter;PreviousStatus='Succeeded';SucceededUtc=$succeededUtc;Status=$status;CheckedFiles=[int]$outcome.CheckedFiles;Reasons=$reasons})
+    }
+    $rows=$items.ToArray()
+    [pscustomobject][ordered]@{Kind='PostRestoreRecheck';PairId=$pairId;PlanHash=[string]$package.Manifest.PlanHash;ManifestHash=([string]$ExpectedHash).ToLowerInvariant();Generation=[long]$package.Manifest.Generation;RestoreAttemptId=[string]$attempt.OperationId;DecisionReceiptHash=[string]$attempt.DecisionReceiptHash;AttemptTargetSnapshotHash=[string]$attempt.TargetSnapshotHash;ItemResultsHash=$itemResultsHash;StateStage=[string]$state.Stage;CheckedUtc=(Get-WsmUtc);Summary=[pscustomobject][ordered]@{Checked=$rows.Count;Matched=@($rows|Where-Object Status -CEQ 'Matched').Count;NeedsRecheck=@($rows|Where-Object Status -CEQ 'NeedsRecheck').Count;Unverifiable=@($rows|Where-Object Status -CEQ 'Unverifiable').Count;NotInScope=$skippedCount};Items=$rows;ReadOnly=$true}
+}
+function Get-WsmAssistiveRecheckRecords($Paths) {
+    # 核對紀錄是內容定址的唯讀檔（檔名＝內容 SHA-256），依 Sequence 排序；檔名與內容不符、格式不對或別的 Pair 的一律略過，不信任。
+    $root=Join-Path $Paths.Root 'rechecks';if(-not [IO.Directory]::Exists($root)){return @()}
+    Assert-WsmNoReparse $root
+    $rows=New-Object 'System.Collections.Generic.List[object]'
+    foreach($file in @(Get-ChildItem -LiteralPath $root -Filter '*.json' -File)){
+        try{
+            Assert-WsmNoReparse $file.FullName;if($file.Length -gt 4194304){continue}
+            $hash=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant();if([IO.Path]::GetFileNameWithoutExtension($file.Name) -cne $hash){continue}
+            $record=Read-WsmTrustedJson $file.FullName $hash
+            if([string]$record.Kind -cne 'WizardTargetRecheck' -or [int]$record.SchemaVersion -ne 1 -or [string]$record.PairId -cne [string](Split-Path -Leaf $Paths.Root)){continue}
+            $rows.Add([pscustomobject]@{Path=$file.FullName;SHA256=$hash;Sequence=[long]$record.Sequence;Record=$record})
+        }catch{}
+    }
+    @($rows.ToArray() | Sort-Object Sequence)
+}
+function Get-WsmAssistiveLatestRecheck($Paths,[string]$AttemptId,[string]$ItemResultsHash) {
+    # 只認綁定這次還原嘗試、且 ItemResults 雜湊仍相同的最新一筆；嘗試換了或結果變了，舊的核對紀錄不再套用到目前結果。
+    $matches=@(Get-WsmAssistiveRecheckRecords $Paths | Where-Object {[string]$_.Record.RestoreAttemptId -ceq $AttemptId -and [string]$_.Record.ItemResultsHash -ieq $ItemResultsHash})
+    if($matches.Count){return $matches[$matches.Count-1]}
+    $null
+}
+function Save-WsmAssistiveRecheckRecord($Paths,$Check,[string]$ObservedSnapshotHash='') {
+    $root=New-WsmOutputOwnedDirectory (Join-Path $Paths.Root 'rechecks')
+    Invoke-WsmLocked $Paths.Root {
+        $existing=@(Get-WsmAssistiveRecheckRecords $Paths);$sequence=[long]1;$previous=''
+        if($existing.Count){$sequence=[long]$existing[$existing.Count-1].Sequence+1;$previous=[string]$existing[$existing.Count-1].SHA256}
+        $record=[ordered]@{SchemaVersion=1;Kind='WizardTargetRecheck';Sequence=$sequence;PreviousRecheckHash=$previous}
+        foreach($property in $Check.PSObject.Properties){if($property.Name -cne 'Kind'){$record[$property.Name]=$property.Value}}
+        $record['ObservedSnapshotHash']=$ObservedSnapshotHash
+        $json=([pscustomobject]$record) | ConvertTo-Json -Depth 40
+        $bytes=[Text.Encoding]::UTF8.GetBytes($json)
+        $sha=[Security.Cryptography.SHA256]::Create();try{$hash=[BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
+        $path=Join-Path $root ($hash+'.json');Assert-WsmNoReparse $path
+        if([IO.File]::Exists($path)){throw 'A recheck record with these exact bytes already exists.'}
+        $temporary=Join-Path $root ([Guid]::NewGuid().ToString('N')+'.tmp')
+        try{$stream=[IO.File]::Open($temporary,'CreateNew','Write','None');try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()};[IO.File]::Move($temporary,$path)}finally{if([IO.File]::Exists($temporary)){[IO.File]::Delete($temporary)}}
+        if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine $hash){throw 'The recheck record changed while it was being retained.'}
+        [pscustomobject]@{Path=[IO.Path]::GetFullPath($path);SHA256=$hash;Sequence=$sequence;PreviousRecheckHash=$previous}
+    }
+}
+function Get-WsmAssistiveRecheckCliRows($Check) {
+    # CLI／文字備援的輸出列：每個核對項目一列，待核對與無法自動核對的原因逐條列出。
+    @(foreach($item in @($Check.Items)){
+        $label=switch -CaseSensitive ([string]$item.Status){'NeedsRecheck'{'待核對'}'Unverifiable'{'無法自動核對'}default{'吻合'}}
+        $reasonText=(@($item.Reasons|ForEach-Object {$text=[string]$_.Text;if($_.RelativePath){$text=[string]$_.RelativePath+'：'+$text};$text}) -join '；')
+        [pscustomobject][ordered]@{ItemId=[string]$item.ItemId;Name=[string]$item.Name;Status=[string]$item.Status;StatusText=$label;Reason=$reasonText}
+    })
+}
+function Invoke-WsmTargetRestoreRecheck {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$ManifestPath,[Parameter(Mandatory)][string]$ExpectedHash,[Parameter(Mandatory)][string]$StateDirectory,[string]$ObservedSnapshotHash='',$CancellationToken=$null)
+    $check=Get-WsmAssistiveRestoreRecheck -ManifestPath $ManifestPath -ExpectedHash $ExpectedHash -StateDirectory $StateDirectory -CancellationToken $CancellationToken
+    $paths=Get-WsmOperationPaths $StateDirectory $check.PairId
+    $saved=Save-WsmAssistiveRecheckRecord $paths $check $ObservedSnapshotHash
+    $outcome='Matched';if($check.Summary.NeedsRecheck){$outcome='NeedsRecheck'}elseif($check.Summary.Unverifiable){$outcome='Unverifiable'}elseif(-not $check.Summary.Checked){$outcome='NothingToCheck'}
+    # Status 只用 Get-WsmOperationStatusCode 已認得的狀態：全部吻合是 Succeeded，其餘（待核對、無法自動核對）都要人看，是 ReviewRequired。
+    $status='ReviewRequired';if($outcome -cin @('Matched','NothingToCheck')){$status='Succeeded'}
+    [pscustomobject][ordered]@{Kind='PostRestoreRecheck';Status=$status;Outcome=$outcome;PairId=[string]$check.PairId;PlanHash=[string]$check.PlanHash;ManifestHash=[string]$check.ManifestHash;Generation=[long]$check.Generation;RestoreAttemptId=[string]$check.RestoreAttemptId;DecisionReceiptHash=[string]$check.DecisionReceiptHash;ItemResultsHash=[string]$check.ItemResultsHash;CheckedUtc=[string]$check.CheckedUtc;Summary=$check.Summary;Items=@($check.Items);Rows=@(Get-WsmAssistiveRecheckCliRows $check);RecordPath=[string]$saved.Path;RecordHash=[string]$saved.SHA256;Sequence=[long]$saved.Sequence;ReadOnly=$true;NoTargetWrites=$true;ProductionVerified=$false}
+}
+
 function Get-WsmAssistiveRestoreParentId($State) {
     if($State -and $State.PSObject.Properties['RestoreAttempt'] -and $State.RestoreAttempt -and $State.RestoreAttempt.PSObject.Properties['OperationId']){return [string]$State.RestoreAttempt.OperationId}
     ''

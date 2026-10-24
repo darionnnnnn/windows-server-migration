@@ -18,6 +18,7 @@ function Get-WsmWizardRuntimeActionContracts {
     $contracts.TargetRetryFailedItems=[pscustomobject]@{Command='Create-WsmWizardTargetDecisionReceipt';RequiredFields=@('Workspace','PairId','Decision','Owner','Reason','SelectedItemIds','RetryOfReceiptHash');OptionalFields=@('AcceptedUnpreparedItemIds','Jobs');ExplicitFields=@('Owner','Reason');Defaults=@('Workspace','PairId','Decision','SelectedItemIds','RetryOfReceiptHash');PublicAction='TargetRetryFailedItems'}
     $contracts.TargetRestorePreview=[pscustomobject]@{Command='Get-WsmWizardTargetRestoreProjection';RequiredFields=@('Workspace','PairId');OptionalFields=@('Jobs','GeneralHostEvidence');Defaults=@('Workspace','PairId');PublicAction='TargetRestorePreview'}
     $contracts.TargetRestore=[pscustomobject]@{Command='Invoke-WsmWizardTargetRestore';RequiredFields=@('Workspace','PairId','PreviewHash');OptionalFields=@('Jobs','CancellationToken','Secrets','GeneralHostEvidence','OperationId','ChallengeContext');Defaults=@('Workspace','PairId','PreviewHash');PublicAction='TargetRestore'}
+    $contracts.TargetRecheck=[pscustomobject]@{Command='Invoke-WsmWizardTargetRecheck';RequiredFields=@('Workspace','PairId');OptionalFields=@('Jobs','CancellationToken');ExplicitFields=@();Defaults=@('Workspace','PairId');PublicAction='TargetRecheck'}
     $contracts.TargetValidation=[pscustomobject]@{Command='Invoke-WsmWizardTargetValidation';RequiredFields=@('Workspace','PairId');OptionalFields=@('Phase','Jobs','GeneralHostEvidence');Defaults=@('Workspace','PairId','Phase');PublicAction='TargetValidation'}
     $contracts.TargetAcceptance=[pscustomobject]@{Command='Get-WsmWizardTargetAcceptanceGates';RequiredFields=@('Workspace','PairId');OptionalFields=@('Jobs','GeneralHostEvidence');Defaults=@('Workspace','PairId');PublicAction='TargetAcceptance'}
     $contracts.TargetActivation=[pscustomobject]@{Command='Invoke-WsmWizardTargetActivation';RequiredFields=@('Workspace','PairId','CutoverPlanPath','CutoverPlanHash','Acknowledgement');OptionalFields=@('Jobs','Secrets','GeneralHostEvidence','ExternalEvidenceReferences','ResumeActivation','ResumeOwner','ResumeEvidence');Defaults=@('Workspace','PairId');ExplicitFields=@('CutoverPlanPath','CutoverPlanHash','Acknowledgement','ResumeOwner','ResumeEvidence');PublicAction='TargetActivation'}
@@ -426,10 +427,44 @@ function Get-WsmWizardRuntimeTargetPendingRestore([string]$Workspace,[string]$Pa
     if($status -ceq 'Interrupted'){return [pscustomobject]@{Status='Interrupted';Summary='還原中斷，可檢視恢復預覽後續作。';ParentOperationId=[string](Get-WsmWizardTargetJobField $latest jobId JobId)}}
     $null
 }
+# Q1：還原後重新核對的唯讀投影。只讀 state 與最新一筆核對紀錄，不做任何原生查詢、不寫入。
+# 狀態只有三種來源：state.RestoreAttempt（舊的成功結果，原樣不動）、最新一筆綁定這次嘗試的核對紀錄（Get-WsmWizardTargetRecheckView），以及目前最新的 Target 盤點（只用來提示「已還原內容可能已變動」）。
+# 漂移的項目在這裡由 Succeeded 降為 NeedsRecheck（待核對）並附原因；沒有核對紀錄時一律不顯示任何降級。
+function Get-WsmWizardRuntimeRecheck([string]$Workspace,[string]$PairId,$Package,$State,$Snapshot,$PendingRestore=$null) {
+    $out=[ordered]@{visible=$false;available=$false;reasonCode='';reason='';stage='';succeededCount=0;checked=$false;checkedUtc='';sequence=0;recordHash='';suggested=$false;suggestedText='';checkedCount=0;matchedCount=0;needsRecheckCount=0;unverifiableCount=0;items=@()}
+    if(-not $State -or -not $State.PSObject.Properties['RestoreAttempt'] -or -not $State.RestoreAttempt){$out.reasonCode='NoRestoreAttempt';$out.reason='還沒有可核對的還原結果。';return [pscustomobject]$out}
+    $attempt=$State.RestoreAttempt;$out.stage=[string]$State.Stage
+    if([string]$State.Stage -cnotin @('Succeeded','Partial','RebootRequired')){$out.reasonCode='RestoreNotFinished';$out.reason='還原尚未結束，結束後才能重新核對。';return [pscustomobject]$out}
+    if([string]$attempt.ManifestHash -ine [string]$Package.ManifestHash -or [long]$attempt.Generation -ne [long]$Package.Package.Manifest.Generation){$out.reasonCode='AttemptNotCurrent';$out.reason='最近一次還原不是目前這個封裝世代的結果。';return [pscustomobject]$out}
+    $attemptResults=@();if($attempt.PSObject.Properties['ItemResults']){$attemptResults=@($attempt.ItemResults)}
+    $out.succeededCount=@($attemptResults|Where-Object {$_ -and $_.PSObject.Properties['Status'] -and [string]$_.Status -ceq 'Succeeded'}).Count
+    if($out.succeededCount -eq 0){$out.reasonCode='NothingToCheck';$out.reason='這次還原沒有成功的項目可核對。';return [pscustomobject]$out}
+    $out.visible=$true
+    if($PendingRestore){$out.reasonCode='RestoreInProgress';$out.reason='還原尚未結束（等待輸入或已中斷），請先在還原畫面完成或續作。'}else{$out.available=$true}
+    $view=$null;try{$view=Get-WsmWizardTargetRecheckView (Get-WsmOperationPaths (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs') $PairId) $State}catch{$view=$null}
+    if($view){
+        $out.checked=$true;$out.checkedUtc=[string]$view.CheckedUtc;$out.sequence=[long]$view.Sequence;$out.recordHash=[string]$view.SHA256;$out.items=@($view.Items)
+        $out.checkedCount=@($view.Items).Count;$out.matchedCount=@($view.Items|Where-Object status -CEQ 'Succeeded').Count;$out.needsRecheckCount=@($view.Items|Where-Object status -CEQ 'NeedsRecheck').Count;$out.unverifiableCount=@($view.Items|Where-Object status -CEQ 'Unverifiable').Count
+    }
+    # 匯入新的 Target 盤點（與還原當時綁定的不同）之後提示建議重新核對；只提示，不自動執行核對。這次核對之後才取得的盤點才算比核對新。
+    if($Snapshot -and [string]$attempt.TargetSnapshotHash -and [string]$Snapshot.SHA256 -ine [string]$attempt.TargetSnapshotHash){
+        $coveredByCheck=$false
+        if($view){
+            if($view.ObservedSnapshotHash -and [string]$view.ObservedSnapshotHash -ieq [string]$Snapshot.SHA256){$coveredByCheck=$true}
+            else{
+                $captured=[DateTimeOffset]::MinValue;$checkedAt=[DateTimeOffset]::MinValue
+                if($Snapshot.PSObject.Properties['Inventory'] -and $Snapshot.Inventory -and $Snapshot.Inventory.PSObject.Properties['CreatedUtc'] -and [DateTimeOffset]::TryParse([string]$Snapshot.Inventory.CreatedUtc,[ref]$captured) -and [DateTimeOffset]::TryParse([string]$view.CheckedUtc,[ref]$checkedAt) -and $checkedAt -ge $captured){$coveredByCheck=$true}
+            }
+        }
+        if(-not $coveredByCheck){$out.suggested=$true;$out.suggestedText='已還原內容可能已變動，建議重新核對。'}
+    }
+    [pscustomobject]$out
+}
+
 function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,[object[]]$Jobs) {
     $actions=New-Object 'System.Collections.Generic.List[object]'
     $defaults=@{Workspace=[IO.Path]::GetFullPath($Workspace);PairId=$PairId}
-    $result=[ordered]@{status='NeedsApprovedPlan';plan=$null;package=$null;inventory=$null;comparison=$null;softwareCheck=$null;decision=$null;restorePreview=$null;restoreResult=$null;retry=$null;statusSummary='';itemOptions=@();mechanicalValidation=[pscustomobject]@{available=$false;status='Locked';result=$null};businessAcceptance=[pscustomobject]@{available=$false;status='NotAccepted';gates=$null};activation=[pscustomobject]@{available=$false;status='Locked';acknowledgementRequired=$true};actions=@();noAutoResume=$true;noAutoActivation=$true;issues=@()}
+    $result=[ordered]@{status='NeedsApprovedPlan';plan=$null;package=$null;inventory=$null;comparison=$null;softwareCheck=$null;decision=$null;restorePreview=$null;restoreResult=$null;retry=$null;recheck=$null;statusSummary='';itemOptions=@();mechanicalValidation=[pscustomobject]@{available=$false;status='Locked';result=$null};businessAcceptance=[pscustomobject]@{available=$false;status='NotAccepted';gates=$null};activation=[pscustomobject]@{available=$false;status='Locked';acknowledgementRequired=$true};actions=@();noAutoResume=$true;noAutoActivation=$true;issues=@()}
     $received=Get-WsmWizardReceivedApprovedPlan $Workspace $PairId $Profile
     if(-not $received){$actions.Add((New-WsmWizardRuntimeAction 'ImportApprovedPlan' $true '先取得與目前 Target 身分綁定的核准計畫及獨立預期 hash。' @{Workspace=$Workspace;Role='Target'} @('Path','ExpectedHash')));$result.actions=@($actions.ToArray());return [pscustomobject]$result}
     if([int]$received.Plan.SchemaVersion -ne 3){$result.status='UseExistingWorkflow';$result.issues=@('此核准計畫使用原核心格式，請由既有流程檢查材料與續作；不將原格式重新解讀為 schema-3 還原授權。');$result.actions=@();return [pscustomobject]$result}
@@ -447,11 +482,18 @@ function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,
     # 重新開啟頁面時，選擇器以最後一份決策收據的選取為準預選（讀不到就用預設）。
     $lastDecision=$null;try{$lastDecision=Get-WsmWizardTargetDecisionRecord $Workspace $PairId ([string]$received.SHA256)}catch{$lastDecision=$null}
     $result.itemOptions=@(Get-WsmWizardTargetItemOptions $context $package $itemState $lastDecision)
+    # Q1：還原後重新核對。唯讀投影＋一個明確的「重新核對」動作；在還原結果、比較、決策等後面的提早 return 之前就先算好，匯入新盤點後（狀態會變成要重新比較）也看得到提示。
+    $recheckPending=Get-WsmWizardRuntimeTargetPendingRestore $Workspace $PairId $Jobs
+    $result.recheck=Get-WsmWizardRuntimeRecheck $Workspace $PairId $package $itemState $null $recheckPending
+    if($result.recheck.visible){$actions.Add((New-WsmWizardRuntimeAction 'TargetRecheck' ([bool]$result.recheck.available) $(if($result.recheck.available){'唯讀重新核對最近一次還原中成功的項目；只比對、不覆寫、不刪除、不改權限，也不會開始還原。'}else{[string]$result.recheck.reason}) $defaults @()))}
+    $recheckByItem=@{};foreach($recheckItem in @($result.recheck.items)){$recheckByItem[[string]$recheckItem.itemId]=$recheckItem}
+    foreach($recheckOption in @($result.itemOptions)){$recheckOption|Add-Member NoteProperty recheckStatus $(if($recheckByItem.ContainsKey([string]$recheckOption.value)){[string]$recheckByItem[[string]$recheckOption.value].status}else{''}) -Force}
     $inventoryDefaults=@{OutputDirectory=(Join-Path $Workspace ('hosts\'+$Profile.Fingerprint+'\inventory'));DeepDiscovery=$true;IncludeSoftwareCatalog=$true}
     $actions.Add((New-WsmWizardRuntimeAction 'Inventory' $true '重新觀測本機 Target 現況，不更新封存的來源事實。' $inventoryDefaults @()))
     $snapshot=$null
     try{$snapshot=Get-WsmWizardTargetSnapshotForRuntime $Workspace $context $Jobs}catch{$result.status='NeedsTargetInventory';$result.issues=@('需要與本機 Target 綁定、仍新鮮且含原生軟體觀測的盤點。');$result.actions=@($actions.ToArray());return [pscustomobject]$result}
     $result.inventory=$snapshot
+    $result.recheck=Get-WsmWizardRuntimeRecheck $Workspace $PairId $package $itemState $snapshot $recheckPending
     $actions.Add((New-WsmWizardRuntimeAction 'ExportTargetHandoff' $true '將目前 Target 盤點交回 Manager 更新比較；不覆蓋來源盤點。' @{WorkRoot=$Workspace;InventoryPath=$snapshot.Path;OutputDirectory=(Join-Path $Workspace ('workspace-control\target-handoffs\'+[Guid]::NewGuid().ToString('N')))} @()))
     $actions.Add((New-WsmWizardRuntimeAction 'ComparisonImport' $true '核對 Manager 比較材料的獨立預期 hash；比較必須綁定這份最新 Target 盤點。' $defaults @('Path','ExpectedHash')))
     $comparisonRecord=Get-WsmWizardTargetComparisonRecord $Workspace $PairId $received.SHA256
@@ -477,11 +519,11 @@ function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,
     # P8：部分完成時的「重試失敗項目」。候選只由最近一次母作業、它綁定的最新決策收據與目前的可還原判定算出（唯讀）；
     # 按鈕只是一個動作入口：後端在建立收據時會自己重新計算候選，不信任這裡的清單。
     $retryPending=$pendingRestore;if($stage){$retryPending=Get-WsmWizardRuntimeTargetPendingRestore $Workspace $PairId $Jobs}
-    $retryCandidates=$null;try{$retryCandidates=Get-WsmWizardTargetRetryCandidatesCore -PackageRecord $package -State $itemState -DecisionRecord $decisionRecord -ItemOptions @($result.itemOptions) -PendingRestore $retryPending}catch{$retryCandidates=$null}
+    $retryCandidates=$null;try{$retryCandidates=Get-WsmWizardTargetRetryCandidatesCore -PackageRecord $package -State $itemState -DecisionRecord $decisionRecord -ItemOptions @($result.itemOptions) -RecheckItems @($result.recheck.items) -PendingRestore $retryPending}catch{$retryCandidates=$null}
     $result.retry=[pscustomobject][ordered]@{visible=$false;eligible=$false;reasonCode=$(if($retryCandidates){[string]$retryCandidates.ReasonCode}else{'Unavailable'});reason='';candidateItemIds=@();candidateCount=0}
     if($retryCandidates -and $retryCandidates.Visible -and -not $postActivation -and [string]$result.status -notin @('WaitingForInput','Interrupted','WaitingForInstall')){
         $retryShort=([string]$retryCandidates.SourceReceiptHash).Substring(0,12)
-        $result.retry=[pscustomobject][ordered]@{visible=$true;eligible=[bool]$retryCandidates.Eligible;reasonCode=[string]$retryCandidates.ReasonCode;reason=[string]$retryCandidates.Reason;candidateItemIds=@($retryCandidates.CandidateItemIds);candidateCount=@($retryCandidates.CandidateItemIds).Count;succeededCount=@($retryCandidates.SucceededItemIds).Count;notSucceededCount=@($retryCandidates.NotSucceededItemIds).Count;excluded=@($retryCandidates.Excluded|ForEach-Object {[pscustomobject][ordered]@{itemId=[string]$_.ItemId;name=[string]$_.Name;code=[string]$_.Code;reason=[string]$_.Reason;lastStatus=[string]$_.LastStatus}});sourceAttemptId=[string]$retryCandidates.SourceAttemptId;sourceReceiptHash=[string]$retryCandidates.SourceReceiptHash;sourceReceiptShort=$retryShort;sourceStage=[string]$retryCandidates.SourceStage;defaultOwner=[string]$retryCandidates.SourceOwner;defaultReason=[string]$retryCandidates.SuggestedReason}
+        $result.retry=[pscustomobject][ordered]@{visible=$true;eligible=[bool]$retryCandidates.Eligible;reasonCode=[string]$retryCandidates.ReasonCode;reason=[string]$retryCandidates.Reason;candidateItemIds=@($retryCandidates.CandidateItemIds);candidateCount=@($retryCandidates.CandidateItemIds).Count;succeededCount=@($retryCandidates.SucceededItemIds).Count;notSucceededCount=@($retryCandidates.NotSucceededItemIds).Count;needsRecheckItemIds=@($retryCandidates.NeedsRecheckItemIds);excluded=@($retryCandidates.Excluded|ForEach-Object {[pscustomobject][ordered]@{itemId=[string]$_.ItemId;name=[string]$_.Name;code=[string]$_.Code;reason=[string]$_.Reason;lastStatus=[string]$_.LastStatus}});sourceAttemptId=[string]$retryCandidates.SourceAttemptId;sourceReceiptHash=[string]$retryCandidates.SourceReceiptHash;sourceReceiptShort=$retryShort;sourceStage=[string]$retryCandidates.SourceStage;defaultOwner=[string]$retryCandidates.SourceOwner;defaultReason=[string]$retryCandidates.SuggestedReason}
         $retryDefaults=@{Workspace=[IO.Path]::GetFullPath($Workspace);PairId=$PairId;Decision='RestoreNow';SelectedItemIds=[string[]]@($retryCandidates.CandidateItemIds);RetryOfReceiptHash=[string]$retryCandidates.SourceReceiptHash}
         $retryActionReason=if($retryCandidates.Eligible){'依上次部分完成的結果自動產生只含失敗項目的新選擇紀錄；責任人與理由由操作者確認，建立後不會自動開始還原。'}else{[string]$retryCandidates.Reason}
         $actions.Add((New-WsmWizardRuntimeAction 'TargetRetryFailedItems' ([bool]$retryCandidates.Eligible) $retryActionReason $retryDefaults @('Owner','Reason')))
