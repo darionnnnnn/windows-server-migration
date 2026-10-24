@@ -2350,6 +2350,40 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
 - **驗證（主代理重跑）**：HtmlConsole 175、ScriptEncoding；ConsoleIdlePreconnect、HtmlSubmission 8、HtmlBrowser、F1AcceptanceBrowser、RetryFailedItemsBrowser、NativeWizardRuntimeHandler 全部通過；HtmlPreconnectRecovery 的 ECONNRESET 屬於環境偶發，主代理在 S3 前的 HEAD 與 S3 後各跑 4 次，兩邊都是 3 次通過、1 次失敗，失敗率相同。
 - **限制**：首段位元組超過 2 秒才送達的客戶端，仍會被視為閒置並回 400，與舊行為相同。
 
+### 17.113 Q2 UNC 路徑責任標示：沿用既有外部共享／另行遷移
+
+- 規格：`work/r7/specs/Q2-unc-responsibility.md`，對應 PLAN 第 21、116、223 行。由 Sonnet 5.5 effort medium subagent 實作；主代理審查 diff、另做一個突變並獨立重跑。
+- **分類函式**：`Get-WsmUncResponsibility`／`Get-WsmItemUncResponsibility`（`RemoteStorageContracts.ps1`，只新增，既有驗證不改）。
+  - 判為 `SeparateMigration`（另行遷移、需另行核准）的條件：有一份通過 `Assert-WsmRemoteStorageContract` 的 RemoteStorage 契約，而且契約的別名範圍（別名根加相對路徑）涵蓋該路徑。這比規格字面「存在通過驗證的契約」更嚴，因為一份契約不能為另一個共享背書。
+  - 其餘一律判為 `ExternalShareReuse`（沿用既有外部共享，由外部協調），並且不自動複製。
+  - `\\?\`、`\\.\`、只有主機沒有共享名的路徑，都不算 UNC。
+- **不改寫成本機路徑**：
+  - 盤點結果：唯一會由 UNC 推出本機目的路徑的地方，是 `MigrationWizard.ps1` 約 :55 的草稿；遇到本機 Mapping 時會把 UNC 改寫成本機 TargetPath。現在 UNC 來源一律忽略本機 Mapping。
+  - 核准端 `MigrationContracts.ps1:275` 原本就會拒絕 UNC。
+  - WorkloadDiscovery 只對應本機根之下的路徑。
+- **標示位置**：
+  - 審閱：WizardDetails 的路徑顯示與檔案明細。
+  - 一鍵備份：結果集與離線報告。UNC 列在「未備份」，原因與下一步顯示分類字樣（「沿用外部共享，未備份」或「另行遷移，見核准」）；工作負載引用到的 UNC（例如 IIS physicalPath）也會附上分類。
+  - 還原預覽列：屬顯示欄位，不進預覽雜湊。
+  - HTML 以 textContent 呈現；console.css 新增四條規則，沿用既有 tokens。
+- **測試**：
+  - 新增 `Test-UncResponsibility.ps1`，涵蓋：分類（無證據、有證據、契約不完整、契約不涵蓋該路徑）、草稿／核准／工作負載對應都不改寫成本機、三處投影，以及路徑安全化。
+  - 擴充 `Test-PathResolutionBrowser.js`：兩種分類都要正確顯示，敵意路徑不得產生元素，390px 下零 console 錯誤。截圖存於 `work/r7/screens/q2-*.png`。
+  - 既有斷言一條都沒改。
+- **突變**（皆轉紅）：
+  - subagent：無證據時判成另行遷移、UNC 被改寫成本機、結果集漏掉分類、審閱明細漏掉分類。
+  - 主代理：「契約涵蓋路徑」恆為真，測試回報「A valid contract that does not cover the path falls back」。
+- **驗證**（主代理重跑）：
+  - PowerShell：UncResponsibility、SourceContextResolution 87、WizardDetails、PathResolutionDisplay 57、RestorableSet 199、BackupUnbackedReasons、BackupResultSetV2、WizardBackup、HtmlConsole 175、WizardHtmlRuntimeProjection 214、RemoteStorageContracts、RemoteStorageApproval、UnresolvedPathNoPrefill 72、AssistiveRestore 178、AssistiveReviewForms 53、RestorePartialSelection、BackupWorkbenchView、DirectoryScopeExistingFiles 90、ScriptEncoding。
+  - 前端：AssistiveUi（node --test）。
+  - Edge：PathResolutionBrowser、BackupWorkbenchBrowser、OfflineReportBrowser、RestoreSelectionBrowser、RestorableSetBrowser。
+- **後續**（併入 S12「路徑判定收斂」批次）：
+  - `Review.ps1` 的 `Set-WsmMapping` 仍接受為 UNC 來源項目設定本機 Mapping；目前由草稿端忽略、由核准端擋下。
+  - 草稿仍把 UNC 來源標成 TransferChannel `NonC`，語意不準確。
+- **限制**：
+  - 「已備份」列若含 UNC 引用，資料雖帶有分類，畫面只在「未備份」表顯示。
+  - 備份工作台未備份表與還原預覽列的 JS 呈現，沒有專屬的新瀏覽器斷言，只由 PowerShell 測試驗證投影，並確認既有瀏覽器測試不受影響。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -2574,4 +2608,4 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 |---|---|---|---|---|---|
 | S1 | `src/OperationRequests.ps1` Get-WsmTextWizardJobs | 文字端狀態白名單少了 WaitingForInput 與 Queued。HTML 寫入一筆等待輸入的還原作業後，CLI 讀取歷史就丟例外，RESUME、TAKEOVER 都無法進入 | 狀態白名單抽成單一來源 `Get-WsmJobStatusValues`，文字端共用；console.js 狀態表由測試守門對齊；Recover 遇到 WaitingForInput 時保留原狀（17.111） | `Test-JobRecordCompatibility`（HTML 寫入的每一種 status 文字端都能讀回） | d128977 |
 | S2 | `src/OperationRequests.ps1` Recover、`src/HtmlConsole.ps1` 匯入、`src/WizardFlow.ps1` | 舊紀錄缺少 CompletedUtc／outputs 時，在 strict mode 下中斷整個復原；HTML 匯入時的例外被吞掉；Interrupted 的時間文字端與 HTML 端不一致 | 所有讀取點改走 `ConvertTo-WsmNormalizedJobRecord`（只補缺少的欄位）；Interrupted 的 CompletedUtc 統一為 null（17.111） | `Test-JobRecordCompatibility`（71 項，strict）、`Test-WizardTextRuntime` | d128977 |
-| S3 | `src/HtmlConsole.ps1` 服務迴圈 accept 與首位元組讀取 | 單執行緒同步讀取首位元組，每條閒置的預連線佔住迴圈約 2 秒；開 4 條時，其他請求要等約 8 秒 | accept 後改放入有界待讀佇列，只把已有位元組的連線交給原本的單執行緒流程，閒置滿 2 秒的連線回 400 後關閉；未改成多執行緒（17.112） | `Test-ConsoleIdlePreconnect.js`（4 條閒置加 4 個併發請求都在 1500 ms 內、閒置連線約 2.1 秒關閉、分段送出的慢客戶端仍成功） | （S3-COMMIT） |
+| S3 | `src/HtmlConsole.ps1` 服務迴圈 accept 與首位元組讀取 | 單執行緒同步讀取首位元組，每條閒置的預連線佔住迴圈約 2 秒；開 4 條時，其他請求要等約 8 秒 | accept 後改放入有界待讀佇列，只把已有位元組的連線交給原本的單執行緒流程，閒置滿 2 秒的連線回 400 後關閉；未改成多執行緒（17.112） | `Test-ConsoleIdlePreconnect.js`（4 條閒置加 4 個併發請求都在 1500 ms 內、閒置連線約 2.1 秒關閉、分段送出的慢客戶端仍成功） | 1f129b7 |

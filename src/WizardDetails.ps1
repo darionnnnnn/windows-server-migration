@@ -36,7 +36,7 @@ function Get-WsmPathResolutionReasonInfo([string]$Reason) {
 function New-WsmPathResolutionView {
     # Context 只用來查「被排除的機密變數名稱」；環境變數的值從不進入回傳物件。
     [CmdletBinding()]
-    param([AllowNull()][AllowEmptyString()][string]$Original,[AllowNull()][AllowEmptyString()][string]$Resolved,[string]$Basis,[AllowNull()][AllowEmptyString()][string]$Reason='',[object[]]$Variables=@(),$Context=$null)
+    param([AllowNull()][AllowEmptyString()][string]$Original,[AllowNull()][AllowEmptyString()][string]$Resolved,[string]$Basis,[AllowNull()][AllowEmptyString()][string]$Reason='',[object[]]$Variables=@(),$Context=$null,$MigrationSpec=$null)
     $names=New-Object 'System.Collections.Generic.List[string]'
     foreach($name in @($Variables)){if($null -ne $name -and ([string]$name) -and -not $names.Contains([string]$name)){$names.Add([string]$name)}}
     if(-not $names.Count -and $Original){foreach($m in [regex]::Matches($Original,'%([^%\\/:*?"<>|\r\n]+)%')){$n=$m.Groups[1].Value;if(-not $names.Contains($n)){$names.Add($n)}}}
@@ -58,7 +58,7 @@ function New-WsmPathResolutionView {
         else{$code='RelativeOrNonAbsolutePath'}
     }
     $info=$null;if($unresolved){$info=Get-WsmPathResolutionReasonInfo $code}
-    [pscustomobject][ordered]@{
+    $view=[pscustomobject][ordered]@{
         original=(ConvertTo-WsmPathDisplayText $Original)
         resolved=$(if($unresolved){$null}else{ConvertTo-WsmPathDisplayText $Resolved})
         resolvedText=$(if($unresolved){'未解析'}else{ConvertTo-WsmPathDisplayText $Resolved})
@@ -71,6 +71,10 @@ function New-WsmPathResolutionView {
         nextStep=$(if($unresolved){$info.nextStep}else{''})
         variables=@($variableRows)
     }
+    # Q2: UNC 路徑要明列責任（沿用既有外部共享／另行遷移）與證據；解析結果優先，沒有解析結果時看原字串。
+    $uncPath='';if(-not $unresolved -and (Test-WsmUncPath $Resolved)){$uncPath=$Resolved}elseif(Test-WsmUncPath $Original){$uncPath=$Original}
+    if($uncPath){$unc=Get-WsmUncResponsibility $uncPath $MigrationSpec;if($unc){$view|Add-Member NoteProperty uncResponsibility $unc}}
+    $view
 }
 
 function Get-WsmItemPathResolutionView($Item,$Context=$null) {
@@ -78,16 +82,17 @@ function Get-WsmItemPathResolutionView($Item,$Context=$null) {
     if(-not $Item -or -not $Item.PSObject.Properties['Settings'] -or -not $Item.Settings){return $null}
     # Settings 可能是記憶體中的雜湊表（剛盤點）或 JSON 載回的物件，兩種都要讀得到。
     $settings=$Item.Settings
+    $spec=$null;if($Item.PSObject.Properties['MigrationSpec'] -and $Item.MigrationSpec){$spec=$Item.MigrationSpec}
     $basis=Get-WsmWorkloadSettingValue $settings 'ResolutionBasis'
     if($null -eq $basis){return $null}
     $original=Get-WsmWorkloadSettingValue $settings 'OriginalPath'
     if($null -ne $original){
         $variables=@(Get-WsmWorkloadSettingValue $settings 'ResolutionVariables')
-        return (New-WsmPathResolutionView -Original ([string]$original) -Resolved ([string](Get-WsmWorkloadSettingValue $settings 'ResolvedCandidate')) -Basis ([string]$basis) -Reason '' -Variables $variables -Context $Context)
+        return (New-WsmPathResolutionView -Original ([string]$original) -Resolved ([string](Get-WsmWorkloadSettingValue $settings 'ResolvedCandidate')) -Basis ([string]$basis) -Reason '' -Variables $variables -Context $Context -MigrationSpec $spec)
     }
     $root=Get-WsmWorkloadSettingValue $settings 'PhysicalRoot'
     if($null -ne $root){
-        return (New-WsmPathResolutionView -Original ([string]$root) -Resolved '' -Basis ([string]$basis) -Reason ([string](Get-WsmWorkloadSettingValue $settings 'ResolutionReason')) -Variables @() -Context $Context)
+        return (New-WsmPathResolutionView -Original ([string]$root) -Resolved '' -Basis ([string]$basis) -Reason ([string](Get-WsmWorkloadSettingValue $settings 'ResolutionReason')) -Variables @() -Context $Context -MigrationSpec $spec)
     }
     $null
 }
@@ -151,6 +156,7 @@ function Get-WsmWizardFileDetails($Item) {
         $seen[$Path.ToLowerInvariant()]=$true
         $row=[ordered]@{path=$Path;status=$Status;sha256=$Hash;reason=$Reason;contentRead=$false}
         if($null -ne $Resolution){$row.resolution=$Resolution}
+        else{$uncSpec=$null;if($Item.PSObject.Properties['MigrationSpec'] -and $Item.MigrationSpec){$uncSpec=$Item.MigrationSpec};$unc=Get-WsmUncResponsibility $Path $uncSpec;if($unc){$row.uncResponsibility=$unc}}
         $rows.Add([pscustomobject]$row)
     }
     if($Item.PSObject.Properties['Settings'] -and $Item.Settings){

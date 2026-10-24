@@ -226,3 +226,98 @@ function Get-WsmRemoteStorageSummary($Items) {
     }
     return $rows
 }
+
+# Q2: UNC 路徑的責任分類（唯讀、純函式）。
+# 只有「通過 Assert-WsmRemoteStorageContract 的 RemoteStorage 契約，且契約的來源／目的範圍涵蓋該路徑」才是 SeparateMigration（另行遷移、需另行核准）；
+# 其餘一律 ExternalShareReuse（沿用既有外部共享，由外部協調，不自動複製）。分類不會產生任何本機路徑，也不授權任何搬運。
+function Test-WsmUncPath([string]$Path) {
+    if([string]::IsNullOrWhiteSpace($Path)){return $false}
+    return [bool]($Path -match '^\\\\(?![?.]\\)[^\\/]+\\[^\\/]+(?:\\|$)')
+}
+
+function Test-WsmRemoteStorageCoversPath($RemoteStorage,[string]$Path) {
+    $target=Get-WsmRemotePathComparison $Path
+    foreach($side in @('Source','Target')){
+        $endpoint=$RemoteStorage.$side
+        $relative=ConvertTo-WsmRemoteRelativePath ([string]$endpoint.RelativePath) -AllowRoot
+        foreach($alias in @($endpoint.Aliases)){
+            $scope=([string]$alias.RootUnc).TrimEnd('\')
+            if($relative){$scope=$scope+'\'+$relative}
+            $scope=Get-WsmRemotePathComparison $scope
+            if($target -ceq $scope -or $target.StartsWith($scope+'\',[StringComparison]::Ordinal)){return $true}
+        }
+    }
+    return $false
+}
+
+function Get-WsmUncResponsibility([string]$Path,$MigrationSpec=$null) {
+    # 非 UNC 路徑回傳 $null（沒有責任分類的問題）。
+    if(-not (Test-WsmUncPath $Path)){return $null}
+    $responsibility='ExternalShareReuse'
+    $reason='沒有通過驗證的另行遷移證據（RemoteStorage 契約），視為沿用既有外部共享。'
+    $nextStep='由共享的擁有者協調保留共享名稱、DNS 與主機切換；工具不會複製此位置，也不會把它改成本機路徑。'
+    $evidence=$false
+    $remote=$null
+    if($null -ne $MigrationSpec -and $MigrationSpec.PSObject.Properties['RemoteStorage'] -and $MigrationSpec.RemoteStorage){$remote=$MigrationSpec.RemoteStorage}
+    if($null -ne $remote){
+        $failure=''
+        try{
+            if([string]$MigrationSpec.Adapter -cne 'ManualWorkflow'){throw 'RemoteStorage requires a dedicated ManualWorkflow.'}
+            $owner='';if($MigrationSpec.PSObject.Properties['Owner']){$owner=[string]$MigrationSpec.Owner}
+            [void](Assert-WsmRemoteStorageContract $remote $owner)
+            if(-not (Test-WsmRemoteStorageCoversPath $remote $Path)){$failure='NotCovered'}
+        }catch{
+            $failure='Invalid:'+[string]$_.Exception.Message
+        }
+        if(-not $failure){
+            $responsibility='SeparateMigration';$evidence=$true
+            $reason='已有通過驗證的 RemoteStorage 契約，來源與目的範圍涵蓋此路徑。'
+            $nextStep='依該項目的人工搬移流程另行遷移；需另行核准，工具不自動複製。'
+        }elseif($failure -ceq 'NotCovered'){
+            $reason='RemoteStorage 契約通過驗證，但其來源與目的範圍都不涵蓋此路徑，退回沿用既有外部共享。'
+            $nextStep='確認此路徑是否屬於該契約的範圍；在補上涵蓋此路徑的契約前，工具不會複製。'
+        }else{
+            $detail=ConvertTo-WsmPathDisplayText ($failure.Substring(8)) 200
+            $reason='RemoteStorage 契約未通過驗證（'+$detail+'），退回沿用既有外部共享。'
+            $nextStep='補齊並通過 RemoteStorage 契約後才能另行遷移；在此之前工具不會複製。'
+        }
+    }
+    $isSeparate=($responsibility -ceq 'SeparateMigration')
+    [pscustomobject][ordered]@{
+        Kind='UncResponsibility'
+        Path=(ConvertTo-WsmPathDisplayText $Path 1024)
+        Responsibility=$responsibility
+        Evidence=$evidence
+        EvidenceText=$(if($evidence){'有'}else{'無'})
+        Label=$(if($isSeparate){'另行遷移'}else{'沿用外部共享'})
+        Summary=$(if($isSeparate){'另行遷移，需另行核准'}else{'沿用外部共享，不自動複製'})
+        BackupText=$(if($isSeparate){'另行遷移，見核准'}else{'沿用外部共享，未備份'})
+        Reason=$reason
+        NextStep=$nextStep
+        AutomaticCopy=$false
+        RewrittenToLocal=$false
+    }
+}
+
+function Get-WsmItemUncResponsibility($Item,[string[]]$ExtraPath=@()) {
+    # 取該項目第一個 UNC 路徑（呼叫端給的顯示位置優先，其次核准規格、盤點設定、RemoteStorage 來源別名），回傳其責任分類；沒有 UNC 則 $null。
+    if($null -eq $Item){return $null}
+    $spec=$null;if($Item.PSObject.Properties['MigrationSpec'] -and $Item.MigrationSpec){$spec=$Item.MigrationSpec}
+    $candidates=New-Object 'System.Collections.Generic.List[string]'
+    foreach($path in @($ExtraPath)){if($path){$candidates.Add([string]$path)}}
+    if($spec){foreach($name in @('SourcePath','TargetPath')){if($spec.PSObject.Properties[$name] -and $spec.$name){$candidates.Add([string]$spec.$name)}}}
+    if($Item.PSObject.Properties['Settings'] -and $null -ne $Item.Settings){
+        foreach($name in @('Path','PhysicalPath','ResolvedCandidate','OriginalPath','PhysicalRoot','ConfigurationFile')){
+            $value=Get-WsmWorkloadSettingValue $Item.Settings $name
+            if($null -ne $value -and $value -is [string] -and $value){$candidates.Add([string]$value)}
+        }
+    }
+    if($spec -and $spec.PSObject.Properties['RemoteStorage'] -and $spec.RemoteStorage){
+        try{
+            $endpoint=$spec.RemoteStorage.Source;$relative=ConvertTo-WsmRemoteRelativePath ([string]$endpoint.RelativePath) -AllowRoot
+            foreach($alias in @($endpoint.Aliases)){$root=([string]$alias.RootUnc).TrimEnd('\');if($relative){$root=$root+'\'+$relative};$candidates.Add($root)}
+        }catch{}
+    }
+    foreach($candidate in $candidates){if(Test-WsmUncPath $candidate){return (Get-WsmUncResponsibility $candidate $spec)}}
+    return $null
+}

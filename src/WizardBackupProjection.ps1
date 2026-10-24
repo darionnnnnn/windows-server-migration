@@ -508,6 +508,9 @@ function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[b
     if($WorkloadDiscovery -and $WorkloadDiscovery.PSObject.Properties['References']){foreach($reference in @($WorkloadDiscovery.References)){& $addEdge ([string](& $get $reference 'ConsumerItemId')) ([string](& $get $reference 'ResourceItemId'))}}
     $workloadKinds=@('IISSite','ScheduledTask','Service')
     $nameOf={param([string]$Id)$o=$null;if($planById.Contains($Id)){$o=$planById[$Id]}elseif($inventoryById.ContainsKey($Id)){$o=$inventoryById[$Id]};$o}
+    # Q2: 工作負載引用到的 UNC 路徑（IIS physicalPath、排程命令等）也要有責任分類；只記錄每個消費者項目的第一個 UNC 引用。
+    $uncRefsByConsumer=@{}
+    if($WorkloadDiscovery -and $WorkloadDiscovery.PSObject.Properties['References']){foreach($uncReference in @($WorkloadDiscovery.References)){$uncReferencePath=[string](& $get $uncReference 'ResolvedPath');if(-not $uncReferencePath){$uncReferencePath=[string](& $get $uncReference 'RawValue')};$uncConsumerId=[string](& $get $uncReference 'ConsumerItemId');if($uncConsumerId -and (Test-WsmUncPath $uncReferencePath) -and -not $uncRefsByConsumer.ContainsKey($uncConsumerId)){$uncRefsByConsumer[$uncConsumerId]=$uncReferencePath}}}
     $rows=New-Object 'System.Collections.Generic.List[object]'
     foreach($id in $ids){
         $planItem=$null;if($planById.Contains($id)){$planItem=$planById[$id]}
@@ -553,7 +556,11 @@ function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[b
         }
         $classification=& $get $base 'Classification';$classificationDisposition=[string](& $get $classification 'Disposition')
         $restoreCondition=Get-WsmBackupRestoreCondition $status ([string](& $get $base 'Kind')) $channel $classificationDisposition
-        $rows.Add([pscustomobject][ordered]@{ItemId=$id;Name=[string](& $get $base 'Name');Kind=[string](& $get $base 'Kind');Category=[string](& $get $base 'Category');Location=$location;Channel=$channel;Status=$status;ReasonCode=$code;Reason=$reasonText[$code][0];NextStep=$reasonText[$code][1];Files=$files;Bytes=$bytes;Decision=$decision;DiscoveryStatus=$discoveryStatus;Workloads=@($workloadNames.ToArray() | Sort-Object);RestoreCondition=$restoreCondition})
+        $resultRow=[pscustomobject][ordered]@{ItemId=$id;Name=[string](& $get $base 'Name');Kind=[string](& $get $base 'Kind');Category=[string](& $get $base 'Category');Location=$location;Channel=$channel;Status=$status;ReasonCode=$code;Reason=$reasonText[$code][0];NextStep=$reasonText[$code][1];Files=$files;Bytes=$bytes;Decision=$decision;DiscoveryStatus=$discoveryStatus;Workloads=@($workloadNames.ToArray() | Sort-Object);RestoreCondition=$restoreCondition}
+        $unc=Get-WsmItemUncResponsibility ([pscustomobject]@{MigrationSpec=$spec;Settings=(& $get $base 'Settings')}) @($location)
+        if(-not $unc -and $uncRefsByConsumer.ContainsKey($id)){$unc=Get-WsmUncResponsibility $uncRefsByConsumer[$id] $spec}
+        if($unc){$resultRow | Add-Member NoteProperty UncResponsibility $unc}
+        $rows.Add($resultRow)
     }
     @($rows.ToArray() | Sort-Object -Property @{Expression={if($_.Status -ceq 'BackedUp'){0}else{1}}},@{Expression={([string]$_.Name).ToLowerInvariant()}})
 }
@@ -741,7 +748,10 @@ function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha
     $locationText={param($Value)$safe=ConvertTo-WsmBackupSafePathText $Value;if($safe.truncated){$safe.text+'…（路徑過長已截斷，原長 '+$safe.fullLength+' 個字元）'}else{$safe.text}}
     $backedCells=@(foreach($row in $backedRows){,@([string]$row.Name,[string]$row.Kind,(& $workloadText $row),(& $locationText $row.Location),$(if($channelText.ContainsKey([string]$row.Channel)){$channelText[[string]$row.Channel]}else{[string]$row.Channel}),[string]$row.Files,(& $sizeText $row.Bytes),$backedBadge,(& $restoreCell $row))})
     $backedAttrs=@(foreach($row in $backedRows){& $rowAttr $row})
-    $pendingCells=@(foreach($row in $pendingRows){,@([string]$row.Name,[string]$row.Kind,(& $workloadText $row),(& $locationText $row.Location),[string]$row.Reason,[string]$row.NextStep,[string]$row.DiscoveryStatus,$pendingBadge)})
+    # Q2: UNC 項目的原因與下一步改為責任分類（沿用外部共享，未備份／另行遷移，見核准）；資料列本身的 Reason 不變。
+    $pendingReasonText={param($Row)if($Row.PSObject.Properties['UncResponsibility'] -and $Row.UncResponsibility){return ([string]$Row.UncResponsibility.BackupText+'：'+[string]$Row.Reason)};[string]$Row.Reason}
+    $pendingNextStepText={param($Row)if($Row.PSObject.Properties['UncResponsibility'] -and $Row.UncResponsibility){return [string]$Row.UncResponsibility.NextStep};[string]$Row.NextStep}
+    $pendingCells=@(foreach($row in $pendingRows){,@([string]$row.Name,[string]$row.Kind,(& $workloadText $row),(& $locationText $row.Location),(& $pendingReasonText $row),(& $pendingNextStepText $row),[string]$row.DiscoveryStatus,$pendingBadge)})
     $pendingAttrs=@(foreach($row in $pendingRows){& $rowAttr $row})
     # Software tab (B4). Every new field is read only when the result set recorded it; a missing field is shown as 未記錄, never as an empty value.
     $has={param($Row,[string]$Name)[bool]$Row.PSObject.Properties[$Name]}

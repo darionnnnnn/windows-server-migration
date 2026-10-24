@@ -1,5 +1,10 @@
 ﻿# Closed UI projection. Raw plans, configuration definitions, secrets, ACL blobs
 # and native diagnostic objects never cross this projection.
+function ConvertTo-WsmUncResponsibilityRow($Unc) {
+    # Q2: UNC 責任分類的固定形狀投影；路徑與說明文字走同一個字串安全投影，其他欄位一律丟棄。
+    $text = { param($value) if($null -eq $value){return $null}; ConvertTo-WsmWizardHtmlValue ([string]$value) }
+    [pscustomobject][ordered]@{Path=(& $text $Unc.Path);Responsibility=(& $text $Unc.Responsibility);Evidence=[bool]$Unc.Evidence;EvidenceText=(& $text $Unc.EvidenceText);Label=(& $text $Unc.Label);Summary=(& $text $Unc.Summary);BackupText=(& $text $Unc.BackupText);Reason=(& $text $Unc.Reason);NextStep=(& $text $Unc.NextStep)}
+}
 function ConvertTo-WsmWizardPathResolutionRow($Row) {
     # N9c2: 固定形狀的路徑解析列。只有名稱、字串、布林；環境變數的值沒有欄位可以放，其他欄位一律丟棄。
     $text = { param($value) if($null -eq $value){return $null}; ConvertTo-WsmWizardHtmlValue ([string]$value) }
@@ -12,6 +17,7 @@ function ConvertTo-WsmWizardPathResolutionRow($Row) {
             basis=(& $text $resolution.basis);basisLabel=(& $text $resolution.basisLabel);unresolved=[bool]$resolution.unresolved;manual=[bool]$resolution.manual
             reasonCode=(& $text $resolution.reasonCode);reasonLabel=(& $text $resolution.reasonLabel);nextStep=(& $text $resolution.nextStep);variables=$variables
         }
+        if($resolution.PSObject.Properties['uncResponsibility'] -and $resolution.uncResponsibility){ $shape.Resolution | Add-Member NoteProperty uncResponsibility (ConvertTo-WsmUncResponsibilityRow $resolution.uncResponsibility) }
     }
     [pscustomobject]$shape
 }
@@ -29,6 +35,7 @@ function ConvertTo-WsmWizardHtmlValue($Value,[int]$Depth=0) {
     $allowed+=@('Shares','ReviewedTargetRootMappings','TargetStateShareName','UNCPath','CreatedLocal','TimeZoneId','NonCTransferPlanHash','NonCResultHash')
     $allowed+=@('Action','Rollback','RebootPossible','RequirementId','ConsumerItemId','Gate','Issue')
     $allowed+=@('CutoverPlanHash','CutoverStage')
+    $allowed+=@('UncResponsibility','Responsibility','EvidenceText','BackupText')
     $allowed+=@('manualReviewRequired','manualReviewReason','sourceResumed','resumeAvailable')
     $allowed+=@('IndependentCopy','offlineReadiness','OfflineReadiness','Availability','MediaClass','CopyRoot','ReceiptSHA256','VerifiedUtc','BackupOperationId','DestinationRoot')
     $allowed+=@('TargetLocalComparison','Provenance')

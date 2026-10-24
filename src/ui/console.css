@@ -338,3 +338,4 @@ button[aria-disabled="true"]{opacity:.6;cursor:wait}
 .wizard-recheck button[aria-disabled="true"]:not([data-busy="true"]){cursor:not-allowed}
 .wizard-recheck-result{overflow-wrap:anywhere}
 .wizard-recheck-result:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.unc-responsibility{border-left-color:var(--blue)}.unc-responsibility .path-resolution-state{color:var(--blue)}.unc-responsibility.is-separate{border-left-color:var(--success)}.unc-responsibility.is-separate .path-resolution-state{color:var(--success)}

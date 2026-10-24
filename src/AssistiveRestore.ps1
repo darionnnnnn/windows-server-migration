@@ -335,7 +335,7 @@ function Assert-WsmAssistiveTargetScopeTopology {
 # 預覽雜湊與逐列雜湊一律先移除這些欄位，所以既有續作的漂移容忍與重綁判定、以及升級前留下的雜湊都不受影響。
 function Remove-WsmAssistivePreviewDisplayFields($Row) {
     if($null -eq $Row){return $null}
-    $names=@('FileCount','Bytes','MissingDependencies','AlreadyRestored','AdoptedFileCount','AdoptedBytes','ConflictFileCount','ConflictBytes')
+    $names=@('FileCount','Bytes','MissingDependencies','AlreadyRestored','UncResponsibility','AdoptedFileCount','AdoptedBytes','ConflictFileCount','ConflictBytes')
     $present=$false;foreach($name in $names){if($Row.PSObject.Properties[$name]){$present=$true;break}}
     if(-not $present){return $Row}
     $Row|Select-Object -Property * -ExcludeProperty $names
@@ -358,6 +358,8 @@ function Add-WsmAssistivePreviewDisplayFields($Row,$Item,[hashtable]$Totals,[has
     $Row|Add-Member NoteProperty Bytes $bytes
     $Row|Add-Member NoteProperty MissingDependencies ([string[]]@($missing.ToArray()))
     $Row|Add-Member NoteProperty AlreadyRestored ([bool]$Restored.ContainsKey($itemId))
+    # Q2: UNC 項目明列責任分類（沿用外部共享／另行遷移）；純顯示欄位，不進預覽雜湊，也不改變任何還原動作。
+    $unc=Get-WsmItemUncResponsibility $Item;if($unc){$Row|Add-Member NoteProperty UncResponsibility $unc}
 }
 
 function Test-WsmAssistivePlanContractV2($Plan) {

@@ -2,6 +2,7 @@
 // 資料由真實的 PowerShell 投影函式產生（tests/New-PathResolutionFixture.ps1）；API 為固定替身，前端為真實 src/ui。
 // 涵蓋：審閱畫面逐一檢視四種依據（原字串／解析結果／依據／原因／人工處置下一步）、C2 軟體處置審閱的未解析消費者路徑、
 // 路徑視為資料（不產生元素）、機密變數只顯示名稱、390px 無橫向溢位、零 console 錯誤。
+// Q2：UNC 路徑的責任標示（沿用既有外部共享／另行遷移）也在審閱畫面逐一驗證（含標記字元的路徑）。
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), os = require('node:os'), path = require('node:path'), { execFileSync } = require('node:child_process');
 const runtimePath = process.env.WSM_NODE_MODULES || 'C:/Users/eldar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules';
 const { chromium } = require(path.join(runtimePath, 'playwright'));
@@ -14,8 +15,8 @@ const groups = fixture.groups.map(group => Object.assign({}, group, { confirmed:
 assert.equal(groups.length, 6, 'the projection produced one group per candidate');
 const hex = ch => ch.repeat(64), pairId = 'n9c2-pair', contextId = 'n9c2-context';
 const assets = new Map([['/', path.join(root, 'src/ui/index.html')], ['/ui/console.js', path.join(root, 'src/ui/console.js')], ['/ui/console.css', path.join(root, 'src/ui/console.css')], ['/ui/nonc.js', path.join(root, 'src/ui/nonc.js')]]);
-let step = 'review', currentGroupId = groups[0].groupId;
-const wizardBody = () => ({ kind: 'WizardProjection', role: 'Manager', workspaceRole: 'Manager', roleMatchesWorkspace: true, pairId, pairName: 'Source to Target', currentStep: step, nextStep: step, mode: 'ItemByItem', revision: 3, currentGroupId, reviewGroupIndex: 0, groups, gates: [], results: { hasAny: false }, context: { catalogRevision: 3, selectionRevision: 1, assistiveRevision: 1 }, actions: [], readiness: { roleReady: true } });
+let step = 'review', currentGroupId = groups[0].groupId, servedGroups = groups;
+const wizardBody = () => ({ kind: 'WizardProjection', role: 'Manager', workspaceRole: 'Manager', roleMatchesWorkspace: true, pairId, pairName: 'Source to Target', currentStep: step, nextStep: step, mode: 'ItemByItem', revision: 3, currentGroupId, reviewGroupIndex: 0, groups: servedGroups, gates: [], results: { hasAny: false }, context: { catalogRevision: 3, selectionRevision: 1, assistiveRevision: 1 }, actions: [], readiness: { roleReady: true } });
 const software = { SoftwareId: 'sw-a', Name: '訂單系統執行階段', Publisher: 'Fixture Corp', Version: '1.0', Architecture: 'x64', Scope: 'Machine', SID: '', RegistryView: 'Registry64', Location: 'D:\\Apps', SourceKind: 'Registry', CaptureStatus: 'Captured', ConsumerItems: [], SpecialProduct: false, AllowedDispositions: ['Reinstall', 'External', 'NotNeeded', 'Unknown'], DecisionState: 'Unreviewed', DecisionSoftwareHash: '', Disposition: '', Owner: '', Reason: '', Evidence: '' };
 const c2Body = () => ({ Kind: 'AssistiveSoftwareDispositionReview', Status: 'Previewed', PairId: pairId, DecisionRevision: 10, InventoryHash: hex('1'), SoftwareCatalogHash: hex('8'), Rows: [software], Coverage: [{ Probe: 'ConsumerPathResolution', Scope: 'ScheduledTask', SID: '', View: 'Inventory', Status: 'Partial', EvidenceKind: 'SourceContextPath', Count: 0, ErrorKind: 'SourcePathUnresolved', Budget: { MaxEntries: 100 } }], TrustedSoftwareRoots: { Status: 'Success', Count: 0, Diagnostics: [] }, ReadinessProof: false, AuthoritativeApproval: false, PreviewHash: hex('9'), PathResolutions: fixture.c2PathResolutions, viewRevision: 3 });
 const server = http.createServer((req, res) => {
@@ -121,8 +122,46 @@ const server = http.createServer((req, res) => {
     await c2Page.setViewportSize({ width: 1280, height: 900 }); await noOverflow(c2Page, 'C2 panel 1280');
     await c2Page.close();
 
+    // ===== 3. Q2：UNC 路徑的責任標示（審閱畫面）。三個群組：沿用外部共享、含標記字元的路徑、有通過驗證契約的另行遷移。
+    assert.equal(fixture.uncGroups.length, 3, 'the projection produced one group per UNC item');
+    servedGroups = fixture.uncGroups.map(group => Object.assign({}, group, { confirmed: false })); step = 'review'; currentGroupId = servedGroups[0].groupId;
+    const uncPage = await openPage(390);
+    const uncOf = page => page.evaluate(() => { const out = []; document.querySelectorAll('.wizard-file-details .unc-responsibility').forEach(box => { const row = { responsibility: box.dataset.responsibility, state: box.querySelector('.path-resolution-state').textContent, separate: box.classList.contains('is-separate') }; box.querySelectorAll('dd').forEach(dd => { row[dd.dataset.field] = dd.textContent; }); out.push(row); }); return out; });
+    const uncFindIndex = text => servedGroups.findIndex(group => { const first = group.children[0].fileDetails[0]; return !!first && first.path === text; });
+    async function showUncGroup(index) {
+      await uncPage.evaluate(i => { const s = window.WsmConsole.state; s.wizard = Object.assign({}, s.wizard, { currentGroupId: s.wizard.groups[i].groupId }); window.WsmConsole.renderWizard(s.wizard); }, index);
+      await uncPage.locator('.wizard-file-details > summary').click();
+    }
+    const seenResponsibilities = new Set();
+    const uncCases = [
+      { responsibility: 'ExternalShareReuse', label: '沿用外部共享', summary: '沿用外部共享，不自動複製', evidence: '無', path: '\\\\fs1\\data\\app', shot: 'q2-review-external-390.png' },
+      { responsibility: 'ExternalShareReuse', label: '沿用外部共享', summary: '沿用外部共享，不自動複製', evidence: '無', path: '\\\\fs1\\<b>share<b>\\<script>alert(1)<x>', shot: 'q2-review-hostile-390.png', hostile: true },
+      { responsibility: 'SeparateMigration', label: '另行遷移', summary: '另行遷移，需另行核准', evidence: '有', path: '\\\\q2-source\\data\\root\\appA\\data', shot: 'q2-review-separate-390.png' }
+    ];
+    for (const item of uncCases) {
+      const index = uncFindIndex(item.path); assert.ok(index >= 0, `fixture has ${item.path}`);
+      await showUncGroup(index);
+      const shown = await uncOf(uncPage);
+      assert.equal(shown.length, 1, `exactly one UNC responsibility block (${item.responsibility})`);
+      const block = shown[0]; seenResponsibilities.add(block.responsibility);
+      assert.equal(block.responsibility, item.responsibility, 'responsibility code');
+      assert.equal(block.state.slice(2), item.label, 'state text'); assert.match(block.state.charAt(0), /[⇄↗]/, 'state is icon plus text, never colour alone');
+      assert.equal(block['UNC 路徑'], item.path, 'UNC path shown verbatim as text');
+      assert.equal(block['責任歸屬'], item.summary); assert.equal(block['責任證據'], item.evidence);
+      assert.ok(block['責任說明'] && block['責任下一步'], 'reason and next step shown');
+      assert.equal(block.separate, item.responsibility === 'SeparateMigration');
+      if (item.responsibility === 'ExternalShareReuse') assert.match(block['責任下一步'], /不會複製此位置.*不會把它改成本機路徑/, 'external share: nothing copied, never turned local');
+      else assert.match(block['責任下一步'], /另行核准/, 'separate migration needs its own approval');
+      if (item.hostile) assert.equal(await uncPage.locator('.wizard-file-details b, .wizard-file-details script, .wizard-file-details x').count(), 0, 'markup in the path must not create elements');
+      assert.equal(await uncPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `no horizontal overflow: ${item.responsibility}`);
+      await uncPage.locator('.unc-responsibility').first().scrollIntoViewIfNeeded();
+      await uncPage.screenshot({ path: path.join(screens, item.shot), fullPage: true });
+    }
+    assert.deepEqual([...seenResponsibilities].sort(), ['ExternalShareReuse', 'SeparateMigration'], 'both responsibilities were displayed');
+    await uncPage.close();
+
     assert.deepEqual(errors, [], 'zero console errors');
-    process.stdout.write('PASS: path resolution basis display (review + C2), 390px, zero console errors\n');
+    process.stdout.write('PASS: path resolution basis display (review + C2) and UNC responsibility (both kinds), 390px, zero console errors\n');
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));
