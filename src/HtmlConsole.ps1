@@ -1215,6 +1215,7 @@ function Start-WsmHtmlConsole {
         }
         if($startupLanes.ContainsKey('Migration')){[void](Sync-WsmWizardOperationJobs $Workspace (Get-WsmHtmlWizardJobs $jobs $Workspace))}
     }finally{foreach($guard in $startupGuards){Exit-WsmWorkspaceWorkerGuard $guard}}
+    $pendingClients=New-Object 'System.Collections.Generic.List[object]'
     try{
         if($ReadyPath){Write-WsmJson $ReadyPath ([pscustomobject]@{Url=$origin;SessionId=$sessionId;Pid=$PID})}
         Write-Host ('Local migration console: '+$origin)
@@ -1231,8 +1232,27 @@ function Start-WsmHtmlConsole {
                 $progress=Get-WsmHtmlProgressProjection $job;if($progress){$job.Record|Add-Member NoteProperty progress $progress -Force}
                 if($job.Handle -and $job.Handle.IsCompleted){Complete-WsmHtmlFinishedJob $job $Workspace $jobs $errorRoot}
             }
-            if(-not $listener.Pending()){Start-Sleep -Milliseconds 50;continue}
-            $client=$listener.AcceptTcpClient()
+            # S3: accept never waits for request bytes. Browsers open idle
+            # preconnects; a synchronous first-byte read would hold this single
+            # service loop (the state owner) for the whole read timeout per
+            # idle socket. Accepted sockets wait in a bounded queue and only
+            # one that already has bytes (or was closed/reset by the peer, so
+            # the parser fails immediately) enters the unchanged single-thread
+            # request path. A socket that stays silent past the first-byte
+            # deadline is answered like the old timeout (400) and closed.
+            while($pendingClients.Count -lt 64 -and $listener.Pending()){$pendingClients.Add([pscustomobject]@{Client=$listener.AcceptTcpClient();Age=[Diagnostics.Stopwatch]::StartNew()})}
+            $client=$null
+            for($queueIndex=0;$queueIndex -lt $pendingClients.Count;$queueIndex++){
+                $waiting=$pendingClients[$queueIndex]
+                $hasInput=$true;try{$hasInput=$waiting.Client.Available -gt 0 -or $waiting.Client.Client.Poll(0,[Net.Sockets.SelectMode]::SelectRead)}catch{}
+                if($hasInput){$client=$waiting.Client;$pendingClients.RemoveAt($queueIndex);break}
+                if($waiting.Age.ElapsedMilliseconds -ge 2000){
+                    $pendingClients.RemoveAt($queueIndex);$queueIndex--
+                    try{$idleError=Get-WsmHtmlSafeError 'Idle connection sent no HTTP request.' 'System.TimeoutException';try{Write-WsmHtmlErrorRecord $errorRoot $idleError '/unparsed' $PairId}catch{};Write-WsmLocalHttpResponse $waiting.Client 400 'application/json; charset=utf-8' ([Text.Encoding]::UTF8.GetBytes(($idleError|ConvertTo-Json -Compress)))}catch{}
+                    finally{$waiting.Client.Dispose()}
+                }
+            }
+            if(-not $client){Start-Sleep -Milliseconds $(if($pendingClients.Count){10}else{50});continue}
             # An accepted TCP preconnect can close or remain idle before it
             # sends any HTTP request line. Do not let a previous request's
             # route leak into its error handling (or trigger StrictMode when
@@ -1569,6 +1589,7 @@ function Start-WsmHtmlConsole {
             }finally{$client.Dispose()}
         }
     }finally{
+        foreach($waiting in $pendingClients.ToArray()){try{$waiting.Client.Dispose()}catch{}}
         $listener.Stop()
         foreach($job in @($jobs.Values)){try{if($job.PowerShell){$job.PowerShell.Stop();$job.PowerShell.Dispose();$job.Record.Status='Interrupted';Write-WsmJson $job.Path $job.Record}}finally{Clear-WsmHtmlJobSecrets $job;if($job.ContainsKey('WorkerGuard') -and $job.WorkerGuard){Exit-WsmWorkspaceWorkerGuard $job.WorkerGuard;$job.WorkerGuard=$null}}}
         $token=$null;$keys.Clear()

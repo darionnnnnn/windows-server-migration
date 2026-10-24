@@ -2318,6 +2318,38 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - HtmlConsole 寫出的 status 以原始碼 regex 收集，另以 9 個已知值作保底檢查。
   - 白名單外的消費端（WizardBackupProjection、WizardNonC、WizardRestore 等）讀取的 job 都已來自正規化路徑，但它們本身沒有加守門。
 
+### 17.112 S3 本機工作台串行 accept：閒置預連線不再卡住 console（第六輪終檢 P1）
+
+- 規格：`work/r7/specs/S3-serial-accept.md`。由 Sonnet 5.5 effort high subagent 實作；主代理審查 diff、另做一個突變並獨立重跑。
+- **根因**：
+  - `HtmlConsole.ps1` 的服務迴圈是單執行緒，流程為 Pending → AcceptTcpClient → 同步讀取，首位元組 ReadTimeout 設為 2000 ms。
+  - 每一條不送位元組的預連線，都會佔住服務迴圈約 2 秒。
+  - 實測：4 條閒置連線時，同時發出的其他請求延遲約 8.1～8.3 秒。
+- **修法**：
+  - accept 之後不讀資料，連線先放進有界待讀佇列（上限 64 條）。
+  - 主迴圈每一輪只挑兩種連線交給原本的單執行緒 request 流程：已有位元組的，或已被對端關閉／reset 的（parser 會立即失敗）。
+  - 閒置滿 2000 ms 仍無資料的連線，回 400 並寫 error record，與舊的逾時行為一致，然後關閉。
+  - 佇列滿時，新連線留在 OS backlog。
+  - 沒有改成多執行緒、沒有共用 state；request 處理流程與 SSE／長輪詢都沒有改動。
+- **測試**：新增 `Test-ConsoleIdlePreconnect.js`，驗證項目：
+  - 4 條閒置連線加 4 個併發請求，每個都在 1500 ms 內完成；實測約 80～260 ms。
+  - 閒置連線約 2.1 秒時被關閉。
+  - 慢客戶端以 300 ms 間隔分段送出 header，仍能成功。
+- **突變**（皆轉紅）：
+  - subagent：拿掉佇列（改回同步讀取）、期限淘汰失效、淘汰過早（151 ms 就關閉，慢客戶端會被誤殺）。
+  - 主代理：佇列上限改為 1，延遲變成 8381 ms。
+- **環境註記**：
+  - 本機 loopback 會零星出現 ECONNRESET，大檔傳輸也不穩（console.js 約 590 KB，連裸 TcpListener 都會在約 196 KB 時被重設）；修改前就是如此。研判與 AGENTS 記錄的 AdGuard 本機傳輸 NotPassed 同類。
+  - 新測試遇到環境 reset 時最多整輪重跑 4 輪，延遲與關閉時機的斷言每一輪都嚴格檢查。代價是偶發性的 reset 回歸可能被掩蓋。
+  - 測試資源改用 nonc.js，不用 console.js，原因是上述大檔傳輸不穩。
+- **同一環境下修改前就已失敗的測試**（subagent 以原始碼對照，主代理另行確認）：
+  - `Test-StartBackupReplayHttp.js`（fetch 遇到 ECONNRESET）：N4（17.78）當時 17 項通過。
+  - `Test-BackupProgressBrowser.js` 的 G4：見 17.110。
+  - `Test-HtmlBridge.js`：失敗型態與修改前相同。
+  - 以上都排入 Q6b 追查。
+- **驗證（主代理重跑）**：HtmlConsole 175、ScriptEncoding；ConsoleIdlePreconnect、HtmlSubmission 8、HtmlBrowser、F1AcceptanceBrowser、RetryFailedItemsBrowser、NativeWizardRuntimeHandler 全部通過；HtmlPreconnectRecovery 的 ECONNRESET 屬於環境偶發，主代理在 S3 前的 HEAD 與 S3 後各跑 4 次，兩邊都是 3 次通過、1 次失敗，失敗率相同。
+- **限制**：首段位元組超過 2 秒才送達的客戶端，仍會被視為閒置並回 400，與舊行為相同。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -2540,5 +2572,6 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 
 | 編號 | 哪裡 | 症狀 | 修法 | 迴歸測試 | commit |
 |---|---|---|---|---|---|
-| S1 | `src/OperationRequests.ps1` Get-WsmTextWizardJobs | 文字端狀態白名單少了 WaitingForInput 與 Queued。HTML 寫入一筆等待輸入的還原作業後，CLI 讀取歷史就丟例外，RESUME、TAKEOVER 都無法進入 | 狀態白名單抽成單一來源 `Get-WsmJobStatusValues`，文字端共用；console.js 狀態表由測試守門對齊；Recover 遇到 WaitingForInput 時保留原狀（17.111） | `Test-JobRecordCompatibility`（HTML 寫入的每一種 status 文字端都能讀回） | （S12-COMMIT） |
-| S2 | `src/OperationRequests.ps1` Recover、`src/HtmlConsole.ps1` 匯入、`src/WizardFlow.ps1` | 舊紀錄缺少 CompletedUtc／outputs 時，在 strict mode 下中斷整個復原；HTML 匯入時的例外被吞掉；Interrupted 的時間文字端與 HTML 端不一致 | 所有讀取點改走 `ConvertTo-WsmNormalizedJobRecord`（只補缺少的欄位）；Interrupted 的 CompletedUtc 統一為 null（17.111） | `Test-JobRecordCompatibility`（71 項，strict）、`Test-WizardTextRuntime` | （S12-COMMIT） |
+| S1 | `src/OperationRequests.ps1` Get-WsmTextWizardJobs | 文字端狀態白名單少了 WaitingForInput 與 Queued。HTML 寫入一筆等待輸入的還原作業後，CLI 讀取歷史就丟例外，RESUME、TAKEOVER 都無法進入 | 狀態白名單抽成單一來源 `Get-WsmJobStatusValues`，文字端共用；console.js 狀態表由測試守門對齊；Recover 遇到 WaitingForInput 時保留原狀（17.111） | `Test-JobRecordCompatibility`（HTML 寫入的每一種 status 文字端都能讀回） | d128977 |
+| S2 | `src/OperationRequests.ps1` Recover、`src/HtmlConsole.ps1` 匯入、`src/WizardFlow.ps1` | 舊紀錄缺少 CompletedUtc／outputs 時，在 strict mode 下中斷整個復原；HTML 匯入時的例外被吞掉；Interrupted 的時間文字端與 HTML 端不一致 | 所有讀取點改走 `ConvertTo-WsmNormalizedJobRecord`（只補缺少的欄位）；Interrupted 的 CompletedUtc 統一為 null（17.111） | `Test-JobRecordCompatibility`（71 項，strict）、`Test-WizardTextRuntime` | d128977 |
+| S3 | `src/HtmlConsole.ps1` 服務迴圈 accept 與首位元組讀取 | 單執行緒同步讀取首位元組，每條閒置的預連線佔住迴圈約 2 秒；開 4 條時，其他請求要等約 8 秒 | accept 後改放入有界待讀佇列，只把已有位元組的連線交給原本的單執行緒流程，閒置滿 2 秒的連線回 400 後關閉；未改成多執行緒（17.112） | `Test-ConsoleIdlePreconnect.js`（4 條閒置加 4 個併發請求都在 1500 ms 內、閒置連線約 2.1 秒關閉、分段送出的慢客戶端仍成功） | （S3-COMMIT） |
