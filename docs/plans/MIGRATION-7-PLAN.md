@@ -2362,3 +2362,17 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 - IIS 站台虛擬目錄的 connect-as 密碼：維持既有拒絕，不在本輪接 challenge。
 - IIS 組態區段的原始擷取（`RawEvidenceProtected`）仍保存整段 applicationHost 內容，可能含加密密碼；這是既有設計，本輪只記為未結事項，不改。
 - 不新增跨程序秘密 broker；秘密仍只在同程序 runspace 的記憶體交付。
+
+## 體檢交接
+
+- 實作模型：17.1～17.25 由 gpt-6-luna 委派；17.26～17.30 主代理 Opus 5.5＋agy（gemini-3.8-flash-high）；17.31～17.106 主代理 Opus 5.5（主工作階段與還原端工作階段）＋Sonnet 5.5／Haiku 5.5 subagent。體檢模型：Fable 5.1（2026-10-24，使用者切換後下令「開始」）。
+- 體檢範圍：6a2329c..4c6552c，優先 a4193aa..4c6552c（未經任何獨立模型體檢）；Q1～Q7 的增量另掃。
+- 體檢方式：五視角（舊機操作者／新機操作者／管理者與 CLI 與文件／程式碼稽核／後端對抗）＋一補驗（真瀏覽器、舊格式資料、中斷點、啟用傳參、秘密掃描），各在 detached 唯讀 worktree（wsm-audit-1～5）以 Sonnet 5.5 high 掃描並附探針；全部主張由體檢主代理用 diff／探針重驗後才採納；D 區 11 個突變 9 殺 2 存活。
+- 規劃比對由體檢主代理親做：§18 契約子句（含未進驗收的子句）、§17.26 起點名的測試檔（全部存在）、「明確不做」未被踩（無 CDN／遠端字型／深色主題／自動安裝）。
+- 實作方最沒把握處（由體檢方依 17.x 限制段代填）：回復路徑、目錄範圍衝突判定、第二次備份的世代判定、CLI 返回碼、文件同步。
+- 評估後不做、轉入 `docs/BACKLOG.md`（2026-10-24 體檢方定案，各附觸發條件）：同機其他使用者可取 `/api/session` token（本輪只文件化）；IndependentCopy 單檔取消邊界與 UNC 逾時；Takeover Revision CAS 恆等式與自寫入解釋判定不分 parent；SourceCandidateDiscovery 測試注入 scriptblock 參數（保留、加註解）；Test-PlanEvidence 對 in-progress 階段過期不警告；非提權環境續作時 FileScope 被降為 Failed（列入實機驗收）。另併入 17.106 的 Q 系列定案不做項目。
+
+## 體檢輪修正
+
+| 編號 | 哪裡 | 症狀 | 修法 | 迴歸測試 | commit |
+|---|---|---|---|---|---|
