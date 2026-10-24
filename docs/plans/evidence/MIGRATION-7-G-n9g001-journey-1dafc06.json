@@ -1,0 +1,462 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "G",
+  "kind": "MainOfflineRestoreJourney",
+  "runId": "n9g001",
+  "runtimeBase": "1dafc063af29491eb4be3a3b8f7fee9142612717",
+  "executedBy": "The user ran the main journey personally in the repository working tree at HEAD 1dafc06 (the session permission classifier had refused it for the agents; PLAN 17.92/17.94): powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineRestoreJourney.ps1 -RunId n9g001",
+  "reportedOutput": "PASS: offline restore journey (run n9g001, 48 checks, http retries 0)",
+  "verifier": "Primary agent (Claude Opus 5.5) did not re-run the journey; it verified the recorded verdict: RunId n9g001, Overall Passed, exactly 48 checks all Passed, HttpRetries 0, StartedUtc after the 1dafc06 commit time with a clean working tree, the four journey test-file hashes in TestBytes equal the committed files, and an independent recomputation of the src digest (relative path | SHA-256, case-sensitive sort, joined by LF, SHA-256) over the 106 committed src files gives 9aea4aea..., equal to SrcDigestBefore, SrcDigestAfter and CommittedWorkingTreeDigest.",
+  "verdictFile": "work/r7/g-journey/n9g001/verdict.json (git-ignored; its exact bytes are embedded below)",
+  "verdictSha256": "35FA40336A8FAF35C148327D414F730C8D55BC8AE5B856B0A3EA86752F0A5C1C",
+  "casesExecuted": 48,
+  "engine": "Windows PowerShell 5.1 only (pwsh is not installed)",
+  "limitations": [
+    "One journey run on one host with fixtures: the native account writes (service, scheduled task, IIS pool) use narrow fixture doubles as decided in PLAN 19.2; file restore uses real original-location writes and readback.",
+    "This is the main journey only; the other journeys, the 16.6 media-swap rows, release-package journey coverage and real-machine / enterprise acceptance remain uncovered, so stage G stays in-progress.",
+    "No PowerShell 7 run."
+  ],
+  "verdict": {
+    "RunId": "n9g001",
+    "StartedUtc": "2026-10-24T06:55:26.7655535Z",
+    "Stages": [
+      {
+        "Stage": 1,
+        "Text": "snapshot, wrapper hashes, execution copy and three workspace paths",
+        "Utc": "2026-10-24T06:55:26.9042046Z"
+      },
+      {
+        "Stage": 2,
+        "Text": "Target HTTP enrollment, Source inventory, Manager CV2 approval, one-click backup, independent copy",
+        "Utc": "2026-10-24T06:55:58.7609139Z"
+      },
+      {
+        "Stage": 3,
+        "Text": "deny Source/Manager workspaces and move the original data aside",
+        "Utc": "2026-10-24T06:56:34.1555238Z"
+      },
+      {
+        "Stage": 4,
+        "Text": "Target console: enrollment check, plan, package from media, inventory, local comparison, receipt, preview, restore",
+        "Utc": "2026-10-24T06:56:34.2595559Z"
+      },
+      {
+        "Stage": 5,
+        "Text": "send credentials over HTTP; the console process dies after the second file is written",
+        "Utc": "2026-10-24T06:57:34.7348548Z"
+      },
+      {
+        "Stage": 6,
+        "Text": "restart the console, check Interrupted/resumable, resume-preview, resume",
+        "Utc": "2026-10-24T06:57:46.4970306Z"
+      },
+      {
+        "Stage": 7,
+        "Text": "judge bytes, journal, Service double, access counters, secret canary, product flags",
+        "Utc": "2026-10-24T06:58:27.8873292Z"
+      }
+    ],
+    "Checks": {
+      "snapshot_src_equals_committed_bytes": {
+        "Passed": true,
+        "Detail": "working tree digest"
+      },
+      "execution_copy_differs_only_by_appended_psm1_overlay": {
+        "Passed": true,
+        "Detail": "WindowsServerMigration.psm1"
+      },
+      "target_enrolled_over_http": {
+        "Passed": true,
+        "Detail": "Target"
+      },
+      "backup_delivered_directory": {
+        "Passed": true,
+        "Detail": "Delivered"
+      },
+      "independent_copy_removable_verified": {
+        "Passed": true,
+        "Detail": "Removable"
+      },
+      "plan_includes_file_scope_and_service_only": {
+        "Passed": true,
+        "Detail": ""
+      },
+      "source_snapshot_attachment_imported": {
+        "Passed": true,
+        "Detail": "plan attachment delivered beside the plan and placed in Source pairs"
+      },
+      "source_workspace_denied": {
+        "Passed": true,
+        "Detail": ""
+      },
+      "manager_workspace_denied": {
+        "Passed": true,
+        "Detail": ""
+      },
+      "original_paths_free_for_restore": {
+        "Passed": true,
+        "Detail": ""
+      },
+      "itemoptions_default_selects_all_approved_items": {
+        "Passed": true,
+        "Detail": "2 selected"
+      },
+      "preview_has_no_blockers": {
+        "Passed": true,
+        "Detail": "PreviewHash a44b5fe035bf"
+      },
+      "target_restore_waiting_for_input": {
+        "Passed": true,
+        "Detail": "WaitingForInput"
+      },
+      "credential_requirement_is_approved_account": {
+        "Passed": true,
+        "Detail": "GWSM\\svc-gjourney"
+      },
+      "console_process_died_137": {
+        "Passed": true,
+        "Detail": ""
+      },
+      "crash_point_file_was_written_before_completed_journal": {
+        "Passed": true,
+        "Detail": "C:\\Users\\Public\\wsm-g-n9g001\\src-data\\nested\\inner file.cfg"
+      },
+      "a_file_was_completed_before_the_crash_point_file": {
+        "Passed": true,
+        "Detail": "completed journal rows before the crash, excluding the crash point: 1"
+      },
+      "parent_interrupted_and_resumable_after_restart": {
+        "Passed": true,
+        "Detail": "Interrupted"
+      },
+      "resume_preview_is_read_only": {
+        "Passed": true,
+        "Detail": ""
+      },
+      "r8_comparison_source_list_comes_from_package_controls": {
+        "Passed": true,
+        "Detail": "plan has no GeneralHost list; comparison row exists only in controls/source-inventory.json"
+      },
+      "r8_wrong_target": {
+        "Passed": true,
+        "Detail": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Received approved plan is bound to a different local host identity.\""
+      },
+      "r8_forged_approval_bytes_changed": {
+        "Passed": true,
+        "Detail": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Received plan path/hash could not be verified.\""
+      },
+      "r8_forged_approval_retargeted_and_rehashed": {
+        "Passed": true,
+        "Detail": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Received approved plan is bound to a different local host identity.\""
+      },
+      "r8_same_name_different_machine": {
+        "Passed": true,
+        "Detail": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Received approved plan is bound to a different local host identity.\""
+      },
+      "r8_same_name_case_really_shares_the_name": {
+        "Passed": true,
+        "Detail": "plan Target.Name equals this machine name while the fingerprint differs"
+      },
+      "r8_receipt_after_software_install_without_reinventory": {
+        "Passed": true,
+        "Detail": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Target software changed after its reviewed comparison; create a fresh target snapshot/comparison and decision receipt before re"
+      },
+      "r8_preview_after_software_install_without_reinventory": {
+        "Passed": true,
+        "Detail": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Target software changed after its reviewed comparison; create a fresh target snapshot/comparison and decision receipt before re"
+      },
+      "r8_old_receipt_refused_after_recompare": {
+        "Passed": true,
+        "Detail": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Current Target receipt is stale for the delivered package generation or Target inventory; create a new comparison and decision "
+      },
+      "r8_new_receipt_after_recompare_succeeds": {
+        "Passed": true,
+        "Detail": "Succeeded"
+      },
+      "r8_stale_target_inventory": {
+        "Passed": true,
+        "Detail": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Target snapshot is stale or from the future; refresh target software and environment evidence before restore.\""
+      },
+      "r8_no_further_service_apply_or_file_write": {
+        "Passed": true,
+        "Detail": "service applied once overall; original data tree unchanged"
+      },
+      "parent_job_id_unchanged_and_terminal_succeeded": {
+        "Passed": true,
+        "Detail": "Succeeded"
+      },
+      "restored_file_bytes_equal_source_sha256": {
+        "Passed": true,
+        "Detail": "bad= extra="
+      },
+      "empty_directory_and_nested_directories_exist": {
+        "Passed": true,
+        "Detail": ""
+      },
+      "moved_aside_originals_untouched": {
+        "Passed": true,
+        "Detail": ""
+      },
+      "unselected_neighbor_target_absent": {
+        "Passed": true,
+        "Detail": ""
+      },
+      "completed_files_not_rewritten_after_resume": {
+        "Passed": true,
+        "Detail": "files with exactly one intent and one completed: 3"
+      },
+      "interrupted_file_reconciled_without_second_native_write": {
+        "Passed": true,
+        "Detail": "intent=1 recovered=1"
+      },
+      "journal_has_preview_rebound": {
+        "Passed": true,
+        "Detail": "AssistiveRestorePreviewRebound"
+      },
+      "resume_reprompted_credentials_through_journal": {
+        "Passed": true,
+        "Detail": "1"
+      },
+      "state_has_no_pending_operations_and_succeeded": {
+        "Passed": true,
+        "Detail": ""
+      },
+      "service_double_received_approved_account_exactly_once": {
+        "Passed": true,
+        "Detail": "applications=1"
+      },
+      "source_manager_access_count_zero": {
+        "Passed": true,
+        "Detail": ""
+      },
+      "production_verified_false_and_no_auto_activation": {
+        "Passed": true,
+        "Detail": "no real service, no activation"
+      },
+      "no_job_record_claims_production_verified": {
+        "Passed": true,
+        "Detail": ""
+      },
+      "snapshot_src_digest_unchanged_and_equals_committed": {
+        "Passed": true,
+        "Detail": ""
+      },
+      "secret_canary_absent_in_all_encodings": {
+        "Passed": true,
+        "Detail": "hits=0 scanned=466"
+      },
+      "http_retry_count_recorded": {
+        "Passed": true,
+        "Detail": "0"
+      }
+    },
+    "Notes": [],
+    "Overall": "Passed",
+    "Snapshot": {
+      "Root": "C:\\Users\\eldar\\Claude\\Project\\windows-server-migration\\work\\r7\\g-journey-n9g001-e96b00bd55074cf093e7f39f6da7a555",
+      "SrcDigestBefore": "9aea4aea204cdc45ee209d874e7d4fedb2b4af10bc169179de18899a0a28ed66",
+      "SrcFileCount": 106,
+      "CommittedWorkingTreeDigest": "9aea4aea204cdc45ee209d874e7d4fedb2b4af10bc169179de18899a0a28ed66",
+      "CommittedHeadDigest": "363efb484bb305d7e06abc5cba423189c63ae97c3ae527c4ff06a5dbd97cb2a2",
+      "CommittedFileCount": 106,
+      "SrcDigestAfter": "9aea4aea204cdc45ee209d874e7d4fedb2b4af10bc169179de18899a0a28ed66"
+    },
+    "ExecutionCopy": {
+      "Purpose": "Target console only: worker runspaces re-import the module from disk, so overlay must be in the module file",
+      "DifferingSrcFiles": [
+        "WindowsServerMigration.psm1"
+      ],
+      "PsmPrefixIdenticalToSnapshot": true,
+      "OverlaySHA256": "2b200deb41902578c39ca36fe8a2932d7432638f925c35832b58a8b115b40450"
+    },
+    "TestBytes": {
+      "tests/G-JourneyHost.ps1": "a20d6fbe7cf514062c4205d1a02effc0c1b115bbfb55dda670c6feb2003b1e90",
+      "tests/G-JourneyOverrides.ps1": "08e0c951bd3297c977ab8502f116e7bb9ea5c3fe0985cc586bc3bbfed2dbb5fa",
+      "tests/G-RuntimeOverlay.ps1": "2b200deb41902578c39ca36fe8a2932d7432638f925c35832b58a8b115b40450",
+      "tests/Test-OfflineRestoreJourney.ps1": "224713a957ee2d20cd570afc8fec0155f39ad47d475f1eaa2568d5ee7f544814"
+    },
+    "Source": {
+      "PairId": "21091677-cdb1-4f16-8a10-d219465c00b2",
+      "PlanHash": "DBBBB1427CD2F37E96B0F38158B3BE2A6F54D086F803F22840FB0F2686450F53",
+      "BackupStatus": "Delivered",
+      "MediaClass": "Removable",
+      "OfflineReadiness": "Verified",
+      "CopyRoot": "C:\\Users\\Public\\wsm-g-n9g001\\media\\wsm-offline-21091677-cdb1-4f16-8a10-d219465c00b2-98961d5a-f3f9-4a5b-9b2d-49cca15d2310"
+    },
+    "TargetInventory": {
+      "Fixture": "PreSeededTargetInventory (not a full real capture)",
+      "Path": "C:\\Users\\Public\\wsm-g-n9g001\\ws-target\\hosts\\d693bd2890a762c220116cd1492f65772f64dd9a284fb1b249da6c315d5ada3c\\inventory\\inventory-1.json",
+      "SHA256": "deb0b32674caaf9d9a752f4ac077dfafd3616e769dcb3362182b3e2709ea88e3"
+    },
+    "Target": {
+      "ParentJobId": "7d266a31-c956-402d-9b20-d160410261dd",
+      "PreviewHash": "a44b5fe035bf62e1f328cea9a34e542e7fb2c5dcf000c310dffcb12becdc94b5"
+    },
+    "Crash": {
+      "ExitCode": 137,
+      "Marker": {
+        "Target": "C:\\Users\\Public\\wsm-g-n9g001\\src-data\\nested\\inner file.cfg",
+        "TargetExists": true,
+        "TargetSHA256": "33f1bc28e9d07fb196089d8e981deb237081e7002e5f9c32aaeb7771d641424a",
+        "ExpectedSHA256": "33f1bc28e9d07fb196089d8e981deb237081e7002e5f9c32aaeb7771d641424a",
+        "ItemId": "aaefc7ba6f657016a03c674e7ef4b62e51c7850953994340d88e8a9f9fcdd8af",
+        "Pid": 7524,
+        "Utc": "2026-10-24T06:57:44.0988828Z"
+      }
+    },
+    "Resume": {
+      "ContinuationId": "9654527c-b58a-4df7-944a-bcf51a08d377",
+      "FinalStatus": "Succeeded",
+      "FinalJobId": "7d266a31-c956-402d-9b20-d160410261dd"
+    },
+    "HttpRetries": 0,
+    "R8": {
+      "ControlsOnlyRowPresent": true,
+      "wrong_target": {
+        "Rejected": true,
+        "Reason": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Received approved plan is bound to a different local host identity.\"",
+        "ReasonMatchesExpectation": true,
+        "ExpectedPattern": "different local host identity",
+        "NoTargetWrites": true
+      },
+      "forged_approval_bytes_changed": {
+        "Rejected": true,
+        "Reason": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Received plan path/hash could not be verified.\"",
+        "ReasonMatchesExpectation": true,
+        "ExpectedPattern": "could not be verified",
+        "NoTargetWrites": true
+      },
+      "forged_approval_retargeted_and_rehashed": {
+        "Rejected": true,
+        "Reason": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Received approved plan is bound to a different local host identity.\"",
+        "ReasonMatchesExpectation": true,
+        "ExpectedPattern": ".",
+        "NoTargetWrites": true,
+        "RejectedBy": "HostIdentity",
+        "Note": "ExpectedHash must come from a trusted channel chosen by the operator; a hash computed from the same untrusted file is not an authorization, so the host identity check is the accepted barrier."
+      },
+      "same_name_different_machine": {
+        "Rejected": true,
+        "Reason": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Received approved plan is bound to a different local host identity.\"",
+        "ReasonMatchesExpectation": true,
+        "ExpectedPattern": "different local host identity",
+        "NoTargetWrites": true
+      },
+      "receipt_after_software_install_without_reinventory": {
+        "Rejected": true,
+        "Reason": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Target software changed after its reviewed comparison; create a fresh target snapshot/comparison and decision receipt before restore.\"",
+        "ReasonMatchesExpectation": true,
+        "ExpectedPattern": "Target software changed",
+        "NoTargetWrites": true
+      },
+      "preview_after_software_install_without_reinventory": {
+        "Rejected": true,
+        "Reason": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Target software changed after its reviewed comparison; create a fresh target snapshot/comparison and decision receipt before restore.\"",
+        "ReasonMatchesExpectation": true,
+        "ExpectedPattern": "Target software changed",
+        "NoTargetWrites": true
+      },
+      "recompare_after_install": {
+        "Status": "Succeeded",
+        "Reason": ""
+      },
+      "old_receipt_refused_after_recompare": {
+        "Rejected": true,
+        "Reason": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Current Target receipt is stale for the delivered package generation or Target inventory; create a new comparison and decision receipt.\"",
+        "ReasonMatchesExpectation": true,
+        "ExpectedPattern": "stale",
+        "NoTargetWrites": true
+      },
+      "stale_target_inventory": {
+        "Rejected": true,
+        "Reason": "以 \"1\" 引數呼叫 \"EndInvoke\" 時發生例外狀況: \"Target snapshot is stale or from the future; refresh target software and environment evidence before restore.\"",
+        "ReasonMatchesExpectation": true,
+        "ExpectedPattern": "stale or from the future",
+        "NoTargetWrites": true
+      },
+      "source_material_expiry": {
+        "Semantics": "The product has no source-material age gate. Source facts are bound by hash (plan, controls inventory, package). The only age gate is the 24 hour Target snapshot freshness (Assert-WsmAssistiveSnapshotFresh), exercised by stale_target_inventory.",
+        "AgeGateLocations": [
+          "AssistiveProbe.ps1:45",
+          "AssistiveProbe.ps1:51",
+          "AssistiveRestore.ps1:81",
+          "AssistiveRestore.ps1:86"
+        ],
+        "SourceInventoryCreatedMinutesBeforeRestore": "not aged: no age gate exists to exercise"
+      },
+      "Simulations": {
+        "LaterSoftwareInstall": "marker file g-extra-software.marker makes the overlay add one product to the live software observation; HKCU was not touched",
+        "TargetInventory": "pre-seeded fixture inventories (revisions 1,2,3); not full real captures",
+        "ControlsSource": "the approved plan carries no GeneralHost software list, so the comparison list can only come from controls/source-inventory.json"
+      }
+    },
+    "JournalPerFile": {
+      "C:\\Users\\Public\\wsm-g-n9g001\\src-data\\中文 測試 檔案.txt": {
+        "Intent": 1,
+        "Completed": 1,
+        "Pids": [
+          7524,
+          7524
+        ]
+      },
+      "C:\\Users\\Public\\wsm-g-n9g001\\src-data\\general.txt": {
+        "Intent": 1,
+        "Completed": 1,
+        "Pids": [
+          20564,
+          20564
+        ]
+      },
+      "C:\\Users\\Public\\wsm-g-n9g001\\src-data\\nested\\inner file.cfg": {
+        "Intent": 1,
+        "Completed": 1,
+        "Pids": [
+          7524,
+          7524,
+          20564
+        ]
+      },
+      "C:\\Users\\Public\\wsm-g-n9g001\\src-data": {
+        "Intent": 0,
+        "Completed": 0,
+        "Pids": [
+          20564
+        ]
+      },
+      "C:\\Users\\Public\\wsm-g-n9g001\\src-data\\Contoso.Business.Core.dll": {
+        "Intent": 1,
+        "Completed": 1,
+        "Pids": [
+          20564,
+          20564
+        ]
+      }
+    },
+    "RestoreAttempt": {
+      "Stage": "Succeeded",
+      "AttemptStatus": "Running",
+      "ItemResultStatuses": [
+        "aaefc7ba6f657016a03c674e7ef4b62e51c7850953994340d88e8a9f9fcdd8af=Succeeded",
+        "a733e4f6ad4088c46332c76c831e7071af68f33cfd5d6c301d29fde93e37d51e=Succeeded"
+      ],
+      "Continuations": 1,
+      "PendingOperations": 0
+    },
+    "ServiceAppliedBeforeCrash": 0,
+    "SourceManagerAccess": {
+      "ForbiddenAccessAttempts": 0,
+      "UnauthorizedAccessSignals": 0
+    },
+    "ExecutionBytes": "execution bytes = committed product bytes + test overlay appended to WindowsServerMigration.psm1",
+    "CanaryScan": {
+      "FilesScanned": 466,
+      "Encodings": [
+        "utf8",
+        "utf16le",
+        "base64 (3 alignments)"
+      ],
+      "Hits": []
+    },
+    "CompletedUtc": "2026-10-24T06:59:52.1405710Z"
+  }
+}

@@ -10955,18 +10955,22 @@
         {
           "path": "docs/plans/evidence/MIGRATION-7-G-p10-rebind-817765a.json",
           "sha256": "34665A5F718E11D5075216C15DAE7FDBA14DABCDB984F46D33FBE085062D97A9"
+        },
+        {
+          "path": "docs/plans/evidence/MIGRATION-7-G-n9g001-journey-1dafc06.json",
+          "sha256": "8B8DD1A7B2262FD43D9A07F4AAEBBAA7AEFC6045F5D3504AC54906F61F409E28"
         }
       ],
       "evidenceLog": {
         "path": "docs/plans/evidence/MIGRATION-7-G-p10-rebind-817765a.json",
         "sha256": "34665A5F718E11D5075216C15DAE7FDBA14DABCDB984F46D33FBE085062D97A9"
       },
-      "casesExecuted": 1031,
-      "result": "Rebound to 817765a bytes after P10 (PLAN 17.103) (previous binding p9-rebind-e12ae9f); every command below exited 0 on WinPS 5.1: G2DiscoveryToDelivery 34, G3NonCFailureFreeze 29, G4MixedScope 30, OfflineFullSetSeparateSource 20, ActionExports 203, ManagerCatalogSourceContext 16, OfflineFullSetMaterialWorkspace 12, OfflineFullSetControlsRetry 15, AssistiveCv2NonCConsistency 17, ProductionFlagProjection 48, RetryPartialIndexPreserved 66, PendingIntentRecovery 31, Cv2NonCReservationLifecycle 55, G4MixedScope.RepairAndRetry 37, RetryFailedItems 83, RetryFailedItemsBrowser 1, FileScopeIncompleteOwnership 164, G4MixedScope.RetryFailedButton 44, AdoptedExistingOwnership 126. Added for P10: AdoptedExistingOwnership (P10, PLAN 17.103; AssistiveFiles, AssistiveReports, AssistiveRestore, Cutover, Recovery, WizardHtmlRuntime, WizardRuntime, console.js). G4MixedScope -Mutation RetryFailedButton (P8, 44 checks) run as its own record. The main OfflineRestoreJourney was not re-executed in this record (user-run, see openIssues). The stage stays in-progress.",
+      "casesExecuted": 1079,
+      "result": "Rebound to 817765a bytes after P10 (PLAN 17.103) (previous binding p9-rebind-e12ae9f); every command below exited 0 on WinPS 5.1: G2DiscoveryToDelivery 34, G3NonCFailureFreeze 29, G4MixedScope 30, OfflineFullSetSeparateSource 20, ActionExports 203, ManagerCatalogSourceContext 16, OfflineFullSetMaterialWorkspace 12, OfflineFullSetControlsRetry 15, AssistiveCv2NonCConsistency 17, ProductionFlagProjection 48, RetryPartialIndexPreserved 66, PendingIntentRecovery 31, Cv2NonCReservationLifecycle 55, G4MixedScope.RepairAndRetry 37, RetryFailedItems 83, RetryFailedItemsBrowser 1, FileScopeIncompleteOwnership 164, G4MixedScope.RetryFailedButton 44, AdoptedExistingOwnership 126. Added for P10: AdoptedExistingOwnership (P10, PLAN 17.103; AssistiveFiles, AssistiveReports, AssistiveRestore, Cutover, Recovery, WizardHtmlRuntime, WizardRuntime, console.js). G4MixedScope -Mutation RetryFailedButton (P8, 44 checks) run as its own record. The main OfflineRestoreJourney was not re-executed in this record (user-run, see openIssues). The stage stays in-progress. Main offline restore journey bound (PLAN 17.105): the user ran Test-OfflineRestoreJourney -RunId n9g001 at HEAD 1dafc06 in the working tree; PASS, 48 checks all passed, http retries 0, snapshot src digest unchanged and equal to the committed bytes (independently recomputed by the primary agent); verdict embedded in docs/plans/evidence/MIGRATION-7-G-n9g001-journey-1dafc06.json.",
       "limitations": [
         "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
         "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
-        "The main OfflineRestoreJourney (Target restore with resume) was NOT re-executed in this P7 record: it is run by the user (PLAN 17.94, run n9g001) and the binding is added afterwards. The 48-check run n9h001 appears only in PLAN 17.91 and is not bound by this evidence.",
+        "Main journey n9g001 was run once by the user at 1dafc06 (PLAN 17.105); the agents did not run it. It uses fixture doubles for native account writes (PLAN 19.2) and is a single-host run. The earlier 48-check run n9h001 (PLAN 17.91) is not bound.",
         "Release package: only the smoke test and a small seven-step backup-to-restore flow were run on the release package (N9b, PLAN 17.85); it is not the complete G journey. Test-ReleaseWizardSmoke was not re-run in this snapshot because it needs the git index.",
         "G2, G3 and G4 call the core in-process (no HTTP console), use typed adapter doubles instead of real IIS and Task Scheduler, and simulate D/E volumes with subst on a short drive.",
         "Account consumer is a narrow double; the new-machine inventory is a pre-seeded fixture, not a live full capture.",
@@ -10979,7 +10983,8 @@
         "P10 (17.103): the file page recognizes adopted existing files by a Reason prefix (the Fleet FileResults column set is fixed and cannot take a new field); the two wordings are compared by a guard test. A real pending-intent recovery meeting a same-content external file has only the decision basis and static guards, not a behavior test; the CLI is asserted on row content only, not on captured terminal output."
       ],
       "openIssues": [
-        "Re-bind the main offline restore journey: run tests/Test-OfflineRestoreJourney.ps1 -RunId <6 chars> in the working tree (needs git and work/) and add its verdict to this stage.",
+        "Main offline restore journey: bound as n9g001 at 1dafc06 (PLAN 17.105, run by the user). Any later src change makes it stale again; re-run it (by the user) before closing the round.",
+        "Stage G stays in-progress: other journeys beyond G2/G3/G4 and the main journey, the 16.6 media-swap rows, release-package journey coverage and real-machine / enterprise acceptance are not covered.",
         "Four product defects found by N9f (D1 material location, D2 controls retry, D3 Manager catalog source context, D4 CV2 NonC execution guard) are fixed by N9h and G2/G4 no longer use bypasses; P5 (PLAN 17.98) verified the pending-intent exit with doubles (PendingIntentRecovery 31) and end to end (G4 -Mutation RepairAndRetry 37): Resume-WsmWizardTargetRestore refuses a Partial parent by design, Repair-WsmOperation clears the intent, and a restore under a NEW decision receipt retries only the failed item.",
         "Release payload and section 10 deliverables are covered only by the release smoke test (export set, required files, HTML references, small flow) and the offline guide tests, not by a journey; Test-ReleaseNativeLauncher.js needs Playwright in CI.",
         "The 16.6 failure table is only partly covered; media-swap rows are not in a journey script, and lost-202 is covered at route level by StartBackupReplayHttp.",

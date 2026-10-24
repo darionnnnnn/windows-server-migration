@@ -2068,6 +2068,43 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - `Test-OfflineRestoreJourney` 未執行（17.94）。
   - Test-ReleaseWizardSmoke 需要 git 索引，未重跑。
 
+### 17.105 G 主旅程 n9g001 綁進證據帳本（使用者親自執行；以 1dafc06 為準）
+
+- 執行者：使用者本人在專案工作樹以 HEAD 1dafc06 執行 `powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineRestoreJourney.ps1 -RunId n9g001`，輸出為 `PASS: offline restore journey (run n9g001, 48 checks, http retries 0)`。先前代理執行時被權限分類器拒絕（17.92／17.94），代理沒有代為執行，本段也沒有重跑。
+- 主代理核對 `work/r7/g-journey/n9g001/verdict.json`，並親自重算 src 摘要：
+  - RunId 為 n9g001，Overall 為 Passed，Checks 正好 48 項且全部 Passed，HttpRetries 為 0。
+  - StartedUtc 是 06:55Z（14:55 +08:00），晚於 1dafc06 的 commit 時間 14:31，而且工作樹乾淨。
+  - TestBytes 中 4 支旅程測試檔的 SHA-256 與目前已提交的檔案相同。
+  - src 摘要用同一演算法計算（相對路徑｜SHA-256，依大小寫排序，以 LF 串接後再取 SHA-256），涵蓋已提交的 106 個 src 檔，結果為 `9aea4aea…`，與 verdict 的 SrcDigestBefore、SrcDigestAfter、CommittedWorkingTreeDigest 都相同。這證明受測的是 1dafc06 的位元組。
+  - verdict 內 `snapshot_src_equals_committed_bytes` 與 `snapshot_src_digest_unchanged_and_equals_committed` 都是 True。
+- 綁定方式：
+  - 新增 `docs/plans/evidence/MIGRATION-7-G-n9g001-journey-1dafc06.json`，內容包括：
+    - verdict 原檔的 SHA-256。
+    - 整份 verdict 內嵌（`work/` 不進 git）。
+    - 執行者、核對方式與限制。
+  - G 階段：
+    - evidence 加入這個檔案，以 LF 摺疊雜湊綁定；舊證據檔不動。
+    - casesExecuted 由 1031 加 48 變成 1079。
+    - result 補上一句說明。
+    - openIssues 的「待重綁主旅程」改寫為「已綁定 n9g001；之後 src 再改就會過期，收尾前需由使用者重跑」。
+    - limitations 的「主旅程未執行」改寫為「使用者執行一次、原生帳號寫入用 fixture 替身（19.2）、單機」。
+  - 綁定前先確認 G 的 inputs 中 4 支旅程測試檔的雜湊仍與目前檔案相符。
+- G 狀態維持 in-progress，不誇大涵蓋範圍。仍未涵蓋的有：
+  - G2、G3、G4 與主旅程以外的其他旅程。
+  - 16.6 的換媒體列。
+  - 發行包的旅程。
+  - 實機與企業驗收。
+  - 這一點也寫進 openIssues。
+- 驗證：
+  - `tools/Test-PlanEvidence.ps1 -Stage` 抽驗 A1、C1、D3a、E3b、F3、F4b，全部 PASS。G 回報 `is not implemented`，符合預期。
+  - 工具不驗 in-progress 階段的雜湊，所以主代理另外用腳本核對 20 個階段（含 in-progress）的 inputs、evidence、evidenceLog LF 雜湊，0 個不符。
+- 突變：把新證據檔內嵌 verdict 的 `Overall` 改成 Failed 後，核對腳本回報 G 的證據檔過期（rc=1）。以備份還原並用 cmp 確認後，恢復為 0 個不符。
+- 限制：
+  - 這是單機、單次的執行。
+  - 原生帳號寫入用的是 fixture 替身。
+  - 沒有 PS7。
+  - 主代理核對的是 verdict 內容與 src 摘要，沒有重跑旅程。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
