@@ -177,6 +177,24 @@ try {
       param($c)$s=$c.State;$record=@($s.Items|Where-Object ItemId -CEQ 'r1');$record[0].Status='RolledBack';$record[0].CreatedByTool=$false;$record[0]|Add-Member NoteProperty UpdatedByTool $false -Force;$s.PendingOperations=@($s.PendingOperations|Where-Object ItemId -CNE 'r1')
       Add-WsmJournal $c.Paths $s 'RollbackCompleted' 'r1' ([pscustomobject]@{Status='RolledBack'})
     } @('Items','PendingOperations')
+    # R2: a rollback releases the ownership it undid (AssistiveRollbackOwnershipReleased). Live writer and replay call the same Remove-WsmAssistiveRolledBackOwnership; rows outside the rollback vector (AdoptedExisting) stay.
+    $ownedA=[pscustomobject]@{RelativePath='a.txt';TargetPath='D:\data\a.txt';SHA256=('1'*64);MetadataHash=('3'*64);Backup='';BackupHash='';Generation=[long]1}
+    $ownedAdopted=[pscustomobject]@{RelativePath='keep.txt';TargetPath='D:\data\keep.txt';SHA256=('2'*64);MetadataHash=('4'*64);Backup='';BackupHash='';Generation=[long]1;Ownership='AdoptedExisting'}
+    $ownedDirectory=[pscustomobject]@{RelativePath='';TargetPath='D:\data';MetadataHash=('5'*64);CreatedByTool=$true;Generation=[long]1}
+    Invoke-ReplayScenario 'rollback-ownership-released-keeps-adopted' {param($s,$c)$s.Stage='RollbackRunning';$s.Items=@([pscustomobject]@{ItemId='r2';Status='Succeeded';CreatedByTool=$true;ActualHash=('9'*64);OwnedFiles=@($ownedA,$ownedAdopted);OwnedDirectories=@($ownedDirectory)});$s.PendingOperations=@([pscustomobject]@{ItemId='r2';Phase='RollbackAssistiveFiles'})} {
+      param($c)$s=$c.State;Remove-WsmAssistiveRolledBackOwnership $s 'r2' ([string[]]@('a.txt'))
+      Add-WsmJournal $c.Paths $s 'AssistiveRollbackOwnershipReleased' 'r2' ([pscustomobject]@{ItemId='r2';ReleasedFiles=[string[]]@('a.txt');ReleasedDirectories=[string[]]@('')})
+    } @('Items','PendingOperations')
+    $releasedProbe=[pscustomobject]@{Items=@([pscustomobject]@{ItemId='r2';Status='Succeeded';CreatedByTool=$true;ActualHash=('9'*64);OwnedFiles=@($ownedA,$ownedAdopted);OwnedDirectories=@($ownedDirectory)},[pscustomobject]@{ItemId='other';Status='Succeeded';CreatedByTool=$true;OwnedFiles=@($ownedA);OwnedDirectories=@($ownedDirectory)})}
+    Remove-WsmAssistiveRolledBackOwnership $releasedProbe 'r2' ([string[]]@('a.txt'))
+    $probeRow=@($releasedProbe.Items|Where-Object ItemId -CEQ 'r2')[0];$otherRow=@($releasedProbe.Items|Where-Object ItemId -CEQ 'other')[0]
+    Check (@($probeRow.OwnedFiles).Count -eq 1 -and $probeRow.OwnedFiles[0].RelativePath -ceq 'keep.txt' -and $probeRow.OwnedFiles[0].Ownership -ceq 'AdoptedExisting' -and @($probeRow.OwnedDirectories).Count -eq 0 -and $probeRow.ActualHash -ceq (Get-WsmAssistiveFileOwnershipHash @($ownedAdopted))) 'rollback-ownership-released: the helper must drop only the rolled-back file, keep the adopted row, clear directories and recompute ActualHash.'
+    Check (@($otherRow.OwnedFiles).Count -eq 1 -and @($otherRow.OwnedDirectories).Count -eq 1) 'rollback-ownership-released: the helper touched another item.'
+    $ownedSingle=[pscustomobject]@{RelativePath='';TargetPath='D:\data\one.bin';SHA256=('6'*64);MetadataHash=('7'*64);Backup='';BackupHash='';Generation=[long]1}
+    Invoke-ReplayScenario 'rollback-ownership-released-single-file-scope' {param($s,$c)$s.Stage='RollbackRunning';$s.Items=@([pscustomobject]@{ItemId='r3';Status='Succeeded';CreatedByTool=$true;OwnedFiles=@($ownedSingle);OwnedDirectories=@()});$s.PendingOperations=@([pscustomobject]@{ItemId='r3';Phase='RollbackAssistiveFiles'})} {
+      param($c)$s=$c.State;Remove-WsmAssistiveRolledBackOwnership $s 'r3' ([string[]]@(''))
+      Add-WsmJournal $c.Paths $s 'AssistiveRollbackOwnershipReleased' 'r3' ([pscustomobject]@{ItemId='r3';ReleasedFiles=[string[]]@('');ReleasedDirectories=[string[]]@()})
+    } @('Items','PendingOperations')
     Invoke-ReplayScenario 'noncfile-results-imported' {param($s,$c)} {
       param($c)$s=$c.State;$rows=@([pscustomobject]@{ItemId='n1';Status='Applied';EffectivePath='D:\data';Generation=3})
       $s|Add-Member NoteProperty AssistiveFileResults @($rows) -Force

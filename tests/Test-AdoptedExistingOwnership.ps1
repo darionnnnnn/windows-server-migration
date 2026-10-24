@@ -63,6 +63,7 @@ try {
             'Recovery.ps1:Complete-WsmAssistiveOperationRepair'='intent recovery: rows are tool-owned (the intent is the proof); no Ownership written'
             'Recovery.ps1:Complete-WsmAssistiveFileScopeOwnershipRepair'='the only producer of AdoptedExisting'
             'Recovery.ps1:Get-WsmRollbackPreview'='adopted rows are never blocked, only reported'
+            'Recovery.ps1:Remove-WsmAssistiveRolledBackOwnership'='R2: rollback releases the rolled-back per-file ownership; rows outside the rollback vector (AdoptedExisting) are kept verbatim'
             'Recovery.ps1:Invoke-WsmRollback'='adopted rows are excluded from the per-file rollback vector'
             'WizardRuntime.ps1:Get-WsmWizardTargetItemOptions'='projection: adoptedExistingCount/Note'
         }
@@ -345,8 +346,7 @@ try {
             Check ($htmlAdopt.Count -eq 1 -and [int]$htmlAdopt[0].adoptedExistingCount -eq 1 -and [string]$htmlAdopt[0].adoptedExistingNote -ceq $noteText -and $htmlPlain.Count -eq 1 -and [int]$htmlPlain[0].adoptedExistingCount -eq 0) 'B8: the HTML-allowed runtime projection drops the adopted count/note or shows it for a normal item.'
 
             # ---- B9. rollback preview, then the real rollback ----
-            # the rollback preview reads $r[0].Backup, which per-file FileScope records do not carry; production code runs without strict mode, so this block does too.
-            Set-StrictMode -Off
+            # R1：這個區塊與整支測試一樣在 Set-StrictMode -Version Latest 下執行；回復預覽對沒有 Backup 欄位的逐檔 FileScope 紀錄有屬性守門。
             $rp=Get-WsmRollbackPreview $targetImport.ManifestPath $targetImport.ManifestHash $stateDirectory
             $rpRows=@{};foreach($row in @($rp.Rows)){$rpRows[[string]$row.ItemId]=$row}
             Check (@($rp.Rows|Where-Object Blocked).Count -eq 0) ('B9: the rollback preview is blocked although adopted files must never block it: '+(@($rp.Rows|Where-Object Blocked|ForEach-Object {$_.Reason}) -join ';'))
@@ -364,7 +364,7 @@ try {
             Check (@($retainedHashes|Where-Object {$_ -ceq $beforeRollback.a2 -or $_ -ceq $beforeRollback.sfabsent -or $_ -ceq $beforeRollback.d2 -or $_ -ceq $plainBeforeRollback}).Count -eq 4) 'B9: the displaced tool-written files are not retained next to their targets.'
             $state4=StateNow
             foreach($k in @('adopt','drift','plain','sfabsent','sfsame')){$r=RowOf $state4 $k;Check ($r.Count -eq 1 -and [string]$r[0].Status -ceq 'RolledBack' -and $r[0].CreatedByTool -eq $false) ('B9: '+$k+' is not retired by the rollback.')}
-            $a4=OwnedOf $state4 'adopt';Check ($a4.Count -eq 2 -and (OwnClass (@($a4|Where-Object {[string]$_.RelativePath -ceq 'a1.bin'})[0])) -ceq 'AdoptedExisting') 'B9: the rolled-back record lost the adopted class of a1.'
+            $a4=OwnedOf $state4 'adopt';Check ($a4.Count -eq 1 -and [string]$a4[0].RelativePath -ceq 'a1.bin' -and (OwnClass $a4[0]) -ceq 'AdoptedExisting') 'B9: the rolled-back record must keep only the adopted a1 (R2: the tool-written a2 ownership is released by the rollback, the adopted class is not).'
             # the four unresolved single-file cases keep their original bytes
             Check ((Tree $targets.sfdiff) -ceq $untouched.sfdiff -and (Tree $targetRoots.sfdirocc) -ceq $untouched.sfdirocc -and (Tree $junctionDestination) -ceq $untouched.junction -and (Sha $targets.sfunread) -ceq $untouched.sfunread) 'B9: rollback changed a preserved single-file case (different bytes / directory / junction / unreadable).'
             Check ((Test-WsmJournal $stateDirectory $pair).Consistent) 'B9: the journal is inconsistent after rollback.'

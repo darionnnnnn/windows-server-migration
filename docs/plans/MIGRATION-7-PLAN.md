@@ -2164,6 +2164,50 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - journal 需要 Repair 時，核對會直接丟例外，不會只做部分核對。
   - 沒有 PS7。
 
+### 17.108 R1＋R2 回復路徑：預覽的 strict 守門、回復後可再還原（體檢 P1）
+
+- 規格：`work/r7/specs/R1R2-rollback-path.md`。Sonnet 5.5 effort high subagent 實作；主代理審查 diff、追查一支第七輪造成的測試回歸、另做一個突變，並獨立重跑（含 subagent 沒跑的 Edge 測試）。
+- **R1（回復預覽在 strict mode 下丟例外）**：
+  - 原因：`Get-WsmRollbackPreview` 會讀取 `$r[0].Backup`、`$r[0].OwnedDirectories`，但逐檔 FileScope 的紀錄沒有這兩個欄位，strict mode 下 CLI 選單 10 一進入預覽就丟出 PropertyNotFoundStrict。
+  - 修法：三處加屬性守門，欄位不存在時視為「沒有備份檔」或「未擁有」：
+    - Get-WsmRollbackPreview
+    - Invoke-WsmRollback 的 OwnedDirectories
+    - Test-WsmRollbackRecordOwnership 的 CreatedByTool
+  - P10 測試中為了繞過錯誤而加的 `Set-StrictMode -Off` 與不實註解已刪除；該測試的 B9 斷言改為「回復後只剩沿用的檔案」，原本的斷言正好在驗證缺陷行為。
+- **R2（回復後再還原，全部變成 BlockedConflict）**：
+  - 原因：回復只把 Status 設成 RolledBack，沒有釋放擁有紀錄。寫入器遇到「有擁有紀錄、但檔案不存在」就判 BlockedConflict，可是 N1、預覽與選項沒有同樣的判斷，結果三處都顯示可還原，寫入器卻擋下。
+  - 修法：
+    - 新增 helper `Remove-WsmAssistiveRolledBackOwnership`。回復時移除回復向量內的 OwnedFiles 列，清空 OwnedDirectories，並重算 ActualHash。AdoptedExisting 不在回復向量內，該列保留，再還原時沿用既有檔。
+    - 新增 journal action `AssistiveRollbackOwnershipReleased`，寫在 RollbackCompleted 之前，replay 呼叫同一個 helper，已登錄於 JournalReplayCoverage（共 79 個 action）。兩筆之間若中斷，Repair 重跑仍得到相同結果（冪等）。
+    - 新增唯一判定 `Test-WsmAssistiveOwnedFileAbsentConflict`。寫入器與 N1 都呼叫它，AST 守門確認兩邊同源。N1 因此新增「有擁有紀錄但檔案不存在 → BlockedConflict」。
+    - 重試候選在 stage=RolledBack 時回傳專屬代碼 `RolledBack`。這是 R12 的部分處理，文案在 R12 補齊。
+- **主代理發現：第七輪造成的測試回歸，已修**：
+  - 現象：`Test-AssistiveDirectoryReadback` 在 27d87ee^ 通過（10 項），自 N5（27d87ee）起失敗。它不在第六輪基準的 8 支失敗名單中。
+  - 原因：測試 fixture 把 `Package.Root` 設為測試根目錄，所有還原目的都在它底下，N5 新增的「備份媒體與還原目的重疊」檢查正確地拒絕了這個配置。
+  - 修法：只改測試，把封裝根放到獨立子目錄，產品行為不變。修正後通過，10 項。
+  - 遺漏原因：17.71 的全量歸因早於 N5，之後各段只跑規格列出的測試。日後收尾前要再跑一次全量歸因（列入全量測試步驟）。
+- 測試：新增 `Test-RollbackThenRestore.ps1`（94 項，全程 strict mode），涵蓋以下流程：
+  - 還原 → 回復預覽（實跑 CLI 選單 10 的函式）→ 回復。
+  - 回復後再還原成功，位元組正確。
+  - 混合 AdoptedExisting 的情境。
+  - 回復後，選項、預覽、重試、寫入器四方判定一致，包括「擁有但檔案不存在」。
+  - journal 重播結果逐列一致。
+  - `Test-JournalReplayCoverage` 新增 2 個重播情境。
+- 突變（皆轉紅）：
+  - subagent：預覽直接讀 Backup、回復不清檔案列、回復不清目錄列、略過釋放呼叫、N1 與寫入器各寫一份（兩種）、N1 拿掉判斷、回復刪掉 AdoptedExisting、釋放時丟掉沿用列。
+  - 主代理：新 action 的 replay 改為不動作。RollbackThenRestore 與 JournalReplayCoverage 都轉紅（replay 的 Items 與即時結果不同）。
+- 驗證（主代理重跑）：
+  - PowerShell：RollbackThenRestore 94、AdoptedExistingOwnership 122、AssistiveDirectoryReadback 10、AssistiveRollback 16、RollbackRecovery、SettingTransitionRecovery、RecoveryContracts、FileScopeIncompleteOwnership 164、PostRestoreRecheck 109、RetryFailedItems 83、RestorableSet 199、AssistiveRestore 178、JournalReplayCoverage 431、WizardRestore 132、WizardRuntime 182、ScriptEncoding。
+  - G4：30。
+  - 前端：AssistiveUi（node --test）。
+  - Edge：RetryFailedItemsBrowser、RestorableSetBrowser、F1AcceptanceBrowser。
+  - subagent 另外跑過所有呼叫端測試，包括 CancellationWorkflow、TaskSecurityWorkflow、MigrationPipeline、ExactMembers、DeltaWorkflow 等。
+- 限制：
+  - 第 2 代以上的回復（檔案有 Backup）之後再還原：先前世代的位元組會被視為外部檔，判為 BlockedConflict。這是保守做法，未加測試。
+  - 修正前產生的已回復 state 沒有遷移。
+  - 型別化 adapter 的回復未改動。
+  - CLI 沒有走真實終端。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -2376,3 +2420,5 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 
 | 編號 | 哪裡 | 症狀 | 修法 | 迴歸測試 | commit |
 |---|---|---|---|---|---|
+| R1 | `src/Recovery.ps1` Get-WsmRollbackPreview、Invoke-WsmRollback、Test-WsmRollbackRecordOwnership；`tests/Test-AdoptedExistingOwnership.ps1` | CLI 選單 10 一進回復預覽就在 strict mode 下丟 PropertyNotFound（讀 Backup／OwnedDirectories／CreatedByTool）；測試用 `Set-StrictMode -Off` 繞過 | 三處屬性守門（沒有欄位＝無備份／未擁有）；刪 `-Off` 與不實註解（17.108） | `Test-RollbackThenRestore`（strict 全程，實跑選單 10 預覽）；`Test-AdoptedExistingOwnership` 不關 strict 通過 | （R1R2-COMMIT） |
+| R2 | `src/Recovery.ps1` Complete-WsmAssistiveFileRollback、`src/JournalRecovery.ps1`、`src/AssistiveRestore.ps1` 寫入器與 N1、`src/WizardRestore.ps1` | 回復後再還原全部 BlockedConflict，但選項可還原、預覽 Ready、重試不顯示 | 回復時釋放回復向量內的擁有紀錄（AdoptedExisting 保留），新 journal action `AssistiveRollbackOwnershipReleased`；「擁有但不存在」單一判定供寫入器與 N1 共用（17.108） | `Test-RollbackThenRestore`（還原→回復→再還原、四方一致、重播一致）、`Test-JournalReplayCoverage` +2 情境 | （R1R2-COMMIT） |
