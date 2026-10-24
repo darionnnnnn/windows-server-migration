@@ -321,8 +321,13 @@ function Get-WsmWizardRestorableReason([string]$Code,$Gap) {
         'PermissionDenied' {return [string]$Gap.Reason}
         'InsufficientCapacity' {
             if($Gap.PSObject.Properties['Root'] -and $Gap.PSObject.Properties['RequiredBytes'] -and [long]$Gap.AvailableBytes -ge 0){
-                $needMib=[math]::Ceiling([double]$Gap.RequiredBytes/1MB);$freeMib=[math]::Floor([double]$Gap.AvailableBytes/1MB)
-                return ('目標磁碟 '+[string]$Gap.Root+' 空間不足：同一磁碟上全部可還原項目合計需要約 '+$needMib+' MiB（含 256 MiB 緩衝），目前可用約 '+$freeMib+' MiB。')
+                # 「約」N MiB 以四捨五入顯示（需求含數十 KiB 的回復保留，不再進位成多 1 MiB）；判定本身用精確位元組。
+                $needMib=[math]::Round([double]$Gap.RequiredBytes/1MB);$freeMib=[math]::Floor([double]$Gap.AvailableBytes/1MB)
+                # Q3：寫明計入了哪些項目（寫入、staging、回復保留）；B6：已還原項目不計入合計。
+                $detail='';if($Gap.PSObject.Properties['WriteBytes']){$detail=' 計入項目：'+(Get-WsmAssistiveCapacityBreakdownText ([long]$Gap.WriteBytes) ([long]$Gap.StagingBytes) ([long]$Gap.RecoveryBytes))+'。'}
+                if($Gap.PSObject.Properties['RestoredCount'] -and [long]$Gap.RestoredCount -gt 0){$detail+=' 已還原的 '+[long]$Gap.RestoredCount+' 項不計入合計。'}
+                if($Gap.PSObject.Properties['Scope'] -and [string]$Gap.Scope -ceq 'Item'){return ('目標磁碟 '+[string]$Gap.Root+' 空間不足：這個項目單獨就需要約 '+$needMib+' MiB（含 256 MiB 緩衝），目前可用約 '+$freeMib+' MiB。'+$detail)}
+                return ('目標磁碟 '+[string]$Gap.Root+' 空間不足：同一磁碟上全部可還原項目合計需要約 '+$needMib+' MiB（含 256 MiB 緩衝），目前可用約 '+$freeMib+' MiB。'+$detail)
             }
             return [string]$Gap.Reason
         }
@@ -355,15 +360,18 @@ function Get-WsmWizardTargetRestorableGaps($Context,$PackageRecord,$State) {
     $rowsById=@{};foreach($candidate in $candidates){$rowsById[[string]$candidate.ItemId]=New-Object 'System.Collections.Generic.List[object]'}
     Read-WsmArtifactLines (Join-Path ([string]$verified.Root) 'artifacts.jsonl') ([string]$verified.Manifest.ArtifactsHash) | ForEach-Object {$rowId=[string]$_.ItemId;if($rowsById.ContainsKey($rowId)){$rowsById[$rowId].Add($_)}}
     $capacityCandidates=New-Object 'System.Collections.Generic.List[object]'
+    # B6：已還原項目與預覽用同一個判定（Get-WsmAssistiveRestoredItemIdSet），容量加總不計入它們。
+    $restoredSet=Get-WsmAssistiveRestoredItemIdSet $gapState $(if($PackageRecord.PSObject.Properties['ManifestHash']){[string]$PackageRecord.ManifestHash}else{''})
     foreach($candidate in $candidates){
         $candidateId=[string]$candidate.ItemId
-        try{$gap=Get-WsmAssistiveFileScopeRestoreGap $candidate $verified $gapState $cv2 @($rowsById[$candidateId].ToArray())}
+        try{$gap=Get-WsmAssistiveFileScopeRestoreGap $candidate $verified $gapState $cv2 @($rowsById[$candidateId].ToArray()) $null ([bool]$restoredSet.ContainsKey($candidateId))}
         catch{$gap=[pscustomobject]@{Action='Blocked';Status='Blocked';Reason='Target path could not be verified safely.';Capacity=$null}}
         if([string]$gap.Status -cne 'Ready'){$code=ConvertTo-WsmWizardRestorableCode ([string]$gap.Action);$gaps[$candidateId]=[pscustomobject]@{Code=$code;Reason=(Get-WsmWizardRestorableReason $code $gap)};continue}
         if($gap.Capacity){$capacityCandidates.Add($gap.Capacity)}
     }
     # 容量依卷加總（17.62）：以「全部可還原項目都選取」為前提；某卷不夠時，該卷上會寫入的項目全部標 InsufficientCapacity。
-    foreach($volumeResult in @(Get-WsmAssistiveVolumeCapacityResults $capacityCandidates.ToArray())){
+    # Q3：寫入、另磁碟 staging、回復保留各計入實際占用的磁碟（workspace 磁碟以封裝所在磁碟代表，與預覽一致）；B6：已還原項目不計入，單項過大只標該項。
+    foreach($volumeResult in @(Get-WsmAssistiveVolumeCapacityResults $capacityCandidates.ToArray() ([string]$verified.Root))){
         $volumeCode=ConvertTo-WsmWizardRestorableCode ([string]$volumeResult.Action)
         $gaps[[string]$volumeResult.ItemId]=[pscustomobject]@{Code=$volumeCode;Reason=(Get-WsmWizardRestorableReason $volumeCode $volumeResult)}
     }

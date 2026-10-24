@@ -385,10 +385,12 @@ function Get-WsmAssistiveRestorePreview {
         if(-not [bool]$_.Directory){$artifactTotals[$totalId].Files++;if($_.PSObject.Properties['Data'] -and $_.Data -and $_.Data.PSObject.Properties['Bytes']){$artifactTotals[$totalId].Bytes+=[long]$_.Data.Bytes}}
     }}
     $planItemsById=@{};foreach($planItem in @($package.Plan.Items)){$planItemsById[[string]$planItem.ItemId]=$planItem}
-    $pendingIds=@{};if($state.PSObject.Properties['PendingOperations']){foreach($pendingOp in @($state.PendingOperations)){if($pendingOp -and $pendingOp.PSObject.Properties['ItemId']){$pendingIds[[string]$pendingOp.ItemId]=$true}}}
-    $restoredIds=@{};foreach($stateItem in @($state.Items)){if($stateItem -and $stateItem.PSObject.Properties['ItemId'] -and [string]$stateItem.Status -ceq 'Succeeded' -and $stateItem.PSObject.Properties['AppliedManifestHash'] -and [string]$stateItem.AppliedManifestHash -ieq $ExpectedHash -and -not $pendingIds.ContainsKey([string]$stateItem.ItemId)){$restoredIds[[string]$stateItem.ItemId]=$true}}
+    # B6（R26-B6）：「已還原」只有一個判定（Get-WsmAssistiveRestoredItemIdSet；Target 選項的容量判定也呼叫它）。已還原項目不計入同磁碟的容量加總。
+    $restoredIds=Get-WsmAssistiveRestoredItemIdSet $state $ExpectedHash
     # 會寫入的 FileScope 項目先登記（所在卷、所需位元組），迴圈結束後依卷加總再比對一次容量。
     $capacityCandidates=New-Object 'System.Collections.Generic.List[object]'
+    # Q3：已驗證封裝的匯入資料夾就在新機 WorkRoot（journal、狀態也在其下的 pairs），以它所在磁碟代表 workspace 磁碟。
+    $workspaceRoot='';if($package.PSObject.Properties['Root'] -and $package.Root){$workspaceRoot=[string]$package.Root}
     foreach($item in @($package.Plan.Items)){
         Assert-WsmCancellationBoundary $CancellationToken 'AssistiveRestorePreviewItem'
         if(-not $selected.ContainsKey([string]$item.ItemId)){$deferredRow=[pscustomobject]@{ItemId=$item.ItemId;Adapter=$item.MigrationSpec.Adapter;Action='DeferredBySelection';Status='Deferred';Reason='This approved item was not selected in the current target decision receipt.'};Add-WsmAssistivePreviewDisplayFields $deferredRow $item $artifactTotals $selected $planItemsById $restoredIds;$deferredRow.MissingDependencies=[string[]]@();$rows.Add($deferredRow);continue}
@@ -401,7 +403,7 @@ function Get-WsmAssistiveRestorePreview {
             elseif($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'External'){$action='ExternalManual';$status='ManualEvidenceRequired';$reason='This selected workload depends on an external/non-C location; retain the source reference and complete the reviewed owner-managed transfer/readback procedure.'}
             elseif($spec.Adapter -eq 'FileScope' -and $spec.TransferChannel -eq 'NonC' -and -not $cv2){$action='DeferredNonC';$status='Deferred';$reason='Required non-C content must have a current trusted D result and live readback before G can mark the workload complete.';if($nonCError){$reason='D evidence validation/readback remains incomplete: '+$nonCError};if($nonCRows.ContainsKey([string]$item.ItemId)){$nonc=$nonCRows[[string]$item.ItemId];$status=[string]$nonc.Status;$reason=[string]$nonc.Reason;if($status -ceq 'Ready'){$action='AcceptVerifiedNonC';$reason='D result is bound to the final package and every required native target file/directory has verified live readback.'}else{$action='DeferredNonC'}}}
             elseif($spec.Adapter -eq 'FileScope'){
-                $fileGap=Get-WsmAssistiveFileScopeRestoreGap $item $package $state $cv2 $null $CancellationToken
+                $fileGap=Get-WsmAssistiveFileScopeRestoreGap $item $package $state $cv2 $null $CancellationToken ([bool]$restoredIds.ContainsKey([string]$item.ItemId))
                 $action=$fileGap.Action;$status=$fileGap.Status;$reason=$fileGap.Reason
                 if($fileGap.Capacity){$capacityCandidates.Add($fileGap.Capacity)}
             }elseif($spec.Adapter -in @('IISSection','IISLocation')){
@@ -422,8 +424,9 @@ function Get-WsmAssistiveRestorePreview {
         $previewRow=[pscustomobject]@{ItemId=$item.ItemId;Name=$item.Name;Adapter=$spec.Adapter;Action=$action;Status=$status;Reason=$reason;Rollback='Per-item journal; exact owned state only';RebootPossible=($spec.Adapter -eq 'WindowsFeature')};$previewCredential=$null;if([string]$spec.Adapter -cin @('Service','ScheduledTask','IISPool')){try{$previewCredential=Get-WsmAdapterCredentialRequirement $spec}catch{$previewCredential=$null}};if($previewCredential){$previewRow|Add-Member NoteProperty CredentialRequired $true;$previewRow|Add-Member NoteProperty CredentialKind ([string]$previewCredential.Kind)};Add-WsmAssistivePreviewDisplayFields $previewRow $item $artifactTotals $selected $planItemsById $restoredIds;Add-WsmAssistiveFileDispositionDisplayFields $previewRow $fileGap;$rows.Add($previewRow)
     }
     # 容量依目標卷加總：同一磁碟上所有會寫入的已選項目合計後只比對一次（舊流程 Restore.ps1 亦先依磁碟根加總）。
+    # Q3：寫入、另磁碟的 staging、回復保留各自計入「實際占用的磁碟」；B6：已還原項目不計入合計，單項過大只擋該項。
     # 單看各項都夠、合計不夠時，該卷上所有會寫入的項目一律標 AddTargetCapacity。
-    foreach($volumeResult in @(Get-WsmAssistiveVolumeCapacityResults $capacityCandidates.ToArray())){
+    foreach($volumeResult in @(Get-WsmAssistiveVolumeCapacityResults $capacityCandidates.ToArray() $workspaceRoot)){
         $volumeRow=@($rows.ToArray() | Where-Object {[string]$_.ItemId -ceq [string]$volumeResult.ItemId})
         if($volumeRow.Count -ne 1){continue}
         if($volumeResult.Error){$volumeRow[0].Action='Blocked';$volumeRow[0].Status='Blocked';$volumeRow[0].Reason='Target path could not be verified safely.';$problems.Add([pscustomobject]@{ItemId=$volumeResult.ItemId;Reason=$volumeRow[0].Reason})}
@@ -447,11 +450,50 @@ function Get-WsmAssistiveTargetMissingVolumeGap([string]$TargetPath) {
     if(-not [IO.Directory]::Exists($root)){return [pscustomobject]@{Action='PrepareSameLocation';Status='Deferred';Reason=('目標主機缺少 '+$root+' 磁碟或掛載點；請準備相同位置後重新檢查。工具不會改寫到其他磁碟。')}}
     return $null
 }
+function Get-WsmAssistiveCapacityRequiredBytes([long]$WriteBytes,[long]$StagingBytes=0,[long]$RecoveryBytes=0) {
+    # Q3：容量需求的唯一算式＝原位置寫入＋「另一個磁碟上」的 staging＋回復保留，再加 256 MiB 緩衝。
+    # 預覽、Target 選項（可還原集合）與單項檢查（Get-WsmAssistiveVolumeCapacityGap）都經這個函式，沒有第二份。
+    [long]($WriteBytes + $StagingBytes + $RecoveryBytes + 256MB)
+}
+function Get-WsmAssistiveStagingLocation([string]$TargetPath) {
+    # Q3：還原寫入前的 staging 檔放在哪個磁碟的觀測縫。
+    # 正式行為（Invoke-WsmAssistiveFileScopeRestore 的 $staging＝$dest+'.wsm-<guid>.tmp'；Restore-WsmPayloadBytes 先寫 <guid>.partial 再改名成它）是
+    # 與目的檔同目錄的兄弟檔，所以恆在目的地所在磁碟；它以改名（非複製）成為最終檔，空間已含在寫入量內，同磁碟時不重複計。
+    # 若 staging 改放到別的磁碟，Get-WsmAssistiveCapacityPieces 會把「單一最大檔」另計到該磁碟。
+    [pscustomobject]@{Root=[IO.Path]::GetPathRoot([IO.Path]::GetFullPath($TargetPath));Key=(Get-WsmAssistiveTargetVolumeKey $TargetPath)}
+}
+function Get-WsmAssistiveRecoveryReserveBytes([long]$FileCount) {
+    # Q3：必要回復空間。覆寫既有檔時舊檔以改名（同目錄 .wsm-assistive-backup-*）保留，不另占空間（Invoke-WsmAssistiveFileScopeRestore 的 [IO.File]::Move），
+    # 回復（Complete-WsmAssistiveFileRollback）也只是改名，所以不計舊檔位元組；真正需要的是 journal（意圖／已備份／完成）、
+    # 暫止意圖與每檔擁有紀錄（含 metadata／SDDL）、狀態檔改寫所需的空間，寫在 workspace 所在磁碟。
+    # 每個會寫入的檔案固定預留 16 KiB（約為 4 筆 journal 與 1 筆擁有紀錄的實測量級的數倍，偏保守）。
+    if($FileCount -le 0){return [long]0}
+    [long]($FileCount * 16KB)
+}
+function Format-WsmAssistiveMiB([long]$Bytes) {
+    if($Bytes -le 0){return '0'}
+    if($Bytes -lt 1MB){return '不到 1'}
+    [string][math]::Ceiling($Bytes/1MB)
+}
+function Get-WsmAssistiveCapacityBreakdownText([long]$WriteBytes,[long]$StagingBytes,[long]$RecoveryBytes) {
+    # 原因文字用：寫明這一次計入了哪些項目。
+    ('寫入 '+(Format-WsmAssistiveMiB $WriteBytes)+' MiB（含同磁碟的 staging：staging 檔以改名成為最終檔）、另一個磁碟上的 staging '+(Format-WsmAssistiveMiB $StagingBytes)+' MiB、回復保留（journal、狀態與回復紀錄）'+(Format-WsmAssistiveMiB $RecoveryBytes)+' MiB，另加 256 MiB 緩衝')
+}
+function Get-WsmAssistiveRestoredItemIdSet($State,[string]$ManifestHash) {
+    # B6（R26-B6）：「已還原」的唯一判定。預覽（Get-WsmAssistiveRestorePreview）與 Target 選項的容量判定（Get-WsmWizardTargetRestorableGaps）共用。
+    # 已還原＝狀態紀錄 Succeeded、套用的是目前這份封裝（AppliedManifestHash），且沒有未解決的暫止意圖。
+    $restored=@{}
+    if($null -eq $State -or -not $State.PSObject.Properties['Items']){return $restored}
+    $pendingIds=@{};if($State.PSObject.Properties['PendingOperations']){foreach($pendingOp in @($State.PendingOperations)){if($pendingOp -and $pendingOp.PSObject.Properties['ItemId']){$pendingIds[[string]$pendingOp.ItemId]=$true}}}
+    foreach($stateItem in @($State.Items)){if($stateItem -and $stateItem.PSObject.Properties['ItemId'] -and [string]$stateItem.Status -ceq 'Succeeded' -and $stateItem.PSObject.Properties['AppliedManifestHash'] -and [string]$stateItem.AppliedManifestHash -ieq $ManifestHash -and -not $pendingIds.ContainsKey([string]$stateItem.ItemId)){$restored[[string]$stateItem.ItemId]=$true}}
+    $restored
+}
 function Get-WsmAssistiveVolumeCapacityGap([string]$Root,[long]$TotalBytes) {
-    # 預覽與單項檢查共用的容量判定：該卷可用空間必須大於同卷已選項目合計需求加 256 MiB 緩衝。
+    # 預覽與單項檢查共用的容量判定：該卷可用空間必須大於同卷已選項目合計需求加 256 MiB 緩衝（算式見 Get-WsmAssistiveCapacityRequiredBytes）。
     # 另帶出卷代號與需要量／可用量（只供可還原集合顯示；預覽列的 Reason 文字不變）。
     $available=[long](Get-WsmAvailableBytes $Root)
-    if($available -lt ($TotalBytes + 256MB)){return [pscustomobject]@{Action='AddTargetCapacity';Status='Deferred';Reason=('目標磁碟 '+$Root+' 可用空間不足（同一磁碟上已選項目合計約 '+[math]::Ceiling($TotalBytes/1MB)+' MiB）；請釋出空間後重新檢查。');Root=$Root;RequiredBytes=[long]($TotalBytes + 256MB);AvailableBytes=$available}}
+    $required=Get-WsmAssistiveCapacityRequiredBytes $TotalBytes
+    if($available -lt $required){return [pscustomobject]@{Action='AddTargetCapacity';Status='Deferred';Reason=('目標磁碟 '+$Root+' 可用空間不足（同一磁碟上已選項目合計約 '+[math]::Ceiling($TotalBytes/1MB)+' MiB）；請釋出空間後重新檢查。');Root=$Root;RequiredBytes=$required;AvailableBytes=$available}}
     return $null
 }
 function Get-WsmAssistiveTargetLocationGap([string]$TargetPath,[long]$RequiredBytes) {
@@ -482,11 +524,11 @@ function Test-WsmAssistiveFileScopeOwnershipIncomplete($State,[string]$ItemId) {
     if($prior[0].PSObject.Properties['ReconcileConflicts'] -and @($prior[0].ReconcileConflicts).Count){return $true}
     $false
 }
-function Get-WsmAssistiveFileScopeRestoreGap($Item,$Package,$State,[bool]$ContractV2,$ArtifactRows=$null,$CancellationToken=$null) {
+function Get-WsmAssistiveFileScopeRestoreGap($Item,$Package,$State,[bool]$ContractV2,$ArtifactRows=$null,$CancellationToken=$null,[bool]$AlreadyRestored=$false) {
     # 預覽與「可還原集合」共用的 FileScope 判定：原位置、封裝內容、掛載點、缺卷、既有目標衝突、可寫入性與（單項）容量需求。
     # 全程唯讀：不建目錄、不寫檔、不取鎖。回傳 Action／Status／Reason，以及會寫入時的容量候選（Capacity；由呼叫端依卷加總）。
     $spec=$Item.MigrationSpec;$action='RestoreNow';$status='Ready';$reason='';$capacity=$null
-    $adoptedFiles=[long]0;$adoptedBytes=[long]0;$conflictFiles=[long]0;$conflictBytes=[long]0;$differentFiles=[long]0
+    $adoptedFiles=[long]0;$adoptedBytes=[long]0;$conflictFiles=[long]0;$conflictBytes=[long]0;$differentFiles=[long]0;$writeFileCount=[long]0;$largestFileBytes=[long]0
     if($ContractV2){$locationError=$(try{Assert-WsmOfflineFullSetOriginalLocation $Package.Plan $spec;''}catch{$_.Exception.Message});if($locationError){return [pscustomobject]@{Action='BlockedLocation';Status='Blocked';Reason=$locationError;Capacity=$null}}}
     if(Test-WsmAssistiveFileScopeOwnershipIncomplete $State ([string]$Item.ItemId)){return [pscustomobject]@{Action='NeedsReconciliation';Status='Blocked';Reason='Prior schema 3 FileScope ownership data is incomplete; reconcile it with the Repair operation before retrying.';Capacity=$null}}
     $target=ConvertTo-WsmCanonicalPath $spec.TargetPath
@@ -512,6 +554,9 @@ function Get-WsmAssistiveFileScopeRestoreGap($Item,$Package,$State,[bool]$Contra
             }
         }}}
         $requiredBytes=[Math]::Max([long]0,[long]($requiredBytes-$adoptedBytes))
+        # Q3：回復保留依「會寫入的檔案數」預留；staging 以單一最大檔計（逐檔進行，同時只有一個 staging 檔）。
+        $payloadRows=@($artifactRows|Where-Object {-not $_.Directory});$writeFileCount=[Math]::Max([long]0,[long]($payloadRows.Count-$adoptedFiles))
+        foreach($payloadRow in $payloadRows){if($payloadRow.PSObject.Properties['Data'] -and $payloadRow.Data -and $payloadRow.Data.PSObject.Properties['Bytes'] -and [long]$payloadRow.Data.Bytes -gt $largestFileBytes){$largestFileBytes=[long]$payloadRow.Data.Bytes}}
         # R2：先前有擁有紀錄、但目標檔現在不存在，N1 與寫入器判定相同（Test-WsmAssistiveOwnedFileAbsentConflict）：BlockedConflict，不說 Ready。
         $absentOwnedFiles=@();$priorForAbsent=@();if($null -ne $state -and $state.PSObject.Properties['Items']){$priorForAbsent=@($state.Items|Where-Object ItemId -CEQ $item.ItemId)}
         if($priorForAbsent.Count -eq 1 -and $priorForAbsent[0].PSObject.Properties['OwnedFiles']){foreach($artifact in @($artifactRows|Where-Object {-not $_.Directory})){$artifactTarget=$target;if(-not $singleFileScope -and $artifact.RelativePath){$artifactTarget=Join-Path $target ([string]$artifact.RelativePath)};$artifactOwners=@($priorForAbsent[0].OwnedFiles|Where-Object {[string]$_.RelativePath -ceq [string]$artifact.RelativePath});$artifactOwner=$null;if($artifactOwners.Count -ge 1){$artifactOwner=$artifactOwners[0]};if(Test-WsmAssistiveOwnedFileAbsentConflict $artifactOwner ([IO.File]::Exists($artifactTarget) -or [IO.Directory]::Exists($artifactTarget))){$absentOwnedFiles+=@([string]$artifact.RelativePath)}}}
@@ -528,23 +573,85 @@ function Get-WsmAssistiveFileScopeRestoreGap($Item,$Package,$State,[bool]$Contra
             $writeDirectory=Get-WsmAssistiveNearestExistingDirectory $target
             $needSubdirectories=($action -cin @('MergeIntoExistingDirectory','RestoreNow') -or [IO.Path]::GetFullPath([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($target))).TrimEnd('\') -ine $writeDirectory.TrimEnd('\'))
             if(-not (Test-WsmAssistiveDirectoryWritable $writeDirectory -Subdirectories:$needSubdirectories)){$action='PermissionDenied';$status='Deferred';$reason=('目前帳號無法寫入 '+$writeDirectory+'；請以具權限的帳號執行或調整權限後重新檢查。')}
-            else{$capacity=[pscustomobject]@{ItemId=[string]$item.ItemId;Root=[IO.Path]::GetPathRoot($target);Key=(Get-WsmAssistiveTargetVolumeKey $target);Bytes=[long]$requiredBytes}}
+            else{$stagingLocation=Get-WsmAssistiveStagingLocation $target;$capacity=[pscustomobject]@{ItemId=[string]$item.ItemId;Root=[IO.Path]::GetPathRoot($target);Key=(Get-WsmAssistiveTargetVolumeKey $target);Bytes=[long]$requiredBytes;FileCount=[long]$writeFileCount;StagingBytes=[long]$largestFileBytes;StagingRoot=[string]$stagingLocation.Root;StagingKey=[string]$stagingLocation.Key;Restored=[bool]$AlreadyRestored}}
         }
     }
     catch{$action='Blocked';$status='Blocked';$reason='Target path could not be verified safely.'}
     [pscustomobject]@{Action=$action;Status=$status;Reason=$reason;Capacity=$capacity;AdoptedFileCount=$adoptedFiles;AdoptedBytes=$adoptedBytes;ConflictFileCount=$conflictFiles;ConflictBytes=$conflictBytes}
 }
-function Get-WsmAssistiveVolumeCapacityResults([object[]]$Candidates) {
-    # 容量依目標卷加總：同一卷上所有會寫入的項目合計後只比對一次；不夠（或無法驗證）時，該卷上每個項目各回傳一列結果。預覽與可還原集合共用。
-    foreach($volumeGroup in @($Candidates | Group-Object Key)){
-        $volumeMembers=@($volumeGroup.Group);$volumeBytes=[long]0;foreach($volumeMember in $volumeMembers){$volumeBytes+=[long]$volumeMember.Bytes}
-        $volumeGap=$null;$volumeError=$false
-        try{$volumeGap=Get-WsmAssistiveVolumeCapacityGap ([string]$volumeMembers[0].Root) $volumeBytes}catch{$volumeError=$true}
-        if(-not $volumeGap -and -not $volumeError){continue}
-        foreach($volumeMember in $volumeMembers){
-            if($volumeError){[pscustomobject]@{ItemId=[string]$volumeMember.ItemId;Error=$true;Action='Blocked';Status='Blocked';Reason='Target path could not be verified safely.';Root=[string]$volumeMembers[0].Root;RequiredBytes=[long]$volumeBytes;AvailableBytes=[long]-1}}
-            else{[pscustomobject]@{ItemId=[string]$volumeMember.ItemId;Error=$false;Action=$volumeGap.Action;Status=$volumeGap.Status;Reason=$volumeGap.Reason;Root=[string]$volumeGap.Root;RequiredBytes=[long]$volumeGap.RequiredBytes;AvailableBytes=[long]$volumeGap.AvailableBytes}}
+function Get-WsmAssistiveCapacityPieces($Candidate,[string]$WorkspaceRoot='') {
+    # Q3：一個候選項目對各磁碟的需求，依「實際占用空間的所在磁碟」拆開。
+    #   寫入：目的地磁碟（原位置寫入的位元組）。
+    #   staging：寫入前的 staging 檔；只有它不在目的地磁碟時才另計（單一最大檔，見 Get-WsmAssistiveStagingLocation 的說明）。
+    #   回復保留：journal、狀態與回復紀錄，每個要寫入的檔案固定預留（Get-WsmAssistiveRecoveryReserveBytes）；寫在 workspace 所在磁碟，沒有 workspace 資訊時與寫入同磁碟。
+    $key=[string]$Candidate.Key;$root=[string]$Candidate.Root
+    $pieces=New-Object 'System.Collections.Generic.List[object]'
+    $pieces.Add([pscustomobject]@{Key=$key;Root=$root;Write=[long]$Candidate.Bytes;Staging=[long]0;Recovery=[long]0;Primary=$true})
+    if($Candidate.PSObject.Properties['StagingKey'] -and [string]$Candidate.StagingKey -and [string]$Candidate.StagingKey -cne $key){$pieces.Add([pscustomobject]@{Key=[string]$Candidate.StagingKey;Root=[string]$Candidate.StagingRoot;Write=[long]0;Staging=[long]$Candidate.StagingBytes;Recovery=[long]0;Primary=$false})}
+    $reserve=[long]0;if($Candidate.PSObject.Properties['FileCount']){$reserve=[long](Get-WsmAssistiveRecoveryReserveBytes ([long]$Candidate.FileCount))}
+    if($reserve -gt 0){
+        $recoveryKey=$key;$recoveryRoot=$root
+        if($WorkspaceRoot){$recoveryRoot=[IO.Path]::GetPathRoot([IO.Path]::GetFullPath($WorkspaceRoot));$recoveryKey=$recoveryRoot.ToUpperInvariant()}
+        $pieces.Add([pscustomobject]@{Key=$recoveryKey;Root=$recoveryRoot;Write=[long]0;Staging=[long]0;Recovery=$reserve;Primary=$false})
+    }
+    $pieces.ToArray()
+}
+function Get-WsmAssistiveVolumeCapacityResults([object[]]$Candidates,[string]$WorkspaceRoot='') {
+    # 容量依磁碟加總（預覽與可還原集合共用）：
+    #  1. 逐項判定（B6）：單看一個項目（寫入＋staging＋回復保留）就超過該磁碟可用空間，只有該項 Deferred（Scope=Item），且不再計入合計。
+    #  2. 合計判定：其餘待寫項目依磁碟加總後各比對一次；不夠（或無法驗證）時，該磁碟上每個待寫項目各回傳一列（Scope=Volume，原因附合計與計入項目）。
+    #  已還原的項目（Restored）不寫入，不計入任何加總，也不被標成容量不足；原因文字另外提示它們被排除。
+    # 每個磁碟只探測一次可用空間。
+    $observedByKey=@{}
+    $probe={param([string]$Key,[string]$Root)
+        if(-not $observedByKey.ContainsKey($Key)){try{$observedByKey[$Key]=[pscustomobject]@{Available=[long](Get-WsmAvailableBytes $Root);Error=$false}}catch{$observedByKey[$Key]=[pscustomobject]@{Available=[long]-1;Error=$true}}}
+        $observedByKey[$Key]
+    }
+    $all=@($Candidates|Where-Object {$null -ne $_})
+    $pending=@($all|Where-Object {-not ($_.PSObject.Properties['Restored'] -and [bool]$_.Restored)})
+    $restored=@($all|Where-Object {$_.PSObject.Properties['Restored'] -and [bool]$_.Restored})
+    $survivors=New-Object 'System.Collections.Generic.List[object]'
+    foreach($candidate in $pending){
+        $pieces=@(Get-WsmAssistiveCapacityPieces $candidate $WorkspaceRoot);$short=$null
+        foreach($group in @($pieces|Group-Object Key)){
+            $groupPieces=@($group.Group);$write=[long]0;$staging=[long]0;$recovery=[long]0
+            foreach($piece in $groupPieces){$write+=[long]$piece.Write;$staging+=[long]$piece.Staging;$recovery+=[long]$piece.Recovery}
+            $observed=& $probe ([string]$group.Name) ([string]$groupPieces[0].Root)
+            if($observed.Error){continue}
+            $required=Get-WsmAssistiveCapacityRequiredBytes $write $staging $recovery
+            if($observed.Available -lt $required){$short=[pscustomobject]@{Root=[string]$groupPieces[0].Root;Write=$write;Staging=$staging;Recovery=$recovery;Required=$required;Available=[long]$observed.Available};break}
         }
+        if($short){
+            [pscustomobject]@{ItemId=[string]$candidate.ItemId;Error=$false;Action='AddTargetCapacity';Status='Deferred';Reason=('目標磁碟 '+$short.Root+' 可用空間不足（這個項目單獨需要約 '+[math]::Round($short.Required/1MB)+' MiB（含 256 MiB 緩衝），目前可用約 '+[math]::Floor($short.Available/1MB)+' MiB；計入項目：'+(Get-WsmAssistiveCapacityBreakdownText $short.Write $short.Staging $short.Recovery)+'）；請釋出空間後重新檢查。');Root=$short.Root;RequiredBytes=$short.Required;AvailableBytes=$short.Available;Scope='Item';WriteBytes=$short.Write;StagingBytes=$short.Staging;RecoveryBytes=$short.Recovery;RestoredCount=0;RestoredBytes=[long]0}
+            continue
+        }
+        $survivors.Add([pscustomobject]@{Candidate=$candidate;Pieces=$pieces})
+    }
+    $volumes=[ordered]@{}
+    foreach($entry in $survivors.ToArray()){
+        foreach($piece in @($entry.Pieces)){
+            $volumeKey=[string]$piece.Key
+            if(-not $volumes.Contains($volumeKey)){$volumes[$volumeKey]=[pscustomobject]@{Root=[string]$piece.Root;Write=[long]0;Staging=[long]0;Recovery=[long]0;Dest=(New-Object 'System.Collections.Generic.List[string]');Other=(New-Object 'System.Collections.Generic.List[string]');RestoredCount=0;RestoredBytes=[long]0}}
+            $volume=$volumes[$volumeKey];$volume.Write+=[long]$piece.Write;$volume.Recovery+=[long]$piece.Recovery;if([long]$piece.Staging -gt $volume.Staging){$volume.Staging=[long]$piece.Staging}
+            $memberId=[string]$entry.Candidate.ItemId
+            if($piece.Primary){if(-not $volume.Dest.Contains($memberId)){$volume.Dest.Add($memberId)}}elseif(-not $volume.Other.Contains($memberId)){$volume.Other.Add($memberId)}
+        }
+    }
+    foreach($restoredCandidate in $restored){$restoredKey=[string]$restoredCandidate.Key;if($volumes.Contains($restoredKey)){$volumes[$restoredKey].RestoredCount++;$volumes[$restoredKey].RestoredBytes+=[long]$restoredCandidate.Bytes}}
+    foreach($volumeKey in @($volumes.Keys)){
+        $volume=$volumes[$volumeKey]
+        # 同磁碟「所有待寫項目」＝寫入目的地在這個磁碟的項目；磁碟上只有 staging／回復保留時，則是占用它的那些項目。
+        $members=@($volume.Dest.ToArray());if(-not $members.Count){$members=@($volume.Other.ToArray())}
+        $observed=& $probe $volumeKey $volume.Root
+        $required=Get-WsmAssistiveCapacityRequiredBytes $volume.Write $volume.Staging $volume.Recovery
+        if($observed.Error){
+            foreach($memberId in $members){[pscustomobject]@{ItemId=$memberId;Error=$true;Action='Blocked';Status='Blocked';Reason='Target path could not be verified safely.';Root=$volume.Root;RequiredBytes=[long]$required;AvailableBytes=[long]-1;Scope='Volume'}}
+            continue
+        }
+        if($observed.Available -ge $required){continue}
+        $restoredNote='';if($volume.RestoredCount -gt 0){$restoredNote='；已還原的 '+$volume.RestoredCount+' 項（約 '+(Format-WsmAssistiveMiB $volume.RestoredBytes)+' MiB）不計入合計'}
+        $reason=('目標磁碟 '+$volume.Root+' 可用空間不足（同一磁碟上已選項目合計約 '+[math]::Ceiling($volume.Write/1MB)+' MiB；計入項目：'+(Get-WsmAssistiveCapacityBreakdownText $volume.Write $volume.Staging $volume.Recovery)+$restoredNote+'）；請釋出空間後重新檢查。')
+        foreach($memberId in $members){[pscustomobject]@{ItemId=$memberId;Error=$false;Action='AddTargetCapacity';Status='Deferred';Reason=$reason;Root=$volume.Root;RequiredBytes=[long]$required;AvailableBytes=[long]$observed.Available;Scope='Volume';WriteBytes=$volume.Write;StagingBytes=$volume.Staging;RecoveryBytes=$volume.Recovery;RestoredCount=$volume.RestoredCount;RestoredBytes=$volume.RestoredBytes}}
     }
 }
 function Initialize-WsmAssistiveMountPointApi {

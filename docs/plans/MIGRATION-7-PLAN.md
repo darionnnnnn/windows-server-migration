@@ -2384,6 +2384,42 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 「已備份」列若含 UNC 引用，資料雖帶有分類，畫面只在「未備份」表顯示。
   - 備份工作台未備份表與還原預覽列的 JS 呈現，沒有專屬的新瀏覽器斷言，只由 PowerShell 測試驗證投影，並確認既有瀏覽器測試不受影響。
 
+### 17.114 Q3 新機容量預檢：計入 staging 與必要回復空間、先前有效備份不被破壞；併 R26-B6 已還原項目不計入
+
+- 規格：`work/r7/specs/Q3-capacity-staging.md`，依據 PLAN 第 303 行。由 Sonnet 5.5 effort high subagent 實作；主代理審查、清理環境殘留、另做一個突變並獨立重跑。
+- **盤點結果（規格前提只有部分成立）**：
+  - ZIP 匯入在解壓前就有容量預檢（`PackageTransport.ps1:80`）；Directory 匯入與交付也都有預檢（`OutputWorkspace.ps1`）。這些既有檢查本輪只補測試。
+  - 還原的 staging 與 backup 都是目的檔所在目錄裡、以改名產生的同層檔案，不額外佔寫入空間。若再把它們加一次，就是重複計算，也會讓既有斷言轉紅。
+  - 真正漏算的是 workspace 磁碟上的 journal、狀態檔與回復紀錄。
+  - 另一個缺口：獨立副本沒有容量預檢，只靠 `.partial` 加失敗清理。這部分併入 R6／R7 批次處理。
+- **修法**：
+  - 容量需求依磁碟拆成三項（`Get-WsmAssistiveCapacityPieces`）：
+    - 寫入量：計在目的地磁碟。
+    - staging：只有放在不同磁碟時才另計單一最大檔。正式環境的 staging 都在同磁碟，所以這一項正式上不會觸發。
+    - 回復保留：每個要寫入的檔案預留 16 KiB，計在 workspace 磁碟。這個值是保守估計，日後待實測校準。
+  - 唯一的計算式是 `Get-WsmAssistiveCapacityRequiredBytes`（三項加上 256 MiB）。
+  - 預覽與 Target 選項共用同一套判定；原因文字寫明計入了哪些項目，並區分「單項」與「合計」。
+- **R26-B6**：
+  - 原本同一磁碟的容量加總會把已還原的項目也算進去，導致其他項目被誤判容量不足。
+  - 改為：已還原的項目（`Get-WsmAssistiveRestoredItemIdSet`，沿用原判定）不計入加總，也不會被標記。
+  - 單一項目本身就超過可用空間時，只擋那一項。
+  - 各項單獨都夠、合計卻不夠時，同一磁碟上所有待寫項目標 `AddTargetCapacity`，原因附上合計數字，並註明已還原的 K 項不計入。
+  - 已先在原版程式上重現誤判（todo-1 被判為 InsufficientCapacity），修正後轉綠。
+- **先前有效備份不被破壞**（以測試證明）：
+  - Directory 交付：容量預檢拒絕時，以及複製中途發生 disk full 時，先前的交付都逐位元組不變，也沒有留下暫存；重試後不會混入另一個世代。
+  - 獨立副本：中途 disk full 或搬移失敗時，先前副本不變，並能重驗為 Verified；`.partial` 會被清掉。
+- **測試**：新增 `Test-TargetCapacityStaging.ps1`，共 95 項；既有斷言都沒有修改。
+- **突變（皆轉紅）**：
+  - subagent 做 8 個：拿掉 staging 計入、拿掉回復保留、ZIP 解壓前不檢查、失敗時清掉先前副本、失敗時清掉先前交付、已還原仍計入、拿掉逐項判定、回復保留記錯磁碟。
+  - 主代理加做 1 個：拿掉 256 MiB 餘裕。
+- **環境殘留**：subst `R:`、`T:` 指向已不存在的暫存目錄，是先前測試留下的失效別名；主代理已移除。
+- **驗證（主代理重跑）**：
+  - PowerShell：TargetCapacityStaging 95、RestorableSet 199、RestorePartialSelection、AssistiveRestore 178、RetryFailedItems 83、WizardRestore 132、WizardBackupReliability 62、WizardBackup、WizardMixedGenerationZip 12、RetryPartialIndexPreserved 66、AdoptedExistingOwnership、DirectoryScopeExistingFiles 90、FileScopeIncompleteOwnership 164、OutputWorkspace、OfflineFullSet 67、ScopeVolumeCounterexamples 57、TargetRestoreContinuation 133、WizardRuntime 182、ScriptEncoding。
+  - Edge：RestorableSetBrowser、RetryFailedItemsBrowser。
+- **限制**：
+  - workspace 磁碟以 `Package.Root` 所在磁碟代表。
+  - 沒有測試 ZIP 續跑時的容量；續跑沿用既有的保守全量計算。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -2601,6 +2637,7 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R3 | `src/AssistiveRestore.ps1`（逐檔判定、預覽、寫入器、預計寫入量）、`src/Recovery.ps1`（Repair 對帳）、`src/WizardRuntime.ps1`（原因文字） | 目標目錄已有外部檔時，預覽 Ready、選項可還原，但寫入器一律 BlockedConflict，重試候選又列回它，形成無限重試；預計寫入量沒有扣除 | 單一逐檔判定，供預覽、選項、重試、寫入器、Repair 共用：內容相同記為 AdoptedExisting；內容不同則在預覽就判 BlockedConflict 並列出衝突數，重試排除；預計寫入量扣除這兩類檔案（17.109） | `Test-DirectoryScopeExistingFiles`（90 項，含連按重試兩次、AST 守門、寫入器直接呼叫目錄與單檔範圍） | a4d0d57 |
 | R4 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1`、`src/ui/console.js` | 含人工、外部或不支援項目的備份（stage 為 ReviewRequired，但交付已驗證）被當成未交付：結果頁顯示「尚無已交付備份」、獨立副本停用、進度卡顯示「部分失敗」 | 抽出共用的「已交付」判定（以交付證據為準，排除非 C 待處理），取代 5 處寫死的 `'Delivered'`；ReviewRequired 改為附註「含 N 項需人工或外部處理」與「完成（含待人工處理）」（17.110） | `Test-BackupCurrencyAndReview`（R4 區段）、G3、BackupWorkbenchBrowser／BackupProgressBrowser 新增區段 | b808884 |
 | R5 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1` | 「目前這一代」有兩套判定，對舊 attempt 做獨立副本後結果頁翻回舊世代；「可續作」有兩份判定，其中一份沒有排除已交接的 attempt | 共用 helper 改依 StartedUtc／世代／AttemptId 排序，不用 UpdatedUtc；「可續作」改為單一判定並排除已交接（17.110） | `Test-BackupCurrencyAndReview`（R5 區段與 13 個可續作情境） | b808884 |
+| R26-B6 | `src/AssistiveRestore.ps1` 容量加總、`src/WizardRuntime.ps1` 原因文字 | 同一磁碟的容量加總也算進已還原的項目，已還原完成後，其他項目仍被誤判為容量不足 | 已還原項目改用 `Get-WsmAssistiveRestoredItemIdSet` 判定，不計入加總、也不標記；改為逐項判定（單項超量只擋該項），合計不足時標記同磁碟所有待寫項目，並附合計數字（17.114，與 Q3 同一段） | `Test-TargetCapacityStaging`（B6 三個情境，先在原版重現誤判再修正） | （Q3-COMMIT） |
 
 ### 第六輪終檢
 
