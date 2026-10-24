@@ -1,0 +1,212 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "F4b",
+  "verifiedUtc": "2026-10-24T02:52:04Z",
+  "verifier": "P8b sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "e12ae9f4e3697fd6fba840d07faea44f352c3fc7",
+  "snapshotDirectory": "git archive HEAD (e12ae9f, work/ excluded) extracted to two fresh snapshot directories under the session scratchpad (two streams, at most two in parallel) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; each distinct command ran once and its log is shared by every stage that lists it; the recorded seconds include contention between the two streams",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/MigrationWizard.ps1",
+      "sha256": "012D9B41D7E23059B87665F992A3B6A7590291426B794BA69F5E17D2727F76E5"
+    },
+    {
+      "path": "src/OperationRequests.ps1",
+      "sha256": "8723D763ECCEF7DC64F21500FE26C6C147C11D113CF95CD3ED2FC8D1014A2A04"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "308AE6612242B818E14C76CF51C3952F6CAC4E4441AED18DD72AEB2641438DCF"
+    },
+    {
+      "path": "src/WizardRuntime.ps1",
+      "sha256": "BB414C5035589A5BF10E5EF0D7830AA71A3AA16E3F2F5FB2774A0E84BD8A666B"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "6426ECC0570671129DF6CB5108AFC7DB9E137E6B8EB0EE2F0479F1BF3DDCC544"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "6B194C570B28BA6EFA4C006F15D65413D3B990B4224A48A3E03E59BA0FDFA592"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Test-CredentialDialogUi.js",
+      "sha256": "FBF28912ED224E898D6AE9CEF7AB3BD6E41DBD2CA9E8DB073972FC0A31D81FA7"
+    },
+    {
+      "path": "tests/Test-OperationRequests.ps1",
+      "sha256": "C2D05CA492E5CF8113F9C1B4246044ABA4BDFED435448472DE84871559D892B9"
+    },
+    {
+      "path": "tests/Test-WaitingConsistencyUi.js",
+      "sha256": "CCF03289A122CD3A48C7C7D60D442204523275107925FB028A1FA77FB47759AC"
+    },
+    {
+      "path": "tests/Test-WizardRuntimeTargetUi.js",
+      "sha256": "28742A4102534C54C3BF91E656A1902045C5F4C712BA5F6BDB2A246F7AD21A1C"
+    },
+    {
+      "path": "tests/Test-CliWaitingForInput.ps1",
+      "sha256": "329E87D83835E17480E1E4A9D657ADAC01D831B67D978A391F47CACDFD852C83"
+    },
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "BB4A20E354A8AE98271A37764A292042F802EDE9E6DE79323F2DF7DF471CDE37"
+    },
+    {
+      "path": "src/WindowsSettingsReview.ps1",
+      "sha256": "902B5A029FEA4276CA4C33F5D6E7501EB1E727AB76336239C6BD4E17831A039C"
+    },
+    {
+      "path": "tests/Test-ProductionFlagProjection.ps1",
+      "sha256": "D8B01E725A7B4B79E8848234A06DFFFA1A6292F7B2AA440701B759BAEC141E18"
+    },
+    {
+      "path": "src/WizardDetails.ps1",
+      "sha256": "37E524A209ABD008BACA36A4BAEFA04C34F0C5324527B8DFE84A5A9F15FB55FF"
+    },
+    {
+      "path": "src/WizardPreparation.ps1",
+      "sha256": "0ACB7BA775A589D01EA51B5B4C137C3FBE0EFA631DA2FD190B35D7B97F88042D"
+    },
+    {
+      "path": "tests/Test-UnresolvedPathNoPrefill.ps1",
+      "sha256": "F3B161585831F760E7AEE177EAE736E39AB42C2DE3655A5AFAF1C84732C700BC"
+    },
+    {
+      "path": "tests/Test-RetryFailedItems.ps1",
+      "sha256": "11124B4EE8BDF0139671CF71652C23DA62C0E230E497A863BEE6D8273BD9AC70"
+    },
+    {
+      "path": "tests/Test-RetryFailedItemsBrowser.js",
+      "sha256": "7E15339478978235937783611605DB0EB8B40BB9EC4D5670107F7A69776F5DEF"
+    },
+    {
+      "path": "tests/Test-FileScopeIncompleteOwnership.ps1",
+      "sha256": "F8833601198AB152FC8B39A6BA873C914EB897388A89D7483FB21ADD80190CD1"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 387,
+  "result": "Rebound to e12ae9f bytes after P8 (PLAN 17.100) and P9 (PLAN 17.101) (previous binding f588e0d); every command below exited 0 on WinPS 5.1: CredentialDialogUi 1, WaitingConsistencyUi 1, WizardRuntimeTargetUi 1, OperationRequests 3, CliWaitingForInput 13, ProductionFlagProjection 48, UnresolvedPathNoPrefill 72, RetryFailedItems 83, RetryFailedItemsBrowser 1, FileScopeIncompleteOwnership 164. Added for P8 and P9: RetryFailedItems (P8, PLAN 17.100; WizardRestore, WizardRuntime, WizardHtmlRuntime, OperationRequests, console.js/css); RetryFailedItemsBrowser (P8, 17.100; console.js/css); FileScopeIncompleteOwnership (P9, 17.101; AssistiveRestore, Recovery, WizardRuntime, console.js).",
+  "logs": [
+    {
+      "name": "Test-CredentialDialogUi.js.log",
+      "command": "node tests/Test-CredentialDialogUi.js </dev/null",
+      "sha256": "2E98EBB60930A19CAD5800B06DD493D60AFFD943ED9BF6C920BEF7B48AB6E1C5",
+      "exitCode": 0,
+      "seconds": 11,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: credential dialog UI (structure, focus, rerender survival, validation, defer, rejection, 409, cancel two-step, legacy data, auto-popup, resume, 320px)\n"
+    },
+    {
+      "name": "Test-WaitingConsistencyUi.js.log",
+      "command": "node tests/Test-WaitingConsistencyUi.js </dev/null",
+      "sha256": "A7B4EA106511E484484F16E35C2E8AED0E477239C65667C2B97AAD5F044703F9",
+      "exitCode": 0,
+      "seconds": 4,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: WaitingForInput/Interrupted are known responses and unfinished job cards show no end time.\n"
+    },
+    {
+      "name": "Test-WizardRuntimeTargetUi.js.log",
+      "command": "node tests/Test-WizardRuntimeTargetUi.js </dev/null",
+      "sha256": "A9535AB377EBB441A8A3B9E869F0D04639FE6730E7A0D94A65AC3787F1732898",
+      "exitCode": 0,
+      "seconds": 15,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: Target runtime action flow preserves independent material hashes, approved friendly item selection, explicit restore confirmation, and separate mechanical/business statuses. API fixture only.\n"
+    },
+    {
+      "name": "Test-OperationRequests.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OperationRequests.ps1 </dev/null",
+      "sha256": "F5FB7E820298A39AB046ACB2975E9BF712E6410016A2B70E0D32B36DD40A5D6B",
+      "exitCode": 0,
+      "seconds": 7,
+      "countedAs": "PASS sections",
+      "count": 3,
+      "text": "C�p�ݮ֭�ʵ����M��A�п�J Get-Verb�C\nPASS: WaitingForInput, Interrupted, NeedsNewPreview and Superseded return exit code 2.\r\nPASS: command/common-parameter/secret injection and missing mandatory noninteractive arguments rejected. Evidence: C:\\Users\\eldar\\AppData\\Local\\Temp\\wsm-requests-a27ffe75a09b4b55974f63f4d1b34f9a\nWhatIf: ���b�ؼ� \"OutputInitialize\" �W���� \"Execute the validated local operation request\" �ާ@�C\r\nWhatIf: ���b�ؼ� \"Acceptance\" �W���� \"Execute the validated local operation request\" �ާ@�C\r\nPASS: operation-request WhatIf creates no output or enrollment for a non-ShouldProcess command.\r\n"
+    },
+    {
+      "name": "Test-CliWaitingForInput.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-CliWaitingForInput.ps1 </dev/null",
+      "sha256": "539DAF2538AAB4CD81B6B7E33F0105386C17A4067D3F06C8D385702E38099EF2",
+      "exitCode": 0,
+      "seconds": 44,
+      "countedAs": "checks",
+      "count": 13,
+      "text": "PASS: CLI end-of-input returns 2 with the missing fields for a general action and a credential action; credentials are never read from stdin, nothing typed is persisted (13 checks).\n"
+    },
+    {
+      "name": "Test-ProductionFlagProjection.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ProductionFlagProjection.ps1 </dev/null",
+      "sha256": "1DD208F2DF5FC7BB7D58E33A5F272284675593F7D0705E52EAF99592478BBE1B",
+      "exitCode": 0,
+      "seconds": 11,
+      "countedAs": "checks",
+      "count": 48,
+      "text": "PASS Test-ProductionFlagProjection checks=48; projections force false for true, \"true\" and 1; absent fields are not invented.\r\n"
+    },
+    {
+      "name": "Test-UnresolvedPathNoPrefill.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-UnresolvedPathNoPrefill.ps1 </dev/null",
+      "sha256": "F426594190FE60FFEE2112B79B04DC4021D573C9F909FEAA64BB89C6B4687276",
+      "exitCode": 0,
+      "seconds": 12,
+      "countedAs": "checks",
+      "count": 72,
+      "text": "PASS: 72 unresolved source path no-prefill checks (predicate, draft, approval, form, bulk, supplied path).\r\n"
+    },
+    {
+      "name": "Test-RetryFailedItems.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-RetryFailedItems.ps1 </dev/null",
+      "sha256": "9427EBCD8C4EA567909945E8AFA598DA214B6E40F93DB06DEAC8F458CE58A8C1",
+      "exitCode": 0,
+      "seconds": 57,
+      "countedAs": "checks",
+      "count": 83,
+      "text": "PASS: retry failed items (83 checks): candidates exclude succeeded and unrestorable items with reasons, a pending intent or running restore blocks, the backend recomputes and refuses other item ids / owners / reasons / stale sources, creating the receipt writes nothing, the retry restore writes only the failed item.\n"
+    },
+    {
+      "name": "Test-RetryFailedItemsBrowser.js.log",
+      "command": "node tests/Test-RetryFailedItemsBrowser.js </dev/null",
+      "sha256": "23DD7AAB62C25FCAC73EB9679637925AF86BF5C2E74680CE8A954ED800B02345",
+      "exitCode": 0,
+      "seconds": 15,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: P8 retry failed items UI — shown for a partial result only (hidden when all succeeded, running, WaitingForInput, Interrupted), verbatim explanation, candidates and excluded reasons as icon + text, empty-candidate and pending-intent states disabled with aria-disabled and a described reason, owner/reason prefilled and required, Tab + Enter, one request on double activation, no restore started, focus never falls to body (result message on success, button on failure), 390/320px without overflow, zero console errors. API fixture only.\n"
+    },
+    {
+      "name": "Test-FileScopeIncompleteOwnership.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-FileScopeIncompleteOwnership.ps1 </dev/null",
+      "sha256": "94112ECD55FBFFEE88A029FDBE181A130EE1678021E24EB82E76431A79A4CA6D",
+      "exitCode": 0,
+      "seconds": 154,
+      "countedAs": "checks",
+      "count": 164,
+      "text": "PASS: FileScope incomplete ownership (164 checks): one shared predicate for the writer and N1, NeedsReconciliation in options/preview/P8 candidates with the Repair entrance named on HTML and CLI, Repair adopts only exact backup-hash files and preserves every other case, the P8 retry then writes only the reconciled item.\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "The dialog suite uses a fixture API; the HTTP credential route is covered by the G journey record and the native handler suite, not here.",
+    "Tab walk asserts at least 9 controls cycle inside the dialog; each control is not individually verified.",
+    "After a rejected password the dialog is already closed and must be reopened from the job card.",
+    "P9 (17.101): a matching content hash does not prove the file was written by the tool, so a file placed beforehand with identical content is adopted and a later rollback may delete it (accepted risk); the single-file scope (RelativePath empty) adoption path is implemented but not tested; the P9 end-to-end test waits 16 seconds to avoid NTFS file tunneling.",
+    "P8 (17.100): failure Status values were exercised only with synthetic input and an IIS double, the real HTTP /api/operations path is not run (G4 simulates it in process through ConvertTo-WsmHtmlArguments), and the browser suite uses a fixed API stub. P8 and P9 tests were added to this stage by the mechanical rule that a stage whose inputs hold a changed src file runs them, so the attribution may be wider than the true dependency."
+  ],
+  "openIssues": [
+    "NativeWizardRuntimeHandler passed 4 of 5 runs during the original F4b slice (one unretained failure); this record has one passing run only."
+  ]
+}

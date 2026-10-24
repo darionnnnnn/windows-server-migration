@@ -1,0 +1,234 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "F2",
+  "verifiedUtc": "2026-10-24T02:52:04Z",
+  "verifier": "P8b sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "e12ae9f4e3697fd6fba840d07faea44f352c3fc7",
+  "snapshotDirectory": "git archive HEAD (e12ae9f, work/ excluded) extracted to two fresh snapshot directories under the session scratchpad (two streams, at most two in parallel) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; each distinct command ran once and its log is shared by every stage that lists it; the recorded seconds include contention between the two streams",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/AssistiveHttpProbe.ps1",
+      "sha256": "908CC9AC84007BBF5453BA0B42B7C491C5667D17B83A7BC3E0CEA58E34B083FE"
+    },
+    {
+      "path": "src/WizardBackup.ps1",
+      "sha256": "78206B22D2CBF98B7401FABDCDB7607A44818704D9623464452AC3DB0D559899"
+    },
+    {
+      "path": "src/WizardBackupProjection.ps1",
+      "sha256": "6BCA49A22007CECF06D800FF70DD61445A4D2FDD3A73B45361B52E6E2F8E598A"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "308AE6612242B818E14C76CF51C3952F6CAC4E4441AED18DD72AEB2641438DCF"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "6426ECC0570671129DF6CB5108AFC7DB9E137E6B8EB0EE2F0479F1BF3DDCC544"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "6B194C570B28BA6EFA4C006F15D65413D3B990B4224A48A3E03E59BA0FDFA592"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Test-AssistiveHttpProbe.ps1",
+      "sha256": "692FB5643F2C84804F63001B40DFCAD9DD6BD1DB35E87BFA98BA3B00DBADCFA8"
+    },
+    {
+      "path": "tests/Test-BackupProgressBrowser.js",
+      "sha256": "F28A0E2029BEFB60F904E699D70BF19BF8B947C14717D0AFE47CCBE8B18B8B13"
+    },
+    {
+      "path": "src/DeveloperProbe.ps1",
+      "sha256": "CC7C6B3DFBB7233C6E7D7952714BAD3009B299E7C773AA396DC41D2296036B59"
+    },
+    {
+      "path": "src/LabValidation.ps1",
+      "sha256": "9DE366C1D266E5E079AC127145274FFF0130F563A928700651ADA12A0420C2BD"
+    },
+    {
+      "path": "tests/Test-CliFailureLocation.ps1",
+      "sha256": "1302F812CAEB78831A382BCFF5B2ABED7EE052B2D35811B7611FD62F9888594C"
+    },
+    {
+      "path": "tests/Test-DeveloperProbe.ps1",
+      "sha256": "6A7871C804CE1C62D1FD42E065ACB60DAD830488F151E5F8C1AD09EFE5757058"
+    },
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "BB4A20E354A8AE98271A37764A292042F802EDE9E6DE79323F2DF7DF471CDE37"
+    },
+    {
+      "path": "src/WindowsSettingsReview.ps1",
+      "sha256": "902B5A029FEA4276CA4C33F5D6E7501EB1E727AB76336239C6BD4E17831A039C"
+    },
+    {
+      "path": "tests/Test-ProductionFlagProjection.ps1",
+      "sha256": "D8B01E725A7B4B79E8848234A06DFFFA1A6292F7B2AA440701B759BAEC141E18"
+    },
+    {
+      "path": "src/Payload.ps1",
+      "sha256": "537A02B837AE6EF8C7A4062FFC5151F5B583C7984A8D9EDAD3C71917FE4A717F"
+    },
+    {
+      "path": "tests/Test-RetryPartialIndexPreserved.ps1",
+      "sha256": "A7A293FF99DA4DEF4F5F2432FDD0ADC3A14252D3B267D880E589DE5A9E592563"
+    },
+    {
+      "path": "tests/Test-FailedItemSourcePath.ps1",
+      "sha256": "68C8C8053AFE1794DE121E8B226B86D75ECA79A207B452CFF3AE9F2EF619BABD"
+    },
+    {
+      "path": "tests/Test-RetryFailedItems.ps1",
+      "sha256": "11124B4EE8BDF0139671CF71652C23DA62C0E230E497A863BEE6D8273BD9AC70"
+    },
+    {
+      "path": "tests/Test-RetryFailedItemsBrowser.js",
+      "sha256": "7E15339478978235937783611605DB0EB8B40BB9EC4D5670107F7A69776F5DEF"
+    },
+    {
+      "path": "tests/Test-FileScopeIncompleteOwnership.ps1",
+      "sha256": "F8833601198AB152FC8B39A6BA873C914EB897388A89D7483FB21ADD80190CD1"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 612,
+  "result": "Rebound to e12ae9f bytes after P8 (PLAN 17.100) and P9 (PLAN 17.101) (previous binding f588e0d); every command below exited 0 on WinPS 5.1: AssistiveHttpProbe 44, BackupProgressBrowser 6, CliFailureLocation 192, DeveloperProbe 4, ProductionFlagProjection 48, RetryPartialIndexPreserved 66, FailedItemSourcePath 4, RetryFailedItems 83, RetryFailedItemsBrowser 1, FileScopeIncompleteOwnership 164. Added for P8 and P9: RetryFailedItems (P8, PLAN 17.100; WizardRestore, WizardRuntime, WizardHtmlRuntime, OperationRequests, console.js/css); RetryFailedItemsBrowser (P8, 17.100; console.js/css); FileScopeIncompleteOwnership (P9, 17.101; AssistiveRestore, Recovery, WizardRuntime, console.js).",
+  "logs": [
+    {
+      "name": "Test-AssistiveHttpProbe.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveHttpProbe.ps1 </dev/null",
+      "sha256": "4E744ED822ED735EEF3BC9B2B06FA09AF311EE7EFBE315F250E82657D73BEDD2",
+      "exitCode": 0,
+      "seconds": 12,
+      "countedAs": "checks",
+      "count": 44,
+      "text": "PASS: 44 HTTP probe fixture checks on Desktop 5.1.26100.9711\n"
+    },
+    {
+      "name": "Test-BackupProgressBrowser.js.log",
+      "command": "node tests/Test-BackupProgressBrowser.js </dev/null",
+      "sha256": "3CCFF4BADC4C348D3C0577827BB4D24B1B9E4F876DEFF1C6C43D2E481BDE0380",
+      "exitCode": 0,
+      "seconds": 83,
+      "countedAs": "F2 connection cases",
+      "count": 6,
+      "text": "PASS: B1 progress card (92 checks) and F2 connection prompts (6 cases) in Edge; screenshots in work/r7/screens/b1-*.png\n",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exitCode": 1,
+          "seconds": 2,
+          "cause": "ERR_UNSAFE_PORT (random port 3659 blocked by Chromium)"
+        },
+        {
+          "attempt": 2,
+          "exitCode": 0,
+          "seconds": 83
+        }
+      ],
+      "note": "First attempt of this command failed in 2 seconds with exit 1: page.goto: net::ERR_UNSAFE_PORT at http://127.0.0.1:3659/#wizard (the test picks a random port and Chromium blocks that one; same cause as the B2 NativeProbeRoles failure in PLAN 17.99, not a product failure). The command was re-run once unchanged and passed; the log below is the passing run."
+    },
+    {
+      "name": "Test-CliFailureLocation.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-CliFailureLocation.ps1 </dev/null",
+      "sha256": "1D156CC59C3DCEF5197632D9A5266C5DA971536DB1222230F89DFDED861AF837",
+      "exitCode": 0,
+      "seconds": 46,
+      "countedAs": "checks",
+      "count": 192,
+      "text": "Volumes; Status=Completed; StartedUtc=2026-10-24T02:42:\r\n                      44.3790950Z; CompletedUtc=2026-10-24T02:42:44.4745165Z; DurationMs=79; ReasonCode=; Data=}, @{Id=\r\n                      NativeInventory; Status=NotApplicable; StartedUtc=2026-10-24T02:42:44.4810279Z; CompletedUtc=2026\r\n                      -10-24T02:42:44.5739665Z; DurationMs=80; ReasonCode=WindowsServerRequired; Data=}...}\r\n\r\n\r\n\r\nPASS: 192 CLI failure-location checks (mapping table, 7 scenarios, redaction, real worker end to end, no HTTP writes from the CLI, external material alignment) on Desktop 5.1.26100.9711\n"
+    },
+    {
+      "name": "Test-DeveloperProbe.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-DeveloperProbe.ps1 </dev/null",
+      "sha256": "5661185940F821ED5ECE3E60B51F4BE8872D9581650CA6283829049321415E81",
+      "exitCode": 0,
+      "seconds": 50,
+      "countedAs": "PASS sections",
+      "count": 4,
+      "text": "ĵ�i: ���ǨӦۼҲ� 'WindowsServerMigration' \r\n���פJ�R�O�W�٥]�t���֭㪺�ʵ��A�]���i�ण���j�M�C�Y�n�M��t�����֭�ʵ����R�O�A�Шϥ� Verbose �ѼƦA������ \r\nImport-Module �R�O�C�p�ݮ֭�ʵ����M��A�п�J Get-Verb�C\nPASS: native CommandsModules worker counts: commands=16; modules=5.\nPASS: actual NativeInventory with UNC PSModulePath sentinel; outcome=NotApplicable.\nPASS: unmocked developer probe OS/build and fixed volumes match native CIM; NativeInventory=NotApplicable.\nPASS: developer probe ZIP, entry hashes, inventory structure, secret redaction, raw/serialized budgets, failure, timeout and cancellation.\n"
+    },
+    {
+      "name": "Test-ProductionFlagProjection.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ProductionFlagProjection.ps1 </dev/null",
+      "sha256": "1DD208F2DF5FC7BB7D58E33A5F272284675593F7D0705E52EAF99592478BBE1B",
+      "exitCode": 0,
+      "seconds": 11,
+      "countedAs": "checks",
+      "count": 48,
+      "text": "PASS Test-ProductionFlagProjection checks=48; projections force false for true, \"true\" and 1; absent fields are not invented.\r\n"
+    },
+    {
+      "name": "Test-RetryPartialIndexPreserved.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-RetryPartialIndexPreserved.ps1 </dev/null",
+      "sha256": "A6479EC5EABB064291DD4106C329611CCE65F2BCA491B910D6B2CEF002B4D250",
+      "exitCode": 0,
+      "seconds": 68,
+      "countedAs": "checks",
+      "count": 66,
+      "text": "byte, new index sealed, Directory delivery excludes it.\nPASS: P2-1b the one-click backup passes its attempt id to the exporter.\nPASS: P2-2 ZIP delivery after a retry does not carry the preserved index.\nPASS: P2-3 two failures then success: -01 and -02, byte-exact, nothing overwritten.\nPASS: P2-4 a pre-existing same-name file is never overwritten; the next number is used; 99 is the limit.\nPASS: P2-5 no AttemptId: attempt-unknown-NN, still set aside and not overwritten.\nPASS: P2-6 attempt ids are reduced to [A-Za-z0-9-], at most 64 characters.\nPASS: P2 retry partial index preserved (66 checks).\n"
+    },
+    {
+      "name": "Test-FailedItemSourcePath.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-FailedItemSourcePath.ps1 </dev/null",
+      "sha256": "C1AF5AF6E6A00DF68B5E7359A5C47B441CD54774486B698CEDA3B1040CCD5EC7",
+      "exitCode": 0,
+      "seconds": 14,
+      "countedAs": "PASS sections",
+      "count": 4,
+      "text": "ĵ�i: ���ǨӦۼҲ� 'WindowsServerMigration' \r\n���פJ�R�O�W�٥]�t���֭㪺�ʵ��A�]���i�ण���j�M�C�Y�n�M��t�����֭�ʵ����R�O�A�Шϥ� Verbose �ѼƦA������ \r\nImport-Module �R�O�C�p�ݮ֭�ʵ����M��A�п�J Get-Verb�C\nPASS: A. synthetic plan - safe projection, explicit truncation, no-path items, unverifiable cases.\nPASS: B. real failed backup - attempt files carry no path, the view shows it, a tampered plan is unverifiable.\nPASS: C. offline report row shows the same escaped path.\nPASS: failed item source path.\n"
+    },
+    {
+      "name": "Test-RetryFailedItems.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-RetryFailedItems.ps1 </dev/null",
+      "sha256": "9427EBCD8C4EA567909945E8AFA598DA214B6E40F93DB06DEAC8F458CE58A8C1",
+      "exitCode": 0,
+      "seconds": 57,
+      "countedAs": "checks",
+      "count": 83,
+      "text": "PASS: retry failed items (83 checks): candidates exclude succeeded and unrestorable items with reasons, a pending intent or running restore blocks, the backend recomputes and refuses other item ids / owners / reasons / stale sources, creating the receipt writes nothing, the retry restore writes only the failed item.\n"
+    },
+    {
+      "name": "Test-RetryFailedItemsBrowser.js.log",
+      "command": "node tests/Test-RetryFailedItemsBrowser.js </dev/null",
+      "sha256": "23DD7AAB62C25FCAC73EB9679637925AF86BF5C2E74680CE8A954ED800B02345",
+      "exitCode": 0,
+      "seconds": 15,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: P8 retry failed items UI — shown for a partial result only (hidden when all succeeded, running, WaitingForInput, Interrupted), verbatim explanation, candidates and excluded reasons as icon + text, empty-candidate and pending-intent states disabled with aria-disabled and a described reason, owner/reason prefilled and required, Tab + Enter, one request on double activation, no restore started, focus never falls to body (result message on success, button on failure), 390/320px without overflow, zero console errors. API fixture only.\n"
+    },
+    {
+      "name": "Test-FileScopeIncompleteOwnership.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-FileScopeIncompleteOwnership.ps1 </dev/null",
+      "sha256": "94112ECD55FBFFEE88A029FDBE181A130EE1678021E24EB82E76431A79A4CA6D",
+      "exitCode": 0,
+      "seconds": 154,
+      "countedAs": "checks",
+      "count": 164,
+      "text": "PASS: FileScope incomplete ownership (164 checks): one shared predicate for the writer and N1, NeedsReconciliation in options/preview/P8 candidates with the Repair entrance named on HTML and CLI, Repair adopts only exact backup-hash files and preserves every other case, the P8 retry then writes only the reconciled item.\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Reset, abort, timeout and HTTP failure categories use controlled response/exception fixtures; only listener-refusal is an actual socket failure in the HTTP probe suite.",
+    "No native browser transport claim; local AdGuard policy remains unchanged.",
+    "BackupProgressBrowser uses a fixture API.",
+    "CLI failure classes are derived from controlled code/exception fixtures; no real network failure other than listener refusal was produced.",
+    "P4 (17.97) failed-item source path and P2 (17.95) partial-index preservation are exercised only through their own tests, not through the F2 connection screens.",
+    "P9 (17.101): a matching content hash does not prove the file was written by the tool, so a file placed beforehand with identical content is adopted and a later rollback may delete it (accepted risk); the single-file scope (RelativePath empty) adoption path is implemented but not tested; the P9 end-to-end test waits 16 seconds to avoid NTFS file tunneling.",
+    "P8 (17.100): failure Status values were exercised only with synthetic input and an IIS double, the real HTTP /api/operations path is not run (G4 simulates it in process through ConvertTo-WsmHtmlArguments), and the browser suite uses a fixed API stub. P8 and P9 tests were added to this stage by the mechanical rule that a stage whose inputs hold a changed src file runs them, so the attribution may be wider than the true dependency."
+  ],
+  "openIssues": [
+    "The seven external acceptance material classes are mapped to existing LabReport fields only (ExternalAcceptance); no real material has been collected, all stay NotTested and ProductionVerified=false.",
+    "Start-ServerMigration.ps1 -Action DeveloperProbe prints fixed fields only and does not show the location line (the text menu and HTML probe do).",
+    "F2 and the whole round remain incomplete: real-machine qualification stays NotTested."
+  ]
+}

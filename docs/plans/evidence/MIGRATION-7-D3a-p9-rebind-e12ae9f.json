@@ -1,0 +1,221 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "D3a",
+  "verifiedUtc": "2026-10-24T02:52:04Z",
+  "verifier": "P8b sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "e12ae9f4e3697fd6fba840d07faea44f352c3fc7",
+  "snapshotDirectory": "git archive HEAD (e12ae9f, work/ excluded) extracted to two fresh snapshot directories under the session scratchpad (two streams, at most two in parallel) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; each distinct command ran once and its log is shared by every stage that lists it; the recorded seconds include contention between the two streams",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/AssistiveContracts.ps1",
+      "sha256": "5FE5820FDC659875762C62E0CDED54FD3DDA021CB8EF1C9C5E4422EAF931A42F"
+    },
+    {
+      "path": "src/AssistiveFiles.ps1",
+      "sha256": "8EF054777F6F60293D28D7B41001A2CA5974E39B6B338841A1D5FE7BA5BBEB07"
+    },
+    {
+      "path": "src/AssistiveNonC.ps1",
+      "sha256": "795285CB213F0D73B51E3FF5D44A7391C2A7396CBFA562B3EE12B094C0CDBC26"
+    },
+    {
+      "path": "src/AssistivePackaging.ps1",
+      "sha256": "7F10A60814A6EBFA9E8B17D8A2E718C90D52EB7CB6A253091C5350467779FCA5"
+    },
+    {
+      "path": "src/AssistiveRestore.ps1",
+      "sha256": "DE6D13E2D4BDD2B57056AB674FE25D3C85F604F05F2C023A3B127151B7EAF63A"
+    },
+    {
+      "path": "src/Core.ps1",
+      "sha256": "5D7C6EE9FC9FE6674DE71B5B11E033331A151A0D81CBBCFB3BB623EB598068D5"
+    },
+    {
+      "path": "src/DeliveryReceipts.ps1",
+      "sha256": "970CDD5132E22A50D0142FC246E6ED3639577B3C6136B23E6B92EC000AB88740"
+    },
+    {
+      "path": "src/DeltaContracts.ps1",
+      "sha256": "DD7EBE0A23584BFA7E8CC153DC14D870F326E846F502C8EB01D7FE5B53FF0B59"
+    },
+    {
+      "path": "src/DeltaWorkflow.ps1",
+      "sha256": "4B50C4A7A86A6E643E058D10CA018EC9ED1D6EC1FF434DEFCA4FCFCB6FF18967"
+    },
+    {
+      "path": "src/LabValidation.ps1",
+      "sha256": "9DE366C1D266E5E079AC127145274FFF0130F563A928700651ADA12A0420C2BD"
+    },
+    {
+      "path": "src/MigrationContracts.ps1",
+      "sha256": "9015DF2FA626CF979679A748C6B89A2A0E9AFE1639582F70CE6A29F34DDA10C7"
+    },
+    {
+      "path": "src/OutputWorkspace.ps1",
+      "sha256": "C5B8753885DBCBF914D8EBCA5F80CDB40A1F37980B0D56BACD1E6D26E70F61CE"
+    },
+    {
+      "path": "src/PackageTransport.ps1",
+      "sha256": "F17881A07338AEEA8E2E317C22AA63088E0EF27EF30727644BE18AC25756D127"
+    },
+    {
+      "path": "src/Payload.ps1",
+      "sha256": "537A02B837AE6EF8C7A4062FFC5151F5B583C7984A8D9EDAD3C71917FE4A717F"
+    },
+    {
+      "path": "src/Restore.ps1",
+      "sha256": "DE008F8327D192A68F1ECEE27ECDC1F4A6697202851065B5E24A642C6256C128"
+    },
+    {
+      "path": "src/WizardBackup.ps1",
+      "sha256": "78206B22D2CBF98B7401FABDCDB7607A44818704D9623464452AC3DB0D559899"
+    },
+    {
+      "path": "tests/Test-OfflineFullSet.ps1",
+      "sha256": "D6D403BA6DD16EE5841D0EF2E35375E0DE4EB29B6E2D204EA092FA211DD3D959"
+    },
+    {
+      "path": "tests/Test-OfflineFullSetSeparateSource.ps1",
+      "sha256": "9FE04083E7E3CC06CCAC00029A73349ACF6F70BCC599E520D8FC533FA922BF62"
+    },
+    {
+      "path": "tests/Test-WizardMixedGenerationZip.ps1",
+      "sha256": "EACE15DF11D51B5BEC601709E2E43E581EEE4DA3CAD31F0092B5D9EC96CDAD23"
+    },
+    {
+      "path": "tests/Test-WizardBackup.ps1",
+      "sha256": "983C99C9C41F031D7A9C5178313D33749DF42A8D6EE45273695EEF159635FF86"
+    },
+    {
+      "path": "tests/Test-OfflineFullSetMaterialWorkspace.ps1",
+      "sha256": "2153A3DC5A459F5AA928473A7B1D5F92537C78E4DBA0E32493A34B46F176CA70"
+    },
+    {
+      "path": "tests/Test-OfflineFullSetControlsRetry.ps1",
+      "sha256": "869FB9C8490AE25F0F4C92B1B1580671B67004D881A9314892CED36561339704"
+    },
+    {
+      "path": "tests/Test-AssistiveRestore.ps1",
+      "sha256": "850F933E30B4C37D1732ACD2797F23DBDCDDA98D199724DCAEC5FFBCDBE0C02B"
+    },
+    {
+      "path": "tests/Test-RetryPartialIndexPreserved.ps1",
+      "sha256": "A7A293FF99DA4DEF4F5F2432FDD0ADC3A14252D3B267D880E589DE5A9E592563"
+    },
+    {
+      "path": "tests/Test-FileScopeIncompleteOwnership.ps1",
+      "sha256": "F8833601198AB152FC8B39A6BA873C914EB897388A89D7483FB21ADD80190CD1"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 555,
+  "result": "Rebound to e12ae9f bytes after P8 (PLAN 17.100) and P9 (PLAN 17.101) (previous binding f588e0d); every command below exited 0 on WinPS 5.1: OfflineFullSet 67, OfflineFullSetSeparateSource 20, WizardMixedGenerationZip 12, WizardBackup 21, OfflineFullSetMaterialWorkspace 12, OfflineFullSetControlsRetry 15, AssistiveRestore 178, RetryPartialIndexPreserved 66, FileScopeIncompleteOwnership 164. Added for P8 and P9: FileScopeIncompleteOwnership (P9, 17.101; AssistiveRestore, Recovery, WizardRuntime, console.js).",
+  "logs": [
+    {
+      "name": "Test-OfflineFullSet.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineFullSet.ps1 </dev/null",
+      "sha256": "34F966212FC3D4CF67550FD3B11233A3A22F000BBDD4631D4E569B117388940A",
+      "exitCode": 0,
+      "seconds": 36,
+      "countedAs": "checks",
+      "count": 67,
+      "text": "ĵ�i: ���ǨӦۼҲ� 'WindowsServerMigration' \r\n���פJ�R�O�W�٥]�t���֭㪺�ʵ��A�]���i�ण���j�M�C�Y�n�M��t�����֭�ʵ����R�O�A�Шϥ� Verbose �ѼƦA������ \r\nImport-Module �R�O�C�p�ݮ֭�ʵ����M��A�п�J Get-Verb�C\nPASS: 67 OfflineFullSet approval contract, native C-volume proof, package/readback, nested ZIP/Directory controls, receipt round-trips and negative integrity cases; additional-volume native qualification remains pending.\n"
+    },
+    {
+      "name": "Test-OfflineFullSetSeparateSource.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineFullSetSeparateSource.ps1 </dev/null",
+      "sha256": "5DF6A4E280AD1DAAB8EF4AE6137088120E2D5F6B5C6FBCFD6095B2758B1F50A9",
+      "exitCode": 0,
+      "seconds": 23,
+      "countedAs": "checks",
+      "count": 20,
+      "text": "ĵ�i: ���ǨӦۼҲ� 'WindowsServerMigration' \r\n���פJ�R�O�W�٥]�t���֭㪺�ʵ��A�]���i�ण���j�M�C�Y�n�M��t�����֭�ʵ����R�O�A�Шϥ� Verbose �ѼƦA������ \r\nImport-Module �R�O�C�p�ݮ֭�ʵ����M��A�п�J Get-Verb�C\nPASS: CV2 snapshot attachment emitted by Manager, verified and placed by a separate Source, one-click backup succeeded (20 checks).\n"
+    },
+    {
+      "name": "Test-WizardMixedGenerationZip.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardMixedGenerationZip.ps1 </dev/null",
+      "sha256": "41A4C33A209FF1D9721FD4D866B6425BD0A699DF163796CBC70C47B4D1C1E998",
+      "exitCode": 0,
+      "seconds": 17,
+      "countedAs": "checks",
+      "count": 12,
+      "text": "PASS Test-WizardMixedGenerationZip checks=12; real core-validated generation 1 and 2 ZIPs for one Pair were mixed and rejected before Target import state was created.\r\n"
+    },
+    {
+      "name": "Test-WizardBackup.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-WizardBackup.ps1 </dev/null",
+      "sha256": "ED28A1A47802F7989310B171531561D2E7CEC092BFB926891579D7BFFB996F5D",
+      "exitCode": 0,
+      "seconds": 134,
+      "countedAs": "PASS sections",
+      "count": 21,
+      "text": "ull during Directory delivery.\nPASS: B7 short write refused before sealing.\nPASS: B7 disk full during ZIP volume write.\nPASS: B7 short-written ZIP volume refused before rename.\nPASS: B7 independent copy disk full, medium pulled mid-copy and re-copied onto the same set.\nPASS: B7 crash mid-capture and retry did not mix an aborted capture into the sealed generation.\nPASS: B7 delivery fault cases (disk full, short write, medium pulled, crash retry).\nPASS: real sealed approval, source host binding, Directory and ZIP export/import, actual payload hash readback, and durable wizard result projection.\n"
+    },
+    {
+      "name": "Test-OfflineFullSetMaterialWorkspace.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineFullSetMaterialWorkspace.ps1 </dev/null",
+      "sha256": "2DE8C266BE906FE4E68B304178BBEE7CE2CD58581F38CC5FDB31D9C10F84E564",
+      "exitCode": 0,
+      "seconds": 5,
+      "countedAs": "checks",
+      "count": 12,
+      "text": "PASS: 12 OfflineFullSet material workspace checks (real layout, no silent fallback, containment, sibling prefix, hash binding, wizard wiring)\n"
+    },
+    {
+      "name": "Test-OfflineFullSetControlsRetry.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-OfflineFullSetControlsRetry.ps1 </dev/null",
+      "sha256": "383130ECCA545B71FA8EF76278CD3F5E0A4F43694279047C942C463D008EBA07",
+      "exitCode": 0,
+      "seconds": 6,
+      "countedAs": "checks",
+      "count": 15,
+      "text": "PASS: 15 OfflineFullSet controls retry checks (identical bytes reused, partial directories completed, conflicts refused and preserved, reused files re-checked for reparse points)\n"
+    },
+    {
+      "name": "Test-AssistiveRestore.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveRestore.ps1 </dev/null",
+      "sha256": "A7C83D49E14FCE3E9AB6A74082F311364BDB79E7150292413229A1D930316FB6",
+      "exitCode": 0,
+      "seconds": 17,
+      "countedAs": "checks",
+      "count": 178,
+      "text": "ĵ�i: ���ǨӦۼҲ� 'WindowsServerMigration' \r\n���פJ�R�O�W�٥]�t���֭㪺�ʵ��A�]���i�ण���j�M�C�Y�n�M��t�����֭�ʵ����R�O�A�Шϥ� Verbose �ѼƦA������ \r\nImport-Module �R�O�C�p�ݮ֭�ʵ����M��A�п�J Get-Verb�C\n���������B�z�Ǫ����A�A�~��s�� IIS �]�w��ơC\r\nPASS: 178 Assistive file ownership, per-file conflict, typed IIS mapping, safe manual-gap and backup-media overlap writer checks.\n"
+    },
+    {
+      "name": "Test-RetryPartialIndexPreserved.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-RetryPartialIndexPreserved.ps1 </dev/null",
+      "sha256": "A6479EC5EABB064291DD4106C329611CCE65F2BCA491B910D6B2CEF002B4D250",
+      "exitCode": 0,
+      "seconds": 68,
+      "countedAs": "checks",
+      "count": 66,
+      "text": "byte, new index sealed, Directory delivery excludes it.\nPASS: P2-1b the one-click backup passes its attempt id to the exporter.\nPASS: P2-2 ZIP delivery after a retry does not carry the preserved index.\nPASS: P2-3 two failures then success: -01 and -02, byte-exact, nothing overwritten.\nPASS: P2-4 a pre-existing same-name file is never overwritten; the next number is used; 99 is the limit.\nPASS: P2-5 no AttemptId: attempt-unknown-NN, still set aside and not overwritten.\nPASS: P2-6 attempt ids are reduced to [A-Za-z0-9-], at most 64 characters.\nPASS: P2 retry partial index preserved (66 checks).\n"
+    },
+    {
+      "name": "Test-FileScopeIncompleteOwnership.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-FileScopeIncompleteOwnership.ps1 </dev/null",
+      "sha256": "94112ECD55FBFFEE88A029FDBE181A130EE1678021E24EB82E76431A79A4CA6D",
+      "exitCode": 0,
+      "seconds": 154,
+      "countedAs": "checks",
+      "count": 164,
+      "text": "PASS: FileScope incomplete ownership (164 checks): one shared predicate for the writer and N1, NeedsReconciliation in options/preview/P8 candidates with the Repair entrance named on HTML and CLI, Repair adopts only exact backup-hash files and preserves every other case, the P8 retry then writes only the reconciled item.\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Additional volumes (D/E) are simulated bindings (subst and fixtures); native D/E capture and a cold Target restore qualification are not claimed.",
+    "No native D:/E: extraction is asserted; only the C-volume proof is native in these fixtures.",
+    "Independent-copy media classes are classified through test doubles, not real removable or network media.",
+    "Isolated fixtures only; this is not an external Server, enterprise, business or scale acceptance.",
+    "P2 (17.95) moves the previous partial index aside before a retry; the check-then-move window is protected by the lock and has no dedicated race test.",
+    "P9 (17.101): a matching content hash does not prove the file was written by the tool, so a file placed beforehand with identical content is adopted and a later rollback may delete it (accepted risk); the single-file scope (RelativePath empty) adoption path is implemented but not tested; the P9 end-to-end test waits 16 seconds to avoid NTFS file tunneling."
+  ],
+  "openIssues": [
+    "Native D/E volume capture and cold Target restore qualification on real hardware (additional volumes are simulated bindings).",
+    "Offline Target bootstrap, source-disabled restore, service credentials and full round acceptance on a real new machine remain external.",
+    "Real removable-disk and network-media independent copy (see D3b)."
+  ]
+}

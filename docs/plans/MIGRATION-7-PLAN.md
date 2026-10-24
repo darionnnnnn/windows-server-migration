@@ -1946,6 +1946,44 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 寫入前已建立的空根目錄不補登 ownership，仍視為外部目錄，屬保守方向。
   - 測試為了避開 NTFS file tunneling 需要等待 16 秒。
 
+### 17.102 P8b 證據帳本重綁（以 e12ae9f 為準，接在 P8、P9 之後）
+
+- 由 Sonnet 5.5 medium subagent 執行，規格為 `work/r7/specs/P8b-ledger-rebind.md`，方法沿用 17.99。本段只改帳本與 `docs/plans/evidence/` 下的新增檔，`tools/Test-PlanEvidence.ps1` 未改。
+- 這次重綁原本在 P8 之後就派出，但 P9 也會改 src，所以中途停止，等 P9 完成後再一起做。停止時沒有留下任何檔案或程序。
+- 過期階段共 16 個：C2、D1、D2、D3a、D3b、E0、E1、E2、E3a、E3b、F1、F2、F3、F4a、F4b、G。A1、B1、B2、C1 的雜湊仍吻合，未改動。
+- 方法：
+  - 以 `git archive HEAD` 建兩份快照（e12ae9f，不含 `work/`），最多兩條串流並行。每個不同指令只跑一次，各階段共用同一份 log。
+  - 新綁定一律記 LF 形式；舊證據移入 `historicalEvidence`。
+  - G2、G3、G4（含 RepairAndRetry、RetryFailedButton）在主工作樹執行，原因同 17.92。
+- P8、P9 測試的歸屬規則：
+  - 階段輸入含 P8 改過的 src：加入 RetryFailedItems（83）。
+  - 輸入另含 console.js 或 console.css：再加 RetryFailedItemsBrowser。
+  - 輸入含 P9 改過的 src：加入 FileScopeIncompleteOwnership（164）。
+  - G 另加 G4 `-Mutation RetryFailedButton`（44）。
+  - 歸屬是機械判定，範圍可能偏寬。
+- 階段狀態：
+  - 已完成且 `-Stage` 通過：A1、B1、C1、D3a、D3b、E0、E1、E2、E3a、E3b、F3、F4a、F4b。
+  - 維持 in-progress：B2、C2、D1、D2、F1、F2、G。
+  - 既有測試的檢查數與 17.99 相同，只有 WizardRuntime 從 166 變為 174（P8 新增 8 項）。
+- G 的 openIssues 與 limitations：
+  - 17.98 的觀察改為已處理，出口是 P8 的 `TargetRetryFailedItems`。
+  - 17.100 的 FileScope 發現改為已處理，由 P9 的 NeedsReconciliation 加上 Repair 對帳。
+  - limitations 補上 P8、P9 的已知限制。
+  - 主旅程 n9g001 仍待使用者執行後補綁。
+- `Test-BackupProgressBrowser.js` 第一次因隨機埠撞到 Chromium 的 unsafe port（`ERR_UNSAFE_PORT`）而失敗，原樣重跑一次通過。兩次嘗試都記在 F1、F2 的證據檔。這個問題與 17.99 的 B2 NativeProbeRoles 同因，屬測試環境的偶發失敗。
+- 新證據檔共 16 個：`docs/plans/evidence/MIGRATION-7-<階段>-p9-rebind-e12ae9f.json`。
+- 驗證：
+  - 13 個已完成階段在工作樹與 LF 快照上的 `-Stage` 全部 PASS。
+  - `-WholeRound` 停在 `stage B2 is not implemented`，原因只是 B2 仍在進行中。
+- 突變（皆轉紅，以備份還原並用 cmp 確認）：
+  - subagent：`tests/Test-RetryFailedItems.ps1` 多一個位元組，回報 `stage D3b input hash is stale`；刪除 E1 的新證據檔，回報 `evidence file is missing`。
+  - 主代理：`src/Recovery.ps1` 多一個位元組，工具在第一個綁定它的已完成階段（E3b）回報 `input hash is stale`。
+- 主代理審查：在工作樹重跑 13 個已完成階段的 `-Stage` 與 `-WholeRound`，結果同上。證據檔的 `verifier` 欄位寫「主代理尚未審閱」，但證據檔以雜湊綁定，不回頭修改；以本條作為主代理審查紀錄。
+- 限制：
+  - 所有綁定都沒有 PS7。
+  - `Test-OfflineRestoreJourney` 未執行（17.94）。
+  - Test-ReleaseWizardSmoke 需要 git 索引，未重跑。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
