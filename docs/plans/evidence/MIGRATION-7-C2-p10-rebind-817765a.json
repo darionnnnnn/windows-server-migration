@@ -1,0 +1,246 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "C2",
+  "verifiedUtc": "2026-10-24T06:21:47Z",
+  "verifier": "P10b sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "817765ac82286181bb3a55b53110cdc3ae072495",
+  "snapshotDirectory": "git archive HEAD (817765a, work/ excluded) extracted to two fresh snapshot directories under the session scratchpad (two streams, at most two in parallel) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; each distinct command ran once and its log is shared by every stage that lists it; the recorded seconds include contention between the two streams",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/HtmlConsole.ps1",
+      "sha256": "BB4A20E354A8AE98271A37764A292042F802EDE9E6DE79323F2DF7DF471CDE37"
+    },
+    {
+      "path": "src/OperationRequests.ps1",
+      "sha256": "8723D763ECCEF7DC64F21500FE26C6C147C11D113CF95CD3ED2FC8D1014A2A04"
+    },
+    {
+      "path": "src/SoftwareDispositionReview.ps1",
+      "sha256": "A39B2425FD4A688942C4284F2B6E786C45C23E5B57A051D31C4448D9B65DA04C"
+    },
+    {
+      "path": "src/WindowsServerMigration.psd1",
+      "sha256": "E13220A66DF2FDE8374DAE04BEC73E578AABDE0F79B864873C6054A162AC8F1C"
+    },
+    {
+      "path": "src/WindowsServerMigration.psm1",
+      "sha256": "BB23A18D0662D8C2E507DBCE9CFC9AEFD4FADB93DC188F667506B7E757A28E88"
+    },
+    {
+      "path": "src/WizardHtmlRuntime.ps1",
+      "sha256": "D8726AAA38E9CAD0A7064433E3CD29BE3182B0C4C383DA6B6670DF9C91615F6B"
+    },
+    {
+      "path": "src/ui/console.css",
+      "sha256": "6426ECC0570671129DF6CB5108AFC7DB9E137E6B8EB0EE2F0479F1BF3DDCC544"
+    },
+    {
+      "path": "src/ui/console.js",
+      "sha256": "B946C660646F5235C834D540221AD8C9910F4F6088B1BF37CD7F76FD52641736"
+    },
+    {
+      "path": "src/ui/index.html",
+      "sha256": "9EE655C79CC9BA5209D24F4C44EFAFE0E6CC7DE5D47DB308DA7354AA4F5F1648"
+    },
+    {
+      "path": "tests/Start-C2D2TestServer.ps1",
+      "sha256": "F3F18857A9FF8D882FAF6C5C113BE39FE86A011C89799AAD9A1C6D24D1C9547F"
+    },
+    {
+      "path": "tests/Test-C2D2Browser.js",
+      "sha256": "A260D9007FE369DCE164FF54F2976CB0552975C4CC6E5EBA7586CD77559AE530"
+    },
+    {
+      "path": "tests/Test-C2D2HtmlActions.ps1",
+      "sha256": "15AFDB7167747B4450B3E08020F98D25B4EE0C04D9F64937CB394AF83EF1EAB4"
+    },
+    {
+      "path": "tests/Test-SoftwareDispositionReview.ps1",
+      "sha256": "D20119066E82B3CE0623611F2CC5E3FD9FCF5C2F7246EF43C56796C31685C000"
+    },
+    {
+      "path": "src/WizardDetails.ps1",
+      "sha256": "37E524A209ABD008BACA36A4BAEFA04C34F0C5324527B8DFE84A5A9F15FB55FF"
+    },
+    {
+      "path": "tests/New-PathResolutionFixture.ps1",
+      "sha256": "609E5F1BF16E128FE67D7113F6FABFFB136E8F52DBAC8C9D9FB05AA883F71D51"
+    },
+    {
+      "path": "tests/Test-PathResolutionDisplay.ps1",
+      "sha256": "C3F0EF2944AB597E8CC63E3CC03E57565DAC56BEF5D3BF8254E2E5D9C01E6E7A"
+    },
+    {
+      "path": "tests/Test-PathResolutionBrowser.js",
+      "sha256": "AD6A8BFCB4786D4B632A5ECDF455888692C245127AEA4F1F65E0D2E56374C581"
+    },
+    {
+      "path": "src/WindowsSettingsReview.ps1",
+      "sha256": "902B5A029FEA4276CA4C33F5D6E7501EB1E727AB76336239C6BD4E17831A039C"
+    },
+    {
+      "path": "tests/Test-ProductionFlagProjection.ps1",
+      "sha256": "D8B01E725A7B4B79E8848234A06DFFFA1A6292F7B2AA440701B759BAEC141E18"
+    },
+    {
+      "path": "src/MigrationWizard.ps1",
+      "sha256": "012D9B41D7E23059B87665F992A3B6A7590291426B794BA69F5E17D2727F76E5"
+    },
+    {
+      "path": "src/WizardPreparation.ps1",
+      "sha256": "0ACB7BA775A589D01EA51B5B4C137C3FBE0EFA631DA2FD190B35D7B97F88042D"
+    },
+    {
+      "path": "tests/Test-UnresolvedPathNoPrefill.ps1",
+      "sha256": "F3B161585831F760E7AEE177EAE736E39AB42C2DE3655A5AFAF1C84732C700BC"
+    },
+    {
+      "path": "tests/Test-RetryFailedItems.ps1",
+      "sha256": "11124B4EE8BDF0139671CF71652C23DA62C0E230E497A863BEE6D8273BD9AC70"
+    },
+    {
+      "path": "tests/Test-RetryFailedItemsBrowser.js",
+      "sha256": "7E15339478978235937783611605DB0EB8B40BB9EC4D5670107F7A69776F5DEF"
+    },
+    {
+      "path": "tests/Test-FileScopeIncompleteOwnership.ps1",
+      "sha256": "F8833601198AB152FC8B39A6BA873C914EB897388A89D7483FB21ADD80190CD1"
+    },
+    {
+      "path": "tests/Test-AdoptedExistingOwnership.ps1",
+      "sha256": "E6AA4BD48E00B8884630F027BA7417A851A304367C0BF261C2729D84E177EE09"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 755,
+  "result": "Rebound to 817765a bytes after P10 (PLAN 17.103) (previous binding p9-rebind-e12ae9f); every command below exited 0 on WinPS 5.1: SoftwareDispositionReview 17, C2D2HtmlActions 185, C2D2Browser 1, PathResolutionDisplay 57, PathResolutionBrowser 1, ProductionFlagProjection 48, UnresolvedPathNoPrefill 72, RetryFailedItems 83, RetryFailedItemsBrowser 1, FileScopeIncompleteOwnership 164, AdoptedExistingOwnership 126. Added for P10: AdoptedExistingOwnership (P10, PLAN 17.103; AssistiveFiles, AssistiveReports, AssistiveRestore, Cutover, Recovery, WizardHtmlRuntime, WizardRuntime, console.js).",
+  "logs": [
+    {
+      "name": "Test-SoftwareDispositionReview.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SoftwareDispositionReview.ps1 </dev/null",
+      "sha256": "B417906680BE90FB56D7538CE3C870A2A9CFF9F737D38D472D8E00FC97882FA4",
+      "exitCode": 0,
+      "seconds": 8,
+      "countedAs": "checks",
+      "count": 17,
+      "text": "警告: 有些來自模組 'WindowsServerMigration' \r\n的匯入命令名稱包含未核准的動詞，因此可能不易搜尋。若要尋找含有未核准動詞的命令，請使用 Verbose 參數再次執行 \r\nImport-Module 命令。如需核准動詞的清單，請輸入 Get-Verb。\nPASS Test-SoftwareDispositionReview: 17 formal review, CAS, batch preservation, dependency-gate and root-protection checks.\r\n"
+    },
+    {
+      "name": "Test-C2D2HtmlActions.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-C2D2HtmlActions.ps1 </dev/null",
+      "sha256": "0A902E299993610DDF1CC03F4269441E8A51682AC0D061F773FA7CC621AB7DEA",
+      "exitCode": 0,
+      "seconds": 77,
+      "countedAs": "checks",
+      "count": 185,
+      "text": "r-reference decisions is refused\r\nPASS safe error classifies as stale_context: Workload mapping is bound to another source inventory.\r\nPASS safe error classifies as stale_context: Workload mapping is bound to another candidate confirmation.\r\nPASS safe error classifies as stale_context: Manager review changed; refresh workload mapping before submitting.\r\nPASS refused mapping submits leave the revision untouched\r\nPASS the console serves the confirmation review with directory members and hashes\r\nPASS the console serves the mapping review through /api/view\r\nPASS a body naming another workspace is refused by the generic session binding\r\nPASS the mapping review cannot be run as a durable operation\r\nPASS a Manager console refuses the Source candidate list\r\nPASS the mapping review submit runs as a durable console operation; its job is ReviewRequired with output status SubmittedReviewRequired (re-review and re-approval follow)\r\nPASS the mapping is stored and the revision advanced\r\nPASS resubmitting the same mapping against the changed catalog is refused with 409 and no worker\r\nPASS a wrong inventory hash fails the durable mapping job with the stale_context code\r\nPASS the Source console serves the candidate list with the scan artifact hash\r\nPASS a Source console refuses the Manager confirmation review\r\nPASS the export is refused on the read endpoint\r\nPASS Test-C2D2HtmlActions: 185 action map, role/route gate, argument, C2 batch/CAS, D2 flow, closed projection and real console checks.\r\n"
+    },
+    {
+      "name": "Test-C2D2Browser.js.log",
+      "command": "node tests/Test-C2D2Browser.js </dev/null",
+      "sha256": "5B4AD93669C0809156E7FC5FF6A53435ABDED291C5A7FE193413D996204644CC",
+      "exitCode": 0,
+      "seconds": 70,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS Test-C2D2Browser: source/manager D2 flow, C2 batch, CAS, stale handling, keyboard confirmation, states, 390px layout and zero console errors.\n"
+    },
+    {
+      "name": "Test-PathResolutionDisplay.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-PathResolutionDisplay.ps1 </dev/null",
+      "sha256": "C8065D0ACDCB3658D76E7C66F6D7F14F38A49D7770EFA254090F80FBE4F021BA",
+      "exitCode": 0,
+      "seconds": 4,
+      "countedAs": "checks",
+      "count": 57,
+      "text": "Path resolution display projection checks passed: 57\r\n"
+    },
+    {
+      "name": "Test-PathResolutionBrowser.js.log",
+      "command": "node tests/Test-PathResolutionBrowser.js </dev/null",
+      "sha256": "A4B6CCC22D66D948B3C2EE40311692947379044D4313E1125319288BA4A85F3E",
+      "exitCode": 0,
+      "seconds": 12,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: path resolution basis display (review + C2), 390px, zero console errors\n"
+    },
+    {
+      "name": "Test-ProductionFlagProjection.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-ProductionFlagProjection.ps1 </dev/null",
+      "sha256": "1DD208F2DF5FC7BB7D58E33A5F272284675593F7D0705E52EAF99592478BBE1B",
+      "exitCode": 0,
+      "seconds": 11,
+      "countedAs": "checks",
+      "count": 48,
+      "text": "PASS Test-ProductionFlagProjection checks=48; projections force false for true, \"true\" and 1; absent fields are not invented.\r\n"
+    },
+    {
+      "name": "Test-UnresolvedPathNoPrefill.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-UnresolvedPathNoPrefill.ps1 </dev/null",
+      "sha256": "F426594190FE60FFEE2112B79B04DC4021D573C9F909FEAA64BB89C6B4687276",
+      "exitCode": 0,
+      "seconds": 15,
+      "countedAs": "checks",
+      "count": 72,
+      "text": "PASS: 72 unresolved source path no-prefill checks (predicate, draft, approval, form, bulk, supplied path).\r\n"
+    },
+    {
+      "name": "Test-RetryFailedItems.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-RetryFailedItems.ps1 </dev/null",
+      "sha256": "9427EBCD8C4EA567909945E8AFA598DA214B6E40F93DB06DEAC8F458CE58A8C1",
+      "exitCode": 0,
+      "seconds": 71,
+      "countedAs": "checks",
+      "count": 83,
+      "text": "PASS: retry failed items (83 checks): candidates exclude succeeded and unrestorable items with reasons, a pending intent or running restore blocks, the backend recomputes and refuses other item ids / owners / reasons / stale sources, creating the receipt writes nothing, the retry restore writes only the failed item.\n"
+    },
+    {
+      "name": "Test-RetryFailedItemsBrowser.js.log",
+      "command": "node tests/Test-RetryFailedItemsBrowser.js </dev/null",
+      "sha256": "23DD7AAB62C25FCAC73EB9679637925AF86BF5C2E74680CE8A954ED800B02345",
+      "exitCode": 0,
+      "seconds": 18,
+      "countedAs": "one suite",
+      "count": 1,
+      "text": "PASS: P8 retry failed items UI — shown for a partial result only (hidden when all succeeded, running, WaitingForInput, Interrupted), verbatim explanation, candidates and excluded reasons as icon + text, empty-candidate and pending-intent states disabled with aria-disabled and a described reason, owner/reason prefilled and required, Tab + Enter, one request on double activation, no restore started, focus never falls to body (result message on success, button on failure), 390/320px without overflow, zero console errors. API fixture only.\n"
+    },
+    {
+      "name": "Test-FileScopeIncompleteOwnership.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-FileScopeIncompleteOwnership.ps1 </dev/null",
+      "sha256": "94112ECD55FBFFEE88A029FDBE181A130EE1678021E24EB82E76431A79A4CA6D",
+      "exitCode": 0,
+      "seconds": 154,
+      "countedAs": "checks",
+      "count": 164,
+      "text": "PASS: FileScope incomplete ownership (164 checks): one shared predicate for the writer and N1, NeedsReconciliation in options/preview/P8 candidates with the Repair entrance named on HTML and CLI, Repair adopts only exact backup-hash files and preserves every other case, the P8 retry then writes only the reconciled item.\n"
+    },
+    {
+      "name": "Test-AdoptedExistingOwnership.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AdoptedExistingOwnership.ps1 </dev/null",
+      "sha256": "BD81904370F2243C36448EC5F038B3E9990A6EC41FD1F82D9D45340D8EB702BE",
+      "exitCode": 0,
+      "seconds": 161,
+      "countedAs": "checks",
+      "count": 126,
+      "text": "PASS: adopted existing ownership (126 checks): the one predicate, old ownership hashes unchanged, consumer inventory guarded, Repair adopts same-content files (directory and single-file scope, six single-file cases), restore does not rewrite them, rollback keeps bytes/ACL/metadata while tool-written files are still rolled back, drift is reported only, journal replay row for row, projections show 沿用既有檔.\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "C2D2Browser uses a fixture API; there is no real-browser plus real-listener integration test.",
+    "The 'incomplete' display lists only undecided (Unreviewed/Stale) software and is not an approval-blocking rule.",
+    "Selected-dependency gate and root guard tests are isolated contract evidence, not actual Server product migration.",
+    "P3 (17.96): an unresolved source path has no dedicated supply-the-real-path form; the user re-scans or uses source candidate confirmation.",
+    "P9 (17.101) accepted risk, narrowed by P10 (17.103): a matching content hash still does not prove the tool wrote the file, but the reconciliation path now records such a file as Ownership=AdoptedExisting (shown as \"adopted existing file\"), which rollback does not delete, overwrite or re-ACL; only legacy records without the key and normal writes backed by journal or intent evidence are treated as tool-owned. The single-file scope (RelativePath empty) is now covered by six cases in Test-AdoptedExistingOwnership; the P9 end-to-end test still waits 16 seconds to avoid NTFS file tunneling.",
+    "P8 (17.100): failure Status values were exercised only with synthetic input and an IIS double, the real HTTP /api/operations path is not run (G4 simulates it in process through ConvertTo-WsmHtmlArguments), and the browser suite uses a fixed API stub. P8 and P9 tests were added to this stage by the mechanical rule that a stage whose inputs hold a changed src file runs them, so the attribution may be wider than the true dependency."
+  ],
+  "openIssues": [
+    "Full capture/restore exclusion proof for C2 dispositions is still pending.",
+    "Panel placement on existing wizard steps needs confirmation on a real machine.",
+    "The Manager's imported-candidate list is read from job history; there is no manual-entry fallback once the history is cleared.",
+    "Source-path resolution display (N9c2) is verified on fixtures only; the real Server Export-WsmInventory with a SourceResolutionContext has not been run."
+  ]
+}

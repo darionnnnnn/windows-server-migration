@@ -2031,6 +2031,43 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - rollback preview 新增了欄位，所以 PreviewHash 的內容與舊版不同。預覽與執行是在同一版本內重算，影響有限。
   - CLI 只斷言列的內容，沒有擷取真實的終端輸出。
 
+### 17.104 P10b 證據帳本重綁（以 817765a 為準，接在 P10 之後）
+
+- 由 Sonnet 5.5 medium subagent 執行，規格為 `work/r7/specs/P10b-ledger-rebind.md`，方法沿用 17.99 與 17.102。本段只改帳本與 `docs/plans/evidence/` 下新增的檔案，`tools/Test-PlanEvidence.ps1` 未改。
+- 過期階段共 17 個：C1、C2、D1、D2、D3a、D3b、E0、E1、E2、E3a、E3b、F1、F2、F3、F4a、F4b、G。A1、B1、B2 的雜湊仍吻合，未改動。
+- P10 測試的歸屬（機械判定，範圍可能偏寬）：
+  - 階段輸入含 P10 改過的 src 者，加入 AdoptedExistingOwnership（126）並實際執行；17 個階段全部符合。
+  - 輸入含 `Recovery.ps1` 者，另加 SettingTransitionRecovery 作為 P9 回歸的守門；只有 E3b 符合。
+  - G 另跑 G4 預設（30）、`-Mutation RepairAndRetry`（37）、`-Mutation RetryFailedButton`（44）。
+- 階段狀態：
+  - 已完成且 `-Stage` 通過：A1、B1、C1、D3a、D3b、E0、E1、E2、E3a、E3b、F3、F4a、F4b。
+  - 維持 in-progress：B2、C2、D1、D2、F1、F2、G。
+  - 既有測試的檢查數與 17.102 相同。
+- limitations：
+  - G 補上 P10 的兩項已知限制：工具擁有目錄的可繼承 ACE 未防堵；檔案頁靠 Reason 前綴辨識。
+  - 各階段原有的 P9 限制改寫為「已由 P10 縮小」。原限制是：雜湊吻合的檔案會被補登，rollback 時可能刪到。
+- 過程中的偶發狀況：
+  - C1 的 EnvironmentConfirmation（2501 列）第一次在兩條串流競爭下撞到 900 秒上限，改為單獨在背景重跑，1111 秒通過。證據只記通過的那次，C1 的 result 有註記。
+  - G 劇本第一次因 RunId 不是 6 個英數字而立即失敗（測試參數問題），改用 6 字元 RunId 重跑通過，失敗的那次未入證據。
+- 新證據檔共 17 個：`docs/plans/evidence/MIGRATION-7-<階段>-p10-rebind-817765a.json`。
+- 驗證：
+  - 13 個已完成階段在工作樹與 LF 快照上的 `-Stage` 全部 PASS。
+  - `-WholeRound` 停在 `stage B2 is not implemented`，原因只是 B2 仍在進行中。
+- 突變（皆轉紅，以備份還原並用 cmp 確認）：
+  - subagent：
+    - `tests/Test-AdoptedExistingOwnership.ps1` 多 1 個位元組，回報 `stage C1 input hash is stale`。
+    - 刪除 E1 的新證據檔，回報 `evidence file is missing`。
+  - 主代理：`src/AssistiveRestore.ps1` 多 1 個位元組，回報 `stage D3a input hash is stale`。
+- 主代理審查：
+  - 重跑 13 個已完成階段的 `-Stage` 與 `-WholeRound`，結果同上。
+  - 主代理第一次突變選了 `src/Cutover.ps1`，結果存活。經核對，沒有任何階段的 inputs 綁定 `Cutover.ps1`，所以這是選錯檔案的無效突變，不是帳本缺陷。之後改用有綁定的 `AssistiveRestore.ps1`，突變轉紅。
+  - `Cutover.ps1`（P10 有修改）不在任何階段的 inputs 內，這是帳本既有的涵蓋缺口。它的行為由 AdoptedExistingOwnership 與 MigrationPipeline 測試涵蓋，但雜湊沒有綁定。
+  - 證據檔 `verifier` 欄位寫的是「主代理尚未審閱」；證據檔以雜湊綁定，不回頭修改，本條即為主代理的審查紀錄。
+- 限制：
+  - 所有綁定都沒有 PS7。
+  - `Test-OfflineRestoreJourney` 未執行（17.94）。
+  - Test-ReleaseWizardSmoke 需要 git 索引，未重跑。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

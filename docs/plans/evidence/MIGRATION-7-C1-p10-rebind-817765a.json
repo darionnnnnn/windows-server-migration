@@ -1,0 +1,127 @@
+﻿{
+  "round": "MIGRATION-7",
+  "stage": "C1",
+  "verifiedUtc": "2026-10-24T06:21:47Z",
+  "verifier": "P10b sub-agent (Claude Sonnet 5.5) ran each command below in a fixed snapshot; the primary agent has not yet reviewed this record",
+  "runtimeBase": "817765ac82286181bb3a55b53110cdc3ae072495",
+  "snapshotDirectory": "git archive HEAD (817765a, work/ excluded) extracted to two fresh snapshot directories under the session scratchpad (two streams, at most two in parallel) and deleted after use; Node v21.6.1 with Playwright + Edge for browser suites; each distinct command ran once and its log is shared by every stage that lists it; the recorded seconds include contention between the two streams",
+  "hashForm": "sha256 over the file with CRLF folded to LF (equals the committed blob bytes)",
+  "inputs": [
+    {
+      "path": "src/AssistiveComparison.ps1",
+      "sha256": "6B5C7D9616190A19549EB8FC3DA5330C37FF901724F102848274F4C37FDD2487"
+    },
+    {
+      "path": "src/AssistiveReports.ps1",
+      "sha256": "E74B5B678F22A69E7148FBA50C56560680609BBE9B7A311FF7C945A554A3737A"
+    },
+    {
+      "path": "src/EnvironmentConfirmation.ps1",
+      "sha256": "08A57E7B08F6E1A0D8742B02698318B972193AA63413CCB70708D908367A2711"
+    },
+    {
+      "path": "src/SoftwareInventory.ps1",
+      "sha256": "D8206625EED6ED5C76348C1C301706BF82A993FBA097FAF65627C8AC6439A66C"
+    },
+    {
+      "path": "tests/Test-AssistiveComparison.ps1",
+      "sha256": "599F49903393B6DE543EA441C647D22EFFDA94B3E5D711F10F6D592AB7302F0F"
+    },
+    {
+      "path": "tests/Test-EnvironmentConfirmation.ps1",
+      "sha256": "B76AC30AB5785A88695414589632E7E3FBF7D1D5F3645C32FD1D7C330C8900D0"
+    },
+    {
+      "path": "tests/Test-R7SoftwareAssessment.ps1",
+      "sha256": "E760B4E6EAFCC8E25C83C742636A7C17BADF5B9B10E1530C342701FA3C0930E1"
+    },
+    {
+      "path": "src/EnterpriseDiscovery.ps1",
+      "sha256": "9891583FA40F114C7E66A0E0E41D95B1DC65941299B5D22FA1DCCC282A607252"
+    },
+    {
+      "path": "tests/Test-SourceContextResolution.ps1",
+      "sha256": "5F73A2A6D2EC70942B9CFE3A70F22FB741E8A08D1701857E9704F1666BC91827"
+    },
+    {
+      "path": "tests/Test-SoftwareInventory.ps1",
+      "sha256": "2B10E7B78CB311BB26DFE9F8F1623E6F5EA295F40ADF4296B0B1782CD0A4BDEB"
+    },
+    {
+      "path": "tests/Test-AdoptedExistingOwnership.ps1",
+      "sha256": "E6AA4BD48E00B8884630F027BA7417A851A304367C0BF261C2729D84E177EE09"
+    }
+  ],
+  "environment": "Windows PowerShell 5.1.26100.9711 only (PowerShell 7 / pwsh is not installed on this host)",
+  "casesExecuted": 270,
+  "result": "Rebound to 817765a bytes after P10 (PLAN 17.103) (previous binding n9g-rebind-23054c1); every command below exited 0 on WinPS 5.1: R7SoftwareAssessment 13, AssistiveComparison 42, EnvironmentConfirmation 1, SourceContextResolution 87, SoftwareInventory 1, AdoptedExistingOwnership 126. Added for P10: AdoptedExistingOwnership (P10, PLAN 17.103; AssistiveFiles, AssistiveReports, AssistiveRestore, Cutover, Recovery, WizardHtmlRuntime, WizardRuntime, console.js). The 2501-row EnvironmentConfirmation suite reached the 900 s cap on its first attempt while two streams ran concurrently (exit 124, not recorded as a pass) and was re-run alone in the background (1111 s, exit 0); the logs record the passing run.",
+  "logs": [
+    {
+      "name": "Test-R7SoftwareAssessment.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-R7SoftwareAssessment.ps1 </dev/null",
+      "sha256": "028F93E0FA4DBB62DC91A09E9A8D87565D10C67AF34DE283448BA1C7845DA294",
+      "exitCode": 0,
+      "seconds": 7,
+      "countedAs": "checks",
+      "count": 13,
+      "text": "警告: 有些來自模組 'WindowsServerMigration' \r\n的匯入命令名稱包含未核准的動詞，因此可能不易搜尋。若要尋找含有未核准動詞的命令，請使用 Verbose 參數再次執行 \r\nImport-Module 命令。如需核准動詞的清單，請輸入 Get-Verb。\nPASS: R7 software assessment preserved 5 collected rows through comparison and report projection; 13 assertions.\n"
+    },
+    {
+      "name": "Test-AssistiveComparison.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AssistiveComparison.ps1 </dev/null",
+      "sha256": "0226488B96D82925BF63A18E898BD29D79B263DF9392BA6BE51DA9EC16CDB3EA",
+      "exitCode": 0,
+      "seconds": 23,
+      "countedAs": "checks",
+      "count": 42,
+      "text": "警告: 有些來自模組 'WindowsServerMigration' \r\n的匯入命令名稱包含未核准的動詞，因此可能不易搜尋。若要尋找含有未核准動詞的命令，請使用 Verbose 參數再次執行 \r\nImport-Module 命令。如需核准動詞的清單，請輸入 Get-Verb。\nPASS: 42 Assistive S/E1 contract checks.\n"
+    },
+    {
+      "name": "Test-EnvironmentConfirmation.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-EnvironmentConfirmation.ps1 </dev/null",
+      "sha256": "94CAF6C06B5B438FD13FE2889DA42BE490F13725008255C5C6B41F91A36328F9",
+      "exitCode": 0,
+      "seconds": 1111,
+      "countedAs": "one 2501-row suite (not broken into assertions)",
+      "count": 1,
+      "text": "警告: 有些來自模組 'WindowsServerMigration' \r\n的匯入命令名稱包含未核准的動詞，因此可能不易搜尋。若要尋找含有未核准動詞的命令，請使用 Verbose 參數再次執行 \r\nImport-Module 命令。如需核准動詞的清單，請輸入 Get-Verb。\nPASS: Environment confirmation is complete, immutable, safely rendered and count-consistent for 2501 software rows.\n"
+    },
+    {
+      "name": "Test-SourceContextResolution.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SourceContextResolution.ps1 </dev/null",
+      "sha256": "35CA0A26347F617EEC0D5B71492C8E1618B981CC729F7DEE6E9094FB1F23CFC1",
+      "exitCode": 0,
+      "seconds": 18,
+      "countedAs": "checks",
+      "count": 87,
+      "text": "PASS: 87 source-context resolution checks (machine layer, ProfileList derivation, Unresolved cases, three-end invariance, five call sites, legacy inventory, read-only capture, static guard).\n"
+    },
+    {
+      "name": "Test-SoftwareInventory.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-SoftwareInventory.ps1 </dev/null",
+      "sha256": "66CFD82AA4B7CB29F29F7240C71D715DC6AFEFAA662258F83FFAA5B5AF200B62",
+      "exitCode": 0,
+      "seconds": 6,
+      "countedAs": "one suite (no count printed)",
+      "count": 1,
+      "text": "警告: 有些來自模組 'WindowsServerMigration' \r\n的匯入命令名稱包含未核准的動詞，因此可能不易搜尋。若要尋找含有未核准動詞的命令，請使用 Verbose 參數再次執行 \r\nImport-Module 命令。如需核准動詞的清單，請輸入 Get-Verb。\nPASS: B1 fixture aggregation preserves variants, coverage, secret filtering, portable budgets, manual evidence trust, and unknown architecture.\n"
+    },
+    {
+      "name": "Test-AdoptedExistingOwnership.ps1.log",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-AdoptedExistingOwnership.ps1 </dev/null",
+      "sha256": "BD81904370F2243C36448EC5F038B3E9990A6EC41FD1F82D9D45340D8EB702BE",
+      "exitCode": 0,
+      "seconds": 161,
+      "countedAs": "checks",
+      "count": 126,
+      "text": "PASS: adopted existing ownership (126 checks): the one predicate, old ownership hashes unchanged, consumer inventory guarded, Repair adopts same-content files (directory and single-file scope, six single-file cases), restore does not rewrite them, rollback keeps bytes/ACL/metadata while tool-written files are still rolled back, drift is reported only, journal replay row for row, projections show 沿用既有檔.\n"
+    }
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 only: PowerShell 7 is not installed on this host, so no dual-engine claim is made for this binding.",
+    "Isolated fixtures on the verifying host; no external Server, IIS/SMB/PKI, business or scale acceptance (externalStatus stays not-tested).",
+    "Registry snapshots are controlled fixtures, not a live full-server software inventory.",
+    "casesExecuted counts assertions printed by the suites; the 2501-row EnvironmentConfirmation suite prints no count and is counted once."
+  ],
+  "openIssues": []
+}
