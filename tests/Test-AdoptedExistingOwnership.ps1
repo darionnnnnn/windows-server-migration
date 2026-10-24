@@ -61,7 +61,7 @@ try {
             'DeltaWorkflow.ps1:Assert-WsmAssistiveDeltaBaseOwnership'='property presence only'
             'JournalRecovery.ps1:Restore-WsmJournalCheckpoint'='replays Record verbatim; Ownership survives'
             'Recovery.ps1:Complete-WsmAssistiveOperationRepair'='intent recovery: rows are tool-owned (the intent is the proof); no Ownership written'
-            'Recovery.ps1:Complete-WsmAssistiveFileScopeOwnershipRepair'='the only producer of AdoptedExisting'
+            'Recovery.ps1:Complete-WsmAssistiveFileScopeOwnershipRepair'='R3: adopts same-content files through the shared record builder New-WsmAssistiveAdoptedFileRecord (it no longer sets Ownership itself)'
             'Recovery.ps1:Get-WsmRollbackPreview'='adopted rows are never blocked, only reported'
             'Recovery.ps1:Remove-WsmAssistiveRolledBackOwnership'='R2: rollback releases the rolled-back per-file ownership; rows outside the rollback vector (AdoptedExisting) are kept verbatim'
             'Recovery.ps1:Invoke-WsmRollback'='adopted rows are excluded from the per-file rollback vector'
@@ -385,8 +385,8 @@ try {
             Set-Item -Path Function:\script:Assert-WsmCancellationBoundary -Value $script:p10OrigBoundary
             if($script:p10Junction -and [IO.Directory]::Exists($script:p10Junction) -and (([IO.File]::GetAttributes($script:p10Junction) -band [IO.FileAttributes]::ReparsePoint) -ne 0)){[IO.Directory]::Delete($script:p10Junction,$false)}
         }
-        # (static, placed after the behavioural parts so that behaviour is what fails first) Only the P9 reconcile may produce AdoptedExisting: every hashtable that sets an Ownership key in src must be the reconcile (the producer) or the hash body (a copy of an existing row).
-        # The intent recovery (AssistiveFileIntent / AssistiveFileReplace evidence) and the normal writer never set it, so their rows stay tool-owned.
+        # (static, placed after the behavioural parts so that behaviour is what fails first) Only ONE record builder may produce AdoptedExisting (R3): every hashtable that sets an Ownership key in src must be New-WsmAssistiveAdoptedFileRecord (called by the P9 reconcile and by the R3 directory-scope writer) or the hash body (a copy of an existing row).
+        # The intent recovery (AssistiveFileIntent / AssistiveFileReplace evidence) never sets it, and the writer's tool-written rows carry no Ownership field, so those rows stay tool-owned.
         $ownershipKeyFns=New-Object 'System.Collections.Generic.List[string]'
         foreach($sourceFile in @(Get-ChildItem -LiteralPath $SrcDir -Filter '*.ps1')){
             $fileAst=[Management.Automation.Language.Parser]::ParseFile($sourceFile.FullName,[ref]$null,[ref]$null)
@@ -395,7 +395,7 @@ try {
                 if($setters.Count){$ownershipKeyFns.Add($sourceFile.Name+':'+$fn.Name)}
             }
         }
-        Check ((Ids $ownershipKeyFns) -ceq (Ids @('AssistiveRestore.ps1:Get-WsmAssistiveFileOwnershipHash','Recovery.ps1:Complete-WsmAssistiveFileScopeOwnershipRepair'))) ('A3: something other than the P9 reconcile sets an Ownership key: '+(Ids $ownershipKeyFns))
+        Check ((Ids $ownershipKeyFns) -ceq (Ids @('AssistiveRestore.ps1:Get-WsmAssistiveFileOwnershipHash','AssistiveRestore.ps1:New-WsmAssistiveAdoptedFileRecord'))) ('A3: something other than the shared adopted-record builder sets an Ownership key: '+(Ids $ownershipKeyFns))
 
         # no deny ACE may survive anywhere under the fixture
         $leftover=@(Get-ChildItem -LiteralPath $Root -Recurse -Force -File -ErrorAction SilentlyContinue|Where-Object {@((Get-Acl -LiteralPath $_.FullName -ErrorAction SilentlyContinue).Access|Where-Object {[string]$_.AccessControlType -ceq 'Deny'}).Count -gt 0})

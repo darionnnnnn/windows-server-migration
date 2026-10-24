@@ -21,10 +21,13 @@ $probe=@'
         $n1Expected=@([string]$item.ItemId,[string]$item2.ItemId|Sort-Object)
         Check (($n1Selected -join ',') -ceq ($n1Expected -join ',')) 'N1: the receipt must carry exactly the partial selection.'
         $n1Options=@(Get-WsmWizardTargetItemOptions $n1Context $n1Package $null $n1Decision);$n1By=@{};foreach($n1Option in $n1Options){$n1By[[string]$n1Option.value]=$n1Option}
-        foreach($n1Id in @($item.ItemId,$item2.ItemId,$item3.ItemId)){Check ($n1By[[string]$n1Id].restorable -eq $true -and [string]$n1By[[string]$n1Id].restorableCode -ceq '') ('N1: approved item '+$n1Id+' with payload and a placeable target must be restorable.')}
+        foreach($n1Id in @($item.ItemId,$item3.ItemId)){Check ($n1By[[string]$n1Id].restorable -eq $true -and [string]$n1By[[string]$n1Id].restorableCode -ceq '') ('N1: approved item '+$n1Id+' with payload and a placeable target must be restorable.')}
+        # R3：item2 的目標已有不同內容的外部檔，選項與預覽一致不可還原（BlockedConflict，附原因），不再是「選項可還原、預覽 Ready、寫入器才擋」。
+        Check ($n1By[[string]$item2.ItemId].restorable -eq $false -and [string]$n1By[[string]$item2.ItemId].restorableCode -ceq 'BlockedConflict' -and ([string]$n1By[[string]$item2.ItemId].restorableReason).Contains('目標已有不同內容的檔案，需先人工處理')) 'N1: the item whose target holds an unowned file with different bytes must be BlockedConflict with the reason in the options.'
         Check ($n1By[[string]$item.ItemId].preselected -eq $true -and $n1By[[string]$item2.ItemId].preselected -eq $true -and $n1By[[string]$item3.ItemId].preselected -eq $false -and $n1By[[string]$item4.ItemId].preselected -eq $false) 'N1: options must preselect exactly the receipt selection.'
         $n1ReadyWrite=@($preview.Rows|Where-Object {[string]$_.Status -ceq 'Ready' -and [string]$_.Action -notlike 'Verify*'}|ForEach-Object {[string]$_.ItemId}|Sort-Object)
-        Check (($n1ReadyWrite -join ',') -ceq ($n1Selected -join ',')) 'N1: the preview Ready write items must equal the receipt selection.'
+        # R3：預覽 Ready 的寫入項目 = 收據選取 − 衝突項目（item2 預覽為 BlockedConflict）。
+        Check (($n1ReadyWrite -join ',') -ceq (@($n1Selected|Where-Object {$_ -cne [string]$item2.ItemId}) -join ',')) 'N1: the preview Ready write items must equal the receipt selection minus the conflicting item.'
         foreach($n1Unselected in @($item3.ItemId,$item4.ItemId)){$n1Row=@($preview.Rows|Where-Object ItemId -CEQ ([string]$n1Unselected));Check ($n1Row.Count -eq 1 -and [string]$n1Row[0].Action -ceq 'DeferredBySelection') ('N1: unselected item '+$n1Unselected+' must be DeferredBySelection in the preview.')}
         $n1UnselectedPaths=@($targetRoot3,[string]$fileSpec4.TargetPath)
         foreach($n1Path in $n1UnselectedPaths){Check (-not [IO.Directory]::Exists($n1Path) -and -not [IO.File]::Exists($n1Path)) ('N1: unselected target already exists before the restore: '+$n1Path)}

@@ -2208,6 +2208,45 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 型別化 adapter 的回復未改動。
   - CLI 沒有走真實終端。
 
+### 17.109 R3 目錄範圍已有外部檔：逐檔單一判定，預覽、選項、寫入器、Repair 一致（體檢 P1）
+
+- 規格見 `work/r7/specs/R3-directory-scope-per-file.md`。實作由 Sonnet 5.5 effort high subagent 完成；主代理審查 diff，逐一核對被修改的 5 支既有測試，補一個測試缺口，另做一個突變，並獨立重跑。
+- **缺陷**：
+  - 目標目錄已有「不是工具擁有」的檔案時，預覽（`Get-WsmAssistiveFileScopeRestoreGap`）只驗拓樸、不逐檔比對內容，因此顯示 Ready。
+  - 寫入器則不論內容相同或不同，一律判 BlockedConflict。
+  - 選項與 P8 重試候選沿用預覽的判定而列出該項；Repair 也處理不了，結果是無限重試。
+  - 預計寫入量沒有扣除實際不會寫入的檔案。
+  - Repair 另外內嵌了一份判定，等於有第三份。
+- **修法**：
+  - 新增單一逐檔判定 `Get-WsmAssistiveExistingFileDisposition`（唯讀）。預覽（含 N1 與重試候選）、寫入器、Repair 都呼叫它，AST 守門確認沒有第二份。
+  - 目錄範圍中，不是工具擁有的檔案依內容分兩種處理：
+    - 內容雜湊等於封存值、且不是 reparse 也不是目錄：記為 AdoptedExisting，與 P10 同語意（算成功、不重寫、回復時不刪除）。
+    - 內容不同：預覽判 BlockedConflict 並列出衝突檔數；選項設為 `restorable=false`／BlockedConflict；原因寫「目標已有不同內容的檔案，需先人工處理（衝突 N 個檔案）」；重試候選排除；原檔不變。
+  - 單檔範圍行為不變。
+  - AdoptedExisting 擁有列只能由 `New-WsmAssistiveAdoptedFileRecord` 建立，寫入器與 Repair 共用。
+  - 預計寫入量改由 `Get-WsmAssistivePlannedWriteAmount` 計算，扣除 adopted 與衝突檔；容量候選也扣除 adopted 檔。
+- **既有測試調整**（契約由 R3 明訂改變；主代理已逐條核對，沒有放寬原本要守的事）：
+  - Test-WizardRestore、Test-RestorePartialSelection：舊斷言是「衝突項目預覽 Ready、選項可還原」，正好是缺陷本身，改成 BlockedConflict 並附衝突數。
+  - Test-AssistiveRestore：fixture 原本沒有擁有紀錄，實際測到的是「外部同內容檔」；改成真正「已擁有、之後被改動」的檔案，仍斷言 BlockedConflict 且不覆寫。
+  - Test-TargetRestoreContinuation D5：遇到他人或其他世代的 in-flight 紀錄時，同內容檔改記為 AdoptedExisting。仍斷言「不授予工具擁有權」；檔案被外部改動的情況仍判 BlockedConflict。
+  - Test-AdoptedExistingOwnership：Ownership 鍵的生產者守門改為單一建構函式。
+- **主代理補的缺口**：預覽已擋下單檔範圍，所以還原流程到不了寫入器，寫入器本身對單檔範圍的保守行為原本沒有被測到；主代理的突變（寫入器對單檔範圍允許沿用）因此存活。已在測試補上 G2：直接呼叫寫入器處理單檔範圍的同內容外部檔，必須 BlockedConflict、不補登、原檔不變。補上後突變轉紅。
+- **測試**：新增 `Test-DirectoryScopeExistingFiles.ps1`（90 項，全程 strict）。涵蓋 same、diff、Repair、預計寫入量、單檔對照、連按重試兩次、回復後檔案仍在、journal 重播、AST 守門、寫入器直接呼叫（目錄與單檔）。
+- **突變**（皆轉紅）：
+  - subagent 做 11 個：預覽不逐檔、預覽不計衝突、同內容判衝突、內容不同被補登或覆寫（含只動寫入器）、衝突進入重試、寫入器與預覽各寫一份、預計寫入量不扣除（兩層）、預覽放行衝突。
+  - 主代理做 1 個：寫入器對單檔範圍允許沿用。
+- **驗證**（主代理重跑）：
+  - PowerShell：DirectoryScopeExistingFiles 90、RestorableSet 199、RestorePartialSelection、AssistiveRestore 178、AssistiveFiles 35、AdoptedExistingOwnership 122、FileScopeIncompleteOwnership 164、RollbackThenRestore 94、PostRestoreRecheck 109、RetryFailedItems 83、AssistiveDirectoryReadback 10、ExactMembers 29、ExactMemberDirectories 25、JournalReplayCoverage 431、TargetRestoreContinuation 133、WizardRestore 132、WizardRuntime 182、ScopeVolumeCounterexamples 57、PendingIntentRecovery 31、ScriptEncoding。
+  - G4：30／44。
+  - 前端：AssistiveUi（node --test）。
+  - Edge：RestorableSetBrowser、RetryFailedItemsBrowser、RestoreSelectionBrowser。
+- **限制**：
+  - 衝突檔數只出現在原因文字裡，因為 HTML 欄位白名單沒有新的數值欄位。
+  - `Get-WsmFilePlacementPreview` 的觀察視圖仍把同內容未擁有檔標為 BlockedConflict（`Test-AssistiveFiles` :89），與還原時的「沿用」描述並存。
+  - 已擁有檔漂移時，預覽仍可能顯示 Ready（寫入器會擋），屬同型缺陷，但不在本段範圍。
+  - D5：遇到他人 in-flight 紀錄時同內容檔改為沿用；由於不寫入，對方的 intent 仍會在父作業層級擋住新作業。
+  - 沒有 PS7。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -2420,5 +2459,6 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 
 | 編號 | 哪裡 | 症狀 | 修法 | 迴歸測試 | commit |
 |---|---|---|---|---|---|
-| R1 | `src/Recovery.ps1` Get-WsmRollbackPreview、Invoke-WsmRollback、Test-WsmRollbackRecordOwnership；`tests/Test-AdoptedExistingOwnership.ps1` | CLI 選單 10 一進回復預覽就在 strict mode 下丟 PropertyNotFound（讀 Backup／OwnedDirectories／CreatedByTool）；測試用 `Set-StrictMode -Off` 繞過 | 三處屬性守門（沒有欄位＝無備份／未擁有）；刪 `-Off` 與不實註解（17.108） | `Test-RollbackThenRestore`（strict 全程，實跑選單 10 預覽）；`Test-AdoptedExistingOwnership` 不關 strict 通過 | （R1R2-COMMIT） |
-| R2 | `src/Recovery.ps1` Complete-WsmAssistiveFileRollback、`src/JournalRecovery.ps1`、`src/AssistiveRestore.ps1` 寫入器與 N1、`src/WizardRestore.ps1` | 回復後再還原全部 BlockedConflict，但選項可還原、預覽 Ready、重試不顯示 | 回復時釋放回復向量內的擁有紀錄（AdoptedExisting 保留），新 journal action `AssistiveRollbackOwnershipReleased`；「擁有但不存在」單一判定供寫入器與 N1 共用（17.108） | `Test-RollbackThenRestore`（還原→回復→再還原、四方一致、重播一致）、`Test-JournalReplayCoverage` +2 情境 | （R1R2-COMMIT） |
+| R1 | `src/Recovery.ps1` Get-WsmRollbackPreview、Invoke-WsmRollback、Test-WsmRollbackRecordOwnership；`tests/Test-AdoptedExistingOwnership.ps1` | CLI 選單 10 一進回復預覽就在 strict mode 下丟 PropertyNotFound（讀 Backup／OwnedDirectories／CreatedByTool）；測試用 `Set-StrictMode -Off` 繞過 | 三處屬性守門（沒有欄位＝無備份／未擁有）；刪 `-Off` 與不實註解（17.108） | `Test-RollbackThenRestore`（strict 全程，實跑選單 10 預覽）；`Test-AdoptedExistingOwnership` 不關 strict 通過 | deece8c |
+| R2 | `src/Recovery.ps1` Complete-WsmAssistiveFileRollback、`src/JournalRecovery.ps1`、`src/AssistiveRestore.ps1` 寫入器與 N1、`src/WizardRestore.ps1` | 回復後再還原全部 BlockedConflict，但選項可還原、預覽 Ready、重試不顯示 | 回復時釋放回復向量內的擁有紀錄（AdoptedExisting 保留），新 journal action `AssistiveRollbackOwnershipReleased`；「擁有但不存在」單一判定供寫入器與 N1 共用（17.108） | `Test-RollbackThenRestore`（還原→回復→再還原、四方一致、重播一致）、`Test-JournalReplayCoverage` +2 情境 | deece8c |
+| R3 | `src/AssistiveRestore.ps1`（逐檔判定、預覽、寫入器、預計寫入量）、`src/Recovery.ps1`（Repair 對帳）、`src/WizardRuntime.ps1`（原因文字） | 目標目錄已有外部檔時，預覽 Ready、選項可還原，但寫入器一律 BlockedConflict，重試候選又列回它，形成無限重試；預計寫入量沒有扣除 | 單一逐檔判定，供預覽、選項、重試、寫入器、Repair 共用：內容相同記為 AdoptedExisting；內容不同則在預覽就判 BlockedConflict 並列出衝突數，重試排除；預計寫入量扣除這兩類檔案（17.109） | `Test-DirectoryScopeExistingFiles`（90 項，含連按重試兩次、AST 守門、寫入器直接呼叫目錄與單檔範圍） | （R3-COMMIT） |

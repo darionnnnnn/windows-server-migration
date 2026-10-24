@@ -368,13 +368,18 @@ try {
         $d2=MakeDeadScopeRun $false
         $pp2=Get-WsmOperationPaths $pairsDirectory $d2.Pair;$st2=Get-WsmOperationState $pp2 $d2.Package;foreach($entry2 in @($st2.AssistivePartialOwnership)){$entry2.ParentOperationId=[Guid]::NewGuid().ToString('D')};Write-WsmJson $pp2.State $st2
         $r2d=ResumeNow $d2
-        Check ((FileStatus $r2d $d2 'one.txt') -ceq 'BlockedConflict' -and (FileStatus $r2d $d2 'sub') -ceq 'DirectoryPreserved' -and $r2d.Status -ceq 'Partial') 'D5: in-flight ownership of another parent operation granted ownership.'
+        # R3: a same-content file that no trustworthy ownership record covers is no longer a conflict: it is recorded as an adopted existing file (Ownership=AdoptedExisting, never rewritten, never deleted by a rollback).
+        # What the foreign in-flight record must still NOT grant is tool ownership: the row carries the AdoptedExisting class, the directory stays DirectoryPreserved, and the file is not written again.
+        $r2Files=(ResultOf $r2d $d2 'Files')[0];$r2One=@($r2Files.OwnedFiles|Where-Object {[string]$_.RelativePath -ceq 'one.txt'})
+        Check ((FileStatus $r2d $d2 'one.txt') -ceq 'VerifiedOwned' -and $r2One.Count -eq 1 -and $r2One[0].PSObject.Properties['Ownership'] -and [string]$r2One[0].Ownership -ceq 'AdoptedExisting' -and (FileStatus $r2d $d2 'sub') -ceq 'DirectoryPreserved') ('D5: in-flight ownership of another parent operation must not grant tool ownership (expected an adopted existing file); files='+((@($r2Files.FileResults|ForEach-Object {'['+$_.RelativePath+']='+$_.Status+':'+$_.Reason})) -join ' | '))
         Check ($script:payloadCopies['one.txt'] -eq 1 -and [IO.File]::ReadAllText((Join-Path $d2.Target 'one.txt')) -ceq 'first file bytes') 'D5: the foreign-parent case rewrote the first file.'
         # D5 counter 2: in-flight ownership of another generation grants nothing.
         $d2b=MakeDeadScopeRun $false
         $pp2b=Get-WsmOperationPaths $pairsDirectory $d2b.Pair;$st2b=Get-WsmOperationState $pp2b $d2b.Package;foreach($entry2b in @($st2b.AssistivePartialOwnership)){$entry2b.Generation=6};Write-WsmJson $pp2b.State $st2b
         $r2e=ResumeNow $d2b
-        Check ((FileStatus $r2e $d2b 'one.txt') -ceq 'BlockedConflict' -and $r2e.Status -ceq 'Partial') 'D5: in-flight ownership of another generation granted ownership.'
+        # R3: same reasoning as counter 1; the in-flight record of another generation is ignored, the identical bytes are adopted (not tool-owned).
+        $r2eFiles=(ResultOf $r2e $d2b 'Files')[0];$r2eOne=@($r2eFiles.OwnedFiles|Where-Object {[string]$_.RelativePath -ceq 'one.txt'})
+        Check ((FileStatus $r2e $d2b 'one.txt') -ceq 'VerifiedOwned' -and $r2eOne.Count -eq 1 -and $r2eOne[0].PSObject.Properties['Ownership'] -and [string]$r2eOne[0].Ownership -ceq 'AdoptedExisting') ('D5: in-flight ownership of another generation must not grant tool ownership (expected an adopted existing file); files='+((@($r2eFiles.FileResults|ForEach-Object {'['+$_.RelativePath+']='+$_.Status+':'+$_.Reason})) -join ' | '))
         # D5 counter 3: the first file changed externally after the death: reported as drift, never overwritten.
         $d3=MakeDeadScopeRun $false
         [IO.File]::WriteAllText((Join-Path $d3.Target 'one.txt'),'externally changed')

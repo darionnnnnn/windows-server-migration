@@ -327,7 +327,11 @@ function Get-WsmWizardRestorableReason([string]$Code,$Gap) {
             return [string]$Gap.Reason
         }
         'BlockedLocation' {return ('不符合原位置還原的條件，工具不會還原：'+[string]$Gap.Reason)}
-        'BlockedConflict' {return ('目標位置已有衝突，需要人工處理：'+[string]$Gap.Reason)}
+        'BlockedConflict' {
+            # R3：逐檔判定發現「目標已有不同內容的檔案」時，原因文字（含衝突檔數）本身就是完整說明，不再加前綴。
+            if($Gap.PSObject.Properties['ConflictFileCount'] -and [long]$Gap.ConflictFileCount -gt 0 -and [string]$Gap.Reason -like ((Get-WsmAssistiveDifferentContentConflictReason)+'*')){return [string]$Gap.Reason}
+            return ('目標位置已有衝突，需要人工處理：'+[string]$Gap.Reason)
+        }
         'NeedsReconciliation' {return '需先對帳：上次還原這個項目時中途失敗，沒有留下完整的檔案擁有紀錄，工具不會直接寫入。請先執行「修復」（HTML 動作「修復」〈Repair〉；CLI 目標本機選單「11 修復 checkpoint」，命令 Repair-WsmOperation）：已寫入且與備份相同的檔案會補登為工具擁有，不存在的檔案維持未寫入；內容不同、有重新分析點或被目錄佔用的檔案不會被動，仍須人工處理後才能重試。'}
         'Blocked' {return '無法安全驗證目標路徑，工具不會還原。'}
     }

@@ -110,6 +110,9 @@ try {
         $driftResult=Invoke-WsmAssistiveFileScopeRestore $item $package $paths $state @{} $null
         Check ($driftResult.Status -eq 'Failed' -and @($driftResult.FileResults|Where-Object {$_.Status -eq 'Failed' -and $_.MetadataStatus -ne 'Verified'}).Count -eq 1 -and @($state.PendingOperations|Where-Object RelativePath -eq 'drift.txt').Count -eq 1) 'Metadata drift after file replacement was adopted without repair intent.'
 
+        # R3：這裡原本沒有擁有紀錄（state.Items=@()），測到的其實是「外部同內容檔」；R3 起外部同內容檔記為沿用既有檔，所以改成真正「已擁有、之後被改動」的檔案。
+        $item.MigrationSpec.TargetPath=$ownedTarget;$script:testEntries=@((NewEntry 'app.config' 'next owned bytes'));$ownedBeforeDrift=(Get-FileHash -LiteralPath $ownedPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $state.Items=@([pscustomobject]@{ItemId=$script:testItemId;Status='Succeeded';CreatedByTool=$true;AppliedManifestHash=('c'*64);AppliedGeneration=2;OwnedFiles=@([pscustomobject]@{RelativePath='app.config';TargetPath=$ownedPath;SHA256=$ownedBeforeDrift;MetadataHash=$priorMetadataHash;Generation=2});OwnedDirectories=@()});$state.PendingOperations=@();$package.Manifest.Generation=3
         [IO.File]::WriteAllText($ownedPath,'operator drift')
         $result=Invoke-WsmAssistiveFileScopeRestore $item $package $paths $state @{} $null
         Check ($result.Status -eq 'BlockedConflict') 'Drifted owned file was silently replaced.'

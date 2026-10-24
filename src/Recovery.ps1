@@ -168,14 +168,15 @@ function Complete-WsmAssistiveFileScopeOwnershipRepair($Item,$Package,$Paths,$St
         if(@($files | Where-Object {[string]$_.RelativePath -ceq $relative}).Count){continue}
         try{
             $dest=$root;if($relative){$dest=Join-Path $root $relative}
-            Assert-WsmNoReparse $dest
-            if([IO.Directory]::Exists($dest)){$conflicts.Add([pscustomobject]@{RelativePath=$label;Reason='A directory occupies the file path; preserved.'});continue}
-            if(-not [IO.File]::Exists($dest)){$absent.Add($label);continue}
-            $hash=(Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash.ToLowerInvariant()
-            if($hash -cne ([string]$entry.Data.Hash).ToLowerInvariant()){$conflicts.Add([pscustomobject]@{RelativePath=$label;Reason='Existing file content differs from the sealed backup; preserved and not adopted.'});continue}
-            Assert-WsmAssistiveTargetScopeTopology -Path $dest -Spec $spec -TargetRoot $root -Artifact $entry -Kind File -Destination $dest
+            # R3：逐檔判定與預覽、寫入器共用 Get-WsmAssistiveExistingFileDisposition（這裡沒有擁有紀錄，對帳一律允許沿用同內容檔）；這個函式只負責把判定結果寫進 state。
+            $disposition=Get-WsmAssistiveExistingFileDisposition $spec $root $entry $dest $null $true
+            if($disposition.Disposition -ceq 'Directory'){$conflicts.Add([pscustomobject]@{RelativePath=$label;Reason='A directory occupies the file path; preserved.'});continue}
+            if($disposition.Disposition -ceq 'Absent'){$absent.Add($label);continue}
+            if($disposition.Disposition -ceq 'ConflictDifferent'){$conflicts.Add([pscustomobject]@{RelativePath=$label;Reason='Existing file content differs from the sealed backup; preserved and not adopted.'});continue}
+            if($disposition.Disposition -ceq 'ConflictUnverifiable'){$conflicts.Add([pscustomobject]@{RelativePath=$label;Reason=$(if([string]$disposition.Reason -match 'Reparse point'){'A reparse point is on the target path; preserved and not adopted.'}else{'Target path could not be verified safely ('+[string]$disposition.ErrorType+'); preserved and not adopted.'})});continue}
+            if($disposition.Disposition -cne 'Adopt'){$conflicts.Add([pscustomobject]@{RelativePath=$label;Reason='Target path could not be verified safely (unexpected disposition); preserved and not adopted.'});continue}
             $metadata=Get-WsmFileMetadata $dest ([string]$entry.Metadata.MetadataMode)
-            $files.Add([pscustomobject]@{RelativePath=$relative;TargetPath=$dest;SHA256=$hash;MetadataHash=(Get-WsmAssistiveMetadataHash $metadata);Backup='';BackupHash='';BackupMetadata=$null;BackupMetadataHash='';BackupMaterialId='';Generation=[long]$Package.Manifest.Generation;Ownership='AdoptedExisting'})
+            $files.Add((New-WsmAssistiveAdoptedFileRecord $relative $dest ([string]$disposition.ContentHash) $metadata ([long]$Package.Manifest.Generation)))
             $adopted.Add($label)
         }catch{$why=$(if([string]$_.Exception.Message -match 'Reparse point'){'A reparse point is on the target path; preserved and not adopted.'}else{'Target path could not be verified safely ('+$_.Exception.GetType().Name+'); preserved and not adopted.'});$conflicts.Add([pscustomobject]@{RelativePath=$label;Reason=$why})}
     }
