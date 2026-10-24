@@ -53,7 +53,14 @@ function Repair-WsmOperation {
             elseif($actual -ceq $op.PreviousHash){if(-not $PSCmdlet.ShouldProcess($target,'Abandon interrupted build; keep staging evidence and retry fresh')){continue};$s.PendingOperations=@($s.PendingOperations | Where-Object ItemId -CNE $op.ItemId);$s.Items=@($s.Items | Where-Object ItemId -CNE $op.ItemId);if($op.PSObject.Properties['PreviousRecord'] -and $op.PreviousRecord){$s.Items+=@($op.PreviousRecord)};Add-WsmJournal $paths $s 'BuildAbandoned' $op.ItemId ([pscustomobject]@{RetainedStaging=$op.Staging});continue}
             else{throw 'Target/staging do not match a safe checkpoint; manual reconciliation required.'}
             $record=[pscustomobject]@{ItemId=$op.ItemId;Status='Succeeded';CreatedByTool=$true;ActualHash=$actual;Backup=$op.Backup;Target=$target;Error='';NativeCode=0};if($record.Status -eq 'RebootRequired'){$s.Stage='RebootRequired'};$s.Items=@($s.Items | Where-Object ItemId -CNE $op.ItemId)+@($record);$s.PendingOperations=@($s.PendingOperations | Where-Object ItemId -CNE $op.ItemId);$repaired+=$op.ItemId;Add-WsmJournal $paths $s 'ScopeRecovered' $op.ItemId $record
-        };[pscustomobject]@{Repaired=$repaired;Remaining=$s.PendingOperations.Count;State=$s}
+        }
+        # P9：FileScope 項目寫入時丟出例外會留下沒有 OwnedFiles 的 Failed 紀錄（沒有 pending intent，上面的迴圈碰不到）。
+        # N1 的共用判定（Test-WsmAssistiveFileScopeOwnershipIncomplete）把它列為「需先對帳」，這裡是對帳出口：只補登磁碟內容雜湊等於備份封存值的檔案，其餘一律保留。
+        $ownershipReconcile=@()
+        foreach($reconcileItem in @($p.Plan.Items | Where-Object {$p.Plan.SchemaVersion -eq 3 -and $_.Decision -ceq 'Include' -and $_.PSObject.Properties['MigrationSpec'] -and $_.MigrationSpec -and [string]$_.MigrationSpec.Adapter -ceq 'FileScope' -and (Test-WsmAssistiveFileScopeOwnershipIncomplete $s ([string]$_.ItemId)) -and @($s.PendingOperations | Where-Object ItemId -CEQ ([string]$_.ItemId)).Count -eq 0})){
+            if($PSCmdlet.ShouldProcess($reconcileItem.ItemId,'Reconcile incomplete FileScope ownership: adopt only files whose bytes equal the sealed backup hash, preserve everything else')){$outcome=Complete-WsmAssistiveFileScopeOwnershipRepair $reconcileItem $p $paths $s $SidMap;$ownershipReconcile+=@($outcome);if([string]$outcome.Status -ceq 'Reconciled'){$repaired+=$reconcileItem.ItemId}}
+        }
+        [pscustomobject]@{Repaired=$repaired;Remaining=$s.PendingOperations.Count;OwnershipReconcile=@($ownershipReconcile);State=$s}
     }
 }
 function Complete-WsmAssistiveOperationRepair($Item,$Operation,$Package,$Paths,$State,[hashtable]$SidMap=@{}) {
@@ -130,6 +137,53 @@ function Complete-WsmAssistiveOperationRepair($Item,$Operation,$Package,$Paths,$
     $prior=@($State.Items | Where-Object ItemId -CEQ $Item.ItemId);$record=$null;if($prior.Count -eq 1){$record=$prior[0]}else{$record=[pscustomobject]@{ItemId=$Item.ItemId;Status='Partial';CreatedByTool=$true;OwnedFiles=@();OwnedDirectories=@();AppliedManifestHash='';AppliedGeneration=0;Target=$root;Error='Recovered one per-file transaction; full scope remains to be reconciled.'}}
     $backupMaterialId='';if($Operation.PSObject.Properties['BackupMaterialId']){$backupMaterialId=[string]$Operation.BackupMaterialId};$files=@($record.OwnedFiles | Where-Object RelativePath -CNE ([string]$Operation.RelativePath));$files+=,[pscustomobject]@{RelativePath=[string]$Operation.RelativePath;TargetPath=$target;SHA256=$expected;MetadataHash=(Get-WsmAssistiveMetadataHash $actualMetadata);Backup=$backup;BackupHash=$previous;BackupMetadata=$(if($Operation.PSObject.Properties['PreviousMetadata']){$Operation.PreviousMetadata}else{$null});BackupMetadataHash=$(if($Operation.PSObject.Properties['PreviousMetadataHash']){[string]$Operation.PreviousMetadataHash}else{''});BackupMaterialId=$backupMaterialId;Generation=[long]$Package.Manifest.Generation};$record.OwnedFiles=$files;$record.Status='Partial';$record.CreatedByTool=$true;$record.AppliedManifestHash='';$record.Error='Recovered exact per-file transaction; full scope remains to be reconciled.';$State.Items=@($State.Items | Where-Object ItemId -CNE $Item.ItemId)+@($record)
     $State.PendingOperations=@($State.PendingOperations | Where-Object ItemId -CNE $Item.ItemId);Add-WsmJournal $Paths $State 'AssistiveFileRecovered' $Item.ItemId ([pscustomobject]@{Record=$record;RelativePath=$Operation.RelativePath;Target=$target;SHA256=$expected;Backup=$backup;BackupHash=$previous});$record
+}
+
+function Complete-WsmAssistiveFileScopeOwnershipRepair($Item,$Package,$Paths,$State,[hashtable]$SidMap=@{}) {
+    # P9：對帳「ownership 不完整」的先前 FileScope 紀錄（見 Test-WsmAssistiveFileScopeOwnershipIncomplete）。逐檔只有兩種可以補：
+    #   目標檔不存在：視為未寫入，不建立 ownership，讓下次還原正常寫入。
+    #   目標檔存在，且磁碟內容雜湊等於封存 artifact 的雜湊（Data.Hash）：補登為工具擁有。
+    # 其餘一律保守：內容不同、reparse（含上層）、目錄佔用檔案位置、權限讀不到或拓樸不支援，都記為衝突、保留原檔，不補、不覆寫、不刪除。
+    # 有任何衝突時，紀錄帶 ReconcileConflicts，共用判定仍視為不完整（需人工處理後再執行修復）；沒有衝突時才變回可還原。
+    # 本函式不寫入、不刪除任何目標檔，只更新 state 並以 AssistiveFileRecovered 記錄（replay 沿用既有處理：以 Record 取代該項目紀錄）。
+    $spec=$Item.MigrationSpec;$itemId=[string]$Item.ItemId
+    if($spec.Adapter -cne 'FileScope'){throw 'Assistive FileScope ownership reconcile is not a FileScope item.'}
+    if(@($State.PendingOperations | Where-Object ItemId -CEQ $itemId).Count){throw 'Repair the pending file intent of this item before reconciling its FileScope ownership.'}
+    $prior=@($State.Items | Where-Object ItemId -CEQ $itemId)
+    $manual={param([string]$Reason)[pscustomobject]@{ItemId=$itemId;Status='ManualRequired';Adopted=@();Absent=@();Conflicts=@([pscustomobject]@{RelativePath='';Reason=$Reason})}}
+    if($prior.Count -ne 1){return (& $manual 'The state holds no single record for this item; nothing was changed.')}
+    $root=ConvertTo-WsmCanonicalPath ([string]$spec.TargetPath)
+    $entries=@(Read-WsmArtifactLines (Join-Path $Package.Root 'artifacts.jsonl') $Package.Manifest.ArtifactsHash | Where-Object {[string]$_.ItemId -ceq $itemId})
+    if(-not $entries.Count){return (& $manual 'The package holds no artifact for this item; nothing was changed.')}
+    $single=($entries.Count -eq 1 -and -not $entries[0].Directory -and [string]::IsNullOrEmpty([string]$entries[0].RelativePath))
+    $aclPolicy='Exact';if($spec.PSObject.Properties['AclControlPolicy']){$aclPolicy=[string]$spec.AclControlPolicy}
+    $files=New-Object 'System.Collections.Generic.List[object]';$directories=@()
+    if($prior[0].PSObject.Properties['OwnedFiles']){foreach($known in @($prior[0].OwnedFiles)){$files.Add($known)}}
+    if($prior[0].PSObject.Properties['OwnedDirectories']){$directories=@($prior[0].OwnedDirectories)}
+    $adopted=New-Object 'System.Collections.Generic.List[string]';$absent=New-Object 'System.Collections.Generic.List[string]';$conflicts=New-Object 'System.Collections.Generic.List[object]'
+    foreach($entry in @($entries | Where-Object {-not $_.Directory})){
+        $relative=[string]$entry.RelativePath;$label=$(if($relative){$relative}else{'(single file)'})
+        if(@($files | Where-Object {[string]$_.RelativePath -ceq $relative}).Count){continue}
+        try{
+            $dest=$root;if($relative){$dest=Join-Path $root $relative}
+            Assert-WsmNoReparse $dest
+            if([IO.Directory]::Exists($dest)){$conflicts.Add([pscustomobject]@{RelativePath=$label;Reason='A directory occupies the file path; preserved.'});continue}
+            if(-not [IO.File]::Exists($dest)){$absent.Add($label);continue}
+            $hash=(Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($hash -cne ([string]$entry.Data.Hash).ToLowerInvariant()){$conflicts.Add([pscustomobject]@{RelativePath=$label;Reason='Existing file content differs from the sealed backup; preserved and not adopted.'});continue}
+            Assert-WsmAssistiveTargetScopeTopology -Path $dest -Spec $spec -TargetRoot $root -Artifact $entry -Kind File -Destination $dest
+            $metadata=Get-WsmFileMetadata $dest ([string]$entry.Metadata.MetadataMode)
+            $files.Add([pscustomobject]@{RelativePath=$relative;TargetPath=$dest;SHA256=$hash;MetadataHash=(Get-WsmAssistiveMetadataHash $metadata);Backup='';BackupHash='';BackupMetadata=$null;BackupMetadataHash='';BackupMaterialId='';Generation=[long]$Package.Manifest.Generation})
+            $adopted.Add($label)
+        }catch{$why=$(if([string]$_.Exception.Message -match 'Reparse point'){'A reparse point is on the target path; preserved and not adopted.'}else{'Target path could not be verified safely ('+$_.Exception.GetType().Name+'); preserved and not adopted.'});$conflicts.Add([pscustomobject]@{RelativePath=$label;Reason=$why})}
+    }
+    $fileArray=@();foreach($fileRecord in $files){$fileArray+=@($fileRecord)}
+    $note=$(if($conflicts.Count){'Ownership reconciled for exact backup-hash files only; unresolved conflicts need manual handling, then run Repair again.'}else{'Ownership reconciled: only files whose bytes equal the sealed backup were adopted; absent files stay unwritten.'})
+    $record=[pscustomobject][ordered]@{ItemId=$itemId;Status='Partial';CreatedByTool=$true;AppliedManifestHash='';AppliedGeneration=[long]0;ActualHash=(Get-WsmAssistiveFileOwnershipHash $fileArray);Target=$root;OwnedFiles=$fileArray;OwnedDirectories=@($directories);Error=$note;NativeCode=0}
+    if($conflicts.Count){$record | Add-Member NoteProperty ReconcileConflicts @($conflicts.ToArray())}
+    $State.Items=@($State.Items | Where-Object ItemId -CNE $itemId)+@($record)
+    Add-WsmJournal $Paths $State 'AssistiveFileRecovered' $itemId ([pscustomobject]@{Record=$record;RelativePath='';Target=$root;Reconciled=$true;Adopted=@($adopted.ToArray());Absent=@($absent.ToArray());Conflicts=@($conflicts.ToArray())})
+    [pscustomobject]@{ItemId=$itemId;Status=$(if($conflicts.Count){'ManualRequired'}else{'Reconciled'});Adopted=@($adopted.ToArray());Absent=@($absent.ToArray());Conflicts=@($conflicts.ToArray())}
 }
 
 function Complete-WsmSettingTransitionRecovery($Item,$Operation,$Paths,$State) {

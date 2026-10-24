@@ -1900,6 +1900,52 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 瀏覽器測試的 API 是固定替身。
   - 候選與排除清單在畫面上各最多列 50 筆。
 
+### 17.101 P9 FileScope 寫入例外後 ownership 不完整：N1 判為需先對帳，並補上對帳出口（2026-10-24 使用者授權、主代理評估定案）
+
+- 缺陷（17.100 的發現）：
+  - FileScope 項目在寫入階段丟出例外時，會留下 Failed 列，卻沒有 `OwnedFiles`。
+  - 下次還原時，寫入器會拒絕（`AssistiveRestore.ps1` 約 :1215）。
+  - N1 判定卻回報「可還原」，所以預覽顯示 Ready，P8 也把它列為重試候選，但重試一定失敗。
+- 定案：以選項 3 作為唯一判定；若既有修復流程清不掉，就補上選項 2 的最小版本。
+- 實作：Sonnet 5.5 effort high subagent。主代理審查 diff，補上畫面短標題與對應測試，另做兩個突變，並獨立重跑。
+- 共用判定 `Test-WsmAssistiveFileScopeOwnershipIncomplete`：
+  - 沒有先前紀錄：視為完整。
+  - 先前紀錄不是剛好一筆、沒有 `OwnedFiles`，或帶有未解決的 `ReconcileConflicts`：視為不完整。
+  - 寫入器的拒絕與 N1 的 `Get-WsmAssistiveFileScopeRestoreGap` 都呼叫這個函式，AST 守門確認兩邊同源。
+  - N1 對不完整的紀錄回傳 `NeedsReconciliation`／Blocked，原因寫「需先對帳」，並寫出 HTML 動作「修復」〈Repair〉、CLI「11 修復 checkpoint」與命令 `Repair-WsmOperation`。
+  - 預覽、Target 選項、P8 候選都沿用這個判定。
+  - 畫面短標題補上 `NeedsReconciliation: '需先對帳'`（主代理補），console.js 匯出 `restorableCodeText` 供測試使用。
+- 出口核對（實測，不只讀程式）：
+  - 現象：既有的 `Repair-WsmOperation` 對「沒有 pending intent 的不完整紀錄」完全沒有作用（Repaired 為空、紀錄不變、判定仍為不可還原）。原因是它只處理 pending intent。
+  - 因此補上選項 2 的最小版本：`Repair-WsmOperation` 在處理完 pending 之後，對這類項目呼叫 `Complete-WsmAssistiveFileScopeOwnershipRepair`（有 ShouldProcess），逐檔處理：
+    - 目標檔不存在：視為尚未寫入，不建立 ownership。
+    - 目標檔存在，且內容雜湊等於封存 artifact 的 `Data.Hash`：補登為工具擁有。
+    - 其餘情況（內容不同、reparse、目錄佔位、讀不到）：記為衝突，保留原檔，不補登、不覆寫、不刪除。
+  - 有衝突時，紀錄帶 `ReconcileConflicts`，判定仍為不完整；操作者處理完衝突後要再執行一次 Repair。
+  - journal 沿用 `AssistiveFileRecovered`，replay 不需修改；已實測由 journal 重建的結果與修復後逐列相同。
+- 測試：`Test-FileScopeIncompleteOwnership.ps1` 共 164 項。
+  - 共用判定的真值表、非 FileScope 項目、AST 同源守門、HTML／CLI 入口名稱。
+  - 端到端（真實寫入器，只注入寫入例外）：
+    1. 寫入例外後，判定與預覽為需先對帳，P8 拒絕建立重試收據。
+    2. 執行 Repair 後，判定變回可還原，P8 候選正好是被對帳的那一項。
+    3. 重試成功，其他已成功項目沒有被重寫。
+  - 反例：內容不同、reparse、目錄佔位時原檔位元組不變，也沒有補登。混合情況只補登吻合的檔案，處理完衝突後再次 Repair 即完成。
+  - 也涵蓋 pending intent 形狀：單次 Repair 同時清掉 intent 並完成對帳。
+  - `Test-AssistiveUi.js` 補上 `actionLabel('Repair')` 與 `restorableCodeText('NeedsReconciliation')` 兩項斷言。
+- 突變（皆轉紅）：
+  - subagent 做的 11 種：N1 判定不檢查完整性、寫入器與判定各自寫一份（含三種名義上共用、實際不一致的變體）、共用函式漏判、內容不同仍補登、目標不存在就建立 ownership、出口失效（兩種）。
+  - 主代理加做：共用判定忽略 `ReconcileConflicts`、畫面短標題移除。
+  - reparse 有三層防線，單獨移除其中一層屬於等價突變。
+- 驗證（主代理重跑）：
+  - PowerShell 測試：FileScopeIncompleteOwnership 164、RestorableSet 199、RestorePartialSelection、AssistiveRestore 178、AssistiveFiles 35、RetryFailedItems 83、PendingIntentRecovery 31、Cv2NonCReservationLifecycle 55、TargetRestoreContinuation 133、JournalReplayCoverage 413、WizardRestore 132、WizardRuntime 174、HtmlConsole 175、WizardHtmlRuntimeProjection 214、G4 RetryFailedButton 44、ScriptEncoding。
+  - 前端測試：AssistiveUi（node --test）。
+  - Edge 瀏覽器：RestorableSetBrowser、RetryFailedItemsBrowser、F1AcceptanceBrowser。
+- 限制：
+  - 雜湊吻合不等於檔案是工具寫的；若外部事先放了同內容的檔案，補登後的 rollback 可能刪到它。這是規格接受的風險。
+  - 單檔範圍（`RelativePath=''`）的補登邏輯已實作，但沒有測試。
+  - 寫入前已建立的空根目錄不補登 ownership，仍視為外部目錄，屬保守方向。
+  - 測試為了避開 NTFS file tunneling 需要等待 16 秒。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

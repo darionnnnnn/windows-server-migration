@@ -468,11 +468,24 @@ function Get-WsmAssistiveBackupMediaOverlapReason([string]$TargetPath,$Package) 
     if($overlap){return ('備份媒體（匯入的封裝資料夾 '+$media+'）與還原目的範圍 '+$target+' 重疊；還原會寫入或覆蓋備份本身，工具不會還原。請把備份集放到還原範圍之外的位置後重新匯入。')}
     ''
 }
+function Test-WsmAssistiveFileScopeOwnershipIncomplete($State,[string]$ItemId) {
+    # P9：先前 FileScope 紀錄的 ownership 是否不完整。寫入器的拒絕（Invoke-WsmAssistiveFileScopeRestore）與 N1 的共用可還原判定
+    # （Get-WsmAssistiveFileScopeRestoreGap，預覽與 Target 項目選項都走它）都呼叫這一個函式，條件只有這一份。
+    # 沒有先前紀錄＝沒有東西要對帳，視為完整。不完整＝有先前紀錄，但不是剛好一筆、沒有 OwnedFiles，
+    # 或帶著上次對帳尚未解決的衝突（ReconcileConflicts；由 Repair 的 FileScope 對帳寫入）。
+    if($null -eq $State -or -not $State.PSObject.Properties['Items']){return $false}
+    $prior=@($State.Items | Where-Object ItemId -CEQ $ItemId)
+    if(-not $prior.Count){return $false}
+    if($prior.Count -ne 1 -or -not $prior[0].PSObject.Properties['OwnedFiles']){return $true}
+    if($prior[0].PSObject.Properties['ReconcileConflicts'] -and @($prior[0].ReconcileConflicts).Count){return $true}
+    $false
+}
 function Get-WsmAssistiveFileScopeRestoreGap($Item,$Package,$State,[bool]$ContractV2,$ArtifactRows=$null,$CancellationToken=$null) {
     # 預覽與「可還原集合」共用的 FileScope 判定：原位置、封裝內容、掛載點、缺卷、既有目標衝突、可寫入性與（單項）容量需求。
     # 全程唯讀：不建目錄、不寫檔、不取鎖。回傳 Action／Status／Reason，以及會寫入時的容量候選（Capacity；由呼叫端依卷加總）。
     $spec=$Item.MigrationSpec;$action='RestoreNow';$status='Ready';$reason='';$capacity=$null
     if($ContractV2){$locationError=$(try{Assert-WsmOfflineFullSetOriginalLocation $Package.Plan $spec;''}catch{$_.Exception.Message});if($locationError){return [pscustomobject]@{Action='BlockedLocation';Status='Blocked';Reason=$locationError;Capacity=$null}}}
+    if(Test-WsmAssistiveFileScopeOwnershipIncomplete $State ([string]$Item.ItemId)){return [pscustomobject]@{Action='NeedsReconciliation';Status='Blocked';Reason='Prior schema 3 FileScope ownership data is incomplete; reconcile it with the Repair operation before retrying.';Capacity=$null}}
     $target=ConvertTo-WsmCanonicalPath $spec.TargetPath
     try{
         if($null -ne $ArtifactRows){$artifactRows=@($ArtifactRows)}else{$artifactRows=@(Read-WsmArtifactLines (Join-Path $package.Root 'artifacts.jsonl') $package.Manifest.ArtifactsHash $CancellationToken | Where-Object ItemId -CEQ $item.ItemId)};if(-not $artifactRows.Count){return [pscustomobject]@{Action='NoPayload';Status='Blocked';Reason='封裝中沒有這個核准項目的備份內容（缺少 artifact），工具不會還原。';Capacity=$null}};$singleFileScope=($artifactRows.Count -eq 1 -and -not $artifactRows[0].Directory -and [string]::IsNullOrEmpty([string]$artifactRows[0].RelativePath));$requiredBytes=[long]0;foreach($row in @($artifactRows | Where-Object {-not $_.Directory})){if($row.PSObject.Properties['Data'] -and $row.Data -and $row.Data.PSObject.Properties['Bytes']){$requiredBytes+=[long]$row.Data.Bytes}};$mountPoint=Get-WsmAssistiveMountPointAncestor $target;if($mountPoint){$gap=[pscustomobject]@{Action='MountPointNotSupported';Status='Blocked';Reason=('目標路徑位於另一個掛載點（'+$mountPoint+'），工具不會寫入掛載點底下；請改用相同位置的一般目錄或另行處理。')}}else{$gap=Get-WsmAssistiveTargetMissingVolumeGap $target}
@@ -1212,7 +1225,7 @@ function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hasht
     if($singleFileScope){if([IO.Directory]::Exists($target)){throw 'A directory occupies the approved single-file target.'};$restoreRoot=[IO.Path]::GetDirectoryName($target);Assert-WsmNoReparse $restoreRoot;if(-not [IO.Directory]::Exists($restoreRoot)){[void][IO.Directory]::CreateDirectory($restoreRoot)}}
     else{if([IO.File]::Exists($target)){throw 'A file occupies the approved FileScope directory.'};if(-not [IO.Directory]::Exists($target)){[void][IO.Directory]::CreateDirectory($target);$createdDirs.Add($target)};Assert-WsmAssistiveTargetScopeTopology -Path $target -Spec $spec -TargetRoot $target -Kind Root}
     $prior=@($State.Items | Where-Object ItemId -CEQ $Item.ItemId);$ownedFiles=@();$ownedDirectories=@()
-    if($prior.Count){if($prior.Count -ne 1 -or -not $prior[0].PSObject.Properties['OwnedFiles']){throw 'Prior schema 3 FileScope ownership data is incomplete; preserve and reconcile.'};$ownedFiles=@($prior[0].OwnedFiles);if($prior[0].PSObject.Properties['OwnedDirectories']){$ownedDirectories=@($prior[0].OwnedDirectories)}}
+    if($prior.Count){if(Test-WsmAssistiveFileScopeOwnershipIncomplete $State ([string]$Item.ItemId)){throw 'Prior schema 3 FileScope ownership data is incomplete; preserve and reconcile.'};$ownedFiles=@($prior[0].OwnedFiles);if($prior[0].PSObject.Properties['OwnedDirectories']){$ownedDirectories=@($prior[0].OwnedDirectories)}}
     $results=New-Object 'System.Collections.Generic.List[object]';$nextFiles=New-Object 'System.Collections.Generic.List[object]';foreach($f in $ownedFiles){$nextFiles.Add($f)}
     $nextDirectories=New-Object 'System.Collections.Generic.List[object]';foreach($d in $ownedDirectories){$nextDirectories.Add($d)}
     $partialDirectories=@(Get-WsmAssistivePartialOwnership $State $Item $Package 'Directory')

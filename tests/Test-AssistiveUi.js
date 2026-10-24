@@ -328,6 +328,8 @@ test('every backend operation has a Chinese label and a source, manager or targe
   assert.equal(ui.actionGroup('NonCPlan'), 'Manager');
   assert.equal(ui.actionGroup('MaterialJobStatus'), 'Target');
   assert.equal(ui.actionLabel('MaterialJobStatus'), '查看中斷作業材料鎖');
+  assert.equal(ui.restorableCodeText('NeedsReconciliation'), '需先對帳', 'P9: the short title of the NeedsReconciliation restorable code is shown in Chinese, not as the raw code');
+  assert.equal(ui.actionLabel('Repair'), '修復', 'P9: the reason for a FileScope item that needs reconciliation names the Repair operation by this HTML action label');
   const materialGuidance = ui.actionGuidance('MaterialJobStatus', { readOnly: true });
   assert.match(materialGuidance.precondition, /工作程序已停止/);
   assert.match(materialGuidance.output, /不會自動逾期或解除鎖/);
