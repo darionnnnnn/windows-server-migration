@@ -1840,6 +1840,66 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - P1 的歸屬依「輸入含被改動的檔案」機械判定，範圍可能偏寬。
   - `casesExecuted` 是各套件印出的檢查數加總；沒印數字的套件以每支一項計。
 
+### 17.100 P8 部分完成時提供「重試失敗項目」（2026-10-24 使用者新增需求）
+
+- 需求原話：「部分完成時提供『重試失敗項目』按鈕，自動產生只含失敗項的新選擇紀錄，並在畫面說明為何同一選擇不會重試」。
+- 實作與審查：Sonnet 5.5 effort high subagent 實作（涉及收據綁定）。主代理寫規格、審 diff、另做一個突變並獨立重跑。UI 依 ui-ux-pro-max 規格與既有元件樣式。
+- 與既有契約的調和（主代理定案）：收據建立契約要求操作者明確提供 Owner 與 Reason（`WizardRuntime.ps1:458`）。因此只把選擇自動化，Owner 與 Reason 仍由操作者確認：
+  - Owner 預填上一份收據的 Owner。
+  - Reason 預填「重試上次部分完成中未成功的 N 個項目（來源收據 <前 12 碼>）」。
+  - 兩者都可編輯、都必填。
+- 候選計算（`Get-WsmWizardTargetRetryCandidatesCore`，只讀、不寫入、不自動 repair）：
+  - 來源只有三樣：最近一次母作業 `state.RestoreAttempt` 的 ItemResults、它綁定的最新決策收據、N1 共用可還原判定（Target 項目選項的 restorable）。
+  - 成功（不重試）：`Succeeded`、`RebootRequired`。
+  - 未成功：`Failed`、`Deferred`、`CredentialRejected`、`NeedsReconciliation`、`BlockedByUnknownDependency`、`Blocked`、`BlockedConflict`、`ManualEvidenceRequired`、`Cancelled`、`Partial`，以及沒有結果的項目。
+  - 未成功的項目若可還原，就進候選；不可還原的列入 Excluded，並附 code 與原因。
+  - 有未清除的 pending intent 時，整體不可重試，顯示「請先修復未完成的作業」。
+- 顯示條件：
+  - 最近一次母作業有未成功項目，且沒有進行中的還原時才顯示。
+  - 全部成功、執行中、WaitingForInput、Interrupted、WaitingForInstall 時不顯示。
+  - 細化（subagent 提出，主代理同意）：母作業 Partial、但只因未選取項目標為 `DeferredBySelection`，而所選項目都成功時，視同全部成功，不顯示。否則重試成功後會一直留著停用的空區塊。
+  - 候選為空或有 pending intent 時，按鈕以 `aria-disabled` 停用，旁邊說明原因。
+- 建立收據：
+  - 沿用 `Create-WsmWizardTargetDecisionReceipt`，新增選用參數 `RetryOfReceiptHash`，新 runtime action 為 `TargetRetryFailedItems`。沒有另寫收據建立邏輯。
+  - 帶此參數時，後端依序檢查以下各點，任一不符就拒絕並要求重新整理：
+    1. Decision 必須是 RestoreNow。
+    2. 後端自行重算候選。
+    3. 來源收據必須是最新一次母作業的收據。
+    4. 前端送來的 ItemIds 必須與候選完全相等。
+    5. AcceptedUnprepared 由後端推導：上一份收據中與候選相交、且目前仍符合資格的項目。
+  - 之後照常經過 CAS、revision 與核准子集檢查。
+  - 建立收據後不會開始還原，要回到預覽重新確認。AcceptedUnprepared 的資格判定抽成 `Get-WsmWizardTargetAcceptEligibleItemIds`，與原建立流程共用。
+- 畫面：
+  - 部分完成結果旁顯示「同一份還原選擇再按一次只會顯示上次結果，不會重做；要重試失敗項目請按『重試失敗項目』（或回精靈重新保存選擇）。」
+  - 文字以 `el()`／`textContent` 輸出，按鈕用 `secondary-button`，不新增顏色變數。
+  - 焦點沿用 b5FinishFocus：成功移到結果訊息，失敗回到按鈕。
+- 測試：
+  - `Test-RetryFailedItems.ps1`，83 項。涵蓋候選計算的各種情況；後端拒絕他項 ItemIds、空的 Owner 或 Reason、來源 hash 錯誤、過期比較材料；建立收據不改 state；重試只寫入失敗項目。
+  - `Test-RetryFailedItemsBrowser.js`（Edge）。涵蓋顯示條件、說明文字、停用原因、Tab 加 Enter、防連按只送一次、焦點不掉到 body、320px 無水平捲動、零 console 錯誤。截圖在 `work/r7/screens/p8-*.png`。
+  - G4 新增 `-Mutation RetryFailedButton`，44 項，預設模式 30 項不變。流程如下：
+    1. 修復前，pending intent 讓重試不可用。
+    2. 修復後，候選只剩失敗的 IIS 站台，已成功的有 4 項。
+    3. 經投影動作建立新收據；handler 路徑拒絕五種錯誤輸入。
+    4. 預覽後還原成功。
+    5. 已成功項目的 ownership 與 C、D、E 位元組都不變。
+- 突變（皆轉紅）：
+  - subagent：候選納入已成功項目、不排除不可還原項目、後端信任前端 ItemIds、建立後自動開始還原、UI 在 WaitingForInput 時顯示按鈕。
+  - 主代理：拿掉「來源收據必須是最新一次母作業的收據」的檢查。
+- 驗證（主代理重跑）：RetryFailedItems 83、WizardRestore 132、TargetRestoreContinuation 133、RestorableSet 199、PendingIntentRecovery 31、WizardRuntime 174（基線 166，新增 8 項明確欄位檢查）、WizardHtmlRuntimeProjection 214、HtmlConsole 175、ActionExports、G4 RetryFailedButton 44、ScriptEncoding；AssistiveUi（node --test）；RetryFailedItemsBrowser、F1AcceptanceBrowser 317、RestoreSelectionBrowser、HtmlSubmission（Edge）。
+- **新發現（待使用者決定，本段沒有修改）**：
+  - 現象：FileScope 項目若在寫入時丟出例外而失敗，會留下沒有 `OwnedFiles` 的 Failed 狀態列。再次還原時，寫入器會以「Prior schema 3 FileScope ownership data is incomplete; preserve and reconcile.」拒絕（`AssistiveRestore.ps1` 約 :1215）。
+  - 判定不一致：N1 的可還原判定仍把這類項目當成可還原，所以它們會成為重試候選，重試後又安全地再次失敗。不會損壞資料，但這類項目的重試按鈕實際上無效。
+  - 可行的處理方向有三種：
+    1. 候選計算把這類項目排除，並附上「需先對帳」的原因。
+    2. 讓 repair 能對帳不完整的 FileScope 狀態。
+    3. 讓 N1 判定反映這個狀態。
+  - G4 的失敗項目是 IIS 替身，不受這個問題影響。Part B 改用真實的目標衝突（BlockedConflict）驗證：衝突時正確排除，解除後才成為候選，重試成功。
+- 限制：
+  - 各種失敗 Status 只用合成輸入與 IIS 替身驗過。
+  - 真實 HTTP 的 `/api/operations` 路徑沒有實跑；G4 在行程內以 `ConvertTo-WsmHtmlArguments` 模擬。
+  - 瀏覽器測試的 API 是固定替身。
+  - 候選與排除清單在畫面上各最多列 50 筆。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

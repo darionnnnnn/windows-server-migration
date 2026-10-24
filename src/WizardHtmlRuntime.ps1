@@ -32,6 +32,8 @@ function ConvertTo-WsmWizardHtmlValue($Value,[int]$Depth=0) {
     $allowed+=@('manualReviewRequired','manualReviewReason','sourceResumed','resumeAvailable')
     $allowed+=@('IndependentCopy','offlineReadiness','OfflineReadiness','Availability','MediaClass','CopyRoot','ReceiptSHA256','VerifiedUtc','BackupOperationId','DestinationRoot')
     $allowed+=@('TargetLocalComparison','Provenance')
+    # P8：重試失敗項目的唯讀投影欄位（候選清單、排除原因、來源收據與預填值）。
+    $allowed+=@('TargetRetryFailedItems','RetryOfReceiptHash','retry','visible','candidateItemIds','candidateCount','succeededCount','notSucceededCount','excluded','sourceAttemptId','sourceReceiptHash','sourceReceiptShort','sourceStage','defaultOwner','defaultReason','code','lastStatus')
     $allowed+=@('group','restorable','restorableReason','restorableCode','restored','statusSummary')
     $allowed+=@('RelativePath','Sha256Prefix','IsDirectory','TotalCount','DirectoryCount','Page','PageSize','PageCount');$allowed+=@('softwareCheck','TargetOnlyRows','SoftwareId','Publisher','Architecture','SourceVersion','ChosenVersion','ObservedTargetVersion','CheckState','CheckStateText','CheckReason','SourceStatus')
     # F1-P: closed field list of the backup progress view (ConvertTo-WsmWizardBackupProgressView). The stored ItemId/Result pair stays the only per-item content; ItemName is the display label.

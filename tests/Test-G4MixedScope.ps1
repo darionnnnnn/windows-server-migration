@@ -7,12 +7,13 @@
 # Target run: one wizard restore of all five approved items; the typed IIS restore double fails its only call on purpose (a failure unrelated to any product defect):
 # the C / D / E / task successes must not mask it, and the failed item keeps its own status in the core, HTML and runtime projections.
 # -Mutation RepairAndRetry (P5-a): after the restore, repair the pending IIS intent through Repair-WsmOperation and retry through a new decision receipt (see the Notes in the verdict).
+# -Mutation RetryFailedButton (P8): same failure and repair, then the retry goes through the runtime projection and the mapped runtime action (the retry button path): the backend candidates hold only the failed IIS site, the new receipt is created through the action command with the operator's owner and reason, nothing starts until the normal preview and restore, and the succeeded items are not rewritten.
 # Output: work\r7\g-journey\<RunId>\verdict.json (same shape as the main journey).
 param(
     [string]$RunId='g4a001',
     [switch]$KeepArtifacts,
     [ValidateSet('Backup','Preview','All')][string]$Through='All',
-    [ValidateSet('','MoveTheBundle','RepairAndRetry')][string]$Mutation=''
+    [ValidateSet('','MoveTheBundle','RepairAndRetry','RetryFailedButton')][string]$Mutation=''
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -37,6 +38,7 @@ try{
 
     $script:GVerdict.Notes+=@('N9h-D1/D3/D4 (fixed): the inventory file carries the SourceResolutionContext (D3), the one-click backup reads the confirmation material where the scan wrote it (D1, no copy into <ws>/pairs), and the NonC-labelled D / E scopes of the CV2 plan are restored by the CV2 FileScope writer inside the wizard restore (D4, no direct writer call).')
     $script:GVerdict.Notes+=@('N9h: the not-masked-failure judgement uses an injected typed IIS adapter failure (stable), not a product defect.')
+    if($Mutation -ceq 'RetryFailedButton'){$script:GVerdict.Notes+=@('P8 (-Mutation RetryFailedButton): after the injected IIS failure the run asks for the retry candidates before the repair (the pending intent makes the retry unavailable), repairs through Repair-WsmOperation, then drives the retry through the runtime projection (action TargetRetryFailedItems) and the mapped command with the same argument conversion as the console route. Anything other than exactly the failed item, or an empty owner / reason, is refused by the backend.')}
     if($Mutation -ceq 'RepairAndRetry'){$script:GVerdict.Notes+=@('P5-a (-Mutation RepairAndRetry): after the injected IIS failure the run continues with the real entrances: a second restore and Resume are refused while the intent is pending, Repair-WsmOperation clears it, and a restore under a NEW decision receipt retries only the failed item (the typed IIS double throws on its first call only). A restore under the SAME receipt replays the earlier Partial result without a native call (recorded in g4-observations.json as SameReceiptRestoreReplaysEarlierPartialWithoutRetry). Run in this mode because the end-to-end chain (receipt, preview hash, replay rules) cannot be reproduced by doubles; the fast version is Test-PendingIntentRecovery.ps1.')}
     Write-GStage 2 'Source scan, confirmation, Manager approval, one-click backup (C + D + E + typed IIS / task)'
     $observations=& $module {
@@ -410,12 +412,19 @@ try{
         # ======================= P5-a (-Mutation RepairAndRetry): the failed IIS item left a pending intent; can the user get out, and does a second restore retry only that item? =======================
         # Real entrances only: Invoke-WsmWizardTargetRestore (a second restore), Resume-WsmWizardTargetRestore, Repair-WsmOperation, then a second restore. The typed IIS double
         # throws only on its first call, so the retry can succeed.
-        if($MutationName -ceq 'RepairAndRetry'){
+        if($MutationName -cin @('RepairAndRetry','RetryFailedButton')){
             $retry=[ordered]@{}
             $jobsAfter=@(@($tJobs)+@($restoreJob1))
             $siteId=[string]$siteItem.ItemId
             $pendingBefore=@((Read-WsmJson (Join-Path (Join-Path $restoreStateDirectory $pairId) 'state.json')).PendingOperations)
             & $Report 'p5a_precondition_the_failed_iis_item_left_exactly_one_pending_adapter_intent' ($pendingBefore.Count -eq 1 -and [string]$pendingBefore[0].ItemId -ceq $siteId -and [string]$pendingBefore[0].Phase -ceq 'AssistiveAdapterCreating') ('pending='+$pendingBefore.Count)
+            if($MutationName -ceq 'RetryFailedButton'){
+                # P8: before the repair, the pending intent makes the retry unavailable and the runtime projection says so
+                $candBefore=Get-WsmWizardTargetRetryCandidates -Workspace $targetRoot -PairId $pairId -Jobs $jobsAfter
+                $runtimeBefore=ConvertTo-WsmWizardHtmlValue (Get-WsmWizardRuntimeProjection -Workspace $targetRoot -PairId $pairId -Role Target -Jobs $jobsAfter)
+                $actionBefore=@($runtimeBefore.actions|Where-Object {[string]$_.id -ceq 'TargetRetryFailedItems'})
+                & $Report 'p8_pending_intent_makes_the_retry_unavailable_with_the_repair_first_reason' ($candBefore.Visible -and -not $candBefore.Eligible -and [string]$candBefore.ReasonCode -ceq 'PendingIntent' -and @($candBefore.CandidateItemIds).Count -eq 0 -and $runtimeBefore.runtime.retry.visible -eq $true -and $runtimeBefore.runtime.retry.eligible -eq $false -and $actionBefore.Count -eq 1 -and $actionBefore[0].available -eq $false) ('reason='+$candBefore.ReasonCode+' action available='+$(if($actionBefore.Count){$actionBefore[0].available}else{'-'}))
+            }
             $previewAfterFail=Get-WsmWizardTargetRestoreProjection -Workspace $targetRoot -PairId $pairId -Jobs $jobsAfter
             $retry.PreviewAfterFailStatus=[string]$previewAfterFail.Status;$retry.PreviewAfterFailHashSame=([string]$previewAfterFail.PreviewHash -ceq [string]$preview1.PreviewHash)
             # (1) a second restore through the wizard entrance is blocked while the intent exists
@@ -441,6 +450,7 @@ try{
             # (4b) observation only: the same receipt replays the earlier Partial result (no native call, the failed item is not retried); a new decision receipt is the way to retry
             $sameReceiptReplay=($restore2 -and [string]$restore2.AttemptOperationId -ceq [string]$restore1.AttemptOperationId -and ($script:g4Typed.IISSite -eq 1))
             $retry.SameReceiptRestoreReplaysEarlierPartialWithoutRetry=[bool]$sameReceiptReplay
+            if($MutationName -ceq 'RepairAndRetry'){
             # (5) a new decision receipt that selects only the failed item opens a new parent; the others are not touched
             $receipt3=Create-WsmWizardTargetDecisionReceipt -Workspace $targetRoot -PairId $pairId -Decision RestoreNow -Owner 'G4 target operator' -Reason 'Retry only the failed IIS site after Repair-WsmOperation cleared its intent.' -SelectedItemIds ([string[]]@($siteId)) -Jobs $tJobs
             $preview3=Get-WsmWizardTargetRestoreProjection -Workspace $targetRoot -PairId $pairId -Jobs $jobsAfter
@@ -456,6 +466,49 @@ try{
             $retrySame=$true;foreach($key in $afterRetry.Keys){if((Get-Json $before[$key]) -cne (Get-Json $afterRetry[$key])){$retrySame=$false}}
             & $Report 'p5a_the_retry_left_the_c_d_e_trees_byte_identical_to_the_source' $retrySame 'three restored trees re-hashed after the retry'
             $retry.TypedCallsAfterRetry="IIS=$($script:g4Typed.IISSite) Task=$($script:g4Typed.ScheduledTask)"
+            }
+            if($MutationName -ceq 'RetryFailedButton'){
+            # (5') P8: the retry button path. Candidates and the action come from the real runtime projection; the command is the one the action maps to,
+            # called with the argument conversion of the console route; Jobs are injected like the worker does.
+            $statePathRetry=Join-Path (Join-Path $restoreStateDirectory $pairId) 'state.json'
+            $itemsBefore=@((Read-WsmJson $statePathRetry).Items|Where-Object {[string]$_.ItemId -cne $siteId}|ForEach-Object {ConvertTo-Json -InputObject $_ -Depth 20 -Compress})
+            $stateBytesBefore=[Convert]::ToBase64String([IO.File]::ReadAllBytes($statePathRetry));$callsBefore="IIS=$($script:g4Typed.IISSite) Task=$($script:g4Typed.ScheduledTask)"
+            $cand=Get-WsmWizardTargetRetryCandidates -Workspace $targetRoot -PairId $pairId -Jobs $jobsAfter
+            & $Report 'p8_after_repair_the_backend_candidates_are_exactly_the_failed_iis_site_and_the_four_succeeded_items_are_excluded' ($cand.Visible -and $cand.Eligible -and (@($cand.CandidateItemIds) -join ',') -ceq $siteId -and @($cand.SucceededItemIds).Count -eq 4 -and @($cand.Excluded).Count -eq 0 -and [string]$cand.SourceAttemptId -ceq [string]$restore1.AttemptOperationId) ('candidates='+@($cand.CandidateItemIds).Count+' succeeded='+@($cand.SucceededItemIds).Count)
+            $runtimeRetry=ConvertTo-WsmWizardHtmlValue (Get-WsmWizardRuntimeProjection -Workspace $targetRoot -PairId $pairId -Role Target -Jobs $jobsAfter)
+            $retryAction=@($runtimeRetry.actions|Where-Object {[string]$_.id -ceq 'TargetRetryFailedItems'})
+            & $Report 'p8_runtime_projection_offers_the_retry_action_with_prefilled_owner_and_reason_and_the_same_candidate' ($retryAction.Count -eq 1 -and $retryAction[0].available -eq $true -and $runtimeRetry.runtime.retry.eligible -eq $true -and [string]$runtimeRetry.runtime.retry.defaultOwner -ceq 'G4 target operator' -and [string]$runtimeRetry.runtime.retry.defaultReason -match '1' -and (@($retryAction[0].defaults.SelectedItemIds) -join ',') -ceq $siteId -and [string]$retryAction[0].defaults.RetryOfReceiptHash -ceq [string]$cand.SourceReceiptHash) 'projection action available, defaults carry the candidate and the source receipt hash'
+            $handlerMap=Get-WsmHtmlActionMap;$handlerCommand=Get-Command $handlerMap['TargetRetryFailedItems'] -CommandType Function
+            $callHandler={param([hashtable]$Overrides)
+                $wire=[ordered]@{};foreach($property in $retryAction[0].defaults.PSObject.Properties){$wire[$property.Name]=$property.Value};$wire['Owner']='G4 retry operator';$wire['Reason']='Retry the failed IIS site after the repair';foreach($key in $Overrides.Keys){$wire[$key]=$Overrides[$key]}
+                $body=($wire|ConvertTo-Json -Depth 6 -Compress)|ConvertFrom-Json
+                $converted=ConvertTo-WsmHtmlArguments $handlerCommand $body
+                & $handlerCommand @converted -Jobs $jobsAfter}
+            $refusals=@()
+            foreach($case in @(@{Name='all five items';Overrides=@{SelectedItemIds=[string[]]$includeIds}},@{Name='a succeeded item only';Overrides=@{SelectedItemIds=[string[]]@([string]$taskItem.ItemId)}},@{Name='empty owner';Overrides=@{Owner=''}},@{Name='blank reason';Overrides=@{Reason='  '}},@{Name='stale source receipt';Overrides=@{RetryOfReceiptHash=('0'*64)}})){
+                $refusedText='';try{$null=& $callHandler $case.Overrides}catch{$refusedText=[string]$_.Exception.Message};$refusals+=@($case.Name+': '+$(if($refusedText){'refused'}else{'ACCEPTED'}))
+            }
+            $retry.HandlerRefusals=$refusals
+            & $Report 'p8_the_handler_path_refuses_other_item_ids_an_empty_owner_or_reason_and_a_stale_source_receipt' (@($refusals|Where-Object {$_ -notmatch ': refused$'}).Count -eq 0) ($refusals -join '; ')
+            $retryReceipt=& $callHandler @{}
+            $retry.RetryReceipt=[ordered]@{Selected=@($retryReceipt.SelectedItemIds|ForEach-Object {([string]$_).Substring(0,8)});Decision=[string]$retryReceipt.Decision}
+            $storedRetry=Read-WsmTrustedJson $retryReceipt.ReceiptPath $retryReceipt.ReceiptHash
+            & $Report 'p8_new_receipt_selects_only_the_failed_item_with_the_operators_owner_and_reason_and_RestoreNow' ([string]$retryReceipt.Status -ceq 'Succeeded' -and @($retryReceipt.SelectedItemIds).Count -eq 1 -and [string]$retryReceipt.SelectedItemIds[0] -ceq $siteId -and [string]$retryReceipt.Decision -ceq 'RestoreNow' -and [string]$storedRetry.Owner -ceq 'G4 retry operator' -and [string]$storedRetry.Reason -ceq 'Retry the failed IIS site after the repair' -and [string]$retryReceipt.ReceiptHash -cne [string]$receipt1.ReceiptHash) 'receipt selection, decision, owner and reason'
+            & $Report 'p8_creating_the_receipt_started_nothing_state_bytes_and_native_call_counts_are_unchanged' (([Convert]::ToBase64String([IO.File]::ReadAllBytes($statePathRetry))) -ceq $stateBytesBefore -and "IIS=$($script:g4Typed.IISSite) Task=$($script:g4Typed.ScheduledTask)" -ceq $callsBefore) $callsBefore
+            $preview5=Get-WsmWizardTargetRestoreProjection -Workspace $targetRoot -PairId $pairId -Jobs $jobsAfter
+            & $Report 'p8_preview_after_the_new_receipt_covers_exactly_the_failed_item' ([string]$preview5.Status -ceq 'Previewed' -and @($preview5.SelectedItemIds).Count -eq 1 -and [string]$preview5.SelectedItemIds[0] -ceq $siteId) ('status='+$preview5.Status+' selected='+@($preview5.SelectedItemIds).Count)
+            $restore5=Invoke-WsmWizardTargetRestore -Workspace $targetRoot -PairId $pairId -PreviewHash ([string]$preview5.PreviewHash) -Jobs $jobsAfter
+            $state5=Read-WsmJson $statePathRetry
+            $itemsAfter=@($state5.Items|Where-Object {[string]$_.ItemId -cne $siteId}|ForEach-Object {ConvertTo-Json -InputObject $_ -Depth 20 -Compress})
+            $siteRecord5=@($state5.Items|Where-Object {[string]$_.ItemId -ceq $siteId})
+            & $Report 'p8_retry_restore_succeeds_for_the_site_in_a_new_parent_and_the_succeeded_items_were_not_rewritten_records_and_typed_call_counts' (@($restore5.ItemResults).Count -eq 1 -and [string]$restore5.ItemResults[0].ItemId -ceq $siteId -and [string]$restore5.ItemResults[0].Status -ceq 'Succeeded' -and [string]$restore5.AttemptOperationId -cne [string]$restore1.AttemptOperationId -and $script:g4Typed.IISSite -eq 2 -and $script:g4Typed.ScheduledTask -eq 1 -and ($itemsBefore -join "`n") -ceq ($itemsAfter -join "`n") -and $siteRecord5.Count -eq 1 -and [string]$siteRecord5[0].Status -ceq 'Succeeded' -and @($state5.PendingOperations).Count -eq 0) ('IIS calls='+$script:g4Typed.IISSite+' task calls='+$script:g4Typed.ScheduledTask+' other item records unchanged='+(($itemsBefore -join "`n") -ceq ($itemsAfter -join "`n")))
+            $afterButton=[ordered]@{Unrelated=(Get-TreeMap $unrelated);Site=(Get-TreeMap $siteDir);Jobs=(Get-TreeMap $jobsDir)}
+            $buttonSame=$true;foreach($key in $afterButton.Keys){if((Get-Json $before[$key]) -cne (Get-Json $afterButton[$key])){$buttonSame=$false}}
+            & $Report 'p8_the_c_d_e_trees_are_byte_identical_to_the_source_after_the_retry' $buttonSame 'three restored trees re-hashed after the retry'
+            $candFinal=Get-WsmWizardTargetRetryCandidates -Workspace $targetRoot -PairId $pairId -Jobs $jobsAfter
+            & $Report 'p8_after_the_successful_retry_the_retry_entry_is_hidden' (-not $candFinal.Visible -and [string]$candFinal.ReasonCode -ceq 'AllSucceeded') ([string]$candFinal.ReasonCode)
+            $retry.TypedCallsAfterRetry="IIS=$($script:g4Typed.IISSite) Task=$($script:g4Typed.ScheduledTask)"
+            }
             $obs.RepairAndRetry=$retry
             Save-Obs
         }

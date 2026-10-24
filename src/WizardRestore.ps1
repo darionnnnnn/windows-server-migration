@@ -277,19 +277,96 @@ function Import-WsmWizardTargetComparison {
     Save-WsmWizardTargetComparisonMaterial -Workspace $Workspace -PairId $PairId -Ctx $ctx -Snapshot $snapshot -Comparison $doc.Comparison -SelectionRevision ([int]$doc.SelectionRevision) -ComparisonRevision ([int]$doc.ComparisonRevision) -SourceSnapshotHash ([string]$doc.SourceSnapshotHash) -Provenance ManagerImport -ImportedFromHash $ExpectedHash.ToLowerInvariant()
 }
 
+# 接受未備妥（AcceptedUnprepared）的資格判定：只有目前有核心算出的軟體相依問題的消費者項目才可被接受。
+# 建立收據與「重試失敗項目」共用這一份，不各寫一套。
+function Get-WsmWizardTargetAcceptEligibleItemIds($PackageRecord,$Comparison,[object[]]$SelectedItemIds) {
+    $dummyDecision=[pscustomobject]@{SelectedItemIds=$SelectedItemIds;Receipt=[pscustomobject]@{Comparison=$Comparison;AcceptedUnpreparedItemIds=@()}}
+    $actualIssues=@(Get-WsmAssistiveComparisonDependencyIssues $PackageRecord.Package $dummyDecision);$eligible=@{};foreach($issue in $actualIssues){$eligible[[string]$issue.ConsumerItemId]=$true}
+    $eligible
+}
+
+# P8：部分完成後的「重試失敗項目」候選（只讀；不寫入、不自動 repair）。
+# 純函式：全部輸入都由呼叫端傳入（最近一次母作業的 operation state、綁定的決策收據、目前的項目可還原判定），方便逐情境驗證。
+# 來源只有最近一次母作業 state.RestoreAttempt（含 ItemResults）與它綁定的最新決策收據；收據不是最新、世代不同或母作業未結束，一律不顯示。
+# 成功判定：ItemResults 的 Status 為 Succeeded（含已擁有且 readback 吻合）或 RebootRequired（已套用、待重新開機）視為成功，不重試。
+# 其餘（Failed、Deferred、CredentialRejected、NeedsReconciliation、BlockedByUnknownDependency、Blocked、BlockedConflict、ManualEvidenceRequired、Cancelled、Partial，以及沒有結果）都是未成功。
+# 未成功項目再經 N1 的共用可還原判定（ItemOptions.restorable，來源是 Get-WsmAssistiveFileScopeRestoreGap 等同一份判定）：可還原才進候選，否則進 Excluded 並附 code 與原因。
+# 有未清除的 pending intent 時整體不可重試（請先 repair），這裡不替操作者 repair。
+function Get-WsmWizardTargetRetryCandidatesCore {
+    [CmdletBinding()]param([Parameter(Mandatory)]$PackageRecord,$State,$DecisionRecord,[object[]]$ItemOptions=@(),$PendingRestore=$null)
+    $out=[ordered]@{Visible=$false;Eligible=$false;ReasonCode='';Reason='';CandidateItemIds=[string[]]@();SucceededItemIds=[string[]]@();NotSucceededItemIds=[string[]]@();Excluded=@();SourceAttemptId='';SourceReceiptHash='';SourceStage='';SourceOwner='';PriorAcceptedUnpreparedItemIds=[string[]]@();SuggestedReason=''}
+    if($PendingRestore){$out.ReasonCode='RestoreInProgress';$out.Reason='還原尚未結束（等待輸入或已中斷），請先在還原畫面完成或續作。';return [pscustomobject]$out}
+    if(-not $State -or -not $State.PSObject.Properties['RestoreAttempt'] -or -not $State.RestoreAttempt -or -not $DecisionRecord -or -not $DecisionRecord.PSObject.Properties['Receipt'] -or -not $DecisionRecord.Receipt){$out.ReasonCode='NoRestoreAttempt';$out.Reason='還沒有可重試的還原結果。';return [pscustomobject]$out}
+    $attempt=$State.RestoreAttempt;$receipt=$DecisionRecord.Receipt;$stage=[string]$State.Stage;$out.SourceStage=$stage
+    if($stage -notin @('Succeeded','Partial','RebootRequired','Cancelled','Failed')){$out.ReasonCode=$(if($stage -ceq 'Superseded'){'Superseded'}else{'RestoreInProgress'});$out.Reason=$(if($stage -ceq 'Superseded'){'這次還原已被新的嘗試取代。'}else{'還原尚未結束，結束後才能重試失敗項目。'});return [pscustomobject]$out}
+    $receiptSelected=@($receipt.SelectedItemIds|ForEach-Object {[string]$_}|Sort-Object -Unique)
+    if([string]$receipt.Decision -cne 'RestoreNow' -or [string]$attempt.DecisionReceiptHash -ine [string]$DecisionRecord.SHA256 -or [string]$attempt.ManifestHash -ine [string]$PackageRecord.ManifestHash -or [long]$attempt.Generation -ne [long]$PackageRecord.Package.Manifest.Generation -or (@($attempt.SelectedItemIds|ForEach-Object {[string]$_}|Sort-Object -Unique) -join "`n") -cne ($receiptSelected -join "`n")){$out.ReasonCode='AttemptNotCurrent';$out.Reason='最近一次還原不是依目前這份選擇紀錄進行的，沒有可重試的結果。';return [pscustomobject]$out}
+    $out.SourceAttemptId=[string]$attempt.OperationId;$out.SourceReceiptHash=([string]$DecisionRecord.SHA256).ToLowerInvariant();$out.SourceOwner=$(if($receipt.PSObject.Properties['Owner']){[string]$receipt.Owner}else{''})
+    $results=@{};if($attempt.PSObject.Properties['ItemResults']){foreach($itemResult in @($attempt.ItemResults)){if($itemResult -and $itemResult.PSObject.Properties['ItemId'] -and $itemResult.PSObject.Properties['Status']){$results[[string]$itemResult.ItemId]=[string]$itemResult.Status}}}
+    $succeeded=New-Object 'System.Collections.Generic.List[string]';$notSucceeded=New-Object 'System.Collections.Generic.List[string]'
+    foreach($id in $receiptSelected){if($results.ContainsKey($id) -and $results[$id] -cin @('Succeeded','RebootRequired')){$succeeded.Add($id)}else{$notSucceeded.Add($id)}}
+    $out.SucceededItemIds=[string[]]@($succeeded.ToArray());$out.NotSucceededItemIds=[string[]]@($notSucceeded.ToArray())
+    # Partial 的另一個來源是「未選取的項目標為 DeferredBySelection」；所選項目全部成功時那不是失敗，不顯示重試。Partial 且有未清除的 pending intent 時仍要顯示（先修復）。
+    $pendingCount=$(if($State.PSObject.Properties['PendingOperations']){@($State.PendingOperations).Count}else{0})
+    if($notSucceeded.Count -eq 0 -and -not ($stage -ceq 'Partial' -and $pendingCount -gt 0)){$out.ReasonCode='AllSucceeded';$out.Reason='這次還原所選的項目都已成功，沒有需要重試的項目。';return [pscustomobject]$out}
+    $out.Visible=$true
+    if($pendingCount -gt 0){$out.ReasonCode='PendingIntent';$out.Reason='請先修復未完成的作業。';return [pscustomobject]$out}
+    $optionById=@{};foreach($option in @($ItemOptions)){if($option -and $option.PSObject.Properties['value']){$optionById[[string]$option.value]=$option}}
+    $candidates=New-Object 'System.Collections.Generic.List[string]';$excluded=New-Object 'System.Collections.Generic.List[object]'
+    foreach($id in $notSucceeded){
+        $lastStatus=$(if($results.ContainsKey($id)){$results[$id]}else{'NoResult'});$option=$optionById[$id]
+        if($null -eq $option){$excluded.Add([pscustomobject][ordered]@{ItemId=$id;Name='';Code='NotInApprovedPlan';Reason='這個項目已不在目前核准計畫的還原範圍內。';LastStatus=$lastStatus});continue}
+        if(-not [bool]$option.restorable){$excluded.Add([pscustomobject][ordered]@{ItemId=$id;Name=[string]$option.label;Code=[string]$option.restorableCode;Reason=[string]$option.restorableReason;LastStatus=$lastStatus});continue}
+        $candidates.Add($id)
+    }
+    $out.Excluded=@($excluded.ToArray());$out.CandidateItemIds=[string[]]@($candidates.ToArray())
+    if($candidates.Count -eq 0){$out.ReasonCode='NoRetryableItems';$out.Reason=$(if($excluded.Count){'沒有可重試的項目：未成功的項目目前都無法還原，原因見下方清單。'}else{'沒有可重試的項目。'});return [pscustomobject]$out}
+    $prior=@();if($receipt.PSObject.Properties['AcceptedUnpreparedItemIds']){$prior=@($receipt.AcceptedUnpreparedItemIds|ForEach-Object {[string]$_}|Where-Object {$candidates.Contains($_)}|Sort-Object -Unique)}
+    $out.PriorAcceptedUnpreparedItemIds=[string[]]@($prior)
+    $out.Eligible=$true;$out.SuggestedReason=('重試上次部分完成中未成功的 '+$candidates.Count+' 個項目（來源收據 '+$out.SourceReceiptHash.Substring(0,12)+'）')
+    [pscustomobject]$out
+}
+
+function Get-WsmWizardTargetRetryCandidates {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[object[]]$Jobs=@())
+    $ctx=Assert-WsmWizardTargetRole $Workspace $PairId
+    $packageRecord=Get-WsmWizardTargetPackage $Workspace $PairId $ctx $Jobs
+    $paths=Get-WsmOperationPaths (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs') $PairId;$state=$null;if([IO.File]::Exists($paths.State)){$state=Get-WsmOperationState $paths $packageRecord.Package}
+    $decisionRecord=Get-WsmWizardTargetDecisionRecord $Workspace $PairId $ctx.Received.SHA256
+    $options=@(Get-WsmWizardTargetItemOptions $ctx $packageRecord $state $decisionRecord)
+    Get-WsmWizardTargetRetryCandidatesCore -PackageRecord $packageRecord -State $state -DecisionRecord $decisionRecord -ItemOptions $options -PendingRestore (Get-WsmWizardRuntimeTargetPendingRestore $Workspace $PairId $Jobs)
+}
+
+# 「重試失敗項目」用 RetryOfReceiptHash 啟用：選擇由後端重新計算候選決定（不信任前端送來的 ItemIds，只核對它等於目前候選），
+# Decision 固定 RestoreNow，Owner／Reason 仍由操作者明確提供，其餘 CAS／revision／核准子集／AcceptedUnprepared 驗證全部沿用本函式的既有路徑。
+# 建立收據不會開始還原；操作者要回到預覽重新確認。
 function Create-WsmWizardTargetDecisionReceipt {
-    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][ValidateSet('WaitForInstall','RestoreNow')][string]$Decision,[Parameter(Mandatory)][string]$Owner,[Parameter(Mandatory)][string]$Reason,[Parameter(Mandatory)][string[]]$SelectedItemIds,[string[]]$AcceptedUnpreparedItemIds=@(),[object[]]$Jobs=@())
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][ValidateSet('WaitForInstall','RestoreNow')][string]$Decision,[Parameter(Mandatory)][string]$Owner,[Parameter(Mandatory)][string]$Reason,[Parameter(Mandatory)][string[]]$SelectedItemIds,[string[]]$AcceptedUnpreparedItemIds=@(),[object[]]$Jobs=@(),[string]$RetryOfReceiptHash='')
     $ctx=Assert-WsmWizardTargetRole $Workspace $PairId
     if([string]::IsNullOrWhiteSpace($Owner) -or [string]::IsNullOrWhiteSpace($Reason)){throw 'An explicit responsible owner and reason are required for the Target decision.'}
+    $retry=$null
+    if($RetryOfReceiptHash){
+        if($Decision -cne 'RestoreNow'){throw 'A retry of failed items must use the RestoreNow decision.'}
+        if($RetryOfReceiptHash -notmatch '^[a-fA-F0-9]{64}$'){throw 'The retry source receipt hash is malformed.'}
+        $retry=Get-WsmWizardTargetRetryCandidates -Workspace $Workspace -PairId $PairId -Jobs $Jobs
+        if(-not $retry.Eligible){throw ('Retry of failed items is not available: '+[string]$retry.Reason)}
+        if([string]$retry.SourceReceiptHash -ine $RetryOfReceiptHash){throw 'The retry source receipt is no longer the receipt of the latest restore; refresh and review the retry list again.'}
+        if((@($SelectedItemIds|Sort-Object -Unique) -join "`n") -cne (@($retry.CandidateItemIds|Sort-Object -Unique) -join "`n") -or @($SelectedItemIds).Count -ne @($retry.CandidateItemIds).Count){throw 'The items sent for retry differ from the items that currently qualify; refresh and review the retry list again.'}
+    }
     $packageRecord=Get-WsmWizardTargetPackage $Workspace $PairId $ctx $Jobs;$snapshot=Get-WsmWizardTargetSnapshot $Workspace $ctx $Jobs;$comparisonRecord=Get-WsmWizardTargetComparisonRecord $Workspace $PairId $ctx.Received.SHA256
     if(-not $comparisonRecord){throw 'Import the current informational Manager comparison before making a Target decision.'}
     $comparison=$comparisonRecord.Comparison
     if($comparisonRecord.Document.TargetSnapshotHash -ine $snapshot.SHA256 -or $comparisonRecord.Document.SourceSnapshotHash -ine $ctx.Plan.Assistive.SourceSnapshotHash -or [int]$comparisonRecord.Document.SelectionRevision -ne [int]$ctx.Plan.Assistive.SourceSelectionsVersion){throw 'Imported comparison no longer matches the current Target inventory, sealed source snapshot and selection.'}
     $allowed=New-WsmAssistiveAllowedSubset $packageRecord.Package.Plan $SelectedItemIds;$selectedUnique=@($SelectedItemIds | Select-Object -Unique);if(@($allowed).Count -ne $selectedUnique.Count){throw 'Target selection contains a duplicate or an item outside the exact sealed approved subset.'}
+    $eligible=Get-WsmWizardTargetAcceptEligibleItemIds $packageRecord $comparison $allowed
+    if($retry){
+        # 重試：AcceptedUnprepared 沿用上一份收據中與候選相交、且目前仍符合資格的項目，其餘丟棄；前端若送了不同的集合就拒絕，不採信。
+        $derivedAccepted=@($retry.PriorAcceptedUnpreparedItemIds|Where-Object {$eligible.ContainsKey([string]$_)}|Sort-Object -Unique)
+        if((@($AcceptedUnpreparedItemIds|Sort-Object -Unique) -join "`n") -cne ($derivedAccepted -join "`n") -and @($AcceptedUnpreparedItemIds).Count -gt 0){throw 'The accepted-unprepared items sent for retry differ from the items that currently qualify; refresh and review the retry list again.'}
+        $AcceptedUnpreparedItemIds=[string[]]@($derivedAccepted)
+    }
     $acceptedUnique=@($AcceptedUnpreparedItemIds | Select-Object -Unique);if($acceptedUnique.Count -ne @($AcceptedUnpreparedItemIds).Count){throw 'Accepted-unprepared selection contains duplicate item identities.'}
     $selectedSet=@{};foreach($id in $allowed){$selectedSet[[string]$id]=$true};foreach($id in $acceptedUnique){if(-not $selectedSet.ContainsKey([string]$id)){throw 'Accepted-unprepared item IDs must be a subset of the explicitly selected approved items.'}}
-    $dummyDecision=[pscustomobject]@{SelectedItemIds=$allowed;Receipt=[pscustomobject]@{Comparison=$comparison;AcceptedUnpreparedItemIds=@()}}
-    $actualIssues=@(Get-WsmAssistiveComparisonDependencyIssues $packageRecord.Package $dummyDecision);$eligible=@{};foreach($issue in $actualIssues){$eligible[[string]$issue.ConsumerItemId]=$true}
     foreach($id in $acceptedUnique){if(-not $eligible.ContainsKey([string]$id)){throw ('Accepted-unprepared item '+$id+' has no current core-derived software dependency issue to accept.') }}
     $args=@{PlanPath=[string]$ctx.Received.Path;PlanHash=[string]$ctx.Received.SHA256;ManifestHash=[string]$packageRecord.ManifestHash;Generation=[int]$packageRecord.Package.Manifest.Generation;TargetSnapshotHash=[string]$snapshot.SHA256;ComparisonRevision=[int]$comparison.Revision;SelectionRevision=[int]$ctx.Plan.Assistive.SourceSelectionsVersion;Decision=$Decision;Owner=$Owner;Reason=$Reason;SelectedItemIds=[string[]]$allowed;AcceptedUnpreparedItemIds=[string[]]$acceptedUnique;Comparison=$comparison}
     $receipt=New-WsmAssistiveTargetDecisionReceipt @args

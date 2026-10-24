@@ -1,0 +1,188 @@
+// P8: 部分完成後「重試失敗項目」的畫面（Playwright + Edge；API 為本檔內的固定替身，投影欄位由 Test-RetryFailedItems.ps1 對真實後端驗證）。
+// 涵蓋：顯示條件（Partial 顯示、全部成功不顯示、執行中／WaitingForInput／Interrupted 不顯示，即使投影誤標可見）、說明文字、候選與不重試原因（文字＋圖示）、
+// 候選為空或有 pending intent 時按鈕以 aria-disabled 停用並以 aria-describedby 關聯原因、Owner／Reason 預填且必填、鍵盤 Tab 到按鈕再 Enter、防連按只送一次、
+// 送出內容（動作、候選、來源收據 hash）、建立後不自動開始還原、完成後焦點不掉到 body（成功移到結果訊息；失敗回到按鈕）、390／320px 不橫向溢出、零 console 錯誤。
+const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path');
+const runtimePath = process.env.WSM_NODE_MODULES || 'C:/Users/eldar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules';
+const { chromium } = require(path.join(runtimePath, 'playwright'));
+const root = path.resolve(__dirname, '..'), screens = process.env.WSM_P8_SCREENS || path.join(root, 'work', 'r7', 'screens');
+fs.mkdirSync(screens, { recursive: true });
+const assets = new Map([['/', path.join(root, 'src/ui/index.html')], ['/ui/console.js', path.join(root, 'src/ui/console.js')], ['/ui/console.css', path.join(root, 'src/ui/console.css')], ['/ui/nonc.js', path.join(root, 'src/ui/nonc.js')]]);
+const pairId = 'p8-pair', contextId = 'p8-context', hash = 'a'.repeat(64), hash2 = 'b'.repeat(64), sourceReceipt = 'c'.repeat(64), shortReceipt = 'c'.repeat(12);
+const jobs = new Map(), submissions = [];
+const S = { stage: 'Partial', revision: 2, retryVisible: true, eligible: true, actionAvailable: true, reasonCode: '', reason: '', candidates: ['site', 'task'], excluded: [{ itemId: 'manual', name: '人工處理項目', code: 'ManualWorkflow', reason: '需要人工處理，工具不會還原。', lastStatus: 'ManualEvidenceRequired' }], failNext: false, longNames: false };
+const names = { ok: '已成功的資料夾', site: '訂單網站', task: '夜間匯出排程', manual: '人工處理項目' };
+const longName = '這是一個名稱非常非常長而且沒有任何空白的項目名稱用來確認三百二十像素寬度下不會把頁面撐出水平捲動_' + 'X'.repeat(80);
+function nameOf(id) { return S.longNames && id === 'site' ? longName : names[id]; }
+function options() { return Object.keys(names).map(value => ({ value, label: nameOf(value), adapter: value === 'manual' ? 'ManualWorkflow' : 'FileScope', group: 'Data', typeLabel: '檔案範圍', restorable: value !== 'manual', restorableReason: value === 'manual' ? '需要人工處理，工具不會還原。' : '', restorableCode: value === 'manual' ? 'ManualWorkflow' : '', restored: value === 'ok', fileCount: 1, bytes: 10, countsAvailable: true, dependencies: [], requiredBy: [], preselected: null })); }
+const action = (id, defaults = {}, missing = [], available = true, reason = '') => ({ id, available, reason: reason || `Fixture ${id}`, defaults: Object.assign({ Workspace: 'C:\\fixture\\target', PairId: pairId }, defaults), missing });
+function retry() {
+  const base = { visible: S.retryVisible, eligible: S.eligible, reasonCode: S.reasonCode, reason: S.reason, candidateItemIds: S.eligible ? S.candidates : [], candidateCount: S.eligible ? S.candidates.length : 0 };
+  if (!S.retryVisible) return base;
+  return Object.assign(base, { succeededCount: 1, notSucceededCount: 1 + S.candidates.length + S.excluded.length, excluded: S.excluded, sourceAttemptId: 'attempt-1', sourceReceiptHash: sourceReceipt, sourceReceiptShort: shortReceipt, sourceStage: 'Partial', defaultOwner: 'Prior owner', defaultReason: `重試上次部分完成中未成功的 ${S.candidates.length} 個項目（來源收據 ${shortReceipt}）` });
+}
+function runtime() {
+  const target = { status: S.stage, plan: { hash }, package: { ManifestHash: hash }, inventory: { SHA256: hash2 }, comparison: { Status: 'Imported' }, decision: null, restorePreview: null, restoreResult: null, retry: retry(), mechanicalValidation: { available: false, status: 'NotRun' }, businessAcceptance: { available: false, status: 'NotAccepted' }, activation: { available: false, status: 'Locked' }, itemOptions: options() };
+  const actions = [action('CreateTargetDecisionReceipt', {}, ['Decision', 'Owner', 'Reason', 'SelectedItemIds'])];
+  if (S.retryVisible) actions.push(action('TargetRetryFailedItems', { Decision: 'RestoreNow', SelectedItemIds: S.eligible ? S.candidates : [], RetryOfReceiptHash: sourceReceipt }, ['Owner', 'Reason'], S.actionAvailable, S.eligible ? '依上次部分完成的結果自動產生只含失敗項目的新選擇紀錄。' : S.reason));
+  if (S.stage === 'ReadyForRestorePreview') { target.decision = { Decision: 'RestoreNow', Receipt: { Owner: 'Retry operator', Reason: 'retry', Status: 'Verified' } }; actions.push(action('TargetRestorePreview')); }
+  return { Kind: 'WizardRuntimeProjection', Role: 'Target', PairId: pairId, viewContext: { revision: S.revision + 100, decisionRevision: 2, selectionRevision: 1, dataVersion: 1 }, status: S.stage, actions, runtime: { target } };
+}
+function wizard() { return { Kind: 'WizardProjection', role: 'Target', workspaceRole: 'Target', roleMatchesWorkspace: true, pairId, pairName: 'Source to Target', currentStep: 'handoff', nextStep: 'restore', mode: 'ItemByItem', revision: S.revision, groups: [], gates: [], results: {}, context: {}, actions: [] }; }
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, 'http://127.0.0.1'), asset = assets.get(url.pathname);
+  if (asset) { res.writeHead(200, { 'Content-Type': asset.endsWith('.js') ? 'application/javascript' : asset.endsWith('.css') ? 'text/css' : 'text/html' }); fs.createReadStream(asset).pipe(res); return; }
+  if (url.pathname === '/favicon.ico') { res.writeHead(204); res.end(); return; }
+  let raw = ''; req.on('data', c => raw += c);
+  req.on('end', () => {
+    const send = (status, value) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(value)); };
+    if (url.pathname === '/api/session') return send(200, { token: 'fixture', contextId, sessionId: 's', hostName: 'Target', role: 'Target', workspace: 'C:\\fixture\\target', pairId, revision: S.revision + 100, decisionRevision: 2, selectionRevision: 1, dataVersion: 1, principal: 'Fixture' });
+    if (url.pathname === '/api/context') return send(200, { roles: ['Target'], pairs: [{ pairId, label: 'Source to Target' }], role: 'Target', pairId, contextId, revision: S.revision, decisionRevision: 2, selectionRevision: 1, dataVersion: 1 });
+    if (url.pathname === '/api/wizard' && req.method === 'GET') return send(200, wizard());
+    if (url.pathname === '/api/wizard/nonc') return send(200, { Kind: 'WizardNonCProjection', Role: 'Target', PairId: pairId, ContextId: contextId, HasNonC: false });
+    if (url.pathname === '/api/wizard/runtime') return send(200, runtime());
+    if (url.pathname === '/api/jobs' && req.method === 'GET') return send(200, { items: [...jobs.values()] });
+    if (url.pathname.startsWith('/api/jobs/') && req.method === 'GET') { const job = jobs.get(decodeURIComponent(url.pathname.split('/').pop())); return job ? send(200, { job }) : send(404, { code: 'job_not_found' }); }
+    if (url.pathname === '/api/operations' && req.method === 'POST') {
+      const body = JSON.parse(raw); submissions.push(body); S.revision++;
+      const failed = body.action === 'TargetRetryFailedItems' && S.failNext;
+      if (body.action === 'TargetRetryFailedItems' && !failed) { S.stage = 'ReadyForRestorePreview'; S.retryVisible = false; }
+      const job = { jobId: body.operationId, operationId: body.operationId, revision: S.revision, action: body.action, status: failed ? 'Failed' : 'Succeeded', role: 'Target', pairId, workspace: 'C:\\fixture\\target', outputs: failed ? [] : [{ Kind: 'WizardRuntimeActionResult', Status: 'Succeeded' }] };
+      if (failed) job.error = { code: 'operation_failed', message: 'fixture failure' };
+      jobs.set(body.operationId, job); return send(202, { job });
+    }
+    return send(404, { code: 'not_found', route: url.pathname });
+  });
+});
+const explainText = '同一份還原選擇再按一次只會顯示上次結果，不會重做；要重試失敗項目請按「重試失敗項目」（或回精靈重新保存選擇）。';
+
+(async () => {
+  let browser;
+  try {
+    await new Promise((resolve, reject) => server.listen(0, '127.0.0.1', resolve).once('error', reject));
+    browser = await chromium.launch({ headless: true, executablePath: process.env.WSM_EDGE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' });
+    const base = `http://127.0.0.1:${server.address().port}/#wizard`, errors = [];
+    const reset = () => { Object.assign(S, { stage: 'Partial', revision: 2, retryVisible: true, eligible: true, actionAvailable: true, reasonCode: '', reason: '', candidates: ['site', 'task'], excluded: [{ itemId: 'manual', name: '人工處理項目', code: 'ManualWorkflow', reason: '需要人工處理，工具不會還原。', lastStatus: 'ManualEvidenceRequired' }], failNext: false, longNames: false }); jobs.clear(); submissions.length = 0; };
+    async function openPage(width = 390) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      page.on('pageerror', e => errors.push('pageerror: ' + e.message)); page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+      await page.goto(base, { waitUntil: 'networkidle' });
+      await page.waitForFunction(() => window.WsmConsole?.state?.wizard?.currentStep === 'handoff');
+      await page.locator('.wizard-runtime-target').waitFor();
+      await page.waitForFunction(() => !!document.querySelector('.wizard-runtime-target [data-runtime-item]'));
+      return page;
+    }
+    const panel = page => page.locator('.wizard-retry-failed');
+    const retrySubmissions = () => submissions.filter(x => x.action === 'TargetRetryFailedItems');
+    const noOverflow = async (page, what) => assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `no horizontal overflow: ${what}`);
+    const activeInfo = page => page.evaluate(() => { const a = document.activeElement; return { tag: a ? a.tagName : '', retryFocus: a && a.dataset ? a.dataset.retryFocus || '' : '', id: a ? a.id : '' }; });
+
+    // ---------------------------------------------------------------- 1. Partial：顯示、說明、候選、不重試原因、預填
+    reset(); let page = await openPage(390);
+    assert.equal(await panel(page).count(), 1, 'a partial result with retryable items shows the retry panel');
+    assert.equal(await page.locator('.wizard-retry-explain').innerText(), explainText, 'the explanation of why the same choice is not retried is shown verbatim');
+    const summary = await page.locator('.wizard-retry-summary').innerText();
+    assert.ok(summary.includes('✔') && summary.includes('✖') && summary.includes('↻') && summary.includes('可重試 2 項'), `summary carries text and icons: ${summary}`);
+    assert.deepEqual(await page.locator('.wizard-retry-list:not(.wizard-retry-excluded) li').allInnerTexts(), ['↻ 訂單網站', '↻ 夜間匯出排程']);
+    const excludedText = await page.locator('.wizard-retry-excluded li').allInnerTexts();
+    assert.equal(excludedText.length, 1); assert.ok(excludedText[0].startsWith('⛔ 人工處理項目：') && excludedText[0].includes('需要人工處理'), excludedText[0]);
+    const ownerInput = panel(page).locator('[data-runtime-field="Owner"]'), reasonInput = panel(page).locator('[data-runtime-field="Reason"]'), button = panel(page).locator('[data-retry-focus="submit"]');
+    assert.equal(await ownerInput.inputValue(), 'Prior owner', 'Owner is prefilled from the previous receipt');
+    assert.equal(await reasonInput.inputValue(), `重試上次部分完成中未成功的 2 個項目（來源收據 ${shortReceipt}）`, 'Reason is prefilled with the count and the short source receipt hash');
+    assert.equal(await ownerInput.getAttribute('aria-required'), 'true'); assert.equal(await reasonInput.getAttribute('aria-required'), 'true');
+    assert.equal(await button.getAttribute('aria-disabled'), 'false', 'the button is usable when candidates exist and both fields are filled');
+    assert.equal(await button.evaluate(el => el.disabled), false, 'the button never uses the native disabled attribute');
+    assert.ok((await button.getAttribute('class')).includes('secondary-button'), 'the button is a secondary-button');
+    assert.equal(await panel(page).evaluate(el => el.querySelectorAll('[style]').length), 0, 'no inline style (tokens only)');
+    await page.screenshot({ path: path.join(screens, 'p8-retry-390.png'), fullPage: true });
+    await noOverflow(page, '390px panel');
+
+    // ---------------------------------------------------------------- 2. Owner／Reason 必填：清空後以 aria-disabled 停用，按下不送出
+    await ownerInput.fill('');
+    assert.equal(await button.getAttribute('aria-disabled'), 'true', 'an empty owner disables the button');
+    await button.click({ force: true }); assert.equal(retrySubmissions().length, 0, 'a click on the disabled button sends nothing');
+    assert.match(await page.locator('#error-summary').innerText(), /責任人與理由/, 'the operator is told that owner and reason are required');
+    await ownerInput.fill('Retry operator'); await reasonInput.fill('   ');
+    assert.equal(await button.getAttribute('aria-disabled'), 'true', 'a blank reason disables the button');
+    await reasonInput.fill('Fixed the cause; retry the failed items');
+    assert.equal(await button.getAttribute('aria-disabled'), 'false');
+
+    // ---------------------------------------------------------------- 3. 鍵盤：Tab 到按鈕、Enter 觸發；連按只送一次；完成後焦點不掉到 body
+    await ownerInput.focus(); await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
+    assert.equal((await activeInfo(page)).retryFocus, 'submit', 'Tab reaches the retry button after owner and reason');
+    await page.keyboard.press('Enter'); await page.keyboard.press('Enter');
+    await page.waitForFunction(() => !!document.getElementById('wizard-retry-result'));
+    await page.waitForTimeout(150);
+    assert.equal(retrySubmissions().length, 1, 'a double activation sends exactly one request');
+    const sent = retrySubmissions()[0];
+    assert.equal(sent.action, 'TargetRetryFailedItems');
+    assert.deepEqual(sent.args.SelectedItemIds, ['site', 'task'], 'the displayed candidates are sent for the backend to verify');
+    assert.equal(sent.args.Decision, 'RestoreNow'); assert.equal(sent.args.RetryOfReceiptHash, sourceReceipt);
+    assert.equal(sent.args.Owner, 'Retry operator'); assert.equal(sent.args.Reason, 'Fixed the cause; retry the failed items');
+    assert.equal(submissions.filter(x => x.action === 'TargetRestore').length, 0, 'creating the selection record does not start a restore');
+    const focus = await activeInfo(page);
+    assert.equal(focus.id, 'wizard-retry-result', `focus moved to the result message, not body: ${JSON.stringify(focus)}`);
+    assert.match(await page.locator('#wizard-retry-result').innerText(), /^✔ 已建立只含失敗項目的新選擇紀錄。還原尚未開始/, 'the result says the restore has not started');
+    assert.equal(await panel(page).count(), 0, 'the panel is gone once the new record exists');
+    await page.screenshot({ path: path.join(screens, 'p8-retry-after-390.png'), fullPage: true });
+    await page.close();
+
+    // ---------------------------------------------------------------- 4. 失敗：結果訊息＋焦點回到仍可用的按鈕
+    reset(); S.failNext = true; page = await openPage(390);
+    await panel(page).locator('[data-retry-focus="submit"]').focus(); await page.keyboard.press('Enter');
+    await page.waitForFunction(() => !!document.getElementById('wizard-retry-result'));
+    await page.waitForFunction(() => document.activeElement && document.activeElement.dataset && document.activeElement.dataset.retryFocus === 'submit');
+    assert.equal(retrySubmissions().length, 1);
+    assert.match(await page.locator('#wizard-retry-result').innerText(), /^⚠ 沒有建立新的選擇紀錄/, 'a failed request is reported with an icon and text');
+    assert.equal(await panel(page).count(), 1, 'the panel stays so the operator can retry again');
+    assert.equal((await activeInfo(page)).retryFocus, 'submit', 'focus returns to the still usable button after a failure');
+    await page.close();
+
+    // ---------------------------------------------------------------- 5. 候選為空：按鈕停用並說明原因；有 pending intent：先修復
+    reset(); S.eligible = false; S.actionAvailable = false; S.candidates = []; S.reasonCode = 'NoRetryableItems'; S.reason = '沒有可重試的項目：未成功的項目目前都無法還原，原因見下方清單。';
+    page = await openPage(320);
+    assert.equal(await panel(page).count(), 1, 'an empty candidate set still shows the panel with its reason');
+    let disabled = panel(page).locator('[data-retry-focus="submit"]');
+    assert.equal(await disabled.getAttribute('aria-disabled'), 'true', 'no candidates: aria-disabled');
+    assert.equal(await disabled.getAttribute('aria-describedby'), 'wizard-retry-why', 'the button is described by the reason');
+    assert.match(await page.locator('#wizard-retry-why').innerText(), /^⛔ 目前不能重試：沒有可重試的項目/, 'the reason is shown as icon + text');
+    assert.equal(await page.locator('.wizard-retry-list:not(.wizard-retry-excluded)').count(), 0, 'no candidate list when empty');
+    await disabled.click({ force: true }); assert.equal(retrySubmissions().length, 0, 'the disabled button sends nothing');
+    await page.screenshot({ path: path.join(screens, 'p8-retry-disabled-320.png'), fullPage: true });
+    await noOverflow(page, '320px disabled panel');
+    await page.close();
+    reset(); S.eligible = false; S.actionAvailable = false; S.candidates = []; S.reasonCode = 'PendingIntent'; S.reason = '請先修復未完成的作業。'; S.excluded = [];
+    page = await openPage(390);
+    assert.equal(await panel(page).locator('[data-retry-focus="submit"]').getAttribute('aria-disabled'), 'true');
+    assert.match(await page.locator('#wizard-retry-why').innerText(), /請先修復未完成的作業/, 'a pending intent asks for a repair first');
+    assert.equal(await page.locator('.wizard-retry-explain').count(), 1, 'the explanation stays visible next to the disabled button');
+    await page.close();
+
+    // ---------------------------------------------------------------- 6. 不顯示：全部成功、執行中、WaitingForInput、Interrupted（即使投影誤標可見也不畫）
+    reset(); S.stage = 'Succeeded'; S.retryVisible = false; page = await openPage(390);
+    assert.equal(await panel(page).count(), 0, 'a fully successful restore shows no retry panel');
+    assert.equal(await page.locator('.wizard-retry-explain').count(), 0, 'and no explanation');
+    await page.close();
+    for (const stage of ['WaitingForInput', 'Interrupted', 'Running']) {
+      reset(); S.stage = stage; S.retryVisible = true; page = await openPage(390);
+      assert.equal(await panel(page).count(), 0, `${stage}: no retry panel even when the projection claims it is visible`);
+      assert.equal(await page.locator('[data-retry-focus="submit"]').count(), 0, `${stage}: no retry button`);
+      await page.close();
+    }
+    reset(); S.retryVisible = false; page = await openPage(390);
+    assert.equal(await panel(page).count(), 0, 'a Partial status whose retry is not visible shows no panel');
+    await page.close();
+
+    // ---------------------------------------------------------------- 7. 320px：很長的名稱與原因也不橫向溢出
+    reset(); S.longNames = true; S.excluded = [{ itemId: 'site', name: longName, code: 'BlockedConflict', reason: '目標位置已有衝突，需要人工處理：' + 'A file occupies the approved directory target '.repeat(6), lastStatus: 'BlockedConflict' }];
+    page = await openPage(320);
+    await page.screenshot({ path: path.join(screens, 'p8-retry-320.png'), fullPage: true });
+    await noOverflow(page, '320px long names');
+    const clipped = await panel(page).evaluate(el => { const box = el.getBoundingClientRect(); return [...el.querySelectorAll('*')].filter(n => { const r = n.getBoundingClientRect(); return r.width > 0 && (r.right > box.right + 1 || r.left < box.left - 1); }).length; });
+    assert.equal(clipped, 0, 'nothing sticks out of the retry panel at 320px');
+    await page.close();
+
+    assert.equal(errors.length, 0, errors.join('\n'));
+    console.log('PASS: P8 retry failed items UI — shown for a partial result only (hidden when all succeeded, running, WaitingForInput, Interrupted), verbatim explanation, candidates and excluded reasons as icon + text, empty-candidate and pending-intent states disabled with aria-disabled and a described reason, owner/reason prefilled and required, Tab + Enter, one request on double activation, no restore started, focus never falls to body (result message on success, button on failure), 390/320px without overflow, zero console errors. API fixture only.');
+  } finally { if (browser) await browser.close(); server.close(); }
+})().catch(e => { console.error(e); process.exitCode = 1; });

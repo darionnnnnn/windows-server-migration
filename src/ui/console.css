@@ -311,3 +311,16 @@ body.printing-checklist .print-checklist{display:block;margin:0;padding:0;color:
 
 /* N9e2: busy buttons stay focusable (aria-disabled) but look and read as unavailable. */
 button[aria-disabled="true"]{opacity:.6;cursor:wait}
+/* P8: retry failed items after a partial restore (existing color tokens only). */
+.wizard-retry-failed{display:grid;gap:10px;margin:14px 0;padding:14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface-soft);min-width:0}
+.wizard-retry-failed h3{margin:0;font-size:16px;color:var(--navy)}
+.wizard-retry-failed p,.wizard-retry-failed li{margin:0;overflow-wrap:anywhere}
+.wizard-retry-summary{font-weight:650}
+.wizard-retry-list{margin:0;padding-left:1.2em;display:grid;gap:4px;min-width:0}
+.wizard-retry-excluded{color:var(--danger)}
+.wizard-retry-failed label,.wizard-retry-failed input,.wizard-retry-failed textarea{max-width:100%;min-width:0}
+.wizard-retry-failed input,.wizard-retry-failed textarea{width:100%}
+.wizard-retry-failed button{max-width:100%;white-space:normal;text-align:left}
+.wizard-retry-failed button[aria-disabled="true"]:not([data-busy="true"]){cursor:not-allowed}
+.wizard-retry-result{overflow-wrap:anywhere}
+.wizard-retry-result:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
