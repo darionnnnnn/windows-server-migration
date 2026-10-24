@@ -228,16 +228,27 @@ function Assert-WsmWorkspaceWorkerGuard($Guard,[string]$Workspace,[string]$Expec
     if([IO.Path]::GetFullPath([string]$Guard.Workspace) -ine [IO.Path]::GetFullPath($Workspace)){throw 'Workspace worker guard does not belong to the requested workspace.'}
     if($ExpectedLane -and [string]$Guard.Lane -cne $ExpectedLane){throw 'Workspace worker guard does not own the required worker lane.'}
 }
+function Get-WsmJobStatusValues {
+    # Single source of truth for every status a durable console job record may carry (HTML and text writers share it; console.js is pinned to it by tests).
+    @('Queued','Running','CancelRequested','WaitingForInput','Succeeded','Saved','Completed','Failed','Cancelled','Interrupted','Blocked','ReviewRequired','Deferred')
+}
+function ConvertTo-WsmNormalizedJobRecord($Record) {
+    # Legacy or partially written job records may lack CompletedUtc/outputs; every reader goes through here so strict-mode access never throws.
+    if($null -eq $Record -or $Record -is [string] -or $Record -is [System.Collections.IDictionary]){return $Record}
+    if(-not $Record.PSObject.Properties['CompletedUtc']){$Record|Add-Member NoteProperty CompletedUtc $null -Force}
+    if(-not $Record.PSObject.Properties['outputs']){$Record|Add-Member NoteProperty outputs @() -Force}
+    $Record
+}
 function Recover-WsmTextWizardJobs([string]$Workspace,[string]$PairId,[string]$Role,$Guard) {
     Assert-WsmWorkspaceWorkerGuard $Guard $Workspace
     $records=@(Get-WsmTextWizardJobs $Workspace $PairId $Role)
     foreach($job in $records){
         if($job.status -notin @('Running','CancelRequested')){continue}
         $recordPath=Join-Path (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'console-jobs') ($job.jobId+'.json');Assert-WsmNoReparse $recordPath
-        $record=Read-WsmJson $recordPath
+        $record=ConvertTo-WsmNormalizedJobRecord (Read-WsmJson $recordPath)
         if([string]$record.jobId -cne [string]$job.jobId -or [string]$record.workspace -ine [IO.Path]::GetFullPath($Workspace) -or [string]$record.role -cne $Role -or [string]$record.pairId -cne $PairId){throw 'A durable wizard job changed identity during guarded recovery.'}
         if($record.status -notin @('Running','CancelRequested')){continue}
-        $record.status='Interrupted';$record.CompletedUtc=Get-WsmUtc;$record|Add-Member NoteProperty canCancel $false -Force
+        $record.status='Interrupted';$record.CompletedUtc=$null;$record|Add-Member NoteProperty canCancel $false -Force
         $recovered=@()
         if(Get-Command Get-WsmHtmlWizardTerminalOutput -ErrorAction SilentlyContinue){try{$recovered=@(Get-WsmHtmlWizardTerminalOutput $record $records|Where-Object {$null -ne $_})}catch{$recovered=@()}}
         $record.outputs=@(Get-WsmHtmlResultProjection $recovered)
@@ -251,12 +262,12 @@ function Get-WsmTextWizardJobs([string]$Workspace,[string]$PairId,[string]$Role)
     if(-not [IO.Directory]::Exists($root)){return @()}
     Assert-WsmNoReparse $root
     $workspaceRoot=[IO.Path]::GetFullPath($Workspace)
-    $knownStatuses=@('Running','CancelRequested','Interrupted','Succeeded','ReviewRequired','Failed','Cancelled','Blocked','Deferred','Completed','Saved')
+    $knownStatuses=@(Get-WsmJobStatusValues)
     $result=New-Object 'System.Collections.Generic.List[object]'
     foreach($file in @(Get-ChildItem -LiteralPath $root -Filter '*.json' -File)){
         Assert-WsmNoReparse $file.FullName
         if($file.Length -gt 16777216){throw 'A local console job record exceeds its supported size; inspect the protected history before continuing.'}
-        $record=Read-WsmJson $file.FullName
+        $record=ConvertTo-WsmNormalizedJobRecord (Read-WsmJson $file.FullName)
         if(-not $record -or -not $record.PSObject.Properties['jobId']){throw 'A local console job record has no operation identity; inspect the protected history before continuing.'}
         $jobId=[string]$record.jobId;Assert-WsmId $jobId
         if([IO.Path]::GetFileNameWithoutExtension($file.Name) -cne $jobId){throw 'A local console job filename does not match its recorded operation identity.'}

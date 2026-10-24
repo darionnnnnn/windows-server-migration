@@ -189,7 +189,7 @@ try {
         Check ($records.Count -eq 4 -and @($records|Where-Object action -CEQ ImportApprovedPlan).Count -eq 1 -and @($records|Where-Object action -CEQ TargetDirectoryImport).Count -eq 1 -and @($records|Where-Object action -CEQ WizardRuntimeProjection).Count -eq 2) 'Typed CLI did not persist exactly one record per applied action plus the stale-job recovery fixture.'
         foreach($record in $records){
             $expectedTerminal=if($record.jobId -ceq $staleId){'Interrupted'}elseif($record.action -ceq 'WizardRuntimeProjection'){'ReviewRequired'}else{'Succeeded'}
-            Check ($record.jobId -ceq $record.operationId -and $record.status -ceq $expectedTerminal -and $record.CompletedUtc -and $record.workspace -ceq [IO.Path]::GetFullPath($targetRoot) -and $record.role -ceq 'Target' -and $record.pairId -ceq $pair) 'A typed operation record lost exact operation, terminal state, or current workspace context.'
+            Check ($record.jobId -ceq $record.operationId -and $record.status -ceq $expectedTerminal -and $(if($expectedTerminal -ceq 'Interrupted'){$null -eq $record.CompletedUtc}else{[bool]$record.CompletedUtc}) -and $record.workspace -ceq [IO.Path]::GetFullPath($targetRoot) -and $record.role -ceq 'Target' -and $record.pairId -ceq $pair) 'A typed operation record lost exact operation, terminal state, or current workspace context.'
             $persisted=Read-WsmJson (Join-Path $jobsRoot ($record.jobId+'.json'))
             $unsafeKeys=@(Find-UnsafePersistedKey $persisted)
             Check ($unsafeKeys.Count -eq 0) ('Typed CLI persisted command argument or credential fields: '+($unsafeKeys -join ', '))

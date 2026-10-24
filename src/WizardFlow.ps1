@@ -172,6 +172,7 @@ function Get-WsmWizardInventoryFromJobs([string]$Workspace,$Profile,[object[]]$J
     $prefix=$inventoryRoot.TrimEnd('\')+'\';$candidates=New-Object 'System.Collections.Generic.List[object]'
     foreach($job in @($Jobs)){
         if($null -eq $job){continue}
+        $job=ConvertTo-WsmNormalizedJobRecord $job
         $status='';$action='';$jobWorkspace='';$jobRole='';if($job.PSObject.Properties['status']){$status=[string]$job.status}elseif($job.PSObject.Properties['Status']){$status=[string]$job.Status};if($job.PSObject.Properties['action']){$action=[string]$job.action}elseif($job.PSObject.Properties['Action']){$action=[string]$job.Action};if($job.PSObject.Properties['workspace']){$jobWorkspace=[string]$job.workspace};if($job.PSObject.Properties['role']){$jobRole=[string]$job.role}
         if($status -notin @('Succeeded','ReviewRequired') -or $action -notin @('Inventory','SourceInventory','EnrolledInventory') -or $jobRole -cne $Profile.Role -or -not $jobWorkspace -or [IO.Path]::GetFullPath($jobWorkspace) -ine [IO.Path]::GetFullPath($Workspace)){continue}
         foreach($output in @($job.outputs,$job.Outputs)) { foreach($row in @($output)){
@@ -230,6 +231,7 @@ function Get-WsmWizardCurrentApprovedPlan([string]$Workspace,[string]$PairId,$Pr
     # below populates it and would otherwise replace this candidate collection.
     $verifiedPlans=New-Object 'System.Collections.Generic.List[object]'
     foreach($job in @($Jobs)){
+        $job=ConvertTo-WsmNormalizedJobRecord $job
         if(-not $job -or -not $job.PSObject.Properties['action'] -or [string]$job.action -cne 'ApproveMigration' -or -not $job.PSObject.Properties['status'] -or [string]$job.status -cne 'Succeeded' -or -not $job.PSObject.Properties['workspace'] -or [IO.Path]::GetFullPath([string]$job.workspace) -ine [IO.Path]::GetFullPath($Workspace) -or -not $job.PSObject.Properties['role'] -or [string]$job.role -cne 'Manager' -or -not $job.PSObject.Properties['pairId'] -or [string]$job.pairId -cne $PairId){continue}
         foreach($output in @($job.outputs)){
             if(-not $output -or -not $output.PSObject.Properties['Path'] -or -not $output.PSObject.Properties['SHA256'] -or [string]$output.SHA256 -notmatch '^[a-fA-F0-9]{64}$'){continue}
@@ -272,6 +274,7 @@ function Get-WsmWizardFileDetailIndex([string]$Workspace,[string]$PairId,[string
     $items=@{};foreach($item in @($approved.Plan.Items)){if($item.PSObject.Properties['ItemId']){$items[[string]$item.ItemId]=$item}}
     $ownedRoot=Join-Path (Join-Path $Workspace 'workspace-control') 'wizard-file-details';$matchesByItem=@{}
     foreach($job in @($Jobs)){
+        $job=ConvertTo-WsmNormalizedJobRecord $job
         if(-not $job -or -not $job.PSObject.Properties['action'] -or [string]$job.action -cne 'InspectWizardFiles' -or -not $job.PSObject.Properties['role'] -or [string]$job.role -cne 'Source' -or -not $job.PSObject.Properties['pairId'] -or [string]$job.pairId -cne $PairId -or -not $job.PSObject.Properties['workspace'] -or [IO.Path]::GetFullPath([string]$job.workspace) -ine [IO.Path]::GetFullPath($Workspace) -or [string]$job.status -notin @('Succeeded','ReviewRequired')){continue}
         foreach($output in @($job.outputs)){
             if(-not $output -or -not $output.PSObject.Properties['Path'] -or -not $output.PSObject.Properties['SHA256'] -or -not $output.PSObject.Properties['ItemId']){continue};$id=[string]$output.ItemId;if(-not $items.ContainsKey($id) -or $items[$id].Decision -cne 'Include' -or $items[$id].MigrationSpec.Adapter -cne 'FileScope'){continue}

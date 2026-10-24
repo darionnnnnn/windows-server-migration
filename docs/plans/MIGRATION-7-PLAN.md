@@ -2286,6 +2286,38 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 舊格式非 C 直傳未完成的備份，結果頁仍顯示「尚無已交付備份」，與 G3 契約一致。
   - availability 列的 `status` 仍是 ReviewRequired，精靈「備份」卡可能顯示「帳戶範圍待審閱」，開始備份的表單也可能被當成前置條件未滿足。這屬於同一類問題，列為 R4b，併入 R6～R24 批次處理。
 
+### 17.111 S1＋S2 job 狀態白名單與舊作業紀錄相容（第六輪終檢 P1）
+
+- 規格：`work/r7/specs/S1S2-job-status-legacy.md`。Sonnet 5.5 effort medium subagent 實作，主代理審 diff、另做一個突變並獨立重跑。
+- **S1**：
+  - 缺陷：文字端 `Get-WsmTextWizardJobs` 寫死的狀態白名單缺 WaitingForInput 與 Queued。只要同一個 pair 有一筆 HTML 寫入的「等待輸入」TargetRestore，CLI 讀取歷史時就會丟出「invalid action or status」，RESUME、TAKEOVER 都進不去。
+  - 修法：狀態白名單抽成單一來源 `Get-WsmJobStatusValues`（13 個值），文字端改用它；console.js 的狀態表由測試守門保持一致。
+  - Recover 對 WaitingForInput 的處理：保留原狀，不改寫檔案。理由是它是 HTML 在等待憑證時刻意寫入的狀態，續作依賴 durable challenge 狀態，不屬於「worker 已死但仍顯示執行中」的情況。
+- **S2**：
+  - 缺陷：
+    - Recover 對缺少 CompletedUtc、outputs 的舊紀錄直接賦值，strict mode 下丟例外，導致整個迴圈中斷。
+    - HTML 匯入時補欄位的清單漏了這兩個欄位，而且例外被吞掉。
+    - WizardFlow 讀取 outputs 時沒有守門。
+    - Interrupted 的 CompletedUtc，文字端寫入復原時間，HTML 端寫 null，兩邊不一致。
+  - 修法：所有讀取點都改走 `ConvertTo-WsmNormalizedJobRecord`，只補缺的欄位，不覆寫既有值。Interrupted 的 CompletedUtc 統一為 null，依據 PLAN6 §7.2「時間未知不捏造」。
+- **既有測試調整**：`Test-WizardTextRuntime` 約 :192 原本要求每筆 stale 作業都要有 CompletedUtc，改為 Interrupted 必須是 null，其餘狀態維持原要求。
+- **測試**：新增 `Test-JobRecordCompatibility.ps1`（71 項，全程 strict mode）。涵蓋：
+  - HtmlConsole 寫出的每一種 status，文字端都能讀回。
+  - WaitingForInput 在列出歷史、RESUME、TAKEOVER 時都正常。
+  - 缺欄位的舊紀錄 Recover 不中斷，文字端與 HTML 端的結果一致。
+  - WizardFlow 三處讀取舊紀錄都不丟例外。
+- **突變（皆轉紅）**：
+  - subagent 做 7 個：白名單拿掉 WaitingForInput、文字端改回自己一份白名單、Recover 直接賦值、Interrupted 寫入時間、HTML 匯入不正規化、WizardFlow 不正規化、HTML 端 Interrupted 寫入時間。
+  - 主代理做 1 個：正規化改成無條件覆寫 CompletedUtc，結果「Normalization overwrote existing values」，WizardTextRuntime 也轉紅。
+- **驗證（主代理重跑）**：
+  - PowerShell：JobRecordCompatibility 71、OperationRequests、TextConsole 18、WizardTextRuntime 65、WizardFlow 46、HtmlConsole 175、CliWaitingForInput 13、TargetRestoreContinuation 133、WizardBackupRecovery 21、WizardBackupReliability 62、WizardRuntime、WizardGrouping、WizardReceivedPlan、WizardEmptyRoleProjection 10、ScriptEncoding、G3 29。
+  - 前端：AssistiveUi（node --test）。
+  - Edge 與 node：HtmlSubmission、F1AcceptanceBrowser、RetryFailedItemsBrowser。
+- **限制**：
+  - RESUME 與 TAKEOVER 的核心邏輯在本測試中用替身，真實核心由 TargetRestoreContinuation 涵蓋。
+  - HtmlConsole 寫出的 status 以原始碼 regex 收集，另以 9 個已知值作保底檢查。
+  - 白名單外的消費端（WizardBackupProjection、WizardNonC、WizardRestore 等）讀取的 job 都已來自正規化路徑，但它們本身沒有加守門。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -2501,5 +2533,12 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R1 | `src/Recovery.ps1` Get-WsmRollbackPreview、Invoke-WsmRollback、Test-WsmRollbackRecordOwnership；`tests/Test-AdoptedExistingOwnership.ps1` | CLI 選單 10 一進回復預覽就在 strict mode 下丟 PropertyNotFound（讀 Backup／OwnedDirectories／CreatedByTool）；測試用 `Set-StrictMode -Off` 繞過 | 三處屬性守門（沒有欄位＝無備份／未擁有）；刪 `-Off` 與不實註解（17.108） | `Test-RollbackThenRestore`（strict 全程，實跑選單 10 預覽）；`Test-AdoptedExistingOwnership` 不關 strict 通過 | deece8c |
 | R2 | `src/Recovery.ps1` Complete-WsmAssistiveFileRollback、`src/JournalRecovery.ps1`、`src/AssistiveRestore.ps1` 寫入器與 N1、`src/WizardRestore.ps1` | 回復後再還原全部 BlockedConflict，但選項可還原、預覽 Ready、重試不顯示 | 回復時釋放回復向量內的擁有紀錄（AdoptedExisting 保留），新 journal action `AssistiveRollbackOwnershipReleased`；「擁有但不存在」單一判定供寫入器與 N1 共用（17.108） | `Test-RollbackThenRestore`（還原→回復→再還原、四方一致、重播一致）、`Test-JournalReplayCoverage` +2 情境 | deece8c |
 | R3 | `src/AssistiveRestore.ps1`（逐檔判定、預覽、寫入器、預計寫入量）、`src/Recovery.ps1`（Repair 對帳）、`src/WizardRuntime.ps1`（原因文字） | 目標目錄已有外部檔時，預覽 Ready、選項可還原，但寫入器一律 BlockedConflict，重試候選又列回它，形成無限重試；預計寫入量沒有扣除 | 單一逐檔判定，供預覽、選項、重試、寫入器、Repair 共用：內容相同記為 AdoptedExisting；內容不同則在預覽就判 BlockedConflict 並列出衝突數，重試排除；預計寫入量扣除這兩類檔案（17.109） | `Test-DirectoryScopeExistingFiles`（90 項，含連按重試兩次、AST 守門、寫入器直接呼叫目錄與單檔範圍） | a4d0d57 |
-| R4 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1`、`src/ui/console.js` | 含人工、外部或不支援項目的備份（stage 為 ReviewRequired，但交付已驗證）被當成未交付：結果頁顯示「尚無已交付備份」、獨立副本停用、進度卡顯示「部分失敗」 | 抽出共用的「已交付」判定（以交付證據為準，排除非 C 待處理），取代 5 處寫死的 `'Delivered'`；ReviewRequired 改為附註「含 N 項需人工或外部處理」與「完成（含待人工處理）」（17.110） | `Test-BackupCurrencyAndReview`（R4 區段）、G3、BackupWorkbenchBrowser／BackupProgressBrowser 新增區段 | （R45-COMMIT） |
-| R5 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1` | 「目前這一代」有兩套判定，對舊 attempt 做獨立副本後結果頁翻回舊世代；「可續作」有兩份判定，其中一份沒有排除已交接的 attempt | 共用 helper 改依 StartedUtc／世代／AttemptId 排序，不用 UpdatedUtc；「可續作」改為單一判定並排除已交接（17.110） | `Test-BackupCurrencyAndReview`（R5 區段與 13 個可續作情境） | （R45-COMMIT） |
+| R4 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1`、`src/ui/console.js` | 含人工、外部或不支援項目的備份（stage 為 ReviewRequired，但交付已驗證）被當成未交付：結果頁顯示「尚無已交付備份」、獨立副本停用、進度卡顯示「部分失敗」 | 抽出共用的「已交付」判定（以交付證據為準，排除非 C 待處理），取代 5 處寫死的 `'Delivered'`；ReviewRequired 改為附註「含 N 項需人工或外部處理」與「完成（含待人工處理）」（17.110） | `Test-BackupCurrencyAndReview`（R4 區段）、G3、BackupWorkbenchBrowser／BackupProgressBrowser 新增區段 | b808884 |
+| R5 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1` | 「目前這一代」有兩套判定，對舊 attempt 做獨立副本後結果頁翻回舊世代；「可續作」有兩份判定，其中一份沒有排除已交接的 attempt | 共用 helper 改依 StartedUtc／世代／AttemptId 排序，不用 UpdatedUtc；「可續作」改為單一判定並排除已交接（17.110） | `Test-BackupCurrencyAndReview`（R5 區段與 13 個可續作情境） | b808884 |
+
+### 第六輪終檢
+
+| 編號 | 哪裡 | 症狀 | 修法 | 迴歸測試 | commit |
+|---|---|---|---|---|---|
+| S1 | `src/OperationRequests.ps1` Get-WsmTextWizardJobs | 文字端狀態白名單少了 WaitingForInput 與 Queued。HTML 寫入一筆等待輸入的還原作業後，CLI 讀取歷史就丟例外，RESUME、TAKEOVER 都無法進入 | 狀態白名單抽成單一來源 `Get-WsmJobStatusValues`，文字端共用；console.js 狀態表由測試守門對齊；Recover 遇到 WaitingForInput 時保留原狀（17.111） | `Test-JobRecordCompatibility`（HTML 寫入的每一種 status 文字端都能讀回） | （S12-COMMIT） |
+| S2 | `src/OperationRequests.ps1` Recover、`src/HtmlConsole.ps1` 匯入、`src/WizardFlow.ps1` | 舊紀錄缺少 CompletedUtc／outputs 時，在 strict mode 下中斷整個復原；HTML 匯入時的例外被吞掉；Interrupted 的時間文字端與 HTML 端不一致 | 所有讀取點改走 `ConvertTo-WsmNormalizedJobRecord`（只補缺少的欄位）；Interrupted 的 CompletedUtc 統一為 null（17.111） | `Test-JobRecordCompatibility`（71 項，strict）、`Test-WizardTextRuntime` | （S12-COMMIT） |
