@@ -152,6 +152,23 @@ const noHorizontalOverflow = async (page, width) => { const overflow = await pag
       ctl.jobs = [backupJob({ State: 'Failed', EndReason: 'Interrupted', Terminal: true }, { status: 'Interrupted', canCancel: false })]; await refresh(page);
       await page.waitForFunction(() => document.querySelector('.progress-card[data-progress-card="wizard"] .progress-reason').textContent.includes('已中斷'), null, { timeout: 10000 });
       assert.ok(await card(page).locator('.progress-cancel').isHidden(), 'a finished job has no cancel button');
+      // R4: a delivered backup whose plan contains manual / external items reads 完成（含待人工處理）, not 部分失敗; the count is a note, not a state
+      const reviewCases = [
+        ['Completed', 2, 'ReviewRequired', '狀態：完成（含待人工處理）', '含 2 項需人工或外部處理', '✔'],
+        ['AwaitingDelivery', 2, 'ReviewRequired', '狀態：等待交付', '含 2 項需人工或外部處理', '⇢'],
+        ['Completed', 0, 'Succeeded', '狀態：完成', '', '✔']
+      ];
+      for (const [stateName, reviewCount, jobStatus, stateText, noteText, icon] of reviewCases) {
+        ctl.jobs = [backupJob({ State: stateName, ReviewItemCount: reviewCount, StageIndex: 3, StageLabel: '交付', Stage: 'Deliver', Terminal: true }, { status: jobStatus, canCancel: false })]; await refresh(page);
+        await page.waitForFunction(expected => document.querySelector('.progress-card[data-progress-card="wizard"] .progress-state').textContent === expected, stateText, { timeout: 10000 });
+        const reasonText = (await card(page).locator('.progress-reason').textContent()).trim();
+        assert.equal(noteText ? reasonText.includes(noteText) : reasonText === '', true, `annotation for ${stateName}/${reviewCount}: ${reasonText}`);
+        assert.equal((await card(page).locator('.progress-icon').textContent()).trim(), icon, 'icon for ' + stateName + '/' + reviewCount);
+        assert.equal(await card(page).getAttribute('data-state'), stateName, 'the annotation must not become a state of its own');
+        assert.equal(await card(page).getAttribute('data-review-items'), String(reviewCount));
+        assert.ok(!(await card(page).textContent()).includes('部分失敗'), 'a delivered backup with manual items must not read as a failure');
+        counts.cardChecks += 6;
+      }
       counts.cardChecks += 2; mainErrors.push(...errors); await page.close();
     }
 

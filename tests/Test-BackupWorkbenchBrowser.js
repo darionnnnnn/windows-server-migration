@@ -89,7 +89,7 @@ async function openWorkbench(browser, fixture, scenario, hash, contextOptions) {
   const session = { token: 'memory-only-test-token', sessionId: 'fixture-session', contextId: 'fixture-context', hostName: 'fixture-host', role: 'Source', workspace: root, pairId: 'fixture-pair', revision: 5, decisionRevision: 7, selectionRevision: 3, sourceSelectionRevision: 3, dataVersion: 'fixture-data-1', principal: 'fixture-user' };
   const viewContext = () => ({ sessionId: session.sessionId, contextId: session.contextId, pairId: 'fixture-pair', role: 'Source', revision: session.revision, decisionRevision: session.decisionRevision, selectionRevision: session.selectionRevision, sourceSelectionRevision: session.sourceSelectionRevision, dataVersion: session.dataVersion, readUtc: new Date().toISOString() });
   const results = scenario.results;
-  const view = () => ({ kind: 'BackupItemResultsView', available: true, integrity: 'Verified', attemptId: 'fixture-attempt', backupOperationId: 'fixture-op', generatedUtc: results.GeneratedUtc, inventorySource: results.InventorySource, offlineReadiness: 'AwaitingIndependentCopy', counts: results.Counts, rows: results.Rows, software: results.Software, schemaVersion: results.SchemaVersion || 1, coverageRegions: Object.prototype.hasOwnProperty.call(results, 'CoverageRegions') ? results.CoverageRegions : null, excludedRegions: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegions') ? results.ExcludedRegions : null, excludedRegionsBinding: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegionsBinding') ? results.ExcludedRegionsBinding : null, excludedCompleteness: Object.prototype.hasOwnProperty.call(results, 'ExcludedCompleteness') ? results.ExcludedCompleteness : null, independentCopy: scenario.copy, viewContext: viewContext() });
+  const view = () => ({ kind: 'BackupItemResultsView', available: true, integrity: 'Verified', attemptId: 'fixture-attempt', backupOperationId: 'fixture-op', generatedUtc: results.GeneratedUtc, inventorySource: results.InventorySource, offlineReadiness: 'AwaitingIndependentCopy', counts: results.Counts, rows: results.Rows, software: results.Software, schemaVersion: results.SchemaVersion || 1, coverageRegions: Object.prototype.hasOwnProperty.call(results, 'CoverageRegions') ? results.CoverageRegions : null, excludedRegions: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegions') ? results.ExcludedRegions : null, excludedRegionsBinding: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegionsBinding') ? results.ExcludedRegionsBinding : null, excludedCompleteness: Object.prototype.hasOwnProperty.call(results, 'ExcludedCompleteness') ? results.ExcludedCompleteness : null, independentCopy: scenario.copy, reviewItemCount: scenario.reviewItemCount, viewContext: viewContext() });
   await page.route(/\/api\/.*/, async route => {
     const request = route.request(), parsed = new URL(request.url()), pathname = parsed.pathname;
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -340,6 +340,25 @@ const waitResults = async page => { await page.waitForSelector('#backup-item-res
       assert.equal(await region.getAttribute('data-excluded'), 'unrecorded');
       assert.equal((await region.innerText()).trim(), '此結果集未記錄');
       assert.deepEqual(errors, []); await page.context().close();
+    }
+    // R4: a delivered backup whose plan has manual / external items shows the result tabs plus the note 含 N 項需人工或外部處理 (and no note when N is 0)
+    {
+      const withNote = await openWorkbench(browser, fixture, { ...base, copy: COPY_STATES.verified, reviewItemCount: 2 }, '#jobs?filter=backup');
+      await withNote.page.waitForSelector('#backup-item-results [role=tablist]', { timeout: 30000 });
+      const note = withNote.page.locator('#backup-item-results .backup-review-note');
+      assert.equal(await note.count(), 1, 'exactly one review note');
+      assert.equal((await note.innerText()).trim(), '含 2 項需人工或外部處理');
+      assert.equal(await note.getAttribute('data-review-items'), '2');
+      assert.equal(await withNote.page.locator('#backup-item-results [role=tab]').count(), 3, 'the note must not replace the three tabs');
+      assert.ok(!(await withNote.page.locator('#backup-item-results').innerText()).includes('目前還沒有已交付的備份'), 'a delivered backup must not read as not delivered');
+      await withNote.page.screenshot({ path: path.join(screens, 'r4-workbench-review-note.png') });
+      assert.deepEqual(withNote.errors, []); await withNote.context.close();
+      for (const none of [0, undefined]) {
+        const noNote = await openWorkbench(browser, fixture, { ...base, copy: COPY_STATES.verified, reviewItemCount: none }, '#jobs?filter=backup');
+        await noNote.page.waitForSelector('#backup-item-results [role=tablist]', { timeout: 30000 });
+        assert.equal(await noNote.page.locator('#backup-item-results .backup-review-note').count(), 0, 'no review note when the count is ' + none);
+        assert.deepEqual(noNote.errors, []); await noNote.context.close();
+      }
     }
     // N3: nothing delivered, a failed attempt: capture failure names the failed item, read-back failure is NotVerified; no result set is shown
     {

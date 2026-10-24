@@ -75,18 +75,11 @@
         }
     }
     if(-not $rows.Count){return $null}
-    $known=@($rows|Where-Object {$null -ne $_.generation})
-    $latestGeneration=0
-    if($known.Count){$latestGeneration=[int](($known|Measure-Object -Property generation -Maximum).Maximum)}
-    $latestGenerationTime=[DateTimeOffset]::MinValue
-    foreach($knownRow in @($known|Where-Object {[int]$_.generation -eq $latestGeneration})){
-        try{$candidateTime=[DateTimeOffset]::Parse([string]$knownRow.producedUtc);if($candidateTime -gt $latestGenerationTime){$latestGenerationTime=$candidateTime}}catch{}
-    }
-    foreach($row in $rows){
-        if($null -ne $row.generation){$row.current=([int]$row.generation -eq $latestGeneration)}
-        elseif(-not $known.Count){$row.current=$true}
-        else{try{$row.current=([DateTimeOffset]::Parse([string]$row.producedUtc) -ge $latestGenerationTime)}catch{$row.current=$false}}
-    }
+    # R5: the current attempt is decided by the one shared helper (StartedUtc, then generation, then AttemptId), the same one the
+    # results view uses. Neither UpdatedUtc nor the job completion time picks the attempt. Rows of the same attempt (several jobs
+    # bound to one resumed attempt) are all current; the newest job time among them still picks the returned row.
+    $currentAttemptId=[string](Get-WsmWizardCurrentBackupAttempt @($rows|ForEach-Object {$_.attempt})).AttemptId
+    foreach($row in $rows){$row.current=([string]$row.attemptId -ceq $currentAttemptId)}
     $currentRows=@($rows|Where-Object current|Sort-Object @{Expression={try{[DateTimeOffset]::Parse([string]$_.producedUtc)}catch{[DateTimeOffset]::MinValue}};Descending=$true},@{Expression='runId';Descending=$true})
     if($currentRows.Count){return $currentRows[0]}
     $null
@@ -124,28 +117,40 @@ function Get-WsmHtmlLegacyProgressProjection($Job) {
 #   Running                                                                      -> Running         執行中
 #   CancelRequested                                                              -> CancelRequested 取消要求中
 #   Succeeded           FailedCount > 0                                          -> PartialFailure  部分失敗
-#   Succeeded           attempt Stage Delivered and a verified independent copy
+#   Succeeded           delivery evidence and a verified independent copy
 #                       (OfflineReadiness Verified / VerifiedNetworkAvailabilityUnconfirmed)
 #                                                                                -> Completed       完成
 #   Succeeded           otherwise (OfflineReadiness AwaitingIndependentCopy,
 #                       NotDelivered or unreadable)                              -> AwaitingDelivery 等待交付 (never success)
-#   ReviewRequired      unresolved items or recovery pending                     -> PartialFailure  部分失敗
+#   ReviewRequired      delivery evidence (the delivery was verified; the plan only contains manual / external /
+#                       unsupported items) is judged exactly like Succeeded:
+#                       verified independent copy                                -> Completed       完成（畫面加註「含待人工處理」）
+#                       OfflineReadiness AwaitingIndependentCopy                 -> AwaitingDelivery 等待交付
+#   ReviewRequired      no delivery evidence (OfflineReadiness NotDelivered:
+#                       source freeze interrupted, recovery pending)             -> PartialFailure  部分失敗
+# R4: the stage string is no longer compared here. OfflineReadiness is NotDelivered unless the shared delivery decision
+# (Test-WsmWizardBackupAttemptDelivered) passed, so it already carries the evidence; the seven states stay seven.
 #   Failed                                                                       -> Failed          失敗
 #   Cancelled                                                                    -> Failed          失敗 (EndReason Cancelled)
 #   Interrupted                                                                  -> Failed          失敗 (EndReason Interrupted)
 # The seven states have no separate "cancelled" or "interrupted" state, so those two end as Failed and keep the
 # real reason in EndReason for the UI to show next to the label.
 function Get-WsmBackupProgressState([string]$JobStatus,[string]$AttemptStage='',[string]$OfflineReadiness='',[int]$FailedCount=0) {
-    $state='Waiting';$endReason=''
+    $state='Waiting';$endReason='';$verifiedReadiness=@('Verified','VerifiedNetworkAvailabilityUnconfirmed')
     switch -CaseSensitive ($JobStatus) {
         'Running' {$state='Running'}
         'CancelRequested' {$state='CancelRequested'}
         'Succeeded' {
             if($FailedCount -gt 0){$state='PartialFailure'}
-            elseif($AttemptStage -ceq 'Delivered' -and $OfflineReadiness -cin @('Verified','VerifiedNetworkAvailabilityUnconfirmed')){$state='Completed'}
+            elseif($OfflineReadiness -cin $verifiedReadiness){$state='Completed'}
             else{$state='AwaitingDelivery'}
         }
-        'ReviewRequired' {$state='PartialFailure'}
+        'ReviewRequired' {
+            if($FailedCount -gt 0){$state='PartialFailure'}
+            elseif($OfflineReadiness -cin $verifiedReadiness){$state='Completed'}
+            elseif($OfflineReadiness -ceq 'AwaitingIndependentCopy'){$state='AwaitingDelivery'}
+            else{$state='PartialFailure'}
+        }
         'Failed' {$state='Failed'}
         'Cancelled' {$state='Failed';$endReason='Cancelled'}
         'Interrupted' {$state='Failed';$endReason='Interrupted'}
@@ -161,7 +166,7 @@ function Get-WsmBackupProgressStageLabel([string]$Stage) {
 # Closed projection of one durable progress record for the HTML job card. The producer file is the only source of
 # progress facts; the job status (and, once finished, the attempt) decides the state. Every string and number
 # crosses ConvertTo-WsmWizardHtmlValue so unknown fields, secrets patterns and oversized text cannot pass.
-function ConvertTo-WsmWizardBackupProgressView($Raw,[string]$JobStatus,[string]$AttemptStage='',[string]$OfflineReadiness='') {
+function ConvertTo-WsmWizardBackupProgressView($Raw,[string]$JobStatus,[string]$AttemptStage='',[string]$OfflineReadiness='',[int]$ReviewItemCount=0) {
     if(-not $Raw){return $null}
     $failed=0;if($Raw.PSObject.Properties['FailedCount']){try{$failed=[int]$Raw.FailedCount}catch{}}
     $stateRow=Get-WsmBackupProgressState $JobStatus $AttemptStage $OfflineReadiness $failed
@@ -193,7 +198,7 @@ function ConvertTo-WsmWizardBackupProgressView($Raw,[string]$JobStatus,[string]$
         ItemFieldsRecorded=$itemRecorded;CurrentItemId=$itemId;CurrentItemType=$itemType;CurrentItemTypeLabel=$itemTypeLabel;CurrentChannel=$channelCode;CurrentChannelLabel=$channelLabel;FilesDone=$filesDone;FilesTotal=$filesTotal
         ItemsDone=$itemsDone;ItemsTotal=$itemsTotal;BytesDone=$(if($null -ne $Raw.BytesDone){[long]$Raw.BytesDone}else{$null});BytesTotal=$bytesTotal;Percent=$percent
         StartedUtc=[string]$Raw.StartedUtc;UpdatedUtc=[string]$Raw.UpdatedUtc;Recent=$recent;FailedCount=$failed;Terminal=[bool]$Raw.Terminal;Outcome=[string]$Raw.Outcome
-        State=[string]$stateRow.State;EndReason=[string]$stateRow.EndReason
+        State=[string]$stateRow.State;EndReason=[string]$stateRow.EndReason;ReviewItemCount=[int][Math]::Max(0,$ReviewItemCount)
     }
     ConvertTo-WsmWizardHtmlValue ([pscustomobject]$view)
 }
@@ -209,18 +214,18 @@ function Get-WsmHtmlBackupProgress($Job) {
     $nowTicks=[DateTime]::UtcNow.Ticks;$cache=Get-WsmTextMetadataValue $Job 'BackupProgressCache'
     if($cache -and [string]$cache.Status -ceq $jobStatus){
         $ageMs=($nowTicks-[long]$cache.Ticks)/10000
-        $ttl=if($jobStatus -cin @('Running','CancelRequested','Queued','WaitingForInput')){1000}elseif($jobStatus -ceq 'Succeeded'){10000}elseif($null -eq $cache.Value){5000}else{[double]::MaxValue}
+        $ttl=if($jobStatus -cin @('Running','CancelRequested','Queued','WaitingForInput')){1000}elseif($jobStatus -cin @('Succeeded','ReviewRequired')){10000}elseif($null -eq $cache.Value){5000}else{[double]::MaxValue}
         if($ageMs -lt $ttl){return $cache.Value}
     }
     $view=$null
     try{
         $raw=Read-WsmWizardBackupProgress $workspace $pair $operation
         if($raw){
-            $attemptStage='';$offline=''
+            $attemptStage='';$offline='';$reviewCount=0
             if($jobStatus -cin @('Succeeded','ReviewRequired')){
-                try{$profile=Read-WsmOutputProfile $workspace;$bound=Get-WsmWizardBackupAttemptForOperation $workspace $pair $profile $operation;if($bound){$result=ConvertTo-WsmWizardBackupResult $bound.Attempt $operation;$attemptStage=[string]$result.Stage;$offline=[string]$result.OfflineReadiness}}catch{}
+                try{$profile=Read-WsmOutputProfile $workspace;$bound=Get-WsmWizardBackupAttemptForOperation $workspace $pair $profile $operation;if($bound){$result=ConvertTo-WsmWizardBackupResult $bound.Attempt $operation;$attemptStage=[string]$result.Stage;$offline=[string]$result.OfflineReadiness;if($offline -cne 'NotDelivered'){$reviewCount=Get-WsmWizardBackupReviewItemCount $bound.Attempt.ChannelSummary}}}catch{}
             }
-            $view=ConvertTo-WsmWizardBackupProgressView $raw $jobStatus $attemptStage $offline
+            $view=ConvertTo-WsmWizardBackupProgressView $raw $jobStatus $attemptStage $offline $reviewCount
         }
     }catch{$view=$null}
     $entry=[pscustomobject]@{Status=$jobStatus;Ticks=$nowTicks;Value=$view}
@@ -1229,22 +1234,25 @@ function Test-WsmBackupOfflineGuideFiles($Attempt) {
     $null
 }
 
-# Latest delivered attempt that carries an item-results record and is bound to the current approved plan.
+# Current delivered attempt that carries an item-results record and is bound to the current approved plan.
+# R4: "delivered" is the shared evidence decision (Delivered, or ReviewRequired with a verified delivery and a generated result set).
+# R5: "current" is the shared helper (StartedUtc, generation, AttemptId), never UpdatedUtc, so an independent copy made for an older
+# attempt cannot turn this view back to an older generation.
 # Read-only: the backup root is computed without the owned-directory helper, which would create it.
 function Get-WsmWizardLatestResultAttempt([string]$Workspace,[string]$PairId,$Profile,$PlanRef) {
     $viewBackupRoot=Join-Path (Join-Path (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'workspace-control') 'wizard-backups') $PairId
     if(-not [IO.Directory]::Exists($viewBackupRoot)){return $null}
     Assert-WsmNoReparse $viewBackupRoot
-    $latest=$null
+    $candidates=New-Object 'System.Collections.Generic.List[object]'
     foreach($file in @(Get-ChildItem -LiteralPath $viewBackupRoot -Filter '*.json' -File)){
         try{
             $row=Read-WsmJson $file.FullName
             [void](Assert-WsmWizardBackupAttempt $row $Workspace $PairId $Profile)
         }catch{continue}
-        if([string]$row.PlanHash -ine [string]$PlanRef.SHA256 -or $row.Stage -cne 'Delivered' -or -not $row.PSObject.Properties['ItemResults']){continue}
-        if(-not $latest -or [string]$row.UpdatedUtc -gt [string]$latest.UpdatedUtc){$latest=$row}
+        if([string]$row.PlanHash -ine [string]$PlanRef.SHA256 -or -not (Test-WsmWizardBackupAttemptDelivered $row) -or -not $row.PSObject.Properties['ItemResults']){continue}
+        $candidates.Add($row)
     }
-    $latest
+    Get-WsmWizardCurrentBackupAttempt @($candidates.ToArray())
 }
 
 # N3: a failed (not delivered) attempt bound to the approved plan. Capture is all-or-nothing, so a failed attempt has no
@@ -1253,16 +1261,16 @@ function Get-WsmWizardLatestFailedAttempt([string]$Workspace,[string]$PairId,$Pr
     $viewBackupRoot=Join-Path (Join-Path (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'workspace-control') 'wizard-backups') $PairId
     if(-not [IO.Directory]::Exists($viewBackupRoot)){return $null}
     Assert-WsmNoReparse $viewBackupRoot
-    $latest=$null
+    $candidates=New-Object 'System.Collections.Generic.List[object]'
     foreach($file in @(Get-ChildItem -LiteralPath $viewBackupRoot -Filter '*.json' -File)){
         try{
             $row=Read-WsmJson $file.FullName
             [void](Assert-WsmWizardBackupAttempt $row $Workspace $PairId $Profile)
         }catch{continue}
         if([string]$row.PlanHash -ine [string]$PlanRef.SHA256 -or [string]$row.Stage -cne 'Failed' -or -not $row.PSObject.Properties['Error'] -or $null -eq $row.Error){continue}
-        if(-not $latest -or [string]$row.UpdatedUtc -gt [string]$latest.UpdatedUtc){$latest=$row}
+        $candidates.Add($row)
     }
-    $latest
+    Get-WsmWizardCurrentBackupAttempt @($candidates.ToArray())
 }
 
 # Classification comes from the durable error code written by the stage that failed:
@@ -1397,7 +1405,7 @@ function Get-WsmWizardBackupItemResultsView([string]$Workspace,[string]$PairId) 
     }
     $attempt=$set.Attempt;$document=$set.Document
     $excludedRecorded=($document.PSObject.Properties['ExcludedRegions'] -and $null -ne $document.ExcludedRegions)
-    [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software;schemaVersion=$(if($document.PSObject.Properties['SchemaVersion']){[int]$document.SchemaVersion}else{1});coverageRegions=$(if($document.PSObject.Properties['CoverageRegions']){@($document.CoverageRegions)}else{$null});excludedRegions=$(if($excludedRecorded){@($document.ExcludedRegions)}else{$null});excludedRegionsBinding=$(if($document.PSObject.Properties['ExcludedRegionsBinding']){$document.ExcludedRegionsBinding}else{$null});excludedCompleteness=$(if($excludedRecorded){Get-WsmBackupExcludedCompleteness @($document.ExcludedRegions)}else{Get-WsmBackupExcludedCompleteness $null});independentCopy=(Get-WsmWizardIndependentCopyProjection $Workspace $PairId $attempt $set.ResultsSha256)}
+    [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software;schemaVersion=$(if($document.PSObject.Properties['SchemaVersion']){[int]$document.SchemaVersion}else{1});coverageRegions=$(if($document.PSObject.Properties['CoverageRegions']){@($document.CoverageRegions)}else{$null});excludedRegions=$(if($excludedRecorded){@($document.ExcludedRegions)}else{$null});excludedRegionsBinding=$(if($document.PSObject.Properties['ExcludedRegionsBinding']){$document.ExcludedRegionsBinding}else{$null});excludedCompleteness=$(if($excludedRecorded){Get-WsmBackupExcludedCompleteness @($document.ExcludedRegions)}else{Get-WsmBackupExcludedCompleteness $null});independentCopy=(Get-WsmWizardIndependentCopyProjection $Workspace $PairId $attempt $set.ResultsSha256);reviewItemCount=(Get-WsmWizardBackupReviewItemCount $attempt.ChannelSummary)}
 }
 
 # Read-only drill-down (action BackupItemFiles): the archived files of one backed-up item, 100 per page.

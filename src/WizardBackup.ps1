@@ -237,10 +237,94 @@ function Read-WsmWizardBackupProgress([string]$Workspace,[string]$PairId,[string
     }catch{$null}
 }
 
+# R4：「這次備份已交付」只認交付證據，不比對 Stage 字串是否剛好是 Delivered。結果頁、檔案明細、獨立副本、離線還原就緒、
+# 進度卡全部呼叫這一個判定，不得各自寫死 'Delivered'。
+#   Stage Delivered      producer 只在交付、逐項結果與報告都處理完才寫入這個值，本身就是證據。
+#   Stage ReviewRequired 計畫含人工（ManualWorkflow）、外部（External）或不支援的項目時，producer 也會寫成這個值，但交付其實
+#                        已驗證、結果集與離線報告都已產生。此時要同時有：PackageTest.Valid、Delivery.SHA256 為 64 位十六進位、
+#                        ItemResults.Status 為 Generated。來源停寫中斷（source_freeze_interrupted）同樣是 ReviewRequired，
+#                        但沒有 PackageTest／Delivery，不會通過。
+#   其他 Stage           一律不是已交付（Failed／Cancelled 即使留有部分 Delivery 欄位也不算）。
+# $Attempt 可為 $null（只有 Stage 的投影物件）：此時只有 Delivered 成立。
+function Test-WsmWizardBackupStageDelivered([string]$Stage,$Attempt=$null) {
+    if($Stage -ceq 'Delivered'){return $true}
+    if($Stage -cne 'ReviewRequired' -or $null -eq $Attempt){return $false}
+    foreach($name in @('PackageTest','Delivery','ItemResults')){if(-not $Attempt.PSObject.Properties[$name] -or $null -eq $Attempt.$name){return $false}}
+    if(-not $Attempt.PackageTest.PSObject.Properties['Valid'] -or -not [bool]$Attempt.PackageTest.Valid){return $false}
+    if(-not $Attempt.Delivery.PSObject.Properties['SHA256'] -or [string]$Attempt.Delivery.SHA256 -notmatch '^[a-fA-F0-9]{64}$'){return $false}
+    if(-not $Attempt.ItemResults.PSObject.Properties['Status'] -or [string]$Attempt.ItemResults.Status -cne 'Generated'){return $false}
+    # 既有契約（Test-G3NonCFailureFreeze s1/s2）：舊格式非 C 直傳尚未完成的備份，不得被當成完整備份，
+    # 工作台結果頁與獨立副本都不能放行。所以只有「待處理的全是人工／外部／不支援項目」才算已交付；
+    # ChannelSummary 缺漏或非 C 通道還沒完成時，無法證明這一點，一律不算。
+    if(-not $Attempt.PSObject.Properties['ChannelSummary'] -or $null -eq $Attempt.ChannelSummary -or -not $Attempt.ChannelSummary.PSObject.Properties['NonC'] -or $null -eq $Attempt.ChannelSummary.NonC){return $false}
+    if([string]$Attempt.ChannelSummary.NonC.Status -cin @('RequiresTargetTransferAndManagerResultImport','RequiresFinalSourceFreeze','Pending','Failed','VerifiedNotDelivered')){return $false}
+    $true
+}
+
+function Test-WsmWizardBackupAttemptDelivered($Attempt) {
+    if($null -eq $Attempt -or -not $Attempt.PSObject.Properties['Stage']){return $false}
+    Test-WsmWizardBackupStageDelivered ([string]$Attempt.Stage) $Attempt
+}
+
+# R4 附註：交付已驗證，但計畫含需人工或外部處理的項目。數字取自 attempt 的 ChannelSummary（與決定 ReviewRequired 的同一份資料）：
+# 人工（ManualWorkflow）與不支援／外部項目。舊格式非 C 直傳尚未完成的備份不算已交付（見上方判定），所以不在這個數字內。沒有 ChannelSummary 的舊紀錄回 0。
+function Get-WsmWizardBackupReviewItemCount($ChannelSummary) {
+    if($null -eq $ChannelSummary){return 0}
+    $count=0
+    try{
+        if($ChannelSummary.PSObject.Properties['ManualArtifactsNotSupported'] -and $ChannelSummary.ManualArtifactsNotSupported){$count+=@($ChannelSummary.ManualArtifactsNotSupported.IncludedItemIds).Count}
+        if($ChannelSummary.PSObject.Properties['UnsupportedIncludedItemIds']){$count+=@($ChannelSummary.UnsupportedIncludedItemIds).Count}
+    }catch{return 0}
+    [int]$count
+}
+
+# R5：「目前這一代 attempt」全站只有這一個判定。排序鍵是 attempt 建立時寫下、之後不再改動的 StartedUtc，
+# 依序比 StartedUtc、CoreExport.Generation、AttemptId（只為結果穩定）。不用 UpdatedUtc：對舊 attempt 做獨立副本、續作或補寫
+# 都會刷新 UpdatedUtc，用它挑選會讓結果頁翻回舊世代。沒有新增欄位：每份 attempt 都有 StartedUtc；少了或無法解析時視為最舊（Ticks=0），
+# 不會排到新的前面，也不會丟例外。
+function Get-WsmWizardBackupAttemptOrderKey($Attempt) {
+    $ticks=[long]0;$generation=[int]0
+    try{if($Attempt.PSObject.Properties['StartedUtc'] -and [string]$Attempt.StartedUtc){$ticks=[DateTimeOffset]::Parse([string]$Attempt.StartedUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind).UtcTicks}}catch{$ticks=[long]0}
+    try{if($Attempt.PSObject.Properties['CoreExport'] -and $Attempt.CoreExport -and $Attempt.CoreExport.PSObject.Properties['Generation']){$generation=[int]$Attempt.CoreExport.Generation}}catch{$generation=[int]0}
+    [pscustomobject]@{Ticks=$ticks;Generation=$generation;Id=[string]$Attempt.AttemptId}
+}
+
+function Get-WsmWizardCurrentBackupAttempt([object[]]$Attempts) {
+    $best=$null;$bestKey=$null
+    foreach($candidate in @($Attempts)){
+        if($null -eq $candidate){continue}
+        $key=Get-WsmWizardBackupAttemptOrderKey $candidate
+        $newer=($null -eq $best)
+        if(-not $newer){
+            if($key.Ticks -ne $bestKey.Ticks){$newer=($key.Ticks -gt $bestKey.Ticks)}
+            elseif($key.Generation -ne $bestKey.Generation){$newer=($key.Generation -gt $bestKey.Generation)}
+            else{$newer=([string]::CompareOrdinal($key.Id,$bestKey.Id) -gt 0)}
+        }
+        if($newer){$best=$candidate;$bestKey=$key}
+    }
+    $best
+}
+
+# R5：「可續作」全站只有這一個判定（續作入口 Get-WsmWizardBackupAttempt 與結果物件的 ResumeRequired／CanResumeAfterReview 都呼叫它）。
+# 已交接的 attempt（SourceResumed 且沒有等待新凍結）一律不可續作，不論 Stage。
+function Test-WsmWizardBackupAttemptResumable($Attempt) {
+    if($null -eq $Attempt){return $false}
+    $stage=[string]$Attempt.Stage
+    $resumeStage='';if($Attempt.PSObject.Properties['ResumeStage']){$resumeStage=[string]$Attempt.ResumeStage}
+    $freshPending=[bool]($Attempt.PSObject.Properties['SourceResumeFreshFreezePending'] -and $Attempt.SourceResumeFreshFreezePending)
+    $recoveryPending=[bool](($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired) -or $freshPending)
+    $handoffComplete=[bool]($Attempt.PSObject.Properties['SourceResumed'] -and $Attempt.SourceResumed -and -not $freshPending)
+    if($handoffComplete){return $false}
+    if($stage -cin @('Authorized','CoreExported','PackageVerified')){return $true}
+    if($stage -cin @('Failed','Cancelled') -and $resumeStage -cin @('Authorized','CoreExported','PackageVerified')){return $true}
+    if($stage -ceq 'ReviewRequired' -and $recoveryPending){return $true}
+    $false
+}
+
 function Get-WsmWizardBackupAttempt([string]$Workspace,[string]$PairId,$Profile,[string]$PlanHash) {
     $root=Get-WsmWizardBackupRoot $Workspace $PairId
     $rows=New-Object 'System.Collections.Generic.List[object]'
-    foreach($file in @(Get-ChildItem -LiteralPath $root -Filter '*.json' -File)){Assert-WsmNoReparse $file.FullName;$row=Read-WsmJson $file.FullName;Assert-WsmWizardBackupAttempt $row $Workspace $PairId $Profile|Out-Null;$resumeStage='';if($row.PSObject.Properties['ResumeStage']){$resumeStage=[string]$row.ResumeStage};$sourceResumeFreshPending=[bool]($row.PSObject.Properties['SourceResumeFreshFreezePending'] -and $row.SourceResumeFreshFreezePending);$sourceRecoveryPending=[bool](($row.PSObject.Properties['SourceResumeRequired'] -and $row.SourceResumeRequired) -or $sourceResumeFreshPending);$sourceHandoffComplete=[bool]($row.PSObject.Properties['SourceResumed'] -and $row.SourceResumed -and -not $sourceResumeFreshPending);$resumable=(-not $sourceHandoffComplete) -and ($row.Stage -in @('Authorized','CoreExported','PackageVerified') -or ($row.Stage -in @('Failed','Cancelled') -and $resumeStage -in @('Authorized','CoreExported','PackageVerified')) -or ($row.Stage -eq 'ReviewRequired' -and $sourceRecoveryPending));if($row.PlanHash -ieq $PlanHash -and $resumable){$rows.Add([pscustomobject]@{Path=$file.FullName;Attempt=$row})}}
+    foreach($file in @(Get-ChildItem -LiteralPath $root -Filter '*.json' -File)){Assert-WsmNoReparse $file.FullName;$row=Read-WsmJson $file.FullName;Assert-WsmWizardBackupAttempt $row $Workspace $PairId $Profile|Out-Null;if($row.PlanHash -ieq $PlanHash -and (Test-WsmWizardBackupAttemptResumable $row)){$rows.Add([pscustomobject]@{Path=$file.FullName;Attempt=$row})}}
     # A crash after the fresh backup attempt is durable but before the previous
     # SourceResumed record is marked handed off leaves two visible records.
     # The child's exact parent id and source attempt reference prove the durable
@@ -291,8 +375,8 @@ function ConvertTo-WsmWizardBackupResult($Attempt,[string]$OperationId) {
     $independentCopy=$(if($Attempt.PSObject.Properties['IndependentCopy']){$Attempt.IndependentCopy}else{$null})
     $itemResults=$(if($Attempt.PSObject.Properties['ItemResults']){$Attempt.ItemResults}else{$null})
     $offlineReport=$(if($Attempt.PSObject.Properties['OfflineReport']){$Attempt.OfflineReport}else{$null})
-    $offlineReadiness=$(if($Attempt.Stage -cne 'Delivered'){'NotDelivered'}elseif($independentCopy -and $independentCopy.PSObject.Properties['Status'] -and $independentCopy.Status -ceq 'Verified'){[string]$independentCopy.Availability}else{'AwaitingIndependentCopy'})
-    [pscustomobject][ordered]@{Kind='WizardBackupResult';Status=[string]$Attempt.Stage;PairId=[string]$Attempt.PairId;AttemptId=[string]$Attempt.AttemptId;OperationId=$OperationId;StartedByOperationId=[string]$Attempt.StartedByOperationId;Stage=[string]$Attempt.Stage;DeliveryMode=$(if($Attempt.PSObject.Properties['DeliveryMode']){[string]$Attempt.DeliveryMode}else{''});VolumeBytes=$(if($Attempt.PSObject.Properties['VolumeBytes']){[long]$Attempt.VolumeBytes}else{0});Freeze=$Attempt.Freeze;CoreExport=$Attempt.CoreExport;PackageTest=$Attempt.PackageTest;Delivery=$Attempt.Delivery;ChannelSummary=$Attempt.ChannelSummary;NonCStatus=$(if($Attempt.ChannelSummary){[string]$Attempt.ChannelSummary.NonC.Status}else{'Pending'});ResumeStage=$(if($Attempt.PSObject.Properties['ResumeStage']){[string]$Attempt.ResumeStage}else{''});CanResumeAfterReview=($Attempt.Stage -in @('Failed','Cancelled') -and $Attempt.ResumeStage -in @('Authorized','CoreExported','PackageVerified'));SourceResumeRequired=([bool]($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired));AuthoritativeApproval=$true;ProductionVerified=$false;ResumeRequired=($Attempt.Stage -in @('Authorized','CoreExported','PackageVerified') -or ($Attempt.Stage -in @('Failed','Cancelled') -and $Attempt.ResumeStage -in @('Authorized','CoreExported','PackageVerified')) -or [bool](($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired) -or ($Attempt.PSObject.Properties['SourceResumeFreshFreezePending'] -and $Attempt.SourceResumeFreshFreezePending)));IndependentCopy=$independentCopy;OfflineReadiness=$offlineReadiness;ItemResults=$itemResults;OfflineReport=$offlineReport}
+    $offlineReadiness=$(if(-not (Test-WsmWizardBackupAttemptDelivered $Attempt)){'NotDelivered'}elseif($independentCopy -and $independentCopy.PSObject.Properties['Status'] -and $independentCopy.Status -ceq 'Verified'){[string]$independentCopy.Availability}else{'AwaitingIndependentCopy'})
+    [pscustomobject][ordered]@{Kind='WizardBackupResult';Status=[string]$Attempt.Stage;PairId=[string]$Attempt.PairId;AttemptId=[string]$Attempt.AttemptId;OperationId=$OperationId;StartedByOperationId=[string]$Attempt.StartedByOperationId;Stage=[string]$Attempt.Stage;DeliveryMode=$(if($Attempt.PSObject.Properties['DeliveryMode']){[string]$Attempt.DeliveryMode}else{''});VolumeBytes=$(if($Attempt.PSObject.Properties['VolumeBytes']){[long]$Attempt.VolumeBytes}else{0});Freeze=$Attempt.Freeze;CoreExport=$Attempt.CoreExport;PackageTest=$Attempt.PackageTest;Delivery=$Attempt.Delivery;ChannelSummary=$Attempt.ChannelSummary;NonCStatus=$(if($Attempt.ChannelSummary){[string]$Attempt.ChannelSummary.NonC.Status}else{'Pending'});ResumeStage=$(if($Attempt.PSObject.Properties['ResumeStage']){[string]$Attempt.ResumeStage}else{''});CanResumeAfterReview=((Test-WsmWizardBackupAttemptResumable $Attempt) -and [string]$Attempt.Stage -cin @('Failed','Cancelled'));SourceResumeRequired=([bool]($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired));AuthoritativeApproval=$true;ProductionVerified=$false;ResumeRequired=[bool](Test-WsmWizardBackupAttemptResumable $Attempt);IndependentCopy=$independentCopy;OfflineReadiness=$offlineReadiness;ItemResults=$itemResults;OfflineReport=$offlineReport}
 }
 
 function Get-WsmWizardBackupDeliverySettings([string]$Workspace,[string]$PairId,$Profile,$Existing,[bool]$ModeSpecified,[string]$RequestedMode,[bool]$VolumeSpecified,$RequestedVolume) {
@@ -671,7 +755,8 @@ function Get-WsmWizardIndependentCopyAction($Availability) {
         if($Availability.PSObject.Properties['hasPackage']){$hasPackage=[bool]$Availability.hasPackage}
         if($Availability.PSObject.Properties['runId']){$runId=[string]$Availability.runId}
     }
-    if($stage -ceq 'Delivered' -and $hasPackage){
+    $availabilityAttempt=$null;if($Availability -and $Availability.PSObject.Properties['attempt']){$availabilityAttempt=$Availability.attempt}
+    if((Test-WsmWizardBackupStageDelivered $stage $availabilityAttempt) -and $hasPackage){
         return New-WsmWizardRuntimeAction 'IndependentCopy' $true '把已封存的交付複製到可移除磁碟或網路位置並逐檔驗證；舊機本機固定磁碟不算獨立副本。' @{BackupOperationId=$runId;Mode='Copy'} @('DestinationRoot')
     }
     return New-WsmWizardRuntimeAction 'IndependentCopy' $false '需先完成一次已交付的備份，才能建立獨立副本。' @{} @('DestinationRoot')
@@ -702,7 +787,7 @@ function Invoke-WsmWizardIndependentCopy {
     $operationAttempt=Get-WsmWizardBackupAttemptForOperation $Workspace $PairId $profile $BackupOperationId
     if(-not $operationAttempt -or -not $operationAttempt.Attempt){throw 'Independent copy requires a delivered backup attempt for this operation.'}
     $attempt=$operationAttempt.Attempt;$attemptPath=$operationAttempt.Path
-    if($attempt.Stage -cne 'Delivered' -or -not ($attempt.PSObject.Properties['Delivery'] -and $attempt.Delivery -and $attempt.Delivery.PSObject.Properties['SHA256'] -and $attempt.Delivery.SHA256)){
+    if(-not (Test-WsmWizardBackupAttemptDelivered $attempt) -or -not ($attempt.PSObject.Properties['Delivery'] -and $attempt.Delivery -and $attempt.Delivery.PSObject.Properties['SHA256'] -and $attempt.Delivery.SHA256)){
         throw 'Independent copy requires a delivered backup attempt for this operation.'
     }
     $destination=[IO.Path]::GetFullPath($DestinationRoot)

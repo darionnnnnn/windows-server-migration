@@ -183,9 +183,12 @@
   function updateProgressCard(card, job) {
     const view = backupProgressOf(job); if (!view) { card.root.hidden = true; card.jobId = ''; card.view = null; return; }
     card.jobId = String(job.jobId || job.id || job.operationId || ''); card.view = view; card.root.hidden = false;
-    const info = progressStateInfo[view.State] || progressStateInfo.Waiting, stage = view.StageLabel || '', index = view.StageIndex, count = view.StageCount;
-    card.root.dataset.state = String(view.State || ''); card.root.dataset.jobId = card.jobId;
-    setNodeText(card.icon, info[0]); setNodeText(card.stateText, `狀態：${info[1]}`); setNodeText(card.reason, progressEndReasonText[view.EndReason] ? ' ' + progressEndReasonText[view.EndReason] : '');
+    const baseInfo = progressStateInfo[view.State] || progressStateInfo.Waiting, stage = view.StageLabel || '', index = view.StageIndex, count = view.StageCount;
+    // R4: a delivered backup whose plan has manual / external / unsupported items is no longer a failure; the count is an annotation, never a state of its own.
+    const reviewCount = Number.isFinite(Number(view.ReviewItemCount)) && Number(view.ReviewItemCount) > 0 ? Math.floor(Number(view.ReviewItemCount)) : 0;
+    const info = view.State === 'Completed' && reviewCount > 0 ? [baseInfo[0], '完成（含待人工處理）'] : baseInfo;
+    card.root.dataset.state = String(view.State || ''); card.root.dataset.jobId = card.jobId; card.root.dataset.reviewItems = String(reviewCount);
+    setNodeText(card.icon, info[0]); setNodeText(card.stateText, `狀態：${info[1]}`); setNodeText(card.reason, progressEndReasonText[view.EndReason] ? ' ' + progressEndReasonText[view.EndReason] : (reviewCount > 0 ? `（含 ${reviewCount} 項需人工或外部處理）` : ''));
     setNodeText(card.step, index && count ? `第 ${index} 步／共 ${count} 步${stage ? '：' + stage : ''}` : '步驟：未知');
     const percent = Number.isFinite(Number(view.Percent)) && view.Percent !== null ? Math.max(0, Math.min(100, Number(view.Percent))) : null;
     if (percent === null) { if (card.bar.hasAttribute('value')) card.bar.removeAttribute('value'); } else if (Number(card.bar.getAttribute('value')) !== percent || !card.bar.hasAttribute('value')) card.bar.value = percent;
@@ -1853,6 +1856,9 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     const sources = { PackageControls: '封裝內的來源盤點', TrustedInventory: '已核驗的來源盤點', Unavailable: '無法取得來源盤點' }, counts = data.counts || {}, allRows = Array.isArray(data.rows) ? data.rows : [];
     appendSummaryRows(section, [['產生時間', formatEvidenceTime(data.generatedUtc)], ['離線還原就緒', offlineReadinessText(data.offlineReadiness)], ['來源盤點', Object.prototype.hasOwnProperty.call(sources, data.inventorySource) ? sources[data.inventorySource] : safeText(data.inventorySource)]]);
     if (data.inventorySource === 'Unavailable') wizardMessage(section, '無法取得來源盤點，未備份清單只包含核准計畫內的項目，未選入的已發現項目沒有列出。', 'callout');
+    // R4: delivery was verified, but the plan contains items this tool does not move (manual / external / unsupported); they are listed under 未備份.
+    const reviewItems = Number.isFinite(Number(data.reviewItemCount)) && Number(data.reviewItemCount) > 0 ? Math.floor(Number(data.reviewItemCount)) : 0;
+    if (reviewItems > 0) { const reviewNote = wizardMessage(section, `含 ${reviewItems} 項需人工或外部處理`, 'inline-note backup-review-note'); reviewNote.dataset.reviewItems = String(reviewItems); }
     renderBackupCompleteness(section, data);
     const refresh = el('button', 'secondary-button', '重新整理明細'); refresh.type = 'button'; refresh.addEventListener('click', () => loadBackupResults(true)); section.appendChild(refresh);
     const hashState = backupHashState(), views = {}, initialFor = key => hashState.tab === key ? hashState.filters : null;

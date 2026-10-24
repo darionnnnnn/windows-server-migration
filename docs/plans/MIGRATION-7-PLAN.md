@@ -2247,6 +2247,45 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - D5：遇到他人 in-flight 紀錄時同內容檔改為沿用；由於不寫入，對方的 intent 仍會在父作業層級擋住新作業。
   - 沒有 PS7。
 
+### 17.110 R4＋R5：含人工處理項目的備份被當成未交付；「目前這一代」與「可續作」各只留一個判定（體檢 P1）
+
+- 規格見 `work/r7/specs/R4R5-backup-currency.md`。Sonnet 5.5 effort high subagent 實作；主代理審 diff、追查一支瀏覽器測試的失敗、另做一個突變，並獨立重跑。
+- **R4**
+  - 現象：計畫含人工（ManualWorkflow）、外部（External）或不支援的項目時，producer 會把 stage 寫成 ReviewRequired，但交付其實已驗證，結果集與離線報告也都已產生。下游有 5 處各自寫死 `Stage -ceq 'Delivered'`，因此把這類備份全當成未交付：
+    - 結果視圖與檔案明細
+    - OfflineReadiness
+    - 獨立副本動作
+    - 獨立副本寫入器
+    - 進度卡
+  - 修法：新增共用判定 `Test-WsmWizardBackupStageDelivered`／`Test-WsmWizardBackupAttemptDelivered`，上述 5 處都改為呼叫它。判定規則：
+    - stage 為 Delivered：成立。
+    - stage 為 ReviewRequired：必須同時有 PackageTest.Valid、64 位十六進位的 Delivery.SHA256、ItemResults Generated、ChannelSummary 存在，且非 C 通道不在待處理狀態。
+  - 判定排除「非 C 待處理」的原因：`Test-G3NonCFailureFreeze` 既有契約規定，舊格式非 C 直傳尚未完成時，不得宣稱已有完整備份；G3 不改。
+  - 附註顯示：
+    - 結果頁：「含 N 項需人工或外部處理」。
+    - 進度卡：與 Succeeded 對稱。已有驗證過的獨立副本時為 `Completed`，顯示「完成（含待人工處理）」；還沒有獨立副本時為 `AwaitingDelivery`（依 16.5「等待交付不是成功」）；沒有交付證據時仍為 `PartialFailure`。
+  - 進度快取 TTL：ReviewRequired 與 Succeeded 一樣都是 10 秒。原本 ReviewRequired 永久快取，做完獨立副本後進度卡不會更新。
+- **R5**
+  - 「目前這一代」改用共用 helper `Get-WsmWizardCurrentBackupAttempt`，依 StartedUtc、Generation、AttemptId 排序，不再用 UpdatedUtc，因此對舊 attempt 做獨立副本後，結果頁不會翻回舊世代。沒有新增 AttemptSequence；缺少 StartedUtc 的舊紀錄視為最舊。
+  - 「可續作」改用共用判定 `Test-WsmWizardBackupAttemptResumable`，續作入口與結果物件都呼叫它，已交接的 attempt 一律排除。
+- **測試**
+  - 新增 `Test-BackupCurrencyAndReview.ps1`（109 項，走真實一鍵備份路徑）。
+  - `Test-BackupProgressBrowser.js`、`Test-BackupWorkbenchBrowser.js` 只新增 R4 區段，既有斷言一條都沒改。
+- **突變**（皆轉紅）
+  - subagent 做 13 個：5 處各自改回寫死 Delivered、共用判定拿掉 ReviewRequired 分支、目前 attempt 改回依 UpdatedUtc（兩種）、availability 改回舊規則、可續作不排除已交接或改回兩份判定、進度卡字樣與結果頁附註（console.js）。
+  - 主代理做 1 個：排序鍵忽略 StartedUtc，結果為「R5-1 before any copy the results view must show op2」。
+- **驗證**（主代理重跑）
+  - PowerShell：BackupCurrencyAndReview 109、WizardBackup、WizardBackupReliability 62、WizardBackupRecovery 21、BackupUnbackedReasons、BackupResultSetV2、FailedItemSourcePath、RetryPartialIndexPreserved 66、SecretSentinelBackupSweep 151、WizardBackupProgress 265、BackupWorkbenchView、WizardHtmlRuntimeProjection 214、HtmlConsole 175、ActionExports、ScriptEncoding、G2 34、G3 29、G4 30。
+  - 前端：AssistiveUi（node --test）。
+  - Edge：BackupWorkbenchBrowser、OfflineReportBrowser、F1AcceptanceBrowser。
+- **主代理發現：`Test-BackupProgressBrowser.js` 的 G4 失敗與程式碼無關**
+  - 現象：G4 預期橫幅分類為 `reset-timeout`，實際是 `resource-incomplete`。
+  - 主代理以 `git archive` 在 a22d6c0、8234391、817765a、f1d4ca0、HEAD 各跑兩次，全部失敗；但 a22d6c0 在 P4（17.97）當時記錄為通過。
+  - 判斷：這是環境改變（疑似 Edge 自動更新後 `route.abort('connectionreset')` 的表現不同），不是程式回歸，排入 Q6b 追查根因。
+- **限制與後續**
+  - 舊格式非 C 直傳未完成的備份，結果頁仍顯示「尚無已交付備份」，與 G3 契約一致。
+  - availability 列的 `status` 仍是 ReviewRequired，精靈「備份」卡可能顯示「帳戶範圍待審閱」，開始備份的表單也可能被當成前置條件未滿足。這屬於同一類問題，列為 R4b，併入 R6～R24 批次處理。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -2461,4 +2500,6 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 |---|---|---|---|---|---|
 | R1 | `src/Recovery.ps1` Get-WsmRollbackPreview、Invoke-WsmRollback、Test-WsmRollbackRecordOwnership；`tests/Test-AdoptedExistingOwnership.ps1` | CLI 選單 10 一進回復預覽就在 strict mode 下丟 PropertyNotFound（讀 Backup／OwnedDirectories／CreatedByTool）；測試用 `Set-StrictMode -Off` 繞過 | 三處屬性守門（沒有欄位＝無備份／未擁有）；刪 `-Off` 與不實註解（17.108） | `Test-RollbackThenRestore`（strict 全程，實跑選單 10 預覽）；`Test-AdoptedExistingOwnership` 不關 strict 通過 | deece8c |
 | R2 | `src/Recovery.ps1` Complete-WsmAssistiveFileRollback、`src/JournalRecovery.ps1`、`src/AssistiveRestore.ps1` 寫入器與 N1、`src/WizardRestore.ps1` | 回復後再還原全部 BlockedConflict，但選項可還原、預覽 Ready、重試不顯示 | 回復時釋放回復向量內的擁有紀錄（AdoptedExisting 保留），新 journal action `AssistiveRollbackOwnershipReleased`；「擁有但不存在」單一判定供寫入器與 N1 共用（17.108） | `Test-RollbackThenRestore`（還原→回復→再還原、四方一致、重播一致）、`Test-JournalReplayCoverage` +2 情境 | deece8c |
-| R3 | `src/AssistiveRestore.ps1`（逐檔判定、預覽、寫入器、預計寫入量）、`src/Recovery.ps1`（Repair 對帳）、`src/WizardRuntime.ps1`（原因文字） | 目標目錄已有外部檔時，預覽 Ready、選項可還原，但寫入器一律 BlockedConflict，重試候選又列回它，形成無限重試；預計寫入量沒有扣除 | 單一逐檔判定，供預覽、選項、重試、寫入器、Repair 共用：內容相同記為 AdoptedExisting；內容不同則在預覽就判 BlockedConflict 並列出衝突數，重試排除；預計寫入量扣除這兩類檔案（17.109） | `Test-DirectoryScopeExistingFiles`（90 項，含連按重試兩次、AST 守門、寫入器直接呼叫目錄與單檔範圍） | （R3-COMMIT） |
+| R3 | `src/AssistiveRestore.ps1`（逐檔判定、預覽、寫入器、預計寫入量）、`src/Recovery.ps1`（Repair 對帳）、`src/WizardRuntime.ps1`（原因文字） | 目標目錄已有外部檔時，預覽 Ready、選項可還原，但寫入器一律 BlockedConflict，重試候選又列回它，形成無限重試；預計寫入量沒有扣除 | 單一逐檔判定，供預覽、選項、重試、寫入器、Repair 共用：內容相同記為 AdoptedExisting；內容不同則在預覽就判 BlockedConflict 並列出衝突數，重試排除；預計寫入量扣除這兩類檔案（17.109） | `Test-DirectoryScopeExistingFiles`（90 項，含連按重試兩次、AST 守門、寫入器直接呼叫目錄與單檔範圍） | a4d0d57 |
+| R4 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1`、`src/ui/console.js` | 含人工、外部或不支援項目的備份（stage 為 ReviewRequired，但交付已驗證）被當成未交付：結果頁顯示「尚無已交付備份」、獨立副本停用、進度卡顯示「部分失敗」 | 抽出共用的「已交付」判定（以交付證據為準，排除非 C 待處理），取代 5 處寫死的 `'Delivered'`；ReviewRequired 改為附註「含 N 項需人工或外部處理」與「完成（含待人工處理）」（17.110） | `Test-BackupCurrencyAndReview`（R4 區段）、G3、BackupWorkbenchBrowser／BackupProgressBrowser 新增區段 | （R45-COMMIT） |
+| R5 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1` | 「目前這一代」有兩套判定，對舊 attempt 做獨立副本後結果頁翻回舊世代；「可續作」有兩份判定，其中一份沒有排除已交接的 attempt | 共用 helper 改依 StartedUtc／世代／AttemptId 排序，不用 UpdatedUtc；「可續作」改為單一判定並排除已交接（17.110） | `Test-BackupCurrencyAndReview`（R5 區段與 13 個可續作情境） | （R45-COMMIT） |
