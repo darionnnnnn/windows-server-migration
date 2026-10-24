@@ -264,7 +264,11 @@ function Get-WsmFilePlacementPreview {
                         if(-not $row.Directory -and [IO.File]::Exists($destination)){$observed=(Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant();if($observed -ieq $row.Data.Hash){$reason='Same bytes already exist; this does not grant tool ownership.'}}
                     }
                     if($topologyVerified -and -not $row.Directory -and $ownership.ContainsKey($key)){
-                        if($observed -ieq $ownership[$key].SHA256){$status='VerifiedOwned';$reason='Current bytes match journal ownership. Restore must preserve a verified backup before changing them.'}
+                        if(Test-WsmAssistiveOwnedFileAdopted $ownership[$key]){
+                            if($observed -ieq $ownership[$key].SHA256){$status='AdoptedExisting';$reason=(Get-WsmAssistiveAdoptedExistingNote)}
+                            else{$status='OwnedFileDrift';$reason='Adopted existing file changed after it was adopted; it is only reported and is never overwritten or removed.'}
+                        }
+                        elseif($observed -ieq $ownership[$key].SHA256){$status='VerifiedOwned';$reason='Current bytes match journal ownership. Restore must preserve a verified backup before changing them.'}
                         else{$status='OwnedFileDrift';$reason='Journal-owned file changed outside its recorded generation; preserve and reconcile it.'}
                     }
                 }

@@ -405,7 +405,9 @@ function Get-WsmWizardTargetItemOptions($Context,$Package,$State,$Decision=$null
         $dependsOn=@();if($dependencyMap.ContainsKey($optionId)){$dependsOn=@($dependencyMap[$optionId].ToArray())}
         $neededBy=@();if($requiredByMap.ContainsKey($optionId)){$neededBy=@($requiredByMap[$optionId].ToArray())}
         $preselected=$null;if($null -ne $chosen){$preselected=[bool]$chosen.ContainsKey($optionId)}
-        [pscustomobject]@{value=$optionId;label=[string]$_.Name;kind=[string]$_.Kind;adapter=$adapter;group=$group;typeLabel=(Get-WsmWizardItemTypeLabel $adapter ([string]$_.Kind));restorable=$restorable;restorableReason=$reason;restorableCode=$restorableCode;restored=$restored;fileCount=$fileCount;bytes=$byteCount;countsAvailable=[bool]($null -ne $artifactTotals);dependencies=$dependsOn;requiredBy=$neededBy;preselected=$preselected}
+        # P10：沿用既有檔（內容與備份相同但來歷不明）的個數；回復時這些檔案不會被刪除或覆寫。只讀狀態列的逐檔 Ownership。
+        $adoptedExistingCount=0;if($row -and $row.PSObject.Properties['OwnedFiles']){$adoptedExistingCount=@(@($row.OwnedFiles)|Where-Object {Test-WsmAssistiveOwnedFileAdopted $_}).Count}
+        [pscustomobject]@{value=$optionId;label=[string]$_.Name;kind=[string]$_.Kind;adapter=$adapter;group=$group;typeLabel=(Get-WsmWizardItemTypeLabel $adapter ([string]$_.Kind));restorable=$restorable;restorableReason=$reason;restorableCode=$restorableCode;restored=$restored;fileCount=$fileCount;bytes=$byteCount;countsAvailable=[bool]($null -ne $artifactTotals);dependencies=$dependsOn;requiredBy=$neededBy;preselected=$preselected;adoptedExistingCount=$adoptedExistingCount;adoptedExistingNote=$(if($adoptedExistingCount){Get-WsmAssistiveAdoptedExistingNote}else{''})}
     })
 }
 

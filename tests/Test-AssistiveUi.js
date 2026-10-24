@@ -330,6 +330,8 @@ test('every backend operation has a Chinese label and a source, manager or targe
   assert.equal(ui.actionLabel('MaterialJobStatus'), '查看中斷作業材料鎖');
   assert.equal(ui.restorableCodeText('NeedsReconciliation'), '需先對帳', 'P9: the short title of the NeedsReconciliation restorable code is shown in Chinese, not as the raw code');
   assert.equal(ui.actionLabel('Repair'), '修復', 'P9: the reason for a FileScope item that needs reconciliation names the Repair operation by this HTML action label');
+  assert.equal(ui.statusName('AdoptedExisting'), '沿用既有檔', 'P10: a placement status of AdoptedExisting is shown as 沿用既有檔, not as the raw code');
+  assert.equal(ui.statusClass('AdoptedExisting'), '', 'P10: the adopted-existing pill uses the neutral tag style (no new color token)');
   const materialGuidance = ui.actionGuidance('MaterialJobStatus', { readOnly: true });
   assert.match(materialGuidance.precondition, /工作程序已停止/);
   assert.match(materialGuidance.output, /不會自動逾期或解除鎖/);

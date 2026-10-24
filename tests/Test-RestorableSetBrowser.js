@@ -1,6 +1,7 @@
 // N1: 可還原集合在項目選擇器的呈現（Playwright + Edge；API 為本檔內的固定替身）。
 // 涵蓋：不可還原項目用原生 disabled 停用、不預勾（含收據預選到不可還原項目時）、「全選／選取篩選結果／群組全選」都不勾、
 // 每個新代碼都以「文字＋圖示」顯示原因並用 aria-describedby 關聯、摘要的「可還原 y」只計可還原項目、390px 不橫向溢出、零 console 錯誤。
+// P10：持有「沿用既有檔」（內容與備份相同但來歷不明，回復時不會刪除）的項目顯示個數與說明並關聯到勾選框；檔案頁的結果列也標出「沿用既有檔」。
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path');
 const runtimePath = process.env.WSM_NODE_MODULES || 'C:/Users/eldar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules';
 const { chromium } = require(path.join(runtimePath, 'playwright'));
@@ -8,7 +9,7 @@ const root = path.resolve(__dirname, '..'), screens = process.env.WSM_N1_SCREENS
 fs.mkdirSync(screens, { recursive: true });
 const assets = new Map([['/', path.join(root, 'src/ui/index.html')], ['/ui/console.js', path.join(root, 'src/ui/console.js')], ['/ui/console.css', path.join(root, 'src/ui/console.css')], ['/ui/nonc.js', path.join(root, 'src/ui/nonc.js')]]);
 const pairId = 'n1-pair', contextId = 'n1-context', hash = 'a'.repeat(64), hash2 = 'b'.repeat(64);
-let stage = 'NeedsTargetDecision', revision = 2, receiptSelected = null;
+let stage = 'NeedsTargetDecision', revision = 2, receiptSelected = null, withAdopted = false;
 
 const make = (value, label, extra) => Object.assign({ value, label, adapter: 'FileScope', group: 'Data', typeLabel: '檔案範圍', restorable: true, restorableReason: '', restorableCode: '', restored: false, fileCount: 2, bytes: 1000, countsAvailable: true, dependencies: [], requiredBy: [] }, extra);
 const baseOptions = [
@@ -27,7 +28,12 @@ const baseOptions = [
 const restorableIds = ['ok-1', 'ok-2', 'done'];
 const expectedReasons = { nopayload: ['缺少備份內容', '缺少 artifact'], novolume: ['缺少磁碟', 'Q:'], nocapacity: ['空間不足', '856 MiB', '700 MiB'], badlocation: ['原位置不符', '原位置'], mounted: ['掛載點不支援', '掛載點'], noaccess: ['權限不足', '無法寫入'], manual: ['需人工處理', '人工處理'], external: ['外部處理', '外部處理'] };
 const action = (id, defaults = {}, missing = []) => ({ id, available: true, reason: `Fixture ${id}`, defaults: Object.assign({ Workspace: 'C:\\fixture\\target', PairId: pairId }, defaults), missing });
-function options() { return baseOptions.map(option => Object.assign({}, option, { preselected: receiptSelected ? receiptSelected.includes(option.value) : null })); }
+const adoptedNoteText = '沿用既有檔：內容與備份相同但來歷不明，回復時不會刪除。';
+const adoptedOptions = [
+  make('adopt-ok', '沿用既有檔的資料夾', { adoptedExistingCount: 2, adoptedExistingNote: adoptedNoteText }),
+  make('adopt-blocked', '沿用既有檔但需先對帳的資料夾', { restorable: false, restorableCode: 'NeedsReconciliation', restorableReason: '上次還原這個項目時中途失敗；請先執行「修復」。', adoptedExistingCount: 1, adoptedExistingNote: adoptedNoteText })
+];
+function options() { return baseOptions.concat(withAdopted ? adoptedOptions : []).map(option => Object.assign({ adoptedExistingCount: 0, adoptedExistingNote: '' }, option, { preselected: receiptSelected ? receiptSelected.includes(option.value) : null })); }
 function runtime() {
   const target = { status: stage, plan: { hash }, package: { ManifestHash: hash }, inventory: { SHA256: hash2 }, comparison: { Status: 'Imported' }, decision: null, restorePreview: null, restoreResult: null, mechanicalValidation: { available: false, status: 'NotRun' }, businessAcceptance: { available: false, status: 'NotAccepted' }, activation: { available: false, status: 'Locked' }, itemOptions: options() };
   return { Kind: 'WizardRuntimeProjection', Role: 'Target', PairId: pairId, viewContext: { revision: revision + 100, decisionRevision: 2, selectionRevision: 1, dataVersion: 1 }, status: stage, actions: [action('CreateTargetDecisionReceipt', {}, ['Decision', 'Owner', 'Reason', 'SelectedItemIds'])], runtime: { target } };
@@ -129,7 +135,38 @@ const server = http.createServer((req, res) => {
     assert.match(await page.locator('[data-restore-summary]').innerText(), /已選 0／可還原 0/);
     await page.close(); baseOptions.splice(0, baseOptions.length, ...saved);
 
-    // ---------------------------------------------------------------- 6. 寬螢幕截圖與零錯誤
+    // ---------------------------------------------------------------- 6. P10：沿用既有檔（390px）
+    withAdopted = true;
+    page = await openPage(390, 'adopt-ok'); card = page.locator('.wizard-runtime-target');
+    assert.equal(await card.locator('[data-adopted-existing]').count(), 2, 'only the two items that hold adopted files show the note');
+    const labelOf = id => card.locator(`[data-runtime-item="${id}"]`).locator('xpath=ancestor::label');
+    const adoptedLine = labelOf('adopt-ok').locator('[data-adopted-existing]');
+    assert.equal((await adoptedLine.innerText()).trim(), '沿用既有檔 2 個：內容與備份相同但來歷不明，回復時不會刪除。', 'the note names the class, the count and the one-sentence meaning');
+    assert.equal(await adoptedLine.getAttribute('data-adopted-existing'), '2', 'the count is exposed for assistive tools');
+    assert.equal(await labelOf('ok-1').locator('[data-adopted-existing]').count(), 0, 'an ordinary item shows no adopted note');
+    assert.equal(await card.locator('[data-runtime-item="adopt-ok"]').getAttribute('aria-describedby'), await adoptedLine.getAttribute('id'), 'the adopted note describes its checkbox');
+    const blockedDescribed = (await card.locator('[data-runtime-item="adopt-blocked"]').getAttribute('aria-describedby')).split(' ');
+    assert.equal(blockedDescribed.length, 2, 'a blocked item with adopted files is described by its reason and the note');
+    assert.equal(await card.locator('[data-runtime-item="adopt-ok"]').isDisabled(), false, 'an item holding adopted files stays selectable');
+    assert.equal(await card.locator('[data-runtime-item="adopt-blocked"]').isDisabled(), true, 'a blocked item stays disabled');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no horizontal overflow at 390px with the adopted note');
+    await page.screenshot({ path: path.join(screens, 'p10-adopted-picker-390.png'), fullPage: true });
+    await labelOf('adopt-ok').screenshot({ path: path.join(screens, 'p10-adopted-item-390.png') }); await labelOf('adopt-blocked').screenshot({ path: path.join(screens, 'p10-adopted-blocked-item-390.png') });
+    // files page rows: the pill is added next to the status when the reason carries the note, and not duplicated when the status already is AdoptedExisting
+    await page.evaluate(note => window.WsmConsole.renderFiles({ rows: [
+      { itemId: 'x', sourcePath: 'C:\\S\\a1.bin', preservedPath: 'D:\\T\\a1.bin', effectivePath: 'D:\\T\\a1.bin', placementStatus: 'Applied', reason: note, sourceHash: 'h', observedHash: 'h' },
+      { itemId: 'x', sourcePath: 'C:\\S\\a2.bin', preservedPath: 'D:\\T\\a2.bin', effectivePath: 'NotObserved', placementStatus: 'AdoptedExisting', reason: note, sourceHash: 'h', observedHash: 'h' },
+      { itemId: 'x', sourcePath: 'C:\\S\\a3.bin', preservedPath: 'D:\\T\\a3.bin', effectivePath: 'D:\\T\\a3.bin', placementStatus: 'Applied', reason: 'File bytes and metadata match the sealed artifact and current-generation ownership/readback.', sourceHash: 'h', observedHash: 'h' }] }), adoptedNoteText);
+    const fileRowsTags = await page.evaluate(() => [...document.querySelectorAll('#file-rows tr')].map(tr => [...tr.querySelectorAll('.tag')].map(t => t.textContent)));
+    assert.equal(fileRowsTags.length, 3, 'three file rows rendered');
+    assert.deepEqual(fileRowsTags[0].slice(-1), ['沿用既有檔'], 'an applied row whose reason is the adopted note shows the adopted pill');
+    assert.equal(fileRowsTags[0].length, 2, 'the applied pill stays next to the adopted pill');
+    assert.deepEqual(fileRowsTags[1], ['沿用既有檔'], 'a placement preview row with status AdoptedExisting shows exactly one adopted pill');
+    assert.equal(fileRowsTags[2].includes('沿用既有檔'), false, 'an ordinary applied row does not show the adopted pill');
+    assert.match(await page.locator('#file-rows tr').first().innerText(), /原因：沿用既有檔：內容與備份相同但來歷不明，回復時不會刪除。/, 'the files row keeps the one-sentence explanation');
+    await page.close(); withAdopted = false;
+
+    // ---------------------------------------------------------------- 7. 寬螢幕截圖與零錯誤
     page = await openPage(1280); await page.screenshot({ path: path.join(screens, 'n1-picker-1280.png'), fullPage: true }); await page.close();
     assert.equal(errors.length, 0, errors.join('\n'));
     console.log('PASS: N1 restorable set UI — non-restorable items natively disabled and never ticked (default, receipt preselection, select all, filtered select, group select), reason shown as icon + text + code for every new code with aria-describedby, summary counts only restorable items, 390px without overflow, zero console errors. API fixture only.');

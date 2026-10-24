@@ -1984,6 +1984,53 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - `Test-OfflineRestoreJourney` 未執行（17.94）。
   - Test-ReleaseWizardSmoke 需要 git 索引，未重跑。
 
+### 17.103 P10 內容相同但來歷不明的檔案記為「沿用既有檔」，回復時不刪除；並修正 P9 的 strict mode 回歸（2026-10-24 使用者新增需求）
+
+- 需求原話：「補：內容相同但來歷不明的檔案記為『沿用既有檔』，回復時不刪除；並補單一檔案範圍對帳的測試」。
+- 缺陷：P9 對帳會把「磁碟內容雜湊等於備份」的檔案補登為工具擁有。如果那個檔案其實是外部事先放好的同內容檔，rollback 會把它刪掉。
+- 實作：Sonnet 5.5 effort high subagent。主代理負責審查、修正 P9 回歸、另做一個突變，並獨立重跑。
+- 定案：
+  - 逐檔加上 `OwnedFiles[].Ownership='AdoptedExisting'`，由 `Test-WsmAssistiveOwnedFileAdopted` 統一判定。
+  - 只有 P9 的對帳路徑（沒有 journal 或 intent 證明是工具寫的）會產生這個標記；AST 守門限制只有對帳函式與 ownership hash 本身可以設定這個鍵。
+  - 舊紀錄（沒有這個欄位）與有 intent 證據的正常寫入，仍視為工具擁有，行為不變。
+- 語意：
+  - 視為已還原：不重寫，算成功。
+  - 回復時排除在逐檔回復向量之外：不刪除、不覆寫、不改 ACL、不還原 metadata。
+  - 漂移只回報（placement 為 `OwnedFileDrift`、rollback preview 註明「已變更、僅回報」）。
+  - 與新封裝內容不同或被改動時，一律判為 BlockedConflict，不覆寫。
+  - 單檔範圍的 N1 對未變動的沿用檔回傳 `VerifyAdoptedExistingFile`，絕不走 replace 路徑。
+- 消費端盤點：13 個讀 OwnedFiles 的函式逐一決定行為（詳見 subagent 回報），並以 AST 守門要求新增的讀取者必須分類。
+  - JournalRecovery 以 Record 原樣重播，Ownership 自然保留。
+  - DeltaWorkflow 只檢查屬性是否存在。
+  - 這兩處都不需要修改。
+- ownership hash：舊列的 hash 不變（以修改前算出的三組基準值驗證）；AdoptedExisting 列額外綁定 Ownership。
+- 投影：Target 選項的 adoptedExistingCount／Note、stage 檔案列 Reason、placement 狀態、rollback preview 的 `AdoptedExistingFiles`、離線報告 File status、檔案頁 pill，全部顯示「沿用既有檔：內容與備份相同但來歷不明，回復時不會刪除。」。
+- 測試：`Test-AdoptedExistingOwnership.ps1` 共 126 項，涵蓋：
+  - 目錄範圍：外部事先放同內容檔、對帳後記為 AdoptedExisting、再還原不重寫、rollback 後位元組／SDDL／metadata／時間戳都不變。
+  - 單檔範圍六例：不存在、內容相同、內容不同、reparse、被資料夾佔住、讀不到（以 deny ACL 製造，finally 移除，測試結尾確認沒有殘留）。
+  - 正常寫入的檔案在回復時仍會被移走保留。
+  - 混合情況：回復只處理工具寫入的檔案。
+  - 漂移只回報。
+  - journal 重播逐列一致。
+  - 舊 hash 不變。
+  - 投影與 `Test-RestorableSetBrowser.js`（Edge 390px、零 console 錯誤）。截圖在 `work/r7/screens/p10-*.png`。
+- 突變（皆轉紅）：
+  - subagent 做 11 種：對帳記為工具擁有、回復刪除／改 ACL／覆寫、正常寫入也標記、漂移自動覆寫、投影三處漏字樣、N1 單檔退回 replace、hash 不綁 Ownership。
+  - 主代理另做：placement 把已漂移的沿用檔回報為 AdoptedExisting，測試抓到「B6: … not report the drifted adopted file as OwnedFileDrift」。
+- **P9 回歸（主代理修正）**：
+  - 現象：`Test-SettingTransitionRecovery` 自 P9（e12ae9f）起失敗；在 8234391 上通過。
+  - 原因：P9 在 `Repair-WsmOperation` 加的對帳迴圈直接讀取 `$p.Plan.SchemaVersion`，計畫物件沒有這個屬性時，在 strict mode 下會丟出例外。
+  - 修正：先確認屬性存在再比對。`Test-SettingTransitionRecovery` 本身就是這個回歸的測試，修正前紅、修正後綠。
+  - 這次也把所有呼叫 Repair 或 rollback 的測試（CancellationWorkflow、RecoveryContracts、TaskSecurityWorkflow、MigrationPipeline 等）一併重跑。
+  - 教訓：P9 的驗收只跑了規格列出的測試，漏掉了同一函式的其他使用端測試。日後修改共用入口（例如 Repair）時，要以 grep 找出全部呼叫它的測試。
+- 驗證（主代理重跑）：AdoptedExistingOwnership 126、FileScopeIncompleteOwnership 164、SettingTransitionRecovery、RecoveryContracts、CancellationWorkflow、TaskSecurityWorkflow、AssistiveRollback、RollbackRecovery、AssistiveRestore 178、AssistiveFiles 35、AssistiveReports、RestorableSet 199、RetryFailedItems 83、PendingIntentRecovery 31、Cv2NonCReservationLifecycle 55、TargetRestoreContinuation 133、JournalReplayCoverage 413、WizardRestore 132、WizardRuntime 174、HtmlConsole 175、WizardHtmlRuntimeProjection 214、ScriptEncoding、G4 30／44、MigrationPipeline；AssistiveUi（node --test）；RestorableSetBrowser、RetryFailedItemsBrowser、F1AcceptanceBrowser（Edge）。
+- 限制：
+  - 檔案頁靠 Reason 前綴辨識。Fleet 的 FileResults 欄位集合固定，不能新增欄位；兩邊的字樣由守門測試比對。
+  - 工具擁有的目錄若帶有可繼承的 ACE，套用或回復目錄 ACL 時仍可能傳播到其中的沿用檔，這點沒有防堵。
+  - 真實 pending intent 復原後同時遇到同內容外部檔的組合，只有判定依據與靜態守門，沒有行為測試。
+  - rollback preview 新增了欄位，所以 PreviewHash 的內容與舊版不同。預覽與執行是在同一版本內重算，影響有限。
+  - CLI 只斷言列的內容，沒有擷取真實的終端輸出。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

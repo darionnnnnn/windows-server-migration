@@ -199,7 +199,7 @@ function Get-WsmAssistiveReportFileResultRows($StageProjection,$Catalog) {
     $items=@{};foreach($item in @($Catalog.Items)){$items[[string]$item.ItemId]=$item}
     foreach($file in @($StageProjection.Latest.Assistive.FileResults)){
         $name=[string]$file.ItemId;if($items.ContainsKey([string]$file.ItemId)){$name=[string]$items[[string]$file.ItemId].Name}
-        $rows.Add([object[]]@($name,[string]$file.ItemId,[string]$file.Channel,[string]$file.RelativePath,[string]$file.OriginalPath,[string]$file.PreservedPath,[string]$file.EffectivePath,[string]$file.Status,[string]$file.ExistingTargetPath,[string]$file.ExistingTargetHash,[string]$file.SourceHash,[string]$file.ObservedHash,[string]$file.Reason,[string]$file.EntryId,[string]$file.Generation,[string]$file.ProjectedGeneration))
+        $rows.Add([object[]]@($name,[string]$file.ItemId,[string]$file.Channel,[string]$file.RelativePath,[string]$file.OriginalPath,[string]$file.PreservedPath,[string]$file.EffectivePath,([string]$file.Status+$(if(Test-WsmAssistiveAdoptedExistingReason ([string]$file.Reason)){' / 沿用既有檔（內容與備份相同但來歷不明，回復時不會刪除）'}else{''})),[string]$file.ExistingTargetPath,[string]$file.ExistingTargetHash,[string]$file.SourceHash,[string]$file.ObservedHash,[string]$file.Reason,[string]$file.EntryId,[string]$file.Generation,[string]$file.ProjectedGeneration))
     }
     ,$rows.ToArray()
 }
