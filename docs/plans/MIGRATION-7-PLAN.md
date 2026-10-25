@@ -2488,6 +2488,48 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - `Test-C2D2HtmlActions` 在原始碼副本上同樣失敗（`$wrongWorkspace` 的 POST 拿不到回應），已排入 Q6b。
 - **教訓**：PS 5.1 中，helper 內對參數使用 `@($x)` 可能觸發 binder 的 ArgumentException，應直接 foreach。
 
+### 17.117 Q6a 第七輪測試缺口補測（以 8a63b1e 為準；找到一個缺陷，由 17.118 修正）
+
+- 規格：`work/r7/specs/Q6a-test-gaps.md`。由 Sonnet 5.5 effort medium subagent 實作；主代理另做一個突變並獨立重跑。
+- 新增 `tests/Test-RoundSevenGapCoverage.ps1`：122 項，約 31 秒。一支檔分七個區段，可用 `-Section` 單獨執行。產品碼零改動。
+- **(a) 15.5-8**：現有設計只擋「已選項目所在的缺卷」。
+  - 未選項目在預覽中標為 DeferredBySelection，不評估目標，因為不會寫入。
+  - 選項端仍逐項標出 MissingVolume，所以缺卷不會被悄悄忽略，與 PLAN 15.5 不衝突。
+  - 已補正例與反例。
+- **(b) 14.3-4**：
+  - 未知相依只擋有明確關聯的項目（IISSite→IISPool、Service→Service）。
+  - 預覽中，軟體關聯不明、工作負載對應未解決、NonC 證據不通這三種情況，都只擋該項目本身；獨立項目仍是 Ready，預覽整體不會變成 Blocked。
+- **(c) 16.3-5**：竄改封裝並重新計算包內所有 hash（含資料夾交付的 summary）後，以外部核准的 hash 驗證或匯入，一律被拒。
+  - 對照組證明：驗證器只核對完整性，授權完全來自外部 hash。
+- **(e) 15.3-5**：新增 src 靜態守門。
+  - 以語法樹加記號檢查以下用法：ProtectedData 等 API、CMS 指令、Clixml、不帶 -Key 的 SecureString 轉換。
+  - 先前沒有任何這類守門；目前 0 違規。
+  - 掃描器本身另有正反對照與「掃描範圍不得為空」的守門。
+- **(f) 離線報告防偽**：以下情況一律拒絕，或標為無法核對：
+  - 結果集雜湊不符。
+  - 結果集屬於另一個 pair 或 attempt。
+  - Kind 不對。
+  - 結果集產生失敗。
+  - 離線報告匯出。
+  - 獨立副本收據。
+- **(g) 不可讀子樹**：以真實 deny ACL 製造。
+  - 探索不會失敗，可讀的候選都保留。
+  - 缺口以 PermissionDenied 列出，並顯示在報告中。
+  - 掃描終局狀態仍是 Succeeded，缺口由 GapCount、清單與報告呈現。
+- **(i) 找到缺陷**：`Complete-WsmAssistiveOperationRepair` 在下列情境會誤判：
+  - 情境：沒有 owner 的 `AssistiveFileReplace` intent，目標位置是一個內容與 metadata 都相同的外部檔。
+  - 錯誤：Repair 把它記成工具擁有，回復時就會把這個外部檔移走。若 staging 還在，代表工具根本沒完成 Move，更不可能是工具寫的。
+  - 測試預設只固定住安全不變量，並印出 KNOWN-DEFECT；改用 `-StrictEvidenceClassification` 時，作為修正後的硬性驗收。
+  - 修正見 17.118。
+- **突變（全部轉紅）**：
+  - subagent 做了 18 個：A 2、B 2、C 1、E 3、F 4、G 2、I 2。
+  - 主代理另做 1 個：結果集不檢查 AttemptId，測試報「F2: a result set from another attempt must be refused」。
+- **驗證**：新測試 122、RestorableSet 199、RestorePartialSelection、AdoptedExistingOwnership 122、FileScopeIncompleteOwnership 164、ScriptEncoding 339 檔。
+- **誠實聲明**：subagent 曾用 `grep -rln` 掃整個 repo，搜尋範圍涵蓋了 `docs/archive/`。事後只過濾了輸出，沒有使用其中的內容，但仍然違反「不讀 archive」的限制，在此記錄。
+- **限制**：
+  - (e) 是字面比對，抓不到用字串拼接規避的寫法。
+  - (g) 有缺口時終局狀態仍是 Succeeded。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
