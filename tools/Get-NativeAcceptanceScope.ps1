@@ -86,7 +86,7 @@ foreach ($path in $paths) {
         $result.basic = $true; $result.launcher = $true; $result.release = $true; $result.runtime = $true
         $result.manager = $true; $result.probe = $true; $runtimeCases.Add('all'); continue
     }
-    if ($path -match '^tests/(Test-NativeHtmlBridge\.js|Start-HtmlTestServer\.ps1)$') { $result.basic = $true; continue }
+    if ($path -match '^tests/(Test-NativeHtmlBridge\.js|Start-HtmlTestServer\.ps1|Test-ConsoleAssetTransport\.js|Browser-UiDelivery\.js)$') { $result.basic = $true; continue }
     if ($path -match '^tests/Test-ReleaseNativeLauncher\.js$') { $result.launcher = $true; $result.release = $true; continue }
     if ($path -match '^tests/Test-ReleaseWizardSmoke\.ps1$') { $result.release = $true; continue }
     if ($path -match '^tests/(Test-NativeWizardRuntimeHandler\.js|Start-WizardRuntimeTestServer\.ps1)$') { $result.runtime = $true; $runtimeCases.Add('all'); continue }

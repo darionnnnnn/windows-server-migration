@@ -113,6 +113,14 @@ jobs:
           $env:WSM_NATIVE_EVIDENCE_PATH = Join-Path $env:RUNNER_TEMP 'native-evidence/native-html-bridge.json'
           node ./tests/Test-NativeHtmlBridge.js 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wsm-native.log')
           if ($LASTEXITCODE -ne 0) { throw 'Native browser acceptance failed; fixture captures do not substitute for this gate.' }
+      - name: Native console static-file transport (no disk fallback)
+        id: asset_transport
+        if: steps.scope.outputs.basic == 'true'
+        shell: pwsh
+        run: |
+          # WSM_TEST_NO_DISK_UI=1 is set for the whole workflow: an incomplete or rewritten /ui transfer is a failure (exit 1); exit 3 is never accepted.
+          node ./tests/Test-ConsoleAssetTransport.js
+          if ($LASTEXITCODE -ne 0) { throw ('Native /ui asset transport failed (exit ' + $LASTEXITCODE + '); the browser tests serve /ui from disk only on a developer host.') }
       - name: Validate native HTML bridge evidence
         id: validate_bridge
         if: ${{ always() && steps.scope.outputs.basic == 'true' }}

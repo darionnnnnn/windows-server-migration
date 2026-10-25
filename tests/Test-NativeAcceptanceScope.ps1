@@ -64,6 +64,8 @@ Assert-Scope $releaseWorkflow $product 'release workflow only'
 
 $knownTests = @(
     @{path='tests/Test-NativeHtmlBridge.js'; expected=@('basic')},
+    @{path='tests/Test-ConsoleAssetTransport.js'; expected=@('basic')},
+    @{path='tests/Browser-UiDelivery.js'; expected=@('basic')},
     @{path='tests/Test-ReleaseNativeLauncher.js'; expected=@('launcher','release')},
     @{path='tests/Test-ReleaseWizardSmoke.ps1'; expected=@('release')},
     @{path='tests/Test-NativeWizardRuntimeHandler.js'; expected=@('runtime')},

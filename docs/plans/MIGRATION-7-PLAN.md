@@ -2626,6 +2626,11 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - NativeWizardJourney 在本機目前無法完整跑完。
   - HTML 檔在本機無法以原生方式比對位元組。
   - 沿用帳本既有限制「local AdGuard policy remains unchanged」，本輪不改本機 AdGuard 設定。
+- **CI 接線（775daad 終檢補充）**：
+  - `Test-ConsoleAssetTransport.js` 加進 `native-release.yml` 的 basic 範圍（新步驟「Native console static-file transport」，在嚴格模式下 exit 非 0 即失敗）。
+  - `Test-HttpSocketEdgeCases.js` 加進 `contracts.yml` 的 migration-round-three。
+  - `tools/Get-NativeAcceptanceScope.ps1` 把 `Test-ConsoleAssetTransport.js` 與 `Browser-UiDelivery.js` 對映到 basic，`Test-NativeAcceptanceScope` 從 124 項增為 136 項；突變（拿掉對映）後轉紅。
+  - 真實靜態檔傳送是否通過，以 GitHub run 的結果為準。
 
 ### 17.43 Test-TextConsole 既有失敗修正
 
