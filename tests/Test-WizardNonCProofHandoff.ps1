@@ -96,6 +96,21 @@ try {
     Reject {CallModule {param($w,$p,$dir,$hash,$jobs)Get-WsmWizardNonCProofHandoffPreview -Workspace $w -PairId $p -Directory $dir -ExpectedManifestHash $hash -Jobs $jobs} @($managerWorkspace,$pairId,$tampered,$targetExpected,@($approvalJob))} 'Self-rehashed changed Target proof passed against the independent original manifest hash.'
     Reject {CallModule {param($w,$p,$dir,$jobs)Get-WsmWizardNonCProofHandoffPreview -Workspace $w -PairId $p -Directory $dir -Jobs $jobs} @($managerWorkspace,$pairId,$tampered,@($approvalJob))} 'Proof preview accepted a bundle without the separately supplied trusted ExpectedManifestHash.'
 
+    # S4: hidden files / hidden directories / hidden reparse points must not escape the exact-file and no-reparse enumeration.
+    function HiddenStageMessage([string]$Dir,[string]$Hash){$m='';try{CallModule {param($d,$h)Get-WsmWizardNonCProofHandoffStage -Directory $d -ExpectedManifestHash $h|Out-Null} @($Dir,$Hash)}catch{$m=$_.Exception.Message};$m}
+    function NewHiddenVariant([string]$Name){$d=Join-Path $root $Name;[void][IO.Directory]::CreateDirectory($d);Get-ChildItem -LiteralPath $targetBundle.Directory|Copy-Item -Destination $d -Recurse;$d}
+    function SetHidden([string]$Path){[IO.File]::SetAttributes($Path,([IO.File]::GetAttributes($Path) -bor [IO.FileAttributes]::Hidden))}
+    Check ((HiddenStageMessage $targetBundle.Directory $targetExpected) -eq '') 'S4 control: the untouched Target handoff must stage cleanly.'
+    $s4File=NewHiddenVariant 's4-hidden-file';$s4FilePath=Join-Path $s4File 'stray-hidden.txt';[IO.File]::WriteAllText($s4FilePath,'stray');SetHidden $s4FilePath
+    Check ((HiddenStageMessage $s4File $targetExpected) -like '*unexpected files*') 'S4: a hidden extra file escaped the exact-file check.'
+    $s4Dir=NewHiddenVariant 's4-hidden-dir';$s4DirPath=Join-Path $s4Dir 'hidden-sub';[void][IO.Directory]::CreateDirectory($s4DirPath);[IO.File]::WriteAllText((Join-Path $s4DirPath 'inner.txt'),'stray');SetHidden $s4DirPath
+    Check ((HiddenStageMessage $s4Dir $targetExpected) -like '*unexpected files*') 'S4: a file inside a hidden subdirectory escaped the exact-file check.'
+    $s4Junction=NewHiddenVariant 's4-hidden-reparse';$s4JunctionTarget=Join-Path $root 's4-junction-target';[void][IO.Directory]::CreateDirectory($s4JunctionTarget);$s4JunctionPath=Join-Path $s4Junction 'hidden-junction'
+    try{
+        & cmd.exe /c ('mklink /J "'+$s4JunctionPath+'" "'+$s4JunctionTarget+'"')|Out-Null;if($LASTEXITCODE -ne 0 -or -not [IO.Directory]::Exists($s4JunctionPath)){throw 'S4 fixture could not create a junction.'};SetHidden $s4JunctionPath
+        Check ((HiddenStageMessage $s4Junction $targetExpected) -like '*Reparse point*') 'S4: a hidden reparse point under the handoff tree escaped the no-reparse check.'
+    }finally{if([IO.Directory]::Exists($s4JunctionPath)){& cmd.exe /c ('rmdir "'+$s4JunctionPath+'"')|Out-Null}}
+    Check (-not [IO.Directory]::Exists($s4JunctionPath)) 'S4 fixture left a reparse point behind.'
     $wrongHost=Join-Path $root 'wrong-host-target';[void][IO.Directory]::CreateDirectory($wrongHost);Get-ChildItem -LiteralPath $targetBundle.Directory|Copy-Item -Destination $wrongHost -Recurse
     $wrongManifest=CallModule {param($p)Read-WsmJson $p} (Join-Path $wrongHost 'manifest.json');$wrongManifest.Profile.HostId=[Guid]::NewGuid().ToString('D');SaveJson $wrongManifest (Join-Path $wrongHost 'manifest.json');$wrongHash=HashFile (Join-Path $wrongHost 'manifest.json')
     Reject {CallModule {param($w,$p,$dir,$hash,$jobs)Get-WsmWizardNonCProofHandoffPreview -Workspace $w -PairId $p -Directory $dir -ExpectedManifestHash $hash -Jobs $jobs} @($managerWorkspace,$pairId,$wrongHost,$wrongHash,@($approvalJob))} 'Self-rehashed handoff for an unapproved Target HostId was accepted.'

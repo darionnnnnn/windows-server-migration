@@ -2993,6 +2993,49 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - `Test-BackupProgressBrowser.js` 在本機為 ENVIRONMENT-LIMITED（同 17.119），不算通過。
 - **E-PS7 回歸修正**：a1e996c 的 native-release 在 pwsh 上失敗（備份明細表逾時），507baf5 時仍是 success。原因是 R22 的 `Get-WsmBackupItemFileIndex` 用了 `System.Web.Extensions` 的 JavaScriptSerializer，PowerShell 7（.NET）沒有這個組件。修法是依引擎分流：5.1 照舊用 JavaScriptSerializer；PS7 改用 `ConvertFrom-Json -AsHashtable`，回傳的同樣是以鍵讀取的字典。本機沒有 PS7，所以 PS7 這條路徑要靠 CI 的 native-release（pwsh）驗證。另記教訓：只用 .NET Framework 的 API 前要先確認雙引擎相容；本機只有 5.1，跑不出這類回歸。
 
+### 17.128 批 F1：第六輪 P2 其餘（S4、S5、S7、S8、S9、S10、S13、S17）
+
+- 規格：`work/r7/specs/F1-round6-p2.md`。Sonnet 5.5 subagent 實作；主代理審查並另做 1 個突變，該突變存活，因此補了測試。
+- **S4**：交接資料夾的列舉補上 `-Force`，ProofHandoff 與 TargetHandoff 各兩處。這樣隱藏檔、隱藏子目錄與隱藏的 reparse point 都會被「無多餘檔案」與「全目錄無 reparse」檢查到。
+- **S5**：`ToolRelease` 的 manifest 路徑檢查改用 `IndexOf([char]92)` 判斷反斜線，並新增兩類阻擋：冒號（ADS），以及 CON、PRN、AUX、NUL、COM0-9、LPT0-9 這些保留裝置名，含帶副檔名與尾端句點的寫法。
+  - **主代理突變**：把保留裝置名的判斷改成只看最後一段路徑，原有測試沒有轉紅。已補上兩個案例：`src/CON/evil.ps1`（保留名出現在中間的資料夾段）與 `LPT1/x.ps1`（保留名出現在根資料夾段）。補上後同一個突變轉紅。
+- **S7**（推論，已重現）：DeveloperProbe 被取消或失敗時，刪除這次的 `protected-raw`。另外在啟動時清掉超過 14 天的 raw，以及超過 1 天的 `.cancellations` 標記。
+  - 清理只處理 GUID 命名、不是 reparse point、也不是這次執行的目錄。
+  - 成功與 Partial 的執行會保留 raw，直到過期才清。
+  - 期限是 subagent 選的數字，主代理接受；要改時只需調整 `Remove-WsmDeveloperProbeStaleData` 的預設參數。
+- **S8**：空值判斷改用 `Test-WsmWizardPreparationBlankValue`，`$false`、`0`、`0.0` 不再被當成空值。
+- **S9**：
+  - 選項判定收斂成 `Get-WsmWizardPreparationChoiceIssue`，表單、儲存前驗證與批次預覽三處共用。
+  - 只要欄位有 options 就一律以 choice 呈現；DrainPolicy 與 DrainEvidence 設為必填。
+  - 填入選項以外的值時，回傳帶欄位位置的錯誤：`PreparationFieldValidation|/Answers/<key>|option`。
+  - DesiredFinalState 的選項改為依 adapter 決定：Service 另含 Manual、Automatic、Running；若全部套用 Disabled／Enabled，會把 Service 草稿中的合法值擋掉。
+- **S10**：IIS section／location 的 `Operation`、`ElementName`、`AttributeName`、`ValuesWithheld` 加入唯讀名單。
+- **S13**：
+  - 刪除正式程式從未呼叫的 `Get-WsmWizardTargetRestoreAvailability`。`Test-WizardRestore` 中 13 處原本斷言這個函式，改為斷言實際投影的 `.runtime.restoreResult`。
+  - 改斷言實際投影時，發現一個既有缺陷：worker 失敗後復原的結果，在 StrictMode 下會讓整個投影丟出例外。原因是復原結果物件沒有 `DecisionReceiptHash`、`TargetSnapshotHash` 欄位，舊測試斷言的是不會執行的程式，所以一直沒被發現。
+  - 修法：這兩個欄位改用安全讀取；復原結果改以 durable `RestoreAttempt` 的綁定判定。主代理接受這項行為變更。
+- **S17**（推論，已重現，**不修改**）：`GET /api/jobs` 與 `/api/jobs/{id}` 回傳的是帶 provenance 的工作區歷史，屬刻意設計：
+  - 作業頁有「工作區歷史」模式；`reconnectJob` 與 `recoverPendingOperation` 也要能讀到其他 pair 的作業。
+  - cancel 有 context 閘門。
+  - `Test-HtmlJobContextScope.js` 把上述行為固定下來。
+  - 邊角情況：紀錄的 workspace 欄位指向別處時仍會被列出。這只可能來自竄改或手動搬檔，已記為 R26-S17b，交由盤點工作階段定案。
+- **既有斷言變更**：只有 `Test-WizardRestore`（屬 S13）：
+  - 13 處斷言改呼叫實際投影。
+  - applied／failed 計數改由 `itemResults` 計算，數值不變。
+  - 「呼叫端傳入 fingerprint 不符的 profile」這條，改為「結果輸出的 TargetSnapshotHash 被竄改時，投影回傳 null」。原因是實際投影沒有這個參數，Target 身分由 workspace 推導。
+  - 刪除只存在於舊函式的 `completedUtc` 子斷言。
+- **突變**：
+  - subagent 做了 28 個。
+    - S7 有 2 個第一次存活，原因都是測試沒有真的走到受測路徑：失敗注入發生在 raw 寫入之前；junction 本身的時間是新的。強化測試後都轉紅。
+    - 另有 1 個等價突變。
+  - 主代理做了 1 個（保留裝置名只看最後一段），補測試後轉紅。
+- **驗證**：
+  - 必跑測試：WizardNonCProofHandoff 30、WizardNonCTargetHandoff、ToolReleaseArchivePaths 15、ReleaseWizardSmoke、DeveloperProbe、DeveloperProbeResidue 17、WizardPreparation 30、WizardPreparationFieldRules 35、WizardPreparationBulk 43、WizardPreparationAdapters 101、WizardRestore 132、WizardRuntime 182、HtmlConsole 178、HtmlBridge 45（第一次遇到環境性 reset，重跑通過）、HtmlJobContextScope 15、ScriptEncoding 351。
+  - 呼叫端與呼叫端的呼叫端共 26 支，全部通過。
+  - 不屬於這批的失敗：
+    - WorkspaceWorkerIsolation：本機沒有 pwsh。
+    - NativeProbeRoles：在 HEAD 上同樣失敗。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -3232,10 +3275,10 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R13 | `src/HtmlConsole.ps1`、`console.js` statusName、`src/DeliveryReceipts.ps1` 匯入 | CV2 進度顯示「未識別交付狀態」，匯入的 CV2 收據永遠不顯示 | 補 NotApplicable 與文案；CV2 計畫匯入收據改為拒絕（17.126） | `Test-HtmlConsole`（CV2 進度）、`Test-DeliveryReceipts`（CV2 拒絕） | `507baf5` |
 | R14 | `src/Core.ps1` `Import-WsmInventory`、`src/GeneralHostContracts.ps1` `Set-WsmGeneralHostSoftwareCatalog`、`src/SoftwareDispositionReview.ps1` | 重新匯入或換目錄時刪掉漂移的軟體決策，Stale 永遠不出現，處置、負責人、原因全失 | 共用 `Split-WsmSoftwareDecisionsForCatalog`，漂移決策移到 Stale（不進有效集合）並預填，重新確認後才生效（17.126） | `Test-SoftwareDispositionReview`（R14 重新匯入、二次匯入、重新確認、split 單元測試、兩個入口的靜態檢查） | `507baf5` |
 | R15 | `src/SourceCandidateConfirmation.ps1`、`src/SourceCandidateMapping.ps1`、`console.js` | 內容相同重送時，Include 被打回 Pending、核准被清除、revision 遞增 | 內容相同回傳 NoChange；console 視 NoChange 為成功（17.126） | `Test-SourceCandidateConfirmation`、`Test-SourceCandidateMapping`（NoChange 與內容不同的反例） | `507baf5` |
-| R19 | `console.js` 的 `RESTORABLE_CODE_TEXT`、`statusName`、收據按鈕 | 對照表缺鍵，畫面直接顯示原始代碼；收據按鈕用原生 disabled，鍵盤會跳過，也沒有說明 | 補齊缺鍵；收據按鈕改為 `aria-disabled` 並附原因文字；守門測試要求後端代碼集合是前端對照表的子集（17.127） | `Test-FrontendCodeCoverage.js`、`Test-RestoreSelectionBrowser.js` | （E-COMMIT） |
-| R21 | `console.js` 的 `refreshActiveData`、完成事件分支 | 停在 `#jobs?filter=backup&…` 時，備份完成後三個分頁不自動更新 | 先切掉 query 再取 view 名稱；備份或獨立副本完成時重讀明細（17.127） | `Test-BackupWorkbenchBrowser.js`（R21 區段） | （E-COMMIT） |
-| R22 | `src/WizardBackupProjection.ps1` 的 `Get-WsmWizardBackupItemFiles` | 10 萬列時每翻一頁約 48 秒，期間 listener 執行緒被卡住 | 以內容雜湊為鍵的有界快取，每次重算並核對雜湊；首次解析改用 JavaScriptSerializer（17.127） | `Test-BackupItemFileIndexCache.ps1`、`Test-BackupWorkbenchView.ps1` | （E-COMMIT） |
-| R24 | `src/WizardBackupProjection.ps1` 的離線報告與結果文件 | 離線報告只到項目層，無法查看逐檔明細（§18.4 契約缺口） | 每項列前 200 個檔案並附總數，整份上限 5000 筆，使用靜態 `<details>`，路徑經安全文字化（17.127） | `Test-OfflineReportFileLists.ps1`、`Test-OfflineReportBrowser.js` | （E-COMMIT） |
+| R19 | `console.js` 的 `RESTORABLE_CODE_TEXT`、`statusName`、收據按鈕 | 對照表缺鍵，畫面直接顯示原始代碼；收據按鈕用原生 disabled，鍵盤會跳過，也沒有說明 | 補齊缺鍵；收據按鈕改為 `aria-disabled` 並附原因文字；守門測試要求後端代碼集合是前端對照表的子集（17.127） | `Test-FrontendCodeCoverage.js`、`Test-RestoreSelectionBrowser.js` | `a1e996c`（PS7 修正 `55c8e51`） |
+| R21 | `console.js` 的 `refreshActiveData`、完成事件分支 | 停在 `#jobs?filter=backup&…` 時，備份完成後三個分頁不自動更新 | 先切掉 query 再取 view 名稱；備份或獨立副本完成時重讀明細（17.127） | `Test-BackupWorkbenchBrowser.js`（R21 區段） | `a1e996c`（PS7 修正 `55c8e51`） |
+| R22 | `src/WizardBackupProjection.ps1` 的 `Get-WsmWizardBackupItemFiles` | 10 萬列時每翻一頁約 48 秒，期間 listener 執行緒被卡住 | 以內容雜湊為鍵的有界快取，每次重算並核對雜湊；首次解析改用 JavaScriptSerializer（17.127） | `Test-BackupItemFileIndexCache.ps1`、`Test-BackupWorkbenchView.ps1` | `a1e996c`（PS7 修正 `55c8e51`） |
+| R24 | `src/WizardBackupProjection.ps1` 的離線報告與結果文件 | 離線報告只到項目層，無法查看逐檔明細（§18.4 契約缺口） | 每項列前 200 個檔案並附總數，整份上限 5000 筆，使用靜態 `<details>`，路徑經安全文字化（17.127） | `Test-OfflineReportFileLists.ps1`、`Test-OfflineReportBrowser.js` | `a1e996c`（PS7 修正 `55c8e51`） |
 
 ### 第六輪終檢
 
@@ -3249,3 +3292,11 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | S14 | `src/HtmlConsole.ps1` `Get-WsmHtmlSafeError`、body 與請求檢查 | 壞掉的 body 回 operation_failed；內部例外訊息含 "parameter" 時被誤判為輸入錯誤 | 請求形狀錯誤與 body 解析改丟契約錯誤；分類器依型別判斷（可穿透 worker 包裝）；只保留 12 條鎖定的 token 比對（17.125） | `Test-HtmlErrorClassification`（160 項，含真實主控台） | `a8fd539` |
 | S15 | `src/WizardNonCOperations.ps1` 帳號對應審閱收據 | 收據只寫不讀，ProofHash 含 CreatedUtc 而不確定 | CreatedUtc 移出 hash，寫入與驗證兩端用同一規則（下游沒有讀取端，17.126） | `Test-WizardNonCOperations` | `507baf5` |
 | S16 | `src/WizardNonCOperations.ps1` 傳輸計畫選單標籤 | 標籤顯示 UTC ISO 原字串 | 沿用 `Get-WsmWizardHandoffLocalTime`（17.126） | `Test-WizardNonCOperations` | `507baf5` |
+| S4 | `src/WizardNonCProofHandoff.ps1`、`src/WizardNonCTargetHandoff.ps1` 交接列舉 | 隱藏檔、隱藏子目錄與 reparse point 逃過「無多餘檔案」與「無 reparse」檢查 | 列舉加上 `-Force`（17.128） | `Test-WizardNonCProofHandoff`、`Test-WizardNonCTargetHandoff`（隱藏檔、隱藏子目錄、junction） | （F1-COMMIT） |
+| S5 | `src/ToolRelease.ps1` manifest 路徑檢查 | 單一反斜線、冒號（ADS）、保留裝置名都能通過檢查 | 改用 `IndexOf([char]92)` 判斷反斜線，並阻擋冒號與保留裝置名（每一段路徑都檢查）（17.128） | `Test-ToolReleaseArchivePaths`（15 項，含資料夾段） | （F1-COMMIT） |
+| S7 | `src/DeveloperProbe.ps1` | 取消或失敗後，`protected-raw` 與取消標記永不清理 | 取消或失敗時刪除這次的 raw；啟動時清理 14 天前的 raw 與 1 天前的標記（17.128） | `Test-DeveloperProbeResidue` | （F1-COMMIT） |
+| S8 | `src/WizardPreparation.ps1` 空值判斷 | `$false` 與 `0` 被當成空值 | 改用 `Test-WsmWizardPreparationBlankValue`（17.128） | `Test-WizardPreparationFieldRules` | （F1-COMMIT） |
+| S9 | `src/WizardPreparation.ps1`、`src/WizardPreparationBulk.ps1` | 選項以外的草稿值讓欄位變成自由文字框且非必填；批次預覽的判定與表單不一致 | 共用 `Get-WsmWizardPreparationChoiceIssue`：有 options 即為 choice，兩欄必填，錯誤帶欄位位置（17.128） | `Test-WizardPreparationFieldRules`、`Test-WizardPreparationAdapters` | （F1-COMMIT） |
+| S10 | `src/WizardPreparation.ps1` 唯讀名單 | IIS 的 Operation、ElementName、AttributeName、ValuesWithheld 可在表單中編輯 | 加入唯讀名單（17.128） | `Test-WizardPreparationFieldRules`、`Test-WizardPreparationAdapters` | （F1-COMMIT） |
+| S13 | `src/WizardRestore.ps1`（已刪除）、`src/WizardRuntime.ps1` | 正式程式從未呼叫的舊函式與實際投影各寫一份綁定判定；實際投影處理復原結果時，在 StrictMode 下丟出例外 | 刪除舊函式，測試改為斷言實際投影；復原結果改用安全讀取，並以 durable attempt 綁定判定（17.128） | `Test-WizardRestore` | （F1-COMMIT） |
+| S17 | `src/HtmlConsole.ps1` `/api/jobs` | 推論：列表與讀取沒有依 context 篩選 | 已重現。依設計，列表為工作區歷史，cancel 有閘門，因此不修改；邊角情況記為 R26-S17b（17.128） | `Test-HtmlJobContextScope.js` | （F1-COMMIT） |

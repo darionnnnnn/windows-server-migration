@@ -92,8 +92,9 @@ function Get-WsmWizardBulkPreparationEligibility($Review) {
         # states in the shared form. The core submit performs adapter-specific
         # checks; only a required blank or a separate manual/missing marker is
         # a bulk eligibility blocker.
+        # S9: the same choice judgement as the preparation form and its save-time validation.
+        if((Get-WsmWizardPreparationChoiceIssue ([string]$field.type) @($field.options) $field.value) -ceq 'OutsideOptions'){$deferred.Add([pscustomobject]@{Field=$key;Reason='AmbiguousChoiceOutsideOptions'});continue}
         if($field.editable -and $field.required -and $field.origin -ceq 'NeedsHumanDecision'){$deferred.Add([pscustomobject]@{Field=$key;Reason='RequiredHumanDecision'});continue}
-        if(@($field.options).Count -and $null -ne $field.value -and [string]$field.value -and [string]$field.value -cnotin @($field.options)){$deferred.Add([pscustomobject]@{Field=$key;Reason='AmbiguousChoiceOutsideOptions'})}
         if($field.required -and ($null -eq $field.value -or ($field.value -is [string] -and [string]::IsNullOrWhiteSpace([string]$field.value)) -or ($field.value -is [array] -and -not $field.value.Count))){$deferred.Add([pscustomobject]@{Field=$key;Reason='RequiredValueUnavailable'})}
         if($key -ceq 'SecretRef' -and $field.required -and ([string]$field.value -notmatch '^[A-Za-z0-9_.-]{1,128}$')){$deferred.Add([pscustomobject]@{Field=$key;Reason='SecretReferenceRequired'})}
         if($key -match '^(?:Desired/)?ArtifactPath$' -and $field.required -and [string]::IsNullOrWhiteSpace([string]$field.value)){$deferred.Add([pscustomobject]@{Field=$key;Reason='PublicCertificateArtifactRequired'})}

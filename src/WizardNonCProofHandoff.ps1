@@ -219,10 +219,10 @@ function Get-WsmWizardNonCProofHandoffStage {
     # Normalize the provider output to strings before passing it through the
     # path guard. Windows PowerShell can unwrap a single-item directory result
     # in ways that make property access unreliable inside an array expression.
-    $directoryPaths=@(Get-ChildItem -LiteralPath $root -Directory -Recurse | ForEach-Object {[string]$_.FullName})
+    $directoryPaths=@(Get-ChildItem -LiteralPath $root -Directory -Recurse -Force | ForEach-Object {[string]$_.FullName})
     foreach($directoryPath in $directoryPaths){Assert-WsmNoReparse $directoryPath}
     $materialRoot=Join-Path $root 'materials';Assert-WsmNoReparse $materialRoot
-    $actual=@(Get-ChildItem -LiteralPath $root -File -Recurse | ForEach-Object {$_.FullName.Substring($root.Length+1).Replace('\','/')})|Sort-Object -Unique
+    $actual=@(Get-ChildItem -LiteralPath $root -File -Recurse -Force | ForEach-Object {$_.FullName.Substring($root.Length+1).Replace('\','/')})|Sort-Object -Unique
     $expected=@(@('manifest.json')+@($listed.Keys|Sort-Object))|Sort-Object -Unique
     if(($actual -join '|') -cne ($expected -join '|')){throw 'Proof handoff directory contains missing or unexpected files.'}
     [pscustomobject]@{Root=$root;Manifest=$manifest;ManifestPath=$manifestPath;ManifestHash=$ExpectedManifestHash.ToLowerInvariant();Shares=@($normalizedShares.ToArray());Materials=@($staged.ToArray())}

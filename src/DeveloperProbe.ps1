@@ -128,6 +128,48 @@ function Get-WsmDeveloperProbeRawBytes([string]$Root) {
     $total
 }
 
+# S7: protected raw evidence and cancellation markers have a bounded lifetime.
+# .NET recursive delete removes a reparse point itself and never follows it; a brief retry covers handles that are still closing.
+function Remove-WsmDeveloperProbeDirectory([string]$Path) {
+    for($attempt=0;$attempt -lt 3;$attempt++){
+        try{if([IO.Directory]::Exists($Path)){[IO.Directory]::Delete($Path,$true)};return $true}catch{Start-Sleep -Milliseconds 100}
+    }
+    -not [IO.Directory]::Exists($Path)
+}
+
+# A failed or cancelled run drops its own raw evidence; the sanitized result stays.
+function Remove-WsmDeveloperProbeRawEvidence([string]$RawRoot) {
+    if([string]::IsNullOrWhiteSpace($RawRoot) -or [IO.Path]::GetFileName($RawRoot.TrimEnd('\')) -cne 'protected-raw'){return $false}
+    try{Remove-WsmDeveloperProbeDirectory $RawRoot}catch{$false}
+}
+
+# A later run purges raw evidence older than RawRetentionDays and cancellation markers older than
+# MarkerRetentionDays. It only touches GUID-named run directories that are not reparse points and not the
+# current run, so a fresh (possibly still running) probe and foreign data are never removed. Best effort: it never fails the run.
+function Remove-WsmDeveloperProbeStaleData([string]$OutputRoot,[string]$CurrentRunId,[int]$RawRetentionDays=14,[int]$MarkerRetentionDays=1) {
+    $now=[DateTime]::UtcNow;$removed=0
+    try{
+        foreach($entry in @([IO.Directory]::EnumerateDirectories($OutputRoot))){
+            $name=[IO.Path]::GetFileName($entry);$runGuid=[Guid]::Empty
+            if(-not [Guid]::TryParseExact($name,'D',[ref]$runGuid) -or $runGuid.ToString('D') -cne $name.ToLowerInvariant() -or $name -ieq $CurrentRunId){continue}
+            if(([IO.File]::GetAttributes($entry) -band [IO.FileAttributes]::ReparsePoint) -ne 0){continue}
+            $info=[IO.DirectoryInfo]::new($entry)
+            if(($now-$info.CreationTimeUtc).TotalDays -le $RawRetentionDays -or ($now-$info.LastWriteTimeUtc).TotalDays -le $RawRetentionDays){continue}
+            $raw=Join-Path $entry 'protected-raw'
+            if([IO.Directory]::Exists($raw) -and ([IO.File]::GetAttributes($raw) -band [IO.FileAttributes]::ReparsePoint) -eq 0){if(Remove-WsmDeveloperProbeDirectory $raw){$removed++}}
+        }
+        $markerDirectory=Join-Path $OutputRoot '.cancellations'
+        if([IO.Directory]::Exists($markerDirectory) -and ([IO.File]::GetAttributes($markerDirectory) -band [IO.FileAttributes]::ReparsePoint) -eq 0){
+            foreach($file in @([IO.Directory]::EnumerateFiles($markerDirectory,'*.json'))){
+                $markerGuid=[Guid]::Empty
+                if(-not [Guid]::TryParseExact([IO.Path]::GetFileNameWithoutExtension($file),'D',[ref]$markerGuid) -or ([IO.File]::GetAttributes($file) -band [IO.FileAttributes]::ReparsePoint) -ne 0){continue}
+                if(($now-[IO.File]::GetLastWriteTimeUtc($file)).TotalDays -gt $MarkerRetentionDays){try{[IO.File]::Delete($file);$removed++}catch{}}
+            }
+        }
+    }catch{}
+    $removed
+}
+
 function Test-WsmDeveloperProbeSafeProcessModuleRoot([string]$Path){$result=[ordered]@{Allowed=$false;Path=$Path;ReasonCode='InvalidOrUnsupportedPath'};if([string]::IsNullOrWhiteSpace($Path) -or $Path -match '^(?:\\\\|//|\\\\\?\\|\\\\\.\\)'){return [pscustomobject]$result};try{$full=[IO.Path]::GetFullPath($Path)}catch{$result.ReasonCode='InvalidLocalPath';return [pscustomobject]$result};if($full -notmatch '^[A-Za-z]:\\'){$result.ReasonCode='UnsupportedLocalPathNamespace';return [pscustomobject]$result};$root=$full.Substring(0,3);try{$drive=New-Object IO.DriveInfo -ArgumentList $root;if($drive.DriveType -eq [IO.DriveType]::Network){$result.ReasonCode='MappedRemoteDriveBlocked';return [pscustomobject]$result}}catch{$result.ReasonCode='DriveTypeUnavailable';return [pscustomobject]$result};$current=$root;foreach($part in @($full.Substring(3).TrimEnd('\\') -split '[\\/]'|Where-Object {$_})){$current=Join-Path $current $part;try{if(([IO.File]::GetAttributes($current) -band [IO.FileAttributes]::ReparsePoint) -ne 0){$result.ReasonCode='ReparseAncestorBlocked';return [pscustomobject]$result}}catch [IO.FileNotFoundException]{return [pscustomobject]@{Allowed=$false;Path=$full;ReasonCode='PathDoesNotExist'}}catch [IO.DirectoryNotFoundException]{return [pscustomobject]@{Allowed=$false;Path=$full;ReasonCode='PathDoesNotExist'}}catch{$result.ReasonCode='PathInspectionFailed';return [pscustomobject]$result}};[pscustomobject]@{Allowed=$true;Path=$full;ReasonCode=''}}
 
 function ConvertTo-WsmDeveloperProbeInventoryProjection($Inventory,[string]$InventoryHash,[string]$Salt,[object[]]$ScopeGaps=@(),[int]$InventoryIncompleteCount=-1) {
@@ -570,7 +612,7 @@ function Export-WsmDeveloperProbe {
     if(-not [IO.Directory]::Exists($workspacePath)){[void][IO.Directory]::CreateDirectory($workspacePath);Protect-WsmDirectory $workspacePath}
     $outputRoot=Join-Path $workspacePath 'developer-probes';Assert-WsmNoReparse $outputRoot
     if(-not [IO.Directory]::Exists($outputRoot)){[void][IO.Directory]::CreateDirectory($outputRoot);Protect-WsmDirectory $outputRoot}
-    $runId=[Guid]::NewGuid().ToString();$runRoot=Join-Path $outputRoot $runId;[void][IO.Directory]::CreateDirectory($runRoot);Protect-WsmDirectory $runRoot
+    $runId=[Guid]::NewGuid().ToString();[void](Remove-WsmDeveloperProbeStaleData $outputRoot $runId);$runRoot=Join-Path $outputRoot $runId;[void][IO.Directory]::CreateDirectory($runRoot);Protect-WsmDirectory $runRoot
     $rawRoot=Join-Path $runRoot 'protected-raw';[void][IO.Directory]::CreateDirectory($rawRoot);Protect-WsmDirectory $rawRoot
     $module=Get-Module WindowsServerMigration | Select-Object -First 1
     $modulePath=if($module){[string]$module.Path}else{Join-Path $PSScriptRoot 'WindowsServerMigration.psd1'}
@@ -584,6 +626,7 @@ function Export-WsmDeveloperProbe {
     $results=New-Object 'System.Collections.Generic.List[object]';$workers=New-Object 'System.Collections.Generic.List[object]'
     $context=[ordered]@{SchemaVersion='1.0';RunId=$runId;CreatedUtc=[DateTime]::UtcNow.ToString('o');Role=$Role;PairAlias=$(if($PairId){Get-WsmDeveloperProbeSafeAlias $PairId 'pair' $runId}else{$null});FormatVersion='1.0';ToolVersion=[string]$script:ToolVersion;ToolFingerprint=(Get-WsmToolFingerprint);Mode='ReadOnly';ProductionQualified=$false;BusinessValidated=$false;RedactionPolicy=@('credentials','private keys','wallets','XML and scripts','arguments and command lines','user and account identifiers','host names','absolute paths','sensitive values embedded in errors and headers')}
     $collectors=@('PlatformIdentity','CommandsModules','LocalVolumes','NativeInventory');if($Origin){$collectors+=@('HttpProbe')}
+    $completed=$false;$discardRaw=$false
     try{
         $driveInfo=[IO.DriveInfo]::new($rootPath);$availableBytes=if($driveInfo.IsReady){[long]$driveInfo.AvailableFreeSpace}else{[long]0};$rawEvidenceBudgetBytes=[long][Math]::Min(134217728,[Math]::Max(16777216,($MaximumOutputBytes*4)))
         foreach($collectorId in $collectors){
@@ -644,8 +687,10 @@ function Export-WsmDeveloperProbe {
         if($archiveBytes -gt $MaximumOutputBytes){Remove-Item -LiteralPath $archivePath -Force;throw 'ZIP exceeds MaximumOutputBytes; the sanitized result was retained locally without claiming a deliverable archive.'}
         $statuses=@($results.ToArray());$counts=[ordered]@{Completed=@($statuses|Where-Object Status -CEQ Completed).Count;Partial=@($statuses|Where-Object Status -CEQ Partial).Count;PermissionDenied=@($statuses|Where-Object Status -CEQ PermissionDenied).Count;NotApplicable=@($statuses|Where-Object Status -CEQ NotApplicable).Count;TimedOut=@($statuses|Where-Object Status -CEQ TimedOut).Count;Failed=@($statuses|Where-Object Status -CEQ Failed).Count;Cancelled=@($statuses|Where-Object Status -CEQ Cancelled).Count;NotScheduled=@($statuses|Where-Object Status -CEQ NotScheduled).Count}
         $overall=if($counts.Cancelled -gt 0){'Cancelled'}elseif($counts.TimedOut -gt 0 -or $counts.Failed -gt 0 -or $counts.PermissionDenied -gt 0 -or $counts.NotScheduled -gt 0 -or $counts.Partial -gt 0){'Partial'}else{'Completed'}
+        $completed=$true;if($overall -ceq 'Cancelled'){$discardRaw=$true}
         [pscustomobject]@{Path=$archivePath;SHA256=(Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant();HtmlPath=$htmlPath;RunId=$runId;Status=$overall;CollectorCounts=[pscustomobject]$counts;CollectorResults=@($statuses);FormatVersion='1.0';ArchiveBytes=$archiveBytes;MaximumOutputBytes=$MaximumOutputBytes;RawEvidenceBudgetBytes=$rawEvidenceBudgetBytes;ProductionQualified=$false;BusinessValidated=$false}
     }finally{
         foreach($owned in $workers){if($owned.Worker){if(-not $owned.Worker.Async.IsCompleted){Stop-WsmDeveloperProbeWorker $owned.Worker};Dispose-WsmDeveloperProbeWorker $owned.Worker}}
+        if(-not $completed -or $discardRaw){[void](Remove-WsmDeveloperProbeRawEvidence $rawRoot)}
     }
 }

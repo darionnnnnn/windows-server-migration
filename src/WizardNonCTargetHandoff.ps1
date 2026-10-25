@@ -40,8 +40,8 @@ function Get-WsmWizardNonCTargetHandoffStage([string]$Directory,[string]$Expecte
         $actualPaths[$relative]=$true;$staged[$kind]=[pscustomobject]@{Path=$path;SHA256=([string]$row.SHA256).ToLowerInvariant()}
     }
     if(-not $byKind.ContainsKey('AssistiveNonCTransferPlan') -or -not $byKind.ContainsKey('AssistiveNonCTransferResult')){throw 'NonC Target handoff is missing its plan or result.'}
-    $directories=@(Get-ChildItem -LiteralPath $root -Directory -Recurse|ForEach-Object {[string]$_.FullName});foreach($path in $directories){Assert-WsmNoReparse $path}
-    $actual=@(Get-ChildItem -LiteralPath $root -File -Recurse|ForEach-Object {$_.FullName.Substring($root.Length+1).Replace('\','/')})|Sort-Object -Unique
+    $directories=@(Get-ChildItem -LiteralPath $root -Directory -Recurse -Force|ForEach-Object {[string]$_.FullName});foreach($path in $directories){Assert-WsmNoReparse $path}
+    $actual=@(Get-ChildItem -LiteralPath $root -File -Recurse -Force|ForEach-Object {$_.FullName.Substring($root.Length+1).Replace('\','/')})|Sort-Object -Unique
     $expected=@('manifest.json')+@($actualPaths.Keys|Sort-Object);$expected=@($expected|Sort-Object -Unique)
     if(($actual -join '|') -cne ($expected -join '|')){throw 'NonC Target handoff has missing or unexpected files.'}
     [pscustomobject]@{Root=$root;Manifest=$manifest;ManifestPath=$manifestPath;ManifestHash=$ExpectedManifestHash.ToLowerInvariant();TransferPlan=$staged['AssistiveNonCTransferPlan'];Result=$staged['AssistiveNonCTransferResult']}

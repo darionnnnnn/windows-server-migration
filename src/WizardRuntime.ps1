@@ -48,7 +48,9 @@ function Get-WsmWizardRuntimeTargetRestoreResult([string]$Workspace,[string]$Pai
         try{if([IO.Path]::GetFullPath([string](Get-WsmWizardTargetJobField $job workspace Workspace)) -ine [IO.Path]::GetFullPath($Workspace)){continue}}catch{continue}
         $jobId=[string](Get-WsmWizardTargetJobField $job jobId JobId)
         foreach($output in @((Get-WsmWizardTargetJobField $job outputs Outputs))){
-            if(-not $output -or [string]$output.PairId -cne $PairId -or [string]$output.PlanHash -ine [string]$Plan.SHA256 -or [string]$output.ManifestHash -ine [string]$Package.ManifestHash -or [long]$output.Generation -ne [long]$Package.Package.Manifest.Generation -or [string]$output.Decision -cne [string]$Decision.Receipt.Decision -or [string]$output.DecisionReceiptHash -ine [string]$Decision.SHA256){continue}
+            # S13: one binding judgement. A result recovered after a worker failure carries no decision/snapshot hash of its own; it is bound through the durable restore attempt checked below.
+            $recovered=[bool]($output -and $output.PSObject.Properties['RecoveredAfterWorkerFailure'] -and $output.RecoveredAfterWorkerFailure -is [bool] -and $output.RecoveredAfterWorkerFailure)
+            if(-not $output -or [string]$output.PairId -cne $PairId -or [string]$output.PlanHash -ine [string]$Plan.SHA256 -or [string]$output.ManifestHash -ine [string]$Package.ManifestHash -or [long]$output.Generation -ne [long]$Package.Package.Manifest.Generation -or [string]$output.Decision -cne [string]$Decision.Receipt.Decision -or ((-not $recovered) -and [string](Get-WsmWizardTargetJobField $output DecisionReceiptHash) -ine [string]$Decision.SHA256)){continue}
             if((@($output.SelectedItemIds | Sort-Object -Unique) -join "`n") -cne (@($Decision.Receipt.SelectedItemIds | Sort-Object -Unique) -join "`n")){continue}
             $status=[string]$output.Status
             if($status -ceq 'DeferredSoftware' -and [string]$Decision.Receipt.Decision -ceq 'WaitForInstall'){
@@ -56,7 +58,7 @@ function Get-WsmWizardRuntimeTargetRestoreResult([string]$Workspace,[string]$Pai
                 continue
             }
             $attemptId=[string]$output.AttemptOperationId
-            if($status -notin @('Succeeded','Partial','RebootRequired','Cancelled','Failed') -or -not $attemptId -or $attemptId -cne $jobId -or [string]$output.TargetSnapshotHash -ine [string]$Snapshot.SHA256 -or [string]$output.ItemResultsHash -notmatch '^[a-fA-F0-9]{64}$' -or -not $output.PSObject.Properties['ItemResults']){continue}
+            if($status -notin @('Succeeded','Partial','RebootRequired','Cancelled','Failed') -or -not $attemptId -or $attemptId -cne $jobId -or ((-not $recovered) -and [string](Get-WsmWizardTargetJobField $output TargetSnapshotHash) -ine [string]$Snapshot.SHA256) -or [string]$output.ItemResultsHash -notmatch '^[a-fA-F0-9]{64}$' -or -not $output.PSObject.Properties['ItemResults']){continue}
             $safeProjectedItemResults=($output.PSObject.Properties['SafeProjectedItemResults'] -and $output.SafeProjectedItemResults -is [bool] -and $output.SafeProjectedItemResults)
             if(-not $safeProjectedItemResults -and (Get-WsmHashText ($output.ItemResults|ConvertTo-Json -Depth 100 -Compress)) -ine [string]$output.ItemResultsHash){continue}
             try{

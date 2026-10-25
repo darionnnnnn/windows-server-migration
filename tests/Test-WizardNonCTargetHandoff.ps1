@@ -239,6 +239,21 @@ try {
         $tampered=Join-Path $Root 'tampered-target-nonc-handoff';[void][IO.Directory]::CreateDirectory($tampered);Get-ChildItem -LiteralPath $handoff.Directory -File -Recurse|ForEach-Object {$relative=$_.FullName.Substring($handoff.Directory.Length).TrimStart('\');$dest=Join-Path $tampered $relative;$destParent=Split-Path -Parent $dest;if(-not [IO.Directory]::Exists($destParent)){[void][IO.Directory]::CreateDirectory($destParent)};Copy-Item -LiteralPath $_.FullName -Destination $dest}
         [IO.File]::AppendAllText((Join-Path $tampered 'materials\transfer-result.json'),' ')
         $tamperRejected=$false;try{Get-WsmWizardNonCTargetHandoffPreview -Workspace $targetRoot -PairId $catalog.PairId -Directory $tampered -ExpectedManifestHash $independentHandoffHash -Jobs $targetRestoreJobs|Out-Null}catch{$tamperRejected=$true};if(-not $tamperRejected){throw 'Target preview accepted changed result bytes.'}
+        # S4: hidden files / hidden directories / hidden reparse points must not escape the exact-file and no-reparse enumeration.
+        function S4Message([string]$Dir){$m='';try{Get-WsmWizardNonCTargetHandoffStage $Dir $independentHandoffHash|Out-Null}catch{$m=$_.Exception.Message};$m}
+        function S4Variant([string]$Name){$d=Join-Path $Root $Name;[void][IO.Directory]::CreateDirectory($d);Get-ChildItem -LiteralPath $handoff.Directory|Copy-Item -Destination $d -Recurse;$d}
+        function S4Hide([string]$Path){[IO.File]::SetAttributes($Path,([IO.File]::GetAttributes($Path) -bor [IO.FileAttributes]::Hidden))}
+        if((S4Message $handoff.Directory) -ne ''){throw 'S4 control: the untouched Target NonC handoff must stage cleanly.'}
+        $s4File=S4Variant 's4-hidden-file';$s4FilePath=Join-Path $s4File 'stray-hidden.txt';[IO.File]::WriteAllText($s4FilePath,'stray');S4Hide $s4FilePath
+        if((S4Message $s4File) -notlike '*unexpected files*'){throw 'S4: a hidden extra file escaped the Target handoff exact-file check.'}
+        $s4Dir=S4Variant 's4-hidden-dir';$s4DirPath=Join-Path $s4Dir 'hidden-sub';[void][IO.Directory]::CreateDirectory($s4DirPath);[IO.File]::WriteAllText((Join-Path $s4DirPath 'inner.txt'),'stray');S4Hide $s4DirPath
+        if((S4Message $s4Dir) -notlike '*unexpected files*'){throw 'S4: a file inside a hidden subdirectory escaped the Target handoff exact-file check.'}
+        $s4Junction=S4Variant 's4-hidden-reparse';$s4JunctionTarget=Join-Path $Root 's4-junction-target';[void][IO.Directory]::CreateDirectory($s4JunctionTarget);$s4JunctionPath=Join-Path $s4Junction 'hidden-junction'
+        try{
+            & cmd.exe /c ('mklink /J "'+$s4JunctionPath+'" "'+$s4JunctionTarget+'"')|Out-Null;if($LASTEXITCODE -ne 0 -or -not [IO.Directory]::Exists($s4JunctionPath)){throw 'S4 fixture could not create a junction.'};S4Hide $s4JunctionPath
+            if((S4Message $s4Junction) -notlike '*Reparse point*'){throw 'S4: a hidden reparse point under the Target handoff tree escaped the no-reparse check.'}
+        }finally{if([IO.Directory]::Exists($s4JunctionPath)){& cmd.exe /c ('rmdir "'+$s4JunctionPath+'"')|Out-Null}}
+        if([IO.Directory]::Exists($s4JunctionPath)){throw 'S4 fixture left a reparse point behind.'}
         $imported=Import-WsmWizardNonCTargetHandoff -Workspace $targetRoot -PairId $catalog.PairId -Directory $handoff.Directory -ExpectedManifestHash $independentHandoffHash -PreviewId $preview.PreviewId -Jobs $targetRestoreJobs
         $afterHandoffProjection=Get-WsmWizardTargetRestoreProjection -Workspace $targetRoot -PairId $catalog.PairId -Jobs $targetRestoreJobs
         $afterNonCRow=@($afterHandoffProjection.Rows|Where-Object {$_.ItemId -ceq $item.ItemId})

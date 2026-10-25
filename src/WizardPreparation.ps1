@@ -22,27 +22,42 @@ function Get-WsmWizardPreparationFields($Review) {
     $fields
 }
 
+# S8: only a real null or an empty string is "blank"; false, 0 and 0.0 are legitimate typed values.
+function Test-WsmWizardPreparationBlankValue($Value) {
+    $null -eq $Value -or ($Value -is [string] -and $Value -ceq '')
+}
+
+# S9: the single judgement of whether a form value is a legal pick from its options.
+# The form, the save-time validation and the bulk preview all call this one function.
+function Get-WsmWizardPreparationChoiceIssue([string]$Type,$Options,$Value) {
+    if($Type -cne 'choice'){return ''}
+    if(Test-WsmWizardPreparationBlankValue $Value){return 'Unset'}
+    if($Value -is [string] -and $Value -cin @($Options)){return ''}
+    'OutsideOptions'
+}
+
 function Get-WsmWizardPreparationForm($Fields,[string]$Adapter='',[string]$AccountMode='') {
     $rows=New-Object 'System.Collections.Generic.List[object]'
     $labels=@{TargetPath='新電腦要存放的位置';TransferChannel='資料來源磁碟通道';ContentSelection='要保存的資料範圍';ExcludedRelativePaths='不搬移的子資料夾（每行一個）';Consistency='備份時如何避免檔案繼續變動';Metadata='需要保存的檔案權限';ConflictPolicy='遇到新電腦已有資料時';AclControlPolicy='檔案權限比對方式';BusinessChecks='搬移後需要確認的項目（每行一項）';Product='需要處理的軟體或服務';Procedure='人工處理步驟';Artifacts='需保留的交接資料（每行一項）';CatchUpPolicy='漏執行的排程如何處理';DesiredFinalState='日後另行核准啟用時的狀態';ActivationOwner='日後啟用的確認人';ActivationReason='日後啟用的理由';Value='新電腦使用的值';BindingInformation='網站位址與連接埠';PoolName='網站執行環境名稱';Protocol='網站連線方式';CertificateHash='網站憑證指紋';CertificateStoreName='網站憑證存放區';SslFlags='網站加密連線設定';Owner='共享設定的確認人';Reason='共享設定的確認理由';PrincipalUser='新電腦執行排程使用的帳號';ConfigOverrides='已審閱設定的調整';IisConfigChanges='網站設定的調整';DesiredChanges='已審閱設定的調整';ActivationPolicyFieldPointer='啟用設定的對應位置';Operation='這項設定要如何調整';ElementName='設定項目名稱';AttributeName='設定欄位名稱';BeforeValue='原本的設定值';AfterValue='新電腦使用的設定值';KeyAttributes='此設定的識別欄位';Name='設定名稱';managedRuntimeVersion='網站執行環境版本';managedPipelineMode='網站要求處理方式';enable32BitAppOnWin64='允許使用 32 位元網站程式';startMode='日後啟用時的啟動方式';queueLength='可等候處理的網站要求數';SslFlagsPresent='原始網站有指定加密連線設定';Description='用途說明';EncryptData='啟用 SMB 傳輸加密';DrainPolicy='共享資料變更時的處理方式';DrainEvidence='共享資料處理依據';Members='群組成員（每行一位）';ArtifactPath='公開憑證 CER 檔案位置';ArtifactHash='公開憑證檔案 SHA256';FullName='帳號顯示名稱';SecretRef='密碼保管項目參照（只填參照名稱，不填密碼）';Path='共享資料夾位置';Access='共享權限';AccountName='權限帳號';AccessControlType='允許或拒絕';AccessRight='共享權限等級';HasPrivateKey='來源憑證是否含私密金鑰';Thumbprint='憑證指紋';Store='目標憑證存放區'}
     $labels['InstalledSoftwareScope']='已安裝軟體目錄盤點狀態';$labels['SoftwareExclusionCandidates']='已確認的軟體安裝目錄排除候選';$labels['SoftwareScopeDiagnostics']='軟體目錄盤點限制與待辦';$labels['SoftwareId']='軟體項目識別';$labels['SourceKind']='安裝來源類型';$labels['Reason']='排除此安裝軟體目錄的依據';$labels['Coverage']='盤點完整性說明'
     $labels['ExactMemberSummary']='已確認的精確檔案集合'
-    $options=@{TransferChannel=@('C','NonC','External');ContentSelection=@('ExactFiles','WholeScope');Consistency=@('OwnerFreeze','Immutable');Metadata=@('DaclOwner','DaclOwnerSacl');ConflictPolicy=@('Block');AclControlPolicy=@('Exact','AllowAutoInheritedUpgrade');DesiredFinalState=@('Disabled','Enabled');CatchUpPolicy=@('PreserveSourceSettings','SkipMissedRuns','DedicatedManualCatchUp');Protocol=@('http','https');DrainPolicy=@('BlockNewOpens','CloseReviewedHandles');AccessControlType=@('Allow','Deny');AccessRight=@('Read','Change','Full')}
+    $options=@{TransferChannel=@('C','NonC','External');ContentSelection=@('ExactFiles','WholeScope');Consistency=@('OwnerFreeze','Immutable');Metadata=@('DaclOwner','DaclOwnerSacl');ConflictPolicy=@('Block');AclControlPolicy=@('Exact','AllowAutoInheritedUpgrade');DesiredFinalState=$(if($Adapter -ceq 'Service'){@('Disabled','Enabled','Manual','Automatic','Running')}else{@('Disabled','Enabled')});CatchUpPolicy=@('PreserveSourceSettings','SkipMissedRuns','DedicatedManualCatchUp');Protocol=@('http','https');DrainPolicy=@('BlockNewOpens','CloseReviewedHandles');AccessControlType=@('Allow','Deny');AccessRight=@('Read','Change','Full')}
     $walk={param($Value,[string]$Key,[string]$Name)
         if($rows.Count -ge 512){throw 'This review exceeds the bounded wizard form; use the existing controlled review workflow.'}
         $label=if($labels.ContainsKey($Name)){$labels[$Name]}else{$Name}
         if($Key -ceq 'ExactMemberSummary/Count'){$label='已確認檔案數'}elseif($Key -ceq 'ExactMemberSummary/SetHash'){$label='精確集合核對值'}elseif($Key -ceq 'ExactMemberSummary/Selection'){$label='範圍限制'}
-        $readonly=$Name -in @('TransferChannel','Index','ApplicationPath','FieldPointer','ActivationPolicyFieldPointer','ResourceItemId','ConsumerItemIds','RelativePath','SoftwareId','SourceKind','Reason','SourceInventoryHash','InventoryRevision','Selection','InstalledSoftwareScope','SoftwareExclusionCandidates','SoftwareScopeDiagnostics','ArtifactHash','SHA256','BeforeValue','Name','HasPrivateKey','Thumbprint','Store','Protocol') -or $Key -match '^(ConfigFiles|ExactMemberSummary)/' -or ($Name -ceq 'ContentSelection' -and $Value -ceq 'ExactMembers')
+        $readonly=$Name -in @('TransferChannel','Index','ApplicationPath','FieldPointer','ActivationPolicyFieldPointer','ResourceItemId','ConsumerItemIds','RelativePath','SoftwareId','SourceKind','Reason','SourceInventoryHash','InventoryRevision','Selection','InstalledSoftwareScope','SoftwareExclusionCandidates','SoftwareScopeDiagnostics','ArtifactHash','SHA256','BeforeValue','Operation','ElementName','AttributeName','ValuesWithheld','Name','HasPrivateKey','Thumbprint','Store','Protocol') -or $Key -match '^(ConfigFiles|ExactMemberSummary)/' -or ($Name -ceq 'ContentSelection' -and $Value -ceq 'ExactMembers')
         if($null -eq $Value -or $Value -is [string] -or $Value -is [bool] -or $Value -is [int] -or $Value -is [long]){
             $withheld=($Value -is [string] -and $Value -match '\[(?:review required|sensitive text|withheld)')
-            $type=if($Value -is [bool]){'boolean'}elseif($Value -is [int] -or $Value -is [long]){'integer'}elseif($options.ContainsKey($Name) -and $Value -cin $options[$Name]){'choice'}else{'text'}
+            $type=if($Value -is [bool]){'boolean'}elseif($Value -is [int] -or $Value -is [long]){'integer'}elseif($options.ContainsKey($Name) -and ($null -eq $Value -or $Value -is [string])){'choice'}else{'text'}
             $requiresSecretRef=($Key -ceq 'SecretRef' -and ($Adapter -ceq 'LocalUser' -or ($Adapter -ceq 'Service' -and [string]$AccountMode -ceq 'UserPassword') -or $Adapter -cin @('ScheduledTask','IISPool')))
             $requiresPublicCertificate=($Key -ceq 'Desired/ArtifactPath' -and $Adapter -ceq 'Certificate')
             $requiredCommand=$false
             if($Key -match '^WorkloadFieldReviews/(\d+)/Value$' -and $Fields.Contains('WorkloadFieldReviews')){$position=[int]$Matches[1];$reviews=@($Fields.WorkloadFieldReviews);if($position -lt $reviews.Count){$requiredCommand=([string]$reviews[$position].FieldPointer -match '/Command$')}}
-            $required=$Name -in @('TargetPath','ActivationOwner','ActivationReason','Owner','Reason','Product','Procedure') -or $requiresSecretRef -or $requiresPublicCertificate -or $requiredCommand
+            $required=$Name -in @('TargetPath','ActivationOwner','ActivationReason','Owner','Reason','Product','Procedure','DrainPolicy','DrainEvidence') -or $requiresSecretRef -or $requiresPublicCertificate -or $requiredCommand
             $fieldOptions=[string[]]@();if($options.ContainsKey($Name)){$fieldOptions=[string[]]@($options[$Name])}
-            $rows.Add([pscustomobject][ordered]@{key=$Key;label=$label;type=$type;value=$Value;required=$required;editable=(-not $readonly -and -not $withheld);options=$fieldOptions;origin=$(if($withheld){'ProtectedEvidence'}elseif($Value -eq '' -or $null -eq $Value){'NeedsHumanDecision'}else{'CurrentDraft'})})
+            $choiceIssue=if(-not $readonly -and -not $withheld){Get-WsmWizardPreparationChoiceIssue $type $fieldOptions $Value}else{''}
+            $rows.Add([pscustomobject][ordered]@{key=$Key;label=$label;type=$type;value=$Value;required=$required;editable=(-not $readonly -and -not $withheld);options=$fieldOptions;origin=$(if($withheld){'ProtectedEvidence'}elseif((Test-WsmWizardPreparationBlankValue $Value) -or $choiceIssue){'NeedsHumanDecision'}else{'CurrentDraft'})})
         }elseif($Value -is [array]){
             if(-not @($Value|Where-Object {$null -ne $_ -and $_ -isnot [string]}).Count){$rows.Add([pscustomobject][ordered]@{key=$Key;label=$label;type='lines';value=(@($Value)-join "`n");required=($Name -eq 'BusinessChecks');editable=(-not $readonly);options=@();origin='CurrentDraft'})}
             else{for($i=0;$i -lt $Value.Count;$i++){& $walk $Value[$i] ($Key+'/'+$i) $Name}}
@@ -163,6 +178,11 @@ function Save-WsmWizardPreparationReview {
     foreach($field in @($projection.FormFields|Where-Object {$_.editable -and $_.required})){
         $effective=if($Answers.Contains([string]$field.key)){$Answers[[string]$field.key]}else{$field.value}
         if($null -eq $effective -or ($effective -is [string] -and [string]::IsNullOrWhiteSpace($effective)) -or ($effective -is [array] -and -not $effective.Count)){throw (New-WsmWizardPreparationFieldError ([string]$field.key) required)}
+    }
+    # S9: an unanswered draft value outside its options must fail here with a field pointer, not later in the core submit.
+    foreach($field in @($projection.FormFields|Where-Object {$_.editable -and $_.type -ceq 'choice'})){
+        $effective=if($Answers.Contains([string]$field.key)){$Answers[[string]$field.key]}else{$field.value}
+        if((Get-WsmWizardPreparationChoiceIssue 'choice' @($field.options) $effective) -ceq 'OutsideOptions'){throw (New-WsmWizardPreparationFieldError ([string]$field.key) option)}
     }
     Submit-WsmAssistiveSpecReview -Workspace $Workspace -PairId $PairId -ItemId $ItemId -ExpectedDecisionRevision $review.DecisionRevision -ExpectedAssistiveRevision $review.AssistiveRevision -ExpectedSelectionRevision $review.SelectionRevision -Owner $Owner -Evidence $Evidence -Fields $fields
 }
