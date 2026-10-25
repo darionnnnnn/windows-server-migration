@@ -2698,6 +2698,41 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 網路媒體在讀取時不探測是否存在（`NotChecked`），因為離線或逾時會卡住畫面。
   - 同一份媒體上「Move 之後、收據寫入之前」的當機屬於既有 B7 範圍，這次沒有新增劇本。
 
+### 17.121 C1：CI 既有失敗（止血、歸因、修正）
+
+- 背景：
+  - Q6b 接線（17.119）時發現，`contracts` 在 `codex/migration-7` 上每次都是 failure。
+  - 標成 success 的 run 只是「只改文件時各 job 跳過」，不是真的跑過。真正跑過且全綠的最後一次是 dev `ecf56c3`（2026-10-11）。
+  - 盤點工作階段（使用者）定案：另開本段，排在 A1 之後、P2 批次之前。目標是收尾前四個 workflow 全綠，或只剩有明確理由的跳過。
+- **止血（3ed1708）**
+  - `contracts.yml` 四個 job 的 23 個測試步驟加上 `if: ${{ !cancelled() }}`，一步失敗不再遮住後面的合約。job 與 required-checks 仍照實失敗。
+  - 長期被略過的步驟這次都執行了，全部通過：Inventory ZIP、Noninteractive exit code、PowerShell 7、Offline report、Fleet integration、Offline HTML（`Test-AssistiveUi`）。
+- **(b) fixtures「Durable activation account and installer contracts」**（0e8b827）
+  - 起點：dev `74418af`（10-13）。
+  - 根因：dev `01ca319`（10-13，第六輪之前）讓 `Export-WsmMigrationPackageCore` 以 `-IncludeSoftwareCatalog` 重新盤點來源，但 `Test-ObservationWorkflow` 的 `Export-WsmInventory` 替身沒有這個參數。這一步依序執行 28 支測試、遇錯即停，所以第 3 支之後的 25 支從 10-13 起就沒在 CI 上跑過。
+  - 修正：替身補上參數。
+  - 修正後在 CI 跑完全部 28 支，皆通過，沒有冒出新的失敗。
+- **(a) migration-round-three `Test-AssistiveWorkloadIntegration`「NonC result row does not match」**（19b2b91）
+  - 二分：在 `74418af..8966669`（131 個 commit）之間用 `git archive` 匯出各版本二分，不切換分支。
+    - 74418af 好、3607ac9 好、d2fa8f9 好。
+    - 第一個壞的是第六輪 `6204dc0`（10-15）。
+  - 根因：`6204dc0` 要求 NonC 結果列攜帶 `AccountMap` 與 `RequireSacl`，並與審閱過的 entry 比對。產品端的結果產生器本來就會寫這兩欄，但這支測試手寫的結果列沒有。屬於第六輪 fixture 過期，不是產品缺陷。
+  - 修正：結果列從 entry 帶入這兩欄。本機 45 項通過；修正前在同一處失敗，作為反向證據。
+- **本機與 CI 的差異**（記錄，不屬於缺陷）：
+  - `Test-ObservationWorkflow`、`Test-ShareSourceWorkflow`、`Test-FleetExecutionBindings` 把工作區寫死在 `C:\` 根目錄，一般權限下 `SetAccessControl` 會被拒，只能在 CI（管理員）原樣執行。`Test-ObservationWorkflow` 的修正另以「根目錄改到 %TEMP%」的暫時副本在本機驗證。
+  - `Test-RemoteStorageApproval` 依賴 `-File` 的指令碼範圍，用 `-Command` 執行時找不到 `$module`。CI 用 `-File`，沒有問題。
+- **結果（19b2b91）**：
+  - Windows PowerShell contracts：success。scope、fixtures、delta-workflow、migration-round-two、migration-round-three 的 powershell 與 pwsh 皆 success，required-checks 也是 success。
+  - Native released console：success。
+  - Native round-six acceptance gaps：success。
+- **payload-boundary**：
+  - 這個 workflow 只在 push 到 main、開 PR，或從預設分支手動觸發時才會執行，`codex/migration-7` 上無法觸發（dispatch 回 404：預設分支沒有這個 workflow）。
+  - 改在本機執行它唯一的測試 `Test-LargePayload.ps1`：PASS（實際檔案大於 4 GiB，匯出、雜湊、切塊、去重、重建與尾端檢查皆通過，約 117 秒）。
+  - 併入 dev 或 main 後，這個 workflow 要再跑一次。
+- **限制與待辦**：
+  - `C:\` 底下有約 40 個更早的 `wsm-*` 測試殘留目錄，是上述寫死 `C:\` 的測試在先前失敗時留下的。這次沒有刪除，交由使用者決定。
+  - 這三支寫死 `C:\` 的測試，在一般權限的開發機上無法執行。這次不改，記為環境限制。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -2918,9 +2953,10 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R26-B6 | `src/AssistiveRestore.ps1` 容量加總、`src/WizardRuntime.ps1` 原因文字 | 同一磁碟的容量加總也算進已還原的項目，已還原完成後，其他項目仍被誤判為容量不足 | 已還原項目改用 `Get-WsmAssistiveRestoredItemIdSet` 判定，不計入加總、也不標記；改為逐項判定（單項超量只擋該項），合計不足時標記同磁碟所有待寫項目，並附合計數字（17.114，與 Q3 同一段） | `Test-TargetCapacityStaging`（B6 三個情境，先在原版重現誤判再修正） | 539408f |
 | Q6a-i | `src/Recovery.ps1` Complete-WsmAssistiveOperationRepair、`src/AssistiveRestore.ps1` 寫入器 | 沒有 owner 的 intent 遇到同內容外部檔時，Repair 記為工具擁有，回復時會移走外部檔 | 寫入器在 Move 前記錄綁定封存雜湊的 Prepared 證據；Repair 必須同時具備「intent、Move 前紀錄、staging 已消耗」才記為工具擁有，否則一律記為 AdoptedExisting（17.118） | `Test-RoundSevenGapCoverage` I 區段（I1～I10，含真實寫入器在 Move 後當機）、`Test-JournalReplayCoverage` | `88f7e8e` |
 | Q6b | `tests/Test-HtmlBridge.js`、`Test-StartBackupReplayHttp.js`、`Test-C2D2HtmlActions.ps1`、`Test-BackupProgressBrowser.js`、`Test-NativeWizardJourney.js` | 本機 AdGuard 會重設 loopback 連線、卡住超過約 64 KiB 的回應、改寫 HTML，五支測試因此長期失敗；`new URL()` 把 `/api/../` 正規化，路徑拒絕從未真正測到；帳密端點與 socket 邊界沒有測試 | 只在沒收到任何回應位元組時重試，並計數；原始 socket 路徑探針；瀏覽器在本機可從磁碟提供 UI，帶 console 安全標頭並計數；本機遇環境重設回報 ENVIRONMENT-LIMITED（exit 3，不算通過）；四個 workflow 設 `WSM_TEST_NO_DISK_UI=1`，CI 關閉退路；新測試用原生 GET 比對 UI 位元組（17.119） | `Test-HttpSocketEdgeCases.js`（109）、`Test-ConsoleAssetTransport.js`、`Test-HtmlBridge.js`（45）、`Test-StartBackupReplayHttp.js`（17）、`Test-C2D2HtmlActions.ps1`（185）、`Test-BackupProgressBrowser.js` | `775daad` |
-| R6 | `src/WizardBackup.ps1` `Get-WsmIndependentCopyMediaClass`、獨立副本工作區外檢查 | `\\?\C:\`、`\\.\C:\`、`//?/C:/`、`\\localhost\C$`、`\\127.0.0.1\C$` 被判為 Network，繞過「本機固定磁碟不算獨立媒體」的拒絕；工作區檢查只比對字串前綴 | 目的地先 canonical 化；本機別名 UNC 折回實體磁碟分級；工作區包含改比對實體路徑，解析失敗即拒絕（17.120） | `Test-IndependentCopyHardening`（R6 三段） | （A1-COMMIT） |
-| R7 | `Invoke-WsmWizardIndependentCopy` catch、`ConvertTo-WsmWizardBackupResult`、`Get-WsmWizardIndependentCopyProjection` | 第二次副本失敗或取消會抹掉先前的 Verified；媒體被刪後仍顯示「已驗證」 | 保留收據，另存 `IndependentCopyLastAttempt`（Failed／Cancelled）；媒體缺失或在收據自己的媒體上驗證失敗時，改為「收據完整；媒體需重新驗證」並附「重新驗證」按鈕（17.120） | `Test-IndependentCopyHardening`（R7、same-media、A8）、`Test-WizardBackup` Case c、`Test-BackupWorkbenchBrowser` I 區塊 | （A1-COMMIT） |
-| A1-容量 | `Invoke-WsmWizardIndependentCopy` | 獨立副本沒有容量預檢 | 寫入前比較可用空間：不足時以 `InsufficientSpace` 拒絕且零寫入；查詢失敗時警告並記為 Unknown（17.120） | `Test-IndependentCopyHardening`（容量段） | （A1-COMMIT） |
+| R6 | `src/WizardBackup.ps1` `Get-WsmIndependentCopyMediaClass`、獨立副本工作區外檢查 | `\\?\C:\`、`\\.\C:\`、`//?/C:/`、`\\localhost\C$`、`\\127.0.0.1\C$` 被判為 Network，繞過「本機固定磁碟不算獨立媒體」的拒絕；工作區檢查只比對字串前綴 | 目的地先 canonical 化；本機別名 UNC 折回實體磁碟分級；工作區包含改比對實體路徑，解析失敗即拒絕（17.120） | `Test-IndependentCopyHardening`（R6 三段） | `0c8f6ad` |
+| R7 | `Invoke-WsmWizardIndependentCopy` catch、`ConvertTo-WsmWizardBackupResult`、`Get-WsmWizardIndependentCopyProjection` | 第二次副本失敗或取消會抹掉先前的 Verified；媒體被刪後仍顯示「已驗證」 | 保留收據，另存 `IndependentCopyLastAttempt`（Failed／Cancelled）；媒體缺失或在收據自己的媒體上驗證失敗時，改為「收據完整；媒體需重新驗證」並附「重新驗證」按鈕（17.120） | `Test-IndependentCopyHardening`（R7、same-media、A8）、`Test-WizardBackup` Case c、`Test-BackupWorkbenchBrowser` I 區塊 | `0c8f6ad` |
+| A1-容量 | `Invoke-WsmWizardIndependentCopy` | 獨立副本沒有容量預檢 | 寫入前比較可用空間：不足時以 `InsufficientSpace` 拒絕且零寫入；查詢失敗時警告並記為 Unknown（17.120） | `Test-IndependentCopyHardening`（容量段） | `0c8f6ad` |
+| C1 | `.github/workflows/contracts.yml`、`tests/Test-ObservationWorkflow.ps1`、`tests/Test-AssistiveWorkloadIntegration.ps1` | contracts 自 dev 74418af 起每次失敗：步驟一失敗就遮住後面的合約；Durable activation 第 3 支替身過期（01ca319），後面 25 支從未在 CI 執行；round-three 的 NonC 結果列 fixture 過期（第六輪 6204dc0） | 合約步驟加 `!cancelled()`；替身補 `-IncludeSoftwareCatalog`；fixture 結果列補 `AccountMap`／`RequireSacl`；四個 workflow 在 19b2b91 全綠，payload-boundary 改在本機驗證（17.121） | contracts（全部 job）、`Test-LargePayload`（本機） | `3ed1708`、`0e8b827`、`19b2b91` |
 
 ### 第六輪終檢
 
