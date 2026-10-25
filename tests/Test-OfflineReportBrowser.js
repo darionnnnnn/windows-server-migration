@@ -132,6 +132,60 @@ async function captureCsv(page, panel) {
     assert.equal(csv.length - 1, serviceBacked, 'filtered CSV must contain exactly the filtered rows');
     await kindSelect.selectOption('');
 
+    // R24：逐檔下鑽（有界）。item-0010 有 250 個檔案：只列前 200 個並註明另有 50 個；item-0011 只有 3 個。
+    {
+      const rowOf = id => page.locator(`#tbl-backed tbody tr[data-id="${id}"]`);
+      await search.fill('item-0010');
+      const row10 = rowOf('item-0010');
+      assert.equal(await row10.locator('details.file-detail').count(), 1, 'R24: the backed item carries one static details element');
+      const details10 = row10.locator('details.file-detail');
+      assert.equal(await details10.evaluate(el => el.open), false, 'R24: the file list starts collapsed');
+      const summary10 = details10.locator('summary');
+      assert.match(await summary10.innerText(), /檔案明細/, 'R24: the summary names the file list');
+      assert.match(await summary10.innerText(), /250/, 'R24: the summary shows the total');
+      await summary10.focus(); await page.keyboard.press('Enter');
+      assert.equal(await details10.evaluate(el => el.open), true, 'R24: Enter on the summary opens the list (keyboard)');
+      assert.equal(await details10.locator('li').count(), 200, 'R24: at most 200 files are listed');
+      const text10 = await details10.innerText();
+      assert.match(text10, /共 250 個檔案/, 'R24: the total is stated');
+      assert.match(text10, /另有 50 個檔案未列出/, 'R24: the remainder hint says how many are not listed');
+      assert.match(text10, /完整明細見工作台或 artifacts 索引/, 'R24: the hint points at the full list');
+      assert.ok(text10.includes('<img src=x onerror=alert(1)>.txt'), 'R24: a hostile file name is shown as literal text');
+      assert.equal(await details10.locator('img, script, iframe, a').count(), 0, 'R24: file names never become elements');
+      assert.ok(!text10.includes(String.fromCharCode(0x202e)), 'R24: the right-to-left override is not passed through');
+      assert.ok(/rtl\\\\u202e/i.test(text10), 'R24: the override is shown as a visible \\u202E marker');
+      assert.ok(text10.includes('…（已截斷）'), 'R24: an over-long path is marked as truncated');
+      assert.ok(text10.includes('=SUM(1+1)\\cmd.xlsx'), 'R24: a formula-looking path is plain text');
+      assert.ok(text10.includes('bulk\\file-001.dat') && !text10.includes('bulk\\file-244.dat'), 'R24: the list is the first 200 in index order');
+      assert.ok(!text10.includes('emptydir'), 'R24: directory rows are not listed as files');
+      assert.match(text10, /2\.0 KiB/, 'R24: sizes use the same units as the table');
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'R24: opening the list does not overflow the page');
+      // 檔案數欄的 CSV 與搜尋不受明細影響：CSV 該列只有數字。
+      const csvBacked = await captureCsv(page, backed);
+      const filesCol = csvBacked[0].indexOf('檔案數');
+      assert.equal(csvBacked.length, 2, 'R24: the search narrows the CSV to the matched row');
+      assert.equal(csvBacked[1][filesCol], '250', 'R24: the CSV file-count cell holds the number only, not the list');
+      assert.ok(!csvBacked[1].join(',').includes('bulk'), 'R24: the CSV never carries the file list');
+      await search.fill('item-0011');
+      const details11 = rowOf('item-0011').locator('details.file-detail');
+      await details11.locator('summary').click();
+      assert.equal(await details11.locator('li').count(), 3, 'R24: a small item lists every file');
+      assert.doesNotMatch(await details11.innerText(), /另有/, 'R24: no remainder hint when everything is listed');
+      assert.match(await details11.innerText(), /共 3 個檔案/);
+      await search.fill('item-0002');
+      assert.equal(await rowOf('item-0002').locator('details.file-detail').count(), 1, 'R24: a one-file item also has a list');
+      await search.fill('');
+      // 320／390 寬：展開後頁面不得水平溢位。
+      for (const width of [320, 390]) {
+        await page.setViewportSize({ width, height: 844 });
+        await search.fill('item-0010');
+        assert.equal(await details10.evaluate(el => el.open), true);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth <= 0), true, `R24: no horizontal page overflow at ${width}px with the list open`);
+        await page.screenshot({ path: path.join(screens, `r24-filelist-${width}.png`) });
+      }
+      await page.setViewportSize({ width: 1280, height: 900 }); await search.fill('');
+    }
+
     // Pending tab: reason filter, CSV, coverage regions table.
     await tabs.nth(1).click();
     const pending = page.locator('#pending'), pendingStatus = pending.locator('.toolbar').first().locator('[role=status]');
@@ -232,6 +286,17 @@ async function captureCsv(page, panel) {
     assert.equal(await noJsPage.getByRole('button', { name: '匯出 CSV' }).count(), 0, 'no CSV button without JavaScript');
     assert.ok((await noJsPage.locator('#backed .js-note').innerText()).includes('需啟用 JavaScript 才能匯出'));
     assert.equal(await noJsPage.locator('#tbl-backed tbody tr:visible').count(), backedExpected.length);
+    // R24：沒有 JavaScript 時，檔案明細仍是靜態 <details>，原生即可展開，內容與有 JS 時相同。
+    {
+      const staticDetails = noJsPage.locator('#tbl-backed tr[data-id="item-0010"] details.file-detail');
+      assert.equal(await staticDetails.count(), 1, 'R24 no-JS: the static details element is in the page');
+      assert.equal(await staticDetails.evaluate(el => el.open), false, 'R24 no-JS: collapsed by default');
+      await staticDetails.locator('summary').click();
+      assert.equal(await staticDetails.evaluate(el => el.open), true, 'R24 no-JS: opens natively without a script');
+      assert.equal(await staticDetails.locator('li:visible').count(), 200, 'R24 no-JS: the same 200 entries are visible');
+      assert.match(await staticDetails.innerText(), /另有 50 個檔案未列出/, 'R24 no-JS: the remainder hint is shown');
+      assert.ok((await staticDetails.innerText()).includes('<img src=x onerror=alert(1)>.txt'), 'R24 no-JS: the hostile name is still plain text');
+    }
     await noJsPage.screenshot({ path: path.join(screens, 'b3-nojs.png') });
     await noJs.close();
 

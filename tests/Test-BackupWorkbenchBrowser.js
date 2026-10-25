@@ -88,8 +88,8 @@ async function openWorkbench(browser, fixture, scenario, hash, contextOptions) {
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   const session = { token: 'memory-only-test-token', sessionId: 'fixture-session', contextId: 'fixture-context', hostName: 'fixture-host', role: 'Source', workspace: root, pairId: 'fixture-pair', revision: 5, decisionRevision: 7, selectionRevision: 3, sourceSelectionRevision: 3, dataVersion: 'fixture-data-1', principal: 'fixture-user' };
   const viewContext = () => ({ sessionId: session.sessionId, contextId: session.contextId, pairId: 'fixture-pair', role: 'Source', revision: session.revision, decisionRevision: session.decisionRevision, selectionRevision: session.selectionRevision, sourceSelectionRevision: session.sourceSelectionRevision, dataVersion: session.dataVersion, readUtc: new Date().toISOString() });
-  const results = scenario.results;
-  const view = () => ({ kind: 'BackupItemResultsView', available: true, integrity: 'Verified', attemptId: 'fixture-attempt', backupOperationId: 'fixture-op', generatedUtc: results.GeneratedUtc, inventorySource: results.InventorySource, offlineReadiness: 'AwaitingIndependentCopy', counts: results.Counts, rows: results.Rows, software: results.Software, schemaVersion: results.SchemaVersion || 1, coverageRegions: Object.prototype.hasOwnProperty.call(results, 'CoverageRegions') ? results.CoverageRegions : null, excludedRegions: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegions') ? results.ExcludedRegions : null, excludedRegionsBinding: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegionsBinding') ? results.ExcludedRegionsBinding : null, excludedCompleteness: Object.prototype.hasOwnProperty.call(results, 'ExcludedCompleteness') ? results.ExcludedCompleteness : null, independentCopy: scenario.copy, reviewItemCount: scenario.reviewItemCount, newerAttempt: scenario.newerAttempt === undefined ? null : scenario.newerAttempt, unreadableAttempts: scenario.unreadableAttempts === undefined ? { count: 0, files: [] } : scenario.unreadableAttempts, viewContext: viewContext() });
+  // R21：scenario.results 可在測試中途換掉（模擬備份完成後新的結果集），所以每次讀取都看目前的 scenario.results。
+  const view = () => { const results = scenario.results; return ({ kind: 'BackupItemResultsView', available: true, integrity: 'Verified', attemptId: 'fixture-attempt', backupOperationId: 'fixture-op', generatedUtc: results.GeneratedUtc, inventorySource: results.InventorySource, offlineReadiness: 'AwaitingIndependentCopy', counts: results.Counts, rows: results.Rows, software: results.Software, schemaVersion: results.SchemaVersion || 1, coverageRegions: Object.prototype.hasOwnProperty.call(results, 'CoverageRegions') ? results.CoverageRegions : null, excludedRegions: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegions') ? results.ExcludedRegions : null, excludedRegionsBinding: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegionsBinding') ? results.ExcludedRegionsBinding : null, excludedCompleteness: Object.prototype.hasOwnProperty.call(results, 'ExcludedCompleteness') ? results.ExcludedCompleteness : null, independentCopy: scenario.copy, reviewItemCount: scenario.reviewItemCount, newerAttempt: scenario.newerAttempt === undefined ? null : scenario.newerAttempt, unreadableAttempts: scenario.unreadableAttempts === undefined ? { count: 0, files: [] } : scenario.unreadableAttempts, viewContext: viewContext() }); };
   await page.route(/\/api\/.*/, async route => {
     const request = route.request(), parsed = new URL(request.url()), pathname = parsed.pathname;
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -98,10 +98,12 @@ async function openWorkbench(browser, fixture, scenario, hash, contextOptions) {
     if (pathname === '/api/wizard') return json({ kind: 'WizardProjection', intentRequired: false, legacy: false, role: 'Source', workspaceRole: 'Source', roleMatchesWorkspace: true, pairId: 'fixture-pair', state: { CurrentStep: 'backup', Mode: 'ItemByItem' }, revision: session.revision, currentStep: 'backup', reviewGroupIndex: 0, groups: [], gates: [], actions: [], missingFields: [], scan: { status: 'Succeeded', hasResult: true, itemCount: 3, incompleteCount: 0 }, results: { scan: { status: 'Succeeded', hasDurableRecord: true }, backup: { status: 'Succeeded', hasDurableRecord: true }, restore: { status: 'NotStarted', hasDurableRecord: false }, hasAny: true }, context: { catalogRevision: 7, selectionRevision: 3, inventoryRevision: 1 } });
     if (pathname === '/api/wizard/runtime') return json({ Kind: 'WizardRuntimeProjection', Role: 'Source', PairId: 'fixture-pair', actions: [], viewContext: viewContext() });
     if (pathname === '/api/wizard/nonc') return json({ Kind: 'WizardNonCProjection', Role: 'Source', PairId: 'fixture-pair', ContextId: session.contextId, DataVersion: session.dataVersion });
-    if (pathname === '/api/jobs' && request.method() === 'GET') return json({ items: [{ jobId: 'fixture-backup-job', workspace: root, pairId: 'fixture-pair', role: 'Source', sessionId: 'fixture-session', contextId: 'fixture-context', startedRevision: 5, action: 'StartBackup', status: 'Succeeded', canCancel: false }] });
+    if (pathname === '/api/jobs' && request.method() === 'GET') calls.jobsHits = (calls.jobsHits || 0) + 1;
+    if (pathname === '/api/jobs' && request.method() === 'GET') return json({ items: [{ jobId: 'fixture-backup-job', workspace: root, pairId: 'fixture-pair', role: 'Source', sessionId: 'fixture-session', contextId: 'fixture-context', startedRevision: 5, action: scenario.jobAction || 'StartBackup', status: scenario.jobStatus || 'Succeeded', canCancel: false }] });
     if (pathname === '/api/view' && request.method() === 'GET') {
       if (parsed.searchParams.get('contextId') !== session.contextId || parsed.searchParams.get('dataVersion') !== session.dataVersion) return json({ code: 'stale_revision', message: 'Fixture view changed.', nextStep: 'Reload.', correlationId: 'fixture-stale' }, 409);
       if (parsed.searchParams.get('action') === 'backup-items') {
+        calls.viewHits = (calls.viewHits || 0) + 1;
         if (scenario.delayView) await scenario.delayView;
         if (scenario.viewError) return json({ code: 'package_changed', message: '備份明細暫時無法讀取。', nextStep: '稍後重試。', correlationId: 'fixture-view-error' });
         if (scenario.failedAttempt) return json({ kind: 'BackupItemResultsView', available: false, reason: '目前還沒有已交付的備份。', failedAttempt: scenario.failedAttempt, unreadableAttempts: scenario.unreadableAttempts === undefined ? { count: 0, files: [] } : scenario.unreadableAttempts, viewContext: viewContext() });
@@ -123,7 +125,7 @@ async function openWorkbench(browser, fixture, scenario, hash, contextOptions) {
     return json({ message: `Unhandled fixture route ${request.method()} ${pathname}` }, 404);
   });
   await page.goto(`http://127.0.0.1:${server.address().port}/${hash}`, { waitUntil: 'domcontentloaded' });
-  return { page, context, errors, fileRequests, operations, gates };
+  return { page, context, errors, fileRequests, operations, gates, calls };
 }
 const gate = () => { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; };
 const waitResults = async page => { await page.waitForSelector('#backup-item-results [role=tablist]', { timeout: 30000 }); };
@@ -916,6 +918,51 @@ const waitResults = async page => { await page.waitForSelector('#backup-item-res
         for (const selector of ['.backup-newer-attempt', '.backup-unreadable']) { const rect = await page.locator('#backup-item-results ' + selector).boundingBox(); assert.ok(rect && rect.x >= 0 && rect.x + rect.width <= width + 1, `${width}px: ${selector} leaves the viewport (${JSON.stringify(rect)})`); }
         await page.screenshot({ path: path.join(screens, `a2-newer-attempt-${width}.png`) });
         assert.deepEqual(errors, []); await context.close();
+      }
+    }
+
+    // ================= R21：停在 #jobs?filter=backup&… 時，備份／獨立副本完成事件要自動更新三個分頁 =================
+    {
+      const generated = page => page.locator('#backup-item-results').innerText().then(t => (t.match(/產生時間\s*([^\n]+)/) || [])[1] || '');
+      for (const [name, action, hash] of [['StartBackup', 'StartBackup', '#jobs?filter=backup&tab=pending'], ['IndependentCopy', 'IndependentCopy', '#jobs?filter=backup&tab=backed&type=Service']]) {
+        const scenario = { ...base, jobStatus: 'Running', jobAction: action };
+        const { page, errors, calls } = await openWorkbench(browser, fixture, scenario, hash);
+        await waitResults(page);
+        await page.evaluate(() => window.WsmConsole.refreshJobs({ background: true }));   // 先讓前端記住「執行中」
+        const before = await generated(page), hitsBefore = calls.viewHits;
+        scenario.results = { ...fixture.results, GeneratedUtc: '2026-12-31T23:59:59Z' };
+        scenario.jobStatus = 'Succeeded';
+        await page.evaluate(() => window.WsmConsole.refreshJobs({ background: true }));
+        await page.waitForFunction(h => location.hash.startsWith(h), hash.split('&')[0]);
+        await page.waitForFunction(prev => { const t = document.querySelector('#backup-item-results')?.innerText || ''; const m = t.match(/產生時間\s*([^\n]+)/); return m && m[1] !== prev; }, before, { timeout: 15000 }).catch(() => {});
+        assert.ok(calls.viewHits > hitsBefore, `R21 ${name}: the completion event re-reads the backup results while the hash carries a query (hits ${hitsBefore} -> ${calls.viewHits})`);
+        assert.notEqual(await generated(page), before, `R21 ${name}: the visible result set changed`);
+        assert.equal(await page.evaluate(() => location.hash), hash, `R21 ${name}: the tab and filters in the hash are kept`);
+        await page.waitForSelector('#backup-item-results [role=tablist]');
+        assert.deepEqual(errors, []); await page.context().close();
+      }
+      {
+        // refreshActiveData 要先切掉 query 再取 view 名稱：停在 #jobs?filter=backup&… 時，它必須真的去重讀作業清單，而不是把整段 hash 當 view 名稱後直接 return。
+        const { page, errors, calls } = await openWorkbench(browser, fixture, { ...base }, '#jobs?filter=backup&tab=pending&type=DataRoot');
+        await waitResults(page);
+        await page.waitForTimeout(300);
+        const jobsBefore = calls.jobsHits;
+        await page.evaluate(() => window.WsmConsole.refreshActiveData());
+        await page.waitForFunction(() => true);
+        assert.ok(calls.jobsHits > jobsBefore, `R21: refreshActiveData on a hash with a query re-reads the job list (hits ${jobsBefore} -> ${calls.jobsHits})`);
+        assert.equal(await page.evaluate(() => location.hash), '#jobs?filter=backup&tab=pending&type=DataRoot', 'R21: refreshActiveData keeps the hash');
+        assert.deepEqual(errors, []); await page.context().close();
+      }
+      {
+        const scenario = { ...base, jobStatus: 'Running', jobAction: 'Inventory' };
+        const { page, errors, calls } = await openWorkbench(browser, fixture, scenario, '#jobs?filter=backup&tab=pending');
+        await waitResults(page);
+        await page.evaluate(() => window.WsmConsole.refreshJobs({ background: true }));
+        const hitsBefore = calls.viewHits; scenario.jobStatus = 'Succeeded';
+        await page.evaluate(() => window.WsmConsole.refreshJobs({ background: true }));
+        await page.waitForTimeout(800);
+        assert.equal(calls.viewHits, hitsBefore, 'R21: an unrelated job completing does not reload the backup results');
+        assert.deepEqual(errors, []); await page.context().close();
       }
     }
 

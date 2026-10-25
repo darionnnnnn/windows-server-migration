@@ -482,6 +482,12 @@ function Get-WsmBackupBoundScanExclusions($Plan,[string]$Workspace,$Profile) {
     }
 }
 
+# R24：離線報告的逐檔下鑽有雙重上限，讓報告大小與「檔案很多」脫鉤：
+#   每個已備份項目最多列 200 個檔案（相對路徑＋大小，依索引順序），整份報告合計最多 5000 筆；超過時只留總數並註明「完整明細見工作台或 artifacts 索引」。
+# 取樣在這裡做（唯一讀 artifacts 的地方）；路徑一律經 ConvertTo-WsmWizardRestoreFileText（ConvertTo-WsmBackupSafePathText 的 17.123 收斂規則）安全文字化，
+# 結果掛在資料列的 FileSample，由 Export-WsmBackupItemResults 搬到文件頂層的 FileLists（資料列本身與工作台檢視不變）。
+$script:WsmOfflineReportFileListItemLimit=200
+$script:WsmOfflineReportFileListTotalLimit=5000
 function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[bool]$OfflineFullSet,$WorkloadDiscovery=$null) {
     $reasonText=@{
         PermissionDenied=@('盤點時權限不足，工具無法讀取此項目','以具備權限的帳號重新盤點並備份，或人工處理')
@@ -500,9 +506,12 @@ function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[b
     foreach($artifact in @($ArtifactRows)){
         if($null -eq $artifact){continue}
         $artifactItemId=[string]$artifact.ItemId
-        if(-not $stats.ContainsKey($artifactItemId)){$stats[$artifactItemId]=@{Records=0;Files=0;Bytes=[long]0}}
+        if(-not $stats.ContainsKey($artifactItemId)){$stats[$artifactItemId]=@{Records=0;Files=0;Bytes=[long]0;Sample=(New-Object 'System.Collections.Generic.List[object]')}}
         $stat=$stats[$artifactItemId];$stat.Records++
-        if(-not $artifact.Directory){$stat.Files++;if($artifact.Data){$stat.Bytes+=[long]$artifact.Data.Bytes}}
+        if(-not $artifact.Directory){
+            $stat.Files++;if($artifact.Data){$stat.Bytes+=[long]$artifact.Data.Bytes}
+            if($stat.Sample.Count -lt $script:WsmOfflineReportFileListItemLimit){$sampleBytes=[long]0;if($artifact.Data){$sampleBytes=[long]$artifact.Data.Bytes};$stat.Sample.Add([object[]]@([string]$artifact.RelativePath,$sampleBytes))}
+        }
     }
     $planById=[ordered]@{};foreach($planItem in @($Plan.Items)){$planById[[string]$planItem.ItemId]=$planItem}
     $inventoryById=@{};if($Inventory){foreach($inventoryItem in @($Inventory.Items)){$inventoryById[[string]$inventoryItem.ItemId]=$inventoryItem}}
@@ -525,6 +534,7 @@ function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[b
     $uncRefsByConsumer=@{}
     if($WorkloadDiscovery -and $WorkloadDiscovery.PSObject.Properties['References']){foreach($uncReference in @($WorkloadDiscovery.References)){$uncReferencePath=[string](& $get $uncReference 'ResolvedPath');if(-not $uncReferencePath){$uncReferencePath=[string](& $get $uncReference 'RawValue')};$uncConsumerId=[string](& $get $uncReference 'ConsumerItemId');if($uncConsumerId -and (Test-WsmUncPath $uncReferencePath) -and -not $uncRefsByConsumer.ContainsKey($uncConsumerId)){$uncRefsByConsumer[$uncConsumerId]=$uncReferencePath}}}
     $rows=New-Object 'System.Collections.Generic.List[object]'
+    $fileListBudget=[long]$script:WsmOfflineReportFileListTotalLimit
     foreach($id in $ids){
         $planItem=$null;if($planById.Contains($id)){$planItem=$planById[$id]}
         $inventoryItem=$null;if($inventoryById.ContainsKey($id)){$inventoryItem=$inventoryById[$id]}
@@ -536,7 +546,7 @@ function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[b
         $isFileScope=($adapter -ceq 'FileScope')
         $transferChannel=$(if($isFileScope){[string](& $get $spec 'TransferChannel')}else{''})
         if($isFileScope -and -not $transferChannel){$transferChannel='C'}
-        $stat=$(if($stats.ContainsKey($id)){$stats[$id]}else{@{Records=0;Files=0;Bytes=[long]0}})
+        $stat=$(if($stats.ContainsKey($id)){$stats[$id]}else{@{Records=0;Files=0;Bytes=[long]0;Sample=(New-Object 'System.Collections.Generic.List[object]')}})
         $status='NotBackedUp';$code='NotSelected';$files=0;$bytes=[long]0
         if($included -and $isFileScope -and $transferChannel -ceq 'External'){$code='ExternalHandling'}
         elseif($included -and $isFileScope -and $transferChannel -ceq 'NonC' -and -not $OfflineFullSet){$code='SeparateNonCTransfer'}
@@ -573,6 +583,14 @@ function Get-WsmBackupItemResultRows($Plan,$Inventory,[object[]]$ArtifactRows,[b
         $unc=Get-WsmItemUncResponsibility ([pscustomobject]@{MigrationSpec=$spec;Settings=(& $get $base 'Settings')}) @($location)
         if(-not $unc -and $uncRefsByConsumer.ContainsKey($id)){$unc=Get-WsmUncResponsibility $uncRefsByConsumer[$id] $spec}
         if($unc){$resultRow | Add-Member NoteProperty UncResponsibility $unc}
+        if($status -ceq 'BackedUp' -and $files -gt 0){
+            $sampleEntries=New-Object 'System.Collections.Generic.List[object]'
+            $take=[Math]::Min([long]$stat.Sample.Count,[Math]::Max([long]0,$fileListBudget))
+            for($sampleIndex=0;$sampleIndex -lt $take;$sampleIndex++){$sampleEntries.Add([pscustomobject][ordered]@{Path=(ConvertTo-WsmWizardRestoreFileText ([string]$stat.Sample[$sampleIndex][0]));Bytes=[long]$stat.Sample[$sampleIndex][1]})}
+            $fileListBudget-=$take
+            $omitted='';if([long]$sampleEntries.Count -lt [Math]::Min([long]$files,[long]$script:WsmOfflineReportFileListItemLimit)){$omitted='ReportLimit'}
+            $resultRow | Add-Member NoteProperty FileSample ([pscustomobject][ordered]@{Total=[long]$files;Entries=@($sampleEntries.ToArray());Omitted=$omitted})
+        }
         $rows.Add($resultRow)
     }
     @($rows.ToArray() | Sort-Object -Property @{Expression={if($_.Status -ceq 'BackedUp'){0}else{1}}},@{Expression={([string]$_.Name).ToLowerInvariant()}})
@@ -674,6 +692,9 @@ function Get-WsmBackupSoftwareRows($Plan,$Inventory,[object[]]$SoftwareChoices=@
 
 function Export-WsmBackupItemResults([string]$Path,[object[]]$Rows,$Meta) {
     $allRows=@($Rows)
+    # R24：FileSample 只給離線報告用——搬到文件頂層的 FileLists（有界），資料列保持原樣，工作台檢視不會多帶檔案清單。
+    $fileLists=@(foreach($sampleRow in $allRows){if($sampleRow -and $sampleRow.PSObject.Properties['FileSample'] -and $sampleRow.FileSample){[pscustomobject][ordered]@{ItemId=[string]$sampleRow.ItemId;Total=[long]$sampleRow.FileSample.Total;Listed=@($sampleRow.FileSample.Entries).Count;Omitted=[string]$sampleRow.FileSample.Omitted;Entries=@($sampleRow.FileSample.Entries)}}})
+    $allRows=@($allRows | ForEach-Object {if($_ -and $_.PSObject.Properties['FileSample']){$_ | Select-Object -Property * -ExcludeProperty FileSample}else{$_}})
     $backedUp=@($allRows | Where-Object Status -CEQ 'BackedUp').Count
     $counts=[ordered]@{Total=$allRows.Count;BackedUp=$backedUp;NotBackedUp=($allRows.Count-$backedUp);Software=@($Meta.Software.SoftwareRows).Count;Features=@($Meta.Software.FeatureRows).Count}
     $coverageRegions=$(if($Meta.PSObject.Properties['CoverageRegions'] -and $null -ne $Meta.CoverageRegions){@($Meta.CoverageRegions)}else{@(Get-WsmBackupCoverageRegions ([string]$Meta.InventorySource) @($Meta.Software.CoverageGaps))})
@@ -689,6 +710,7 @@ function Export-WsmBackupItemResults([string]$Path,[object[]]$Rows,$Meta) {
         $document | Add-Member NoteProperty ExcludedCompleteness (Get-WsmBackupExcludedCompleteness $excludedRegions)
         $document | Add-Member NoteProperty ExcludedRegionsBinding $Meta.ExcludedRegionsBinding
     }
+    $document | Add-Member NoteProperty FileLists ([object[]]$fileLists)
     Write-WsmJson $Path $document
     [pscustomobject]@{Path=[IO.Path]::GetFullPath($Path);SHA256=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant();Counts=[pscustomobject]$counts;InventorySource=[string]$Meta.InventorySource}
 }
@@ -723,7 +745,8 @@ function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha
             $attr='';if($rowIndex -lt @($RowAttrs).Count){$attr=' '+$RowAttrs[$rowIndex]}
             [void]$sb.Append('<tr'+$attr+'>')
             foreach($cell in $cells){
-                if($cell -is [hashtable] -and $cell.ContainsKey('Toggle')){[void]$sb.Append('<td data-text="'+(& $encode $cell.Text)+'">'+(& $encode $cell.Text)+'<div class="region-summary" data-target="'+(& $encode $cell.Toggle)+'">'+(& $encode $cell.Summary)+'</div></td>')}
+                if($cell -is [hashtable] -and $cell.ContainsKey('Details')){[void]$sb.Append('<td data-text="'+(& $encode $cell.Text)+'">'+(& $encode $cell.Text)+$cell.Details+'</td>')}
+                elseif($cell -is [hashtable] -and $cell.ContainsKey('Toggle')){[void]$sb.Append('<td data-text="'+(& $encode $cell.Text)+'">'+(& $encode $cell.Text)+'<div class="region-summary" data-target="'+(& $encode $cell.Toggle)+'">'+(& $encode $cell.Summary)+'</div></td>')}
                 elseif($cell -is [hashtable]){[void]$sb.Append('<td><span class="badge b-'+$cell.Class+'" data-icon="'+(& $encode $cell.Icon)+'">'+(& $encode $cell.Text)+'</span></td>')}
                 else{[void]$sb.Append('<td>'+(& $encode $cell)+'</td>')}
             }
@@ -759,7 +782,26 @@ function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha
     $pendingBadge=@{Text='未備份';Icon='✕';Class='bad'}
     # P4: 與工作台失敗卡片同一個安全化（控制字元可見化、過長明示截斷）；HTML 跳脫仍由表格建構統一處理。
     $locationText={param($Value)$safe=ConvertTo-WsmBackupSafePathText $Value;if($safe.truncated){$safe.text+'…（路徑過長已截斷，原長 '+$safe.fullLength+' 個字元）'}else{$safe.text}}
-    $backedCells=@(foreach($row in $backedRows){,@([string]$row.Name,[string]$row.Kind,(& $workloadText $row),(& $locationText $row.Location),$(if($channelText.ContainsKey([string]$row.Channel)){$channelText[[string]$row.Channel]}else{[string]$row.Channel}),[string]$row.Files,(& $sizeText $row.Bytes),$backedBadge,(& $restoreCell $row))})
+    # R24：檔案數欄附靜態 <details>（有 JavaScript 與否都是原生展開）。內容來自文件的 FileLists（已安全文字化、有界）；路徑一律當資料跳脫。
+    #   data-text 只放數字，所以 CSV 與搜尋不會帶到檔案清單。
+    $fileListsById=@{}
+    if($document.PSObject.Properties['FileLists'] -and $null -ne $document.FileLists){foreach($fileList in @($document.FileLists)){if($fileList -and $fileList.PSObject.Properties['ItemId']){$fileListsById[[string]$fileList.ItemId]=$fileList}}}
+    $fileDetailHtml={param($List)
+        $entries=@($List.Entries | Where-Object {$null -ne $_});$total=[long]$List.Total;$listed=$entries.Count
+        $sb=New-Object Text.StringBuilder
+        [void]$sb.Append('<details class="file-detail"><summary>檔案明細（共 '+$total+' 個）</summary><div class="file-detail-body">')
+        if($listed -eq 0){[void]$sb.Append('<p>此項目共 '+$total+' 個檔案；因報告大小上限，這份報告沒有列出檔案。完整明細見工作台或 artifacts 索引。</p>')}
+        else{
+            [void]$sb.Append('<p>共 '+$total+' 個檔案，列出前 '+$listed+' 個（相對路徑、大小，依備份索引順序）。</p><ul class="file-list" tabindex="0" aria-label="檔案明細清單">')
+            foreach($entry in $entries){[void]$sb.Append('<li><code>'+(& $encode $entry.Path)+'</code> <span class="file-size">'+(& $encode (& $sizeText $entry.Bytes))+'</span></li>')}
+            [void]$sb.Append('</ul>')
+            if($total -gt $listed){[void]$sb.Append('<p class="file-more">另有 '+($total-$listed)+' 個檔案未列出；完整明細見工作台或 artifacts 索引。</p>')}
+        }
+        [void]$sb.Append('</div></details>')
+        $sb.ToString()
+    }
+    $filesCell={param($Row)if($fileListsById.ContainsKey([string]$Row.ItemId)){return @{Text=[string]$Row.Files;Details=(& $fileDetailHtml $fileListsById[[string]$Row.ItemId])}};[string]$Row.Files}
+    $backedCells=@(foreach($row in $backedRows){,@([string]$row.Name,[string]$row.Kind,(& $workloadText $row),(& $locationText $row.Location),$(if($channelText.ContainsKey([string]$row.Channel)){$channelText[[string]$row.Channel]}else{[string]$row.Channel}),(& $filesCell $row),(& $sizeText $row.Bytes),$backedBadge,(& $restoreCell $row))})
     $backedAttrs=@(foreach($row in $backedRows){& $rowAttr $row})
     # Q2: UNC 項目的原因與下一步改為責任分類（沿用外部共享，未備份／另行遷移，見核准）；資料列本身的 Reason 不變。
     $pendingReasonText={param($Row)if($Row.PSObject.Properties['UncResponsibility'] -and $Row.UncResponsibility){return ([string]$Row.UncResponsibility.BackupText+'：'+[string]$Row.Reason)};[string]$Row.Reason}
@@ -936,6 +978,15 @@ code.hash{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:.9
 .region-detail{position:sticky;left:0;box-sizing:border-box;width:100%;max-width:calc(100vw - 3rem);padding:.25rem .5rem}
 .region-detail .table-wrap{margin:.5rem 0}
 .region-samples{min-width:34rem}
+.file-detail{margin-top:.25rem;font-size:.85rem;max-width:34rem}
+.file-detail summary{cursor:pointer;font-weight:700}
+.file-detail summary:focus,.file-list:focus{outline:3px solid #1b5fc1;outline-offset:2px}
+.file-detail-body p{margin:.25rem 0}
+.file-list{margin:.25rem 0;padding-left:1.25rem;max-height:20rem;overflow:auto}
+.file-list li{overflow-wrap:anywhere}
+.file-list code{overflow-wrap:anywhere;word-break:break-all}
+.file-size{white-space:nowrap}
+.file-more{font-weight:700}
 .region-detail h4{margin:.75rem 0 .25rem}
 .manual-box{border:2px solid #7a5a00;background:#fff6d6;padding:.5rem .75rem;margin:.5rem 0;border-radius:4px}
 .table-wrap{overflow-x:auto;max-width:100%;border:1px solid #bbc4ce}
@@ -1516,6 +1567,51 @@ function Get-WsmWizardBackupItemResultsView([string]$Workspace,[string]$PairId) 
     [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software;schemaVersion=$(if($document.PSObject.Properties['SchemaVersion']){[int]$document.SchemaVersion}else{1});coverageRegions=$(if($document.PSObject.Properties['CoverageRegions']){@($document.CoverageRegions)}else{$null});excludedRegions=$(if($excludedRecorded){@($document.ExcludedRegions)}else{$null});excludedRegionsBinding=$(if($document.PSObject.Properties['ExcludedRegionsBinding']){$document.ExcludedRegionsBinding}else{$null});excludedCompleteness=$(if($excludedRecorded){Get-WsmBackupExcludedCompleteness @($document.ExcludedRegions)}else{Get-WsmBackupExcludedCompleteness $null});independentCopy=(Get-WsmWizardIndependentCopyProjection $Workspace $PairId $attempt $set.ResultsSha256);reviewItemCount=(Get-WsmWizardBackupReviewItemCount $attempt.ChannelSummary);newerAttempt=$newerAttempt;unreadableAttempts=$unreadableReport}
 }
 
+# R22：artifacts.jsonl 的「項目 → 檔案列」索引快取。
+# 量測（10 萬列、26 MB）：原作法每翻一頁整份重讀約 48 秒（SHA256 只要 0.1 秒，其餘是逐列管線與 ConvertFrom-Json），第 1 頁與中間頁一樣慢，而且在 listener 執行緒上同步執行。
+# 作法：
+#  1. 解析只做一次，快取鍵是「索引內容的實際 SHA256」（不是路徑、也不是 manifest 宣告的值）。
+#  2. 每次呼叫仍先對磁碟上的索引重算 SHA256（0.1 秒）並與 manifest 的 ArtifactsHash 比對——內容被改過就丟例外，不會回傳舊快取；內容一變，鍵跟著變。
+#  3. 首次建索引時同一個唯讀開啟的串流先算雜湊、再從頭讀（共用模式只允許他人讀取，雜湊與解析之間不會被改寫）；
+#     用 JavaScriptSerializer（Windows PowerShell 5.1 的 ConvertFrom-Json 底層也是它）直接逐行解析，不經 PSCustomObject 轉換。
+# 沿用 Get-WsmWizardTargetArtifactTotals 的快取模式（有界、最近 4 份）；快取內只放壓縮過的列（相對路徑、位元組、雜湊前 12 碼、是否目錄）。
+$script:WsmBackupItemFileIndexLimit=4
+function Get-WsmBackupItemFileIndex([string]$IndexPath,[string]$ExpectedHash) {
+    if($ExpectedHash -notmatch '^[a-fA-F0-9]{64}$'){throw 'Trusted artifact index hash required.'}
+    Assert-WsmNoReparse $IndexPath
+    $stream=[IO.File]::Open($IndexPath,'Open','Read','Read')
+    try{
+        $actualHash=[string](Get-WsmCancellableStreamHash $stream $null 'ArtifactIndexHashBuffer')
+        if($actualHash -ine $ExpectedHash){throw 'Artifact index changed before use.'}
+        $key=$actualHash.ToLowerInvariant()
+        if(-not (Test-Path variable:script:WsmBackupItemFileIndexCache) -or $null -eq $script:WsmBackupItemFileIndexCache){$script:WsmBackupItemFileIndexCache=New-Object 'System.Collections.Specialized.OrderedDictionary'}
+        if($script:WsmBackupItemFileIndexCache.Contains($key)){return $script:WsmBackupItemFileIndexCache[$key]}
+        Add-Type -AssemblyName System.Web.Extensions
+        $serializer=New-Object System.Web.Script.Serialization.JavaScriptSerializer
+        $serializer.MaxJsonLength=[int]::MaxValue
+        $items=@{}
+        $stream.Position=0
+        $reader=New-Object IO.StreamReader($stream,[Text.Encoding]::UTF8,$true)
+        while($null -ne ($line=$reader.ReadLine())){
+            if($line.Length -gt 1048576){throw 'Artifact index row exceeds the supported length.'}
+            if(-not $line.Trim()){continue}
+            $row=$serializer.DeserializeObject($line)
+            $id=[string]$row['ItemId']
+            if(-not $items.ContainsKey($id)){$items[$id]=[pscustomobject]@{Total=[long]0;Directories=[long]0;Rows=(New-Object 'System.Collections.Generic.List[object]')}}
+            $isDirectory=[bool]$row['Directory']
+            $bytes=[long]0;$prefix=''
+            if(-not $isDirectory){$data=$row['Data'];if($data){$bytes=[long]$data['Bytes'];$fileHash=[string]$data['Hash'];if($fileHash.Length -ge 12){$prefix=$fileHash.Substring(0,12).ToLowerInvariant()}}}
+            $entry=$items[$id]
+            $entry.Rows.Add([object[]]@([string]$row['RelativePath'],$bytes,$prefix,$isDirectory))
+            $entry.Total++
+            if($isDirectory){$entry.Directories++}
+        }
+        while($script:WsmBackupItemFileIndexCache.Count -ge $script:WsmBackupItemFileIndexLimit){$script:WsmBackupItemFileIndexCache.RemoveAt(0)}
+        $script:WsmBackupItemFileIndexCache[$key]=$items
+        return $items
+    }finally{$stream.Dispose()}
+}
+
 # Read-only drill-down (action BackupItemFiles): the archived files of one backed-up item, 100 per page.
 # The list comes only from the sealed package of the attempt that produced the current result set:
 # manifest bytes must match the hash the attempt recorded, the result set must cite that manifest, and the
@@ -1550,20 +1646,14 @@ function Get-WsmWizardBackupItemFiles {
     if(-not $manifest.PSObject.Properties['SealedUtc'] -or -not [string]$manifest.SealedUtc){throw 'The backup package is not sealed.'}
     $indexPath=Join-Path (Split-Path -Parent $manifestPath) 'artifacts.jsonl'
     $skip=($Page-1)*$pageSize
-    $count=@{Total=[long]0;Directories=[long]0}
+    # R22：索引內容每次都重算雜湊核對（被改過就拒絕），但整份解析只做一次（見 Get-WsmBackupItemFileIndex）。
+    $index=Get-WsmBackupItemFileIndex $indexPath ([string]$manifest.ArtifactsHash)
     $entries=New-Object 'System.Collections.Generic.List[object]'
-    # Read-WsmArtifactLines hashes the whole index against the manifest's ArtifactsHash before it yields any row.
-    Read-WsmArtifactLines $indexPath ([string]$manifest.ArtifactsHash) | ForEach-Object {
-        if([string]$_.ItemId -ceq $ItemId){
-            $isDirectory=[bool]$_.Directory
-            if($count.Total -ge $skip -and $entries.Count -lt $pageSize){
-                $bytes=[long]0;$prefix=''
-                if(-not $isDirectory -and $_.Data){$bytes=[long]$_.Data.Bytes;$fileHash=[string]$_.Data.Hash;if($fileHash.Length -ge 12){$prefix=$fileHash.Substring(0,12).ToLowerInvariant()}}
-                $entries.Add([pscustomobject][ordered]@{RelativePath=[string]$_.RelativePath;Bytes=$bytes;Sha256Prefix=$prefix;IsDirectory=$isDirectory})
-            }
-            $count.Total++
-            if($isDirectory){$count.Directories++}
-        }
+    $count=@{Total=[long]0;Directories=[long]0}
+    if($index.ContainsKey($ItemId)){
+        $itemIndex=$index[$ItemId];$count.Total=[long]$itemIndex.Total;$count.Directories=[long]$itemIndex.Directories
+        $last=[Math]::Min([long]$itemIndex.Rows.Count,[long]$skip+$pageSize)
+        for($i=$skip;$i -lt $last;$i++){$row=$itemIndex.Rows[$i];$entries.Add([pscustomobject][ordered]@{RelativePath=[string]$row[0];Bytes=[long]$row[1];Sha256Prefix=[string]$row[2];IsDirectory=[bool]$row[3]})}
     }
     $total=[long]$count.Total
     [pscustomobject][ordered]@{kind='BackupItemFiles';available=$true;AttemptId=[string]$attempt.AttemptId;ItemId=$ItemId;Page=$Page;PageSize=$pageSize;TotalCount=$total;DirectoryCount=[long]$count.Directories;PageCount=[int][Math]::Max(1,[Math]::Ceiling($total/[double]$pageSize));Entries=@($entries.ToArray())}

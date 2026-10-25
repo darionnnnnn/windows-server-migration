@@ -49,6 +49,14 @@ $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.ps
             $inventoryItems.Add([pscustomobject]@{ItemId=$id;Name=$name;Kind='DataRoot';Category='Storage';NaturalKey=('key-'+$id);Settings=[pscustomobject]@{Path=('E:\inv\'+$id)};Status=$status})
         }
     }
+    if($Scale -cne 'Large'){
+        # R24：逐檔下鑽。item-0010 有 250 個檔案（超過每項 200 個的上限），前幾個是惡意檔名；item-0011 只有 3 個（不出現「另有 N 個」）。
+        $hostileNames=@('<img src=x onerror=alert(1)>.txt','=SUM(1+1)\cmd.xlsx',('rtl\'+[string][char]0x202e+'gnp.exe'),('deep\'+('x'*300)+'.dat'),'quote\q"&''.txt')
+        foreach($relativeName in $hostileNames){$artifacts.Add([pscustomobject]@{ItemId='item-0010';RelativePath=$relativeName;Directory=$false;Data=[pscustomobject]@{Bytes=2048}})}
+        $artifacts.Add([pscustomobject]@{ItemId='item-0010';RelativePath='emptydir';Directory=$true})
+        for($n=1;$n -le 244;$n++){$artifacts.Add([pscustomobject]@{ItemId='item-0010';RelativePath=('bulk\file-{0:D3}.dat' -f $n);Directory=$false;Data=[pscustomobject]@{Bytes=(10+$n)}})}
+        foreach($relativeName in @('docs\readme.txt','docs\notes.txt')){$artifacts.Add([pscustomobject]@{ItemId='item-0011';RelativePath=$relativeName;Directory=$false;Data=[pscustomobject]@{Bytes=64}})}
+    }
     if($Scale -cne 'Large'){$planItems.Add((& $item 'site-1' $siteName ([pscustomobject]@{Adapter='IISSite'}) 'Include' 'IISSite' 'Web' @([pscustomobject]@{ItemId='item-0001'},[pscustomobject]@{ItemId='item-0002'})))}
     $mixedRoot=Join-Path $OutDir 'mixed-fixture';$siteDir=Join-Path $mixedRoot 'Site'
     if($Scale -ceq 'Mixed'){

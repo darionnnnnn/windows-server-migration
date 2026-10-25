@@ -138,6 +138,33 @@ const server = http.createServer((req, res) => {
     assert.match(await summaryText(page), /已選 2／可還原 5，預計寫入 12 檔／100050 位元組.*重新還原 1 項/);
     assert.equal(await card.locator('[data-runtime-item="data2"]').evaluate(el => el.closest('label').innerText.includes('將重新還原')), true, 're-restore is labelled on the picker row');
     await page.screenshot({ path: path.join(screens, 'r6-filter-reapply-390.png'), fullPage: true });
+    // ---------------------------------------------------------------- 1b. R19：Owner／Reason 空白時「建立決策收據」用 aria-disabled＋describedby 原因，不用原生 disabled
+    {
+      const receipt = card.getByRole('button', { name: '建立決策收據' });
+      const why = () => page.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent === '建立決策收據'); const id = b.getAttribute('aria-describedby'); const t = id ? document.getElementById(id) : null; return { ariaDisabled: b.getAttribute('aria-disabled'), nativeDisabled: b.hasAttribute('disabled'), describedBy: id, text: t ? t.textContent : null, hidden: t ? t.hidden : null, tabindex: t ? t.getAttribute('tabindex') : null }; });
+      let state0 = await why();
+      assert.equal(state0.ariaDisabled, 'true', 'R19: empty owner/reason -> aria-disabled=true');
+      assert.equal(state0.nativeDisabled, false, 'R19: the receipt button never uses the native disabled attribute');
+      assert.ok(state0.describedBy && state0.text && state0.hidden === false, 'R19: the button is described by a visible reason');
+      assert.match(state0.text, /責任人/, 'R19: the reason names the missing owner');
+      assert.equal(state0.tabindex, '-1', 'R19: the reason can take programmatic focus');
+      await page.evaluate(() => [...document.querySelectorAll('button')].find(x => x.textContent === '建立決策收據').focus());
+      assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.textContent), '建立決策收據', 'R19: the aria-disabled button is reachable by keyboard focus');
+      await receipt.click({ force: true });
+      assert.equal(receiptCount(), 0, 'R19: a click on the aria-disabled receipt button sends nothing');
+      assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id), state0.describedBy, 'R19: the click moves focus to the reason');
+      assert.equal(await page.locator('#restore-selection-confirm-dialog[open]').count(), 0, 'R19: no confirm dialog opens from a disabled click');
+      await card.locator('[data-runtime-field="Owner"]').fill('Target operator');
+      state0 = await why(); assert.equal(state0.ariaDisabled, 'true'); assert.match(state0.text, /理由/, 'R19: with only the owner filled the reason asks for the reason');
+      assert.doesNotMatch(state0.text, /責任人/, 'R19: the owner is no longer reported missing');
+      await card.locator('[data-runtime-field="Reason"]').fill('R19 reason');
+      state0 = await why(); assert.equal(state0.ariaDisabled, 'false', 'R19: both filled -> usable'); assert.equal(state0.describedBy, null, 'R19: no stale description once usable');
+      await card.locator('[data-runtime-field="Reason"]').fill('   ');
+      assert.equal((await why()).ariaDisabled, 'true', 'R19: a blank reason disables again');
+      await card.locator('[data-runtime-field="Owner"]').fill(''); await card.locator('[data-runtime-field="Reason"]').fill('');
+      for (const width of [320, 390]) { await page.setViewportSize({ width, height: 900 }); await noOverflow(page, `receipt reason at ${width}px`); }
+      await page.setViewportSize({ width: 390, height: 900 });
+    }
     await card.getByRole('button', { name: '取消選取篩選結果' }).click();
     assert.deepEqual(await picked(page), [], 'deselect filtered results');
     await filter.selectOption('');

@@ -2961,6 +2961,37 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - subagent 已跑：DeliveryReceipts、SoftwareDispositionReview、SourceCandidateConfirmation 51、SourceCandidateMapping 22、WizardNonCOperations、WizardNonCAccountObservation、HtmlConsole 178、C2D2HtmlActions 185、C2D2Browser、AssistiveUi 49、ScriptEncoding 346；呼叫端與呼叫端的呼叫端：OfflineFullSet 67、ProductionFlagProjection 48、GeneralHostGates、EnvironmentConfirmation、WizardNonCTargetHandoff、PathResolutionDisplay、AssistiveReports、G2、G4、F1AcceptanceBrowser。
   - 主代理收斂後重跑：SoftwareDispositionReview 31、OracleIntegration（唯一呼叫換目錄入口的測試）、GeneralHostGates、EnvironmentConfirmation、ProductionFlagProjection、OfflineFullSet、DeliveryReceipts、SourceCandidateConfirmation、SourceCandidateMapping、WizardNonCOperations、HtmlConsole、G2、ScriptEncoding。
 
+### 17.127 批 E：前端對照表守門、jobs 篩選頁自動刷新、翻頁快取、離線報告有界下鑽（R19、R21、R22、R24）
+
+- 規格：`work/r7/specs/E-frontend.md`。Sonnet 5.5 subagent 實作；主代理審查並獨立重跑，另補跑 subagent 沒列入的祕密掃描。
+- **R19**
+  - `RESTORABLE_CODE_TEXT` 補上 `BackupMediaOverlap`。`statusName` 補上 `NeedsReconciliation`、`BlockedByUnknownDependency`、`CredentialRejected`，以及守門測試掃出的 `ManualEvidenceRequired`、`RebootRequired`。
+  - 「建立決策收據」按鈕改為 `aria-disabled` 加上 `aria-describedby`，指向原因文字 `#wizard-receipt-why`。點擊時不送出，並把焦點移到原因文字。
+  - 新增 `Test-FrontendCodeCoverage.js`：從 src 靜態收集後端可能產生的代碼，必須是 console.js 三張對照表（可還原原因碼、備份失敗原因碼、狀態名）的子集。另有收集器自檢；例外清單目前為空，若加入例外則有過期檢查。
+- **R21**（已重現：完成事件前後 backup-items 的請求數都是 1）
+  - `refreshActiveData` 先切掉 hash 的 query，再取 view 名稱。
+  - 完成的作業是 StartBackup 或 IndependentCopy，且畫面停在 jobs 的 backup 篩選頁時，重新讀取備份明細。
+  - 無關作業完成時不重讀。
+- **R22**（已量測：10 萬列、26.3 MB 的索引）
+  - 修改前每翻一頁約 48 秒；單算 SHA256 只要 0.1 秒，瓶頸在逐列管線與 `ConvertFrom-Json`。
+  - 新增 `Get-WsmBackupItemFileIndex`：
+    - 每次呼叫都重算索引的雜湊，與 manifest 的 ArtifactsHash 比對；不符就拒絕，不回傳舊的快取。
+    - 以實際內容雜湊為鍵，有界快取最多 4 份，沿用批 B R23 的模式。
+    - 首次解析在同一個唯讀串流上，先算雜湊再用 JavaScriptSerializer 逐行解析。
+  - 修改後：首次 1.99 秒，快取命中 0.09～0.12 秒。
+- **R24**
+  - 每個已備份項目最多列出 200 個檔案，整份報告合計最多 5000 筆。路徑經 17.123 收斂後的安全文字化，目錄不列出。
+  - 取樣結果放在結果文件的頂層 `FileLists`，資料列與工作台檢視不變。
+  - 離線報告的「檔案數」欄附靜態 `<details>`，關閉 JS 時也能展開。內容包括總數、前 K 個檔案，超過時註明「另有 N 個檔案未列出；完整明細見工作台或 artifacts 索引」；整份上限用盡時另外註明。
+  - CSV 與搜尋只帶數字，不帶檔案清單。
+  - 舊的結果集沒有 `FileLists`，報告就不顯示下鑽。
+- **既有斷言**：沒有修改。`Test-BackupWorkbenchBrowser.js` 的替身改成每次呼叫才讀 `scenario.results`，以便測試中途替換結果集，既有斷言不變。
+- **突變**：subagent 做了 21 個，全部被抓到，涵蓋 R19 共 6 個、R21 共 4 個、R22 共 4 個、R24 共 6 個。
+- **驗證**：
+  - subagent 已跑：FrontendCodeCoverage 4、AssistiveUi 49、BackupItemFileIndexCache、OfflineReportFileLists、BackupWorkbenchView，以及 BackupWorkbenchBrowser、OfflineReportBrowser、RestoreSelectionBrowser、F1AcceptanceBrowser、RetryFailedItemsBrowser、RestorableSetBrowser、WizardRuntimeUi、WaitingConsistencyUi、HtmlBrowser、SoftwareTabBrowser、C2D2Browser；另含呼叫端 11 支。
+  - 主代理重跑：SecretSentinelBackupSweep 151（離線報告現在帶出檔名，仍沒有祕密外洩）、ScriptEncoding 348、BackupItemFileIndexCache、OfflineReportFileLists、BackupWorkbenchView、BackupResultSetV2、FrontendCodeCoverage 4。
+  - `Test-BackupProgressBrowser.js` 在本機為 ENVIRONMENT-LIMITED（同 17.119），不算通過。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -3197,9 +3228,13 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | A3-長度 | `src/WizardBackupProjection.ps1` `ConvertTo-WsmProgressText` | A3 截斷後總長 262，超過上限 256（`Test-WizardProgress` 從 083223d 起失敗） | 預留截斷標記的長度後再截斷，總長維持 256（17.124） | `Test-WizardProgress`、`Test-SensitiveNameConvergence` | `ddd8580` |
 | R16 | `Start-ServerMigration.ps1`、`src/OperationRequests.ps1`、`src/MigrationWizard.ps1`、DeveloperProbe 入口 | Operation 的輸入錯誤回 1，其他 Action 回 4；Menu 的結果被丟掉，最後一律 exit 0；RESUME 遇輸入結束回 3；DeveloperProbe 帶相對路徑回 1 | 前置檢查改丟契約錯誤；Menu 離開時回傳最差狀態碼；RESUME 改回 WaitingForInput 並附 ParentOperationId；入口先取絕對路徑（17.125） | `Test-CliExitCodes`（56 項，以真實 CLI 子行程執行） | `a8fd539` |
 | R17 | `src/Core.ps1` `Get-WsmGuardedCredential`、7 個 Get-Credential 呼叫點 | 只有 4 處有 stdin 重導防線，其餘會彈出真實憑證視窗；覆寫值可能取消防線 | 全部改用單一守門函式，並以 AST 靜態守門擋直接呼叫；覆寫值只能加嚴（17.125） | `Test-GuardedCredential`（AST 守門＋計數替身，呼叫次數 0） | `a8fd539` |
-| R13 | `src/HtmlConsole.ps1`、`console.js` statusName、`src/DeliveryReceipts.ps1` 匯入 | CV2 進度顯示「未識別交付狀態」，匯入的 CV2 收據永遠不顯示 | 補 NotApplicable 與文案；CV2 計畫匯入收據改為拒絕（17.126） | `Test-HtmlConsole`（CV2 進度）、`Test-DeliveryReceipts`（CV2 拒絕） | （D-COMMIT） |
-| R14 | `src/Core.ps1` `Import-WsmInventory`、`src/GeneralHostContracts.ps1` `Set-WsmGeneralHostSoftwareCatalog`、`src/SoftwareDispositionReview.ps1` | 重新匯入或換目錄時刪掉漂移的軟體決策，Stale 永遠不出現，處置、負責人、原因全失 | 共用 `Split-WsmSoftwareDecisionsForCatalog`，漂移決策移到 Stale（不進有效集合）並預填，重新確認後才生效（17.126） | `Test-SoftwareDispositionReview`（R14 重新匯入、二次匯入、重新確認、split 單元測試、兩個入口的靜態檢查） | （D-COMMIT） |
-| R15 | `src/SourceCandidateConfirmation.ps1`、`src/SourceCandidateMapping.ps1`、`console.js` | 內容相同重送時，Include 被打回 Pending、核准被清除、revision 遞增 | 內容相同回傳 NoChange；console 視 NoChange 為成功（17.126） | `Test-SourceCandidateConfirmation`、`Test-SourceCandidateMapping`（NoChange 與內容不同的反例） | （D-COMMIT） |
+| R13 | `src/HtmlConsole.ps1`、`console.js` statusName、`src/DeliveryReceipts.ps1` 匯入 | CV2 進度顯示「未識別交付狀態」，匯入的 CV2 收據永遠不顯示 | 補 NotApplicable 與文案；CV2 計畫匯入收據改為拒絕（17.126） | `Test-HtmlConsole`（CV2 進度）、`Test-DeliveryReceipts`（CV2 拒絕） | `507baf5` |
+| R14 | `src/Core.ps1` `Import-WsmInventory`、`src/GeneralHostContracts.ps1` `Set-WsmGeneralHostSoftwareCatalog`、`src/SoftwareDispositionReview.ps1` | 重新匯入或換目錄時刪掉漂移的軟體決策，Stale 永遠不出現，處置、負責人、原因全失 | 共用 `Split-WsmSoftwareDecisionsForCatalog`，漂移決策移到 Stale（不進有效集合）並預填，重新確認後才生效（17.126） | `Test-SoftwareDispositionReview`（R14 重新匯入、二次匯入、重新確認、split 單元測試、兩個入口的靜態檢查） | `507baf5` |
+| R15 | `src/SourceCandidateConfirmation.ps1`、`src/SourceCandidateMapping.ps1`、`console.js` | 內容相同重送時，Include 被打回 Pending、核准被清除、revision 遞增 | 內容相同回傳 NoChange；console 視 NoChange 為成功（17.126） | `Test-SourceCandidateConfirmation`、`Test-SourceCandidateMapping`（NoChange 與內容不同的反例） | `507baf5` |
+| R19 | `console.js` 的 `RESTORABLE_CODE_TEXT`、`statusName`、收據按鈕 | 對照表缺鍵，畫面直接顯示原始代碼；收據按鈕用原生 disabled，鍵盤會跳過，也沒有說明 | 補齊缺鍵；收據按鈕改為 `aria-disabled` 並附原因文字；守門測試要求後端代碼集合是前端對照表的子集（17.127） | `Test-FrontendCodeCoverage.js`、`Test-RestoreSelectionBrowser.js` | （E-COMMIT） |
+| R21 | `console.js` 的 `refreshActiveData`、完成事件分支 | 停在 `#jobs?filter=backup&…` 時，備份完成後三個分頁不自動更新 | 先切掉 query 再取 view 名稱；備份或獨立副本完成時重讀明細（17.127） | `Test-BackupWorkbenchBrowser.js`（R21 區段） | （E-COMMIT） |
+| R22 | `src/WizardBackupProjection.ps1` 的 `Get-WsmWizardBackupItemFiles` | 10 萬列時每翻一頁約 48 秒，期間 listener 執行緒被卡住 | 以內容雜湊為鍵的有界快取，每次重算並核對雜湊；首次解析改用 JavaScriptSerializer（17.127） | `Test-BackupItemFileIndexCache.ps1`、`Test-BackupWorkbenchView.ps1` | （E-COMMIT） |
+| R24 | `src/WizardBackupProjection.ps1` 的離線報告與結果文件 | 離線報告只到項目層，無法查看逐檔明細（§18.4 契約缺口） | 每項列前 200 個檔案並附總數，整份上限 5000 筆，使用靜態 `<details>`，路徑經安全文字化（17.127） | `Test-OfflineReportFileLists.ps1`、`Test-OfflineReportBrowser.js` | （E-COMMIT） |
 
 ### 第六輪終檢
 
@@ -3211,5 +3246,5 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | S6 | `src/DeveloperProbe.ps1` | 裸 UNC 路徑沒有遮蔽；Name 與 Value 分欄時值會外洩；Account、Domain 不在黑名單 | 路徑判斷改用 lookbehind；同列的值一起遮蔽；黑名單補上 account、domain；名稱判定改用共用函式（17.123） | `Test-SensitiveNameConvergence`（Probe 區段） | `083223d` |
 | S11 | `src/AssistiveReviewForms.ps1`、`src/WizardDetails.ps1`、`src/Core.ps1` | 兩套 regex 漏掉 Passwords、Tokens、private_key 等；物件分支誤丟 Description、Transcript | 全部改用單一的 `Test-WsmSensitiveName`；主代理另補：比對前移除 Unicode 格式字元，token 在名稱任何位置都算（排除 tokeniz*）（17.123） | `Test-SensitiveNameConvergence`（名稱表、分支一致性、Cf 字元、靜態守門） | `083223d` |
 | S14 | `src/HtmlConsole.ps1` `Get-WsmHtmlSafeError`、body 與請求檢查 | 壞掉的 body 回 operation_failed；內部例外訊息含 "parameter" 時被誤判為輸入錯誤 | 請求形狀錯誤與 body 解析改丟契約錯誤；分類器依型別判斷（可穿透 worker 包裝）；只保留 12 條鎖定的 token 比對（17.125） | `Test-HtmlErrorClassification`（160 項，含真實主控台） | `a8fd539` |
-| S15 | `src/WizardNonCOperations.ps1` 帳號對應審閱收據 | 收據只寫不讀，ProofHash 含 CreatedUtc 而不確定 | CreatedUtc 移出 hash，寫入與驗證兩端用同一規則（下游沒有讀取端，17.126） | `Test-WizardNonCOperations` | （D-COMMIT） |
-| S16 | `src/WizardNonCOperations.ps1` 傳輸計畫選單標籤 | 標籤顯示 UTC ISO 原字串 | 沿用 `Get-WsmWizardHandoffLocalTime`（17.126） | `Test-WizardNonCOperations` | （D-COMMIT） |
+| S15 | `src/WizardNonCOperations.ps1` 帳號對應審閱收據 | 收據只寫不讀，ProofHash 含 CreatedUtc 而不確定 | CreatedUtc 移出 hash，寫入與驗證兩端用同一規則（下游沒有讀取端，17.126） | `Test-WizardNonCOperations` | `507baf5` |
+| S16 | `src/WizardNonCOperations.ps1` 傳輸計畫選單標籤 | 標籤顯示 UTC ISO 原字串 | 沿用 `Get-WsmWizardHandoffLocalTime`（17.126） | `Test-WizardNonCOperations` | `507baf5` |

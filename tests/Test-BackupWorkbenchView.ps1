@@ -149,9 +149,17 @@ try {
         & $check ($page1.kind -ceq 'BackupItemFiles' -and $page1.available -and $page1.ItemId -ceq $itemId -and $page1.Page -eq 1 -and $page1.PageSize -eq 100) 'Page 1 shape.'
         & $check ($page1.TotalCount -eq $artifactRows.Count -and $page1.PageCount -eq [int][Math]::Ceiling($artifactRows.Count/100.0)) 'The total and page count must come from the archive.'
         & $check (@($page1.Entries).Count -eq 100) 'A full page holds exactly 100 entries.'
-        $page2=Get-WsmWizardBackupItemFiles -Workspace $sourceRoot -PairId $pair -ItemId $itemId -Page 2
+        # R22：同一份索引內容翻頁時只解析一次——第 2、3 頁不得再呼叫 Read-WsmArtifactLines（完整性仍由雜湊核對，見下方竄改測試）。
+        $script:r22ReadCalls=0;$script:r22Original=(Get-Command Read-WsmArtifactLines -CommandType Function).ScriptBlock
+        Set-Item Function:\script:Read-WsmArtifactLines -Value {$script:r22ReadCalls++;& $script:r22Original @args}
+        try{
+            $page2=Get-WsmWizardBackupItemFiles -Workspace $sourceRoot -PairId $pair -ItemId $itemId -Page 2
+            $page3=Get-WsmWizardBackupItemFiles -Workspace $sourceRoot -PairId $pair -ItemId $itemId -Page 3
+            $pageAgain=Get-WsmWizardBackupItemFiles -Workspace $sourceRoot -PairId $pair -ItemId $itemId -Page 1
+        }finally{Set-Item Function:\script:Read-WsmArtifactLines -Value $script:r22Original}
+        & $check ($script:r22ReadCalls -eq 0) ('R22: paging an already-read index must not re-read artifacts.jsonl; Read-WsmArtifactLines was called '+$script:r22ReadCalls+' times.')
+        & $check (@($pageAgain.Entries).Count -eq 100 -and [string]$pageAgain.Entries[0].RelativePath -ceq [string]$page1.Entries[0].RelativePath) 'R22: a cached first page equals the first read.'
         & $check (@($page2.Entries).Count -eq ($artifactRows.Count-100) -and $page2.Page -eq 2) 'The second page holds the remainder.'
-        $page3=Get-WsmWizardBackupItemFiles -Workspace $sourceRoot -PairId $pair -ItemId $itemId -Page 3
         & $check (@($page3.Entries).Count -eq 0 -and $page3.TotalCount -eq $artifactRows.Count) 'A page past the end is empty but keeps the total.'
         $seen=@{};foreach($e in @($page1.Entries)+@($page2.Entries)){if($seen.ContainsKey([string]$e.RelativePath)){throw ('The pages overlap on '+$e.RelativePath)};$seen[[string]$e.RelativePath]=$e}
         & $check ($seen.Count -eq $artifactRows.Count) 'Two pages together list every archived member exactly once.'
