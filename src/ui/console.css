@@ -190,6 +190,7 @@ body{font-size:18px}
 .backup-nowrap{white-space:nowrap}
 .backup-expand{white-space:nowrap}
 .backup-copy-note{margin:0 0 12px}
+.backup-copy-status{margin:0 0 12px;display:grid;gap:8px;min-width:0;overflow-wrap:anywhere}.backup-copy-status>*{margin:0;max-width:100%}.backup-copy-status button{justify-self:start;white-space:normal;text-align:left}.backup-copy-status button[aria-disabled="true"]{cursor:not-allowed}.backup-copy-last-attempt{display:block;border-left:4px solid var(--warn)}.backup-copy-last-attempt p{margin:4px 0 0}
 .backup-detail-row>td{background:var(--surface-soft);padding:8px 12px}
 .backup-detail{position:sticky;left:0;max-width:min(100%,calc(100vw - 4rem));padding:4px 0}
 .backup-detail table{min-width:36rem}

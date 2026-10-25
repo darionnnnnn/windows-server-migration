@@ -274,10 +274,11 @@ try {
                 Reject {Export-WsmBackupOfflineReport $resultsPath (Sha $resultsPath) $reportPath} 'F4: the offline report must not be generated from a document that is not a backup result set.' 'not a backup item results'
                 Check (-not [IO.File]::Exists($reportPath)) 'F4: a refused export left a report file behind.'
                 # 獨立副本收據：偽造或錯包的收據標為「無法核對」，不顯示為已驗證。
+                # A1 起，投影另檢查副本媒體是否存在；這裡沒有實際媒體，所以收據綁定的判定改直接驗收據本身（Get-WsmWizardIndependentCopyReceiptState）。
                 $copyDir=Join-Path (Join-Path (Join-Path (Join-Path $workspace 'workspace-control') 'wizard-backups') $pair) 'independent-copies';[void][IO.Directory]::CreateDirectory($copyDir)
                 $receiptPath=Join-Path $copyDir 'receipt.json';$resultsHash=('7'*64);$deliveryHash=('d'*64)
                 function WriteReceipt([string]$PairId,[string]$Attempt,[string]$Results,[string]$Delivery){WriteUtf8 $receiptPath (ConvertTo-Json -InputObject ([ordered]@{Kind='IndependentCopyReceipt';PairId=$PairId;AttemptId=$Attempt;DeliverySHA256=$Delivery;ItemResultsSHA256=$Results;VerifiedUtc='2026-10-25T00:00:00Z';Availability='Verified'}) -Depth 4 -Compress)}
-                function CopyState([string]$CitedResults=$resultsHash){$attempt=[pscustomobject]@{AttemptId=$attemptId;Delivery=[pscustomobject]@{SHA256=$deliveryHash};IndependentCopy=[pscustomobject]@{Status='Verified';ReceiptPath=$receiptPath;ReceiptSHA256=(Sha $receiptPath)}};(Get-WsmWizardIndependentCopyProjection $workspace $pair $attempt $CitedResults).state}
+                function CopyState([string]$CitedResults=$resultsHash){$attempt=[pscustomobject]@{AttemptId=$attemptId;Delivery=[pscustomobject]@{SHA256=$deliveryHash};IndependentCopy=[pscustomobject]@{Status='Verified';ReceiptPath=$receiptPath;ReceiptSHA256=(Sha $receiptPath)}};(Get-WsmWizardIndependentCopyReceiptState $workspace $pair $attempt $CitedResults).state}
                 WriteReceipt $pair $attemptId $resultsHash $deliveryHash
                 Check ((CopyState) -ceq 'Verified') 'F5: the genuine receipt must verify.'
                 Check ((CopyState ('8'*64)) -ceq 'Unverifiable') 'F5: a receipt that cites another result set must not be shown as verified.'

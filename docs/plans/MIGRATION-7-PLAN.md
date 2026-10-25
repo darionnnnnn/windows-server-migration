@@ -2632,6 +2632,72 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - `tools/Get-NativeAcceptanceScope.ps1` 把 `Test-ConsoleAssetTransport.js` 與 `Browser-UiDelivery.js` 對映到 basic，`Test-NativeAcceptanceScope` 從 124 項增為 136 項；突變（拿掉對映）後轉紅。
   - 真實靜態檔傳送是否通過，以 GitHub run 的結果為準。
 
+### 17.120 A1：獨立副本（R6 媒體分級繞過、R7 失敗或取消抹掉 Verified 與 A8 媒體被刪、容量預檢）
+
+- 規格：`work/r7/specs/A1-independent-copy.md`（共通規則見 `RS-common.md`）。
+  - Sonnet 5.5 subagent 完成實作與新測試後，在等待回歸期間反覆交回。主代理停止它並接手：審查、修正語意、跑回歸、做突變。
+- **R6**（`src/WizardBackup.ps1`）
+  - 根因：
+    - `Get-WsmIndependentCopyMediaClass` 只要看到 `\\` 開頭就判為 Network。
+    - 工作區外檢查只比對字串前綴。
+  - 修法：
+    - 新增 `Resolve-WsmIndependentCopyDestination`。它先走既有的 `ConvertTo-WsmCanonicalPath`，拒絕裝置路徑、ADS、`..`。
+    - 新增 `Test-WsmLocalMachineHostName`，比對 localhost、本機名稱、環回位址與本機網卡位址，不做 DNS 查詢。本機別名 `\\主機\X$` 會折回實體磁碟再分級；本機的非管理共用判為 Unknown，直接拒絕。
+    - 新增 `Test-WsmIndependentCopyInsideWorkspace`，改為比對以 `WsmPhysicalPath` 解析出的實體路徑。**主代理改為解析失敗即拒絕**；subagent 原本在 catch 中回傳「不在工作區內」。
+- **R7 與 A8**（`Invoke-WsmWizardIndependentCopy` 的 catch、`ConvertTo-WsmWizardBackupResult`、`Get-WsmWizardIndependentCopyProjection`）
+  - 失敗或取消時保留先前的 Verified 收據。本次結果另存為 `IndependentCopyLastAttempt`，Failed 與 Cancelled 分開記錄，並包含原因碼、原因、下一步與時間。之後成功時清除這筆紀錄。
+  - 副本媒體被刪或缺檔時：
+    - 結果的 `OfflineReadiness` 改為 `MediaNeedsReverification`。
+    - 投影改為 `MediaMissing`，畫面顯示「收據完整；媒體需重新驗證」，附收據時間與「重新驗證」按鈕。
+    - 這個按鈕沿用既有 `IndependentCopy` 動作的 `VerifyExisting` 模式，沒有新增 action。
+  - 原本的投影改名為 `Get-WsmWizardIndependentCopyReceiptState`，只驗收據本身。
+  - **主代理修正語意**：
+    - subagent 的版本在「對收據自己的媒體重新驗證時發現被竄改」的情況下，仍顯示「已驗證」，並把 `Test-WizardBackup` Case c 的斷言改成如此。這和 R7 的本意相反：R7 是要保護「另一次嘗試失敗時，不要抹掉仍然有效的副本」。
+    - 新增單一判定 `Test-WsmIndependentCopyReceiptInvalidated`。在收據的同一個 CopyRoot 上發生失敗（取消與寫入前就拒絕的空間不足除外）時，收據會標上 `MediaIntegrity=NeedsReverification`，只保留作歷史紀錄。結果與投影只依這個判定，不再顯示「已驗證」；成功重新驗證或重新複製後清除。
+    - 複製模式不會覆寫既有檔案（內容相同就略過，不同就拒絕），所以在其他目的地失敗、取消、空間不足時，舊收據仍然有效。
+  - 主代理另外修了三處 `TrimEnd` 少掉反斜線參數的地方，其中一處會讓「重新驗證」用的 destinationRoot 算錯。
+- **容量預檢**
+  - 複製前，以 `Get-WsmAssistiveCapacityRequiredBytes`（含 256 MiB 緩衝）計算尚未到位的位元組數，再和目的地可用空間比較。
+  - 空間不足時，在寫入任何檔案之前就以 `InsufficientSpace` 拒絕，附需要量、可用量與下一步，舊收據不變。
+  - 取不到可用空間（例如 UNC 查詢失敗）時，給出警告但允許複製，並在收據與投影寫入 `CapacityCheck.Status='Unknown'`。
+  - `VerifyExisting` 模式不做容量預檢（`NotApplicable`）。
+- **前端**（`console.js`、`console.css`）
+  - 新增 `MediaMissing` 標籤、收據時間、「重新驗證」按鈕，以及「較新的嘗試：失敗／已取消」區塊，全部以 textContent 輸出。
+  - 320、390、1280 px 寬度下皆無水平溢位。
+- **測試**
+  - 新增 `Test-IndependentCopyHardening.ps1`，涵蓋：
+    - R6：六種繞過寫法，每種都被拒絕且零寫入；外部 UNC 與各種磁碟型別的正例；subst 別名與 junction 指向工作區時被擋。
+    - R7：先成功再失敗、先成功再取消、之後成功會清除 LastAttempt、從未成功過的情況；**主代理加入**「對收據自己的媒體翻轉一個位元組（長度不變）後重新驗證失敗，必須撤下已驗證；還原內容後重新驗證，必須清除標記」。
+    - A8：媒體被刪或缺檔。
+    - 容量：不足、差一位元組、剛好足夠、查詢失敗、VerifyExisting。
+  - `Test-BackupWorkbenchBrowser.js` 新增 I 區塊。
+  - `Test-WizardBackupProgress.ps1` 加入兩列 `MediaNeedsReverification`。
+- **既有斷言變更**：
+
+| 檔案 | 舊斷言 | 為何與規格衝突 | 新斷言 |
+|---|---|---|---|
+| `tests/Test-WizardBackup.ps1` Case c | 竄改後重新驗證，`IndependentCopy.Status=Failed`、`OfflineReadiness=AwaitingIndependentCopy` | R7 規定收據不得被抹掉 | 收據保留作歷史（`Status=Verified`）且 `MediaIntegrity=NeedsReverification`；`LastAttempt=Failed/VerifyFailed`；`OfflineReadiness=MediaNeedsReverification` |
+| `tests/Test-RoundSevenGapCoverage.ps1` F5 `CopyState` | 呼叫 `Get-WsmWizardIndependentCopyProjection` 期望 Verified | 投影現在另檢查媒體是否存在，而這個 fixture 沒有實際媒體 | 改呼叫只驗收據本身的 `Get-WsmWizardIndependentCopyReceiptState`；收據改位元組後的投影斷言（Unverifiable）不變 |
+
+- **突變**（主代理執行，皆以備份還原並用 cmp 確認）：10 個全部轉紅。
+  - 本機判定永遠為 false → R6 localhost-admin-share
+  - 工作區檢查只比對字串 → R6 別名
+  - 略過 canonical → R6 device-question
+  - 拿掉 Verified 收據保護 → R7 失敗抹掉收據
+  - 取消當成失敗 → R7 Cancelled
+  - 成功時不清除 LastAttempt → R7
+  - 媒體檢查永遠 Present → A8
+  - 拿掉空間不足的拒絕 → Capacity InsufficientSpace
+  - 不標記同媒體失敗 → R7 same-media
+  - 前端拿掉副本狀態區塊 → `Test-BackupWorkbenchBrowser` 轉紅
+- **驗證**（主代理重跑）：
+  - IndependentCopyHardening、WizardBackup、WizardBackupProgress 267、WizardBackupReliability 62、BackupCurrencyAndReview 109、TargetCapacityStaging 95、SecretSentinelBackupSweep 151、BackupWorkbenchView、ActionExports 204、RoundSevenGapCoverage 156、G2DiscoveryToDelivery 34、ScriptEncoding 340 檔
+  - BackupWorkbenchBrowser（301 列）、BackupProgressBrowser 110＋6（真實 console 讀回時，9 個 UI 檔從磁碟提供）、AssistiveUi 49、F1AcceptanceBrowser 317
+- **限制**：
+  - 「重新驗證」按鈕送出的真實 `/api/operations` 請求，只在 fixture API 層驗證過請求形狀。
+  - 網路媒體在讀取時不探測是否存在（`NotChecked`），因為離線或逾時會卡住畫面。
+  - 同一份媒體上「Move 之後、收據寫入之前」的當機屬於既有 B7 範圍，這次沒有新增劇本。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -2851,7 +2917,10 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R5 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1` | 「目前這一代」有兩套判定，對舊 attempt 做獨立副本後結果頁翻回舊世代；「可續作」有兩份判定，其中一份沒有排除已交接的 attempt | 共用 helper 改依 StartedUtc／世代／AttemptId 排序，不用 UpdatedUtc；「可續作」改為單一判定並排除已交接（17.110） | `Test-BackupCurrencyAndReview`（R5 區段與 13 個可續作情境） | b808884 |
 | R26-B6 | `src/AssistiveRestore.ps1` 容量加總、`src/WizardRuntime.ps1` 原因文字 | 同一磁碟的容量加總也算進已還原的項目，已還原完成後，其他項目仍被誤判為容量不足 | 已還原項目改用 `Get-WsmAssistiveRestoredItemIdSet` 判定，不計入加總、也不標記；改為逐項判定（單項超量只擋該項），合計不足時標記同磁碟所有待寫項目，並附合計數字（17.114，與 Q3 同一段） | `Test-TargetCapacityStaging`（B6 三個情境，先在原版重現誤判再修正） | 539408f |
 | Q6a-i | `src/Recovery.ps1` Complete-WsmAssistiveOperationRepair、`src/AssistiveRestore.ps1` 寫入器 | 沒有 owner 的 intent 遇到同內容外部檔時，Repair 記為工具擁有，回復時會移走外部檔 | 寫入器在 Move 前記錄綁定封存雜湊的 Prepared 證據；Repair 必須同時具備「intent、Move 前紀錄、staging 已消耗」才記為工具擁有，否則一律記為 AdoptedExisting（17.118） | `Test-RoundSevenGapCoverage` I 區段（I1～I10，含真實寫入器在 Move 後當機）、`Test-JournalReplayCoverage` | `88f7e8e` |
-| Q6b | `tests/Test-HtmlBridge.js`、`Test-StartBackupReplayHttp.js`、`Test-C2D2HtmlActions.ps1`、`Test-BackupProgressBrowser.js`、`Test-NativeWizardJourney.js` | 本機 AdGuard 會重設 loopback 連線、卡住超過約 64 KiB 的回應、改寫 HTML，五支測試因此長期失敗；`new URL()` 把 `/api/../` 正規化，路徑拒絕從未真正測到；帳密端點與 socket 邊界沒有測試 | 只在沒收到任何回應位元組時重試，並計數；原始 socket 路徑探針；瀏覽器在本機可從磁碟提供 UI，帶 console 安全標頭並計數；本機遇環境重設回報 ENVIRONMENT-LIMITED（exit 3，不算通過）；四個 workflow 設 `WSM_TEST_NO_DISK_UI=1`，CI 關閉退路；新測試用原生 GET 比對 UI 位元組（17.119） | `Test-HttpSocketEdgeCases.js`（109）、`Test-ConsoleAssetTransport.js`、`Test-HtmlBridge.js`（45）、`Test-StartBackupReplayHttp.js`（17）、`Test-C2D2HtmlActions.ps1`（185）、`Test-BackupProgressBrowser.js` | （Q6B-COMMIT） |
+| Q6b | `tests/Test-HtmlBridge.js`、`Test-StartBackupReplayHttp.js`、`Test-C2D2HtmlActions.ps1`、`Test-BackupProgressBrowser.js`、`Test-NativeWizardJourney.js` | 本機 AdGuard 會重設 loopback 連線、卡住超過約 64 KiB 的回應、改寫 HTML，五支測試因此長期失敗；`new URL()` 把 `/api/../` 正規化，路徑拒絕從未真正測到；帳密端點與 socket 邊界沒有測試 | 只在沒收到任何回應位元組時重試，並計數；原始 socket 路徑探針；瀏覽器在本機可從磁碟提供 UI，帶 console 安全標頭並計數；本機遇環境重設回報 ENVIRONMENT-LIMITED（exit 3，不算通過）；四個 workflow 設 `WSM_TEST_NO_DISK_UI=1`，CI 關閉退路；新測試用原生 GET 比對 UI 位元組（17.119） | `Test-HttpSocketEdgeCases.js`（109）、`Test-ConsoleAssetTransport.js`、`Test-HtmlBridge.js`（45）、`Test-StartBackupReplayHttp.js`（17）、`Test-C2D2HtmlActions.ps1`（185）、`Test-BackupProgressBrowser.js` | `775daad` |
+| R6 | `src/WizardBackup.ps1` `Get-WsmIndependentCopyMediaClass`、獨立副本工作區外檢查 | `\\?\C:\`、`\\.\C:\`、`//?/C:/`、`\\localhost\C$`、`\\127.0.0.1\C$` 被判為 Network，繞過「本機固定磁碟不算獨立媒體」的拒絕；工作區檢查只比對字串前綴 | 目的地先 canonical 化；本機別名 UNC 折回實體磁碟分級；工作區包含改比對實體路徑，解析失敗即拒絕（17.120） | `Test-IndependentCopyHardening`（R6 三段） | （A1-COMMIT） |
+| R7 | `Invoke-WsmWizardIndependentCopy` catch、`ConvertTo-WsmWizardBackupResult`、`Get-WsmWizardIndependentCopyProjection` | 第二次副本失敗或取消會抹掉先前的 Verified；媒體被刪後仍顯示「已驗證」 | 保留收據，另存 `IndependentCopyLastAttempt`（Failed／Cancelled）；媒體缺失或在收據自己的媒體上驗證失敗時，改為「收據完整；媒體需重新驗證」並附「重新驗證」按鈕（17.120） | `Test-IndependentCopyHardening`（R7、same-media、A8）、`Test-WizardBackup` Case c、`Test-BackupWorkbenchBrowser` I 區塊 | （A1-COMMIT） |
+| A1-容量 | `Invoke-WsmWizardIndependentCopy` | 獨立副本沒有容量預檢 | 寫入前比較可用空間：不足時以 `InsufficientSpace` 拒絕且零寫入；查詢失敗時警告並記為 Unknown（17.120） | `Test-IndependentCopyHardening`（容量段） | （A1-COMMIT） |
 
 ### 第六輪終檢
 

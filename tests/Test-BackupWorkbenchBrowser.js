@@ -83,7 +83,7 @@ async function openWorkbench(browser, fixture, scenario, hash, contextOptions) {
   const context = await browser.newContext(Object.assign({ viewport: { width: 1280, height: 900 } }, contextOptions || {}));
   await context.addInitScript(blobCapture);
   const page = await context.newPage();
-  const errors = [], fileRequests = [], gates = {}, calls = { itemFailuresLeft: scenario.failFirstFilesFor ? 1 : 0 };
+  const errors = [], fileRequests = [], operations = [], gates = {}, calls = { itemFailuresLeft: scenario.failFirstFilesFor ? 1 : 0 };
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   const session = { token: 'memory-only-test-token', sessionId: 'fixture-session', contextId: 'fixture-context', hostName: 'fixture-host', role: 'Source', workspace: root, pairId: 'fixture-pair', revision: 5, decisionRevision: 7, selectionRevision: 3, sourceSelectionRevision: 3, dataVersion: 'fixture-data-1', principal: 'fixture-user' };
@@ -118,11 +118,12 @@ async function openWorkbench(browser, fixture, scenario, hash, contextOptions) {
       if (body.args.ItemId === 'item-0002' && calls.itemFailuresLeft > 0) { calls.itemFailuresLeft--; return json({ code: 'package_changed', message: '封存套件已變更，無法核驗。', nextStep: '重新備份後再查看。', correlationId: 'fixture-files-error' }); }
       return json(filesFor(body.args.ItemId, body.args.Page));
     }
+    if (pathname === '/api/operations' && request.method() === 'POST') { const body = request.postDataJSON(); operations.push(body); return json({ jobId: body.operationId, id: body.operationId, operationId: body.operationId, action: body.action, status: 'Queued', workspace: root, pairId: 'fixture-pair', role: 'Source', sessionId: 'fixture-session', contextId: 'fixture-context', startedRevision: session.revision, canCancel: false }); }
     errors.push(`unhandled fixture route ${request.method()} ${pathname}`);
     return json({ message: `Unhandled fixture route ${request.method()} ${pathname}` }, 404);
   });
   await page.goto(`http://127.0.0.1:${server.address().port}/${hash}`, { waitUntil: 'domcontentloaded' });
-  return { page, context, errors, fileRequests, gates };
+  return { page, context, errors, fileRequests, operations, gates };
 }
 const gate = () => { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; };
 const waitResults = async page => { await page.waitForSelector('#backup-item-results [role=tablist]', { timeout: 30000 }); };
@@ -752,6 +753,93 @@ const waitResults = async page => { await page.waitForSelector('#backup-item-res
       assert.equal(await legacy.page.locator('#backup-completeness').count(), 0);
       assert.equal(await legacy.page.locator('.backup-region-toggle').count(), 0);
       assert.deepEqual(legacy.errors, []); await legacy.context.close();
+    }
+
+    // ================= I. R7 / A8: receipt intact but media gone, newer failed or cancelled attempt, re-verify button =================
+    {
+      const receiptTime = '2026-10-22T08:30:00Z', later = '2026-10-23T09:15:00Z';
+      const withCopy = extra => ({ ...COPY_STATES.verified, mediaState: 'Present', destinationRoot: 'E:\\', canReverify: true, lastAttempt: null, ...extra });
+      const states = {
+        mediaMissing: withCopy({ state: 'MediaMissing', text: '收據完整；媒體需重新驗證', mediaState: 'Missing', reason: '收據完整，但獨立副本媒體上的檔案已不存在或大小不符；請接上媒體後按「重新驗證」，或重新建立副本。' }),
+        failedNewer: withCopy({ lastAttempt: { status: 'Failed', code: 'CopyFailed', reason: 'The device is not ready.', nextStep: '複製沒有完成，先前已驗證的收據不受影響。請檢查目的地與原因後再執行一次獨立副本。', attemptedUtc: later, newer: true } }),
+        cancelledNewer: withCopy({ lastAttempt: { status: 'Cancelled', code: 'Cancelled', reason: 'Owner-requested cancellation observed.', nextStep: '複製已依要求停止；先前已驗證的收據仍有效。', attemptedUtc: later, newer: true } }),
+        failedOlder: withCopy({ lastAttempt: { status: 'Failed', code: 'CopyFailed', reason: 'old failure', nextStep: 'old next step', attemptedUtc: '2026-10-21T01:00:00Z', newer: false } }),
+        hostile: withCopy({ state: 'MediaMissing', text: '收據完整；媒體需重新驗證', mediaState: 'Missing', reason: 'X'.repeat(300), lastAttempt: { status: 'Failed', code: 'CopyFailed', reason: '<img src=x onerror="window.__r7xss=1">' + 'Y'.repeat(300), nextStep: 'Z'.repeat(300), attemptedUtc: later, newer: true } })
+      };
+      const open = async (copy, viewport) => { const opened = await openWorkbench(browser, fixture, { ...base, copy }, '#jobs?filter=backup&tab=backed', viewport ? { viewport } : undefined); await waitResults(opened.page); return opened; };
+      // I1 media missing: never reads as plain verified; receipt time and the re-verify button are shown
+      {
+        const { page, errors, operations, context } = await open(states.mediaMissing);
+        const backed = page.locator('#backup-panel-backed'), status = backed.locator('.backup-copy-status');
+        assert.equal(await status.count(), 1, 'one copy status block');
+        const text = await status.innerText();
+        assert.ok(text.includes('收據完整；媒體需重新驗證') && text.includes('收據時間 2026-10-22') && !text.includes('已驗證完成'), 'media-missing text: ' + text);
+        const columnTexts = await backed.locator('tbody tr:not(.backup-detail-row) td:nth-child(10)').allInnerTexts();
+        assert.ok(columnTexts.length > 0 && columnTexts.every(cell => cell.includes('收據完整；媒體需重新驗證') && !/(^|\s)已驗證(\s|$)/.test(cell.replace('收據完整；媒體需重新驗證', ''))), 'column must not claim verified: ' + JSON.stringify(columnTexts.slice(0, 2)));
+        const options = await backed.getByLabel('獨立副本').locator('option').allInnerTexts();
+        assert.ok(options.includes('收據完整；媒體需重新驗證'), 'copy filter offers the media-missing state: ' + options.join('|'));
+        const button = backed.getByRole('button', { name: '重新驗證' });
+        assert.equal(await button.count(), 1, 're-verify button');
+        // keyboard: focus + Enter submits the existing IndependentCopy action in VerifyExisting mode with the receipt location
+        await button.focus(); await page.keyboard.press('Enter');
+        await page.waitForFunction(() => document.getElementById('notice') && !document.getElementById('notice').hidden && document.getElementById('notice').textContent.includes('重新驗證'));
+        assert.equal(operations.length, 1, 'exactly one operation request');
+        const request = operations[0];
+        assert.equal(request.action, 'IndependentCopy');
+        assert.deepEqual(request.args, { BackupOperationId: 'fixture-op', DestinationRoot: 'E:\\', Mode: 'VerifyExisting' });
+        assert.equal(await button.getAttribute('aria-disabled'), 'false', 'button is usable again after submit');
+        await page.screenshot({ path: path.join(screens, 'a1-copy-media-missing.png') });
+        assert.deepEqual(errors, []); await context.close();
+      }
+      // I2 a newer failed attempt is shown beside the still-verified receipt
+      {
+        const { page, errors, context } = await open(states.failedNewer);
+        const backed = page.locator('#backup-panel-backed'), status = backed.locator('.backup-copy-status'), text = await status.innerText();
+        assert.ok(text.includes('收據時間 2026-10-22') && text.includes('較新的嘗試：失敗') && text.includes('2026-10-23') && text.includes('The device is not ready.') && text.includes('下一步：複製沒有完成'), 'failed attempt text: ' + text);
+        assert.ok(text.includes('收據完整；媒體目前是否可讀取，須按「重新驗證」確認。'), 'receipt note: ' + text);
+        const columnTexts = await backed.locator('tbody tr:not(.backup-detail-row) td:nth-child(10)').allInnerTexts();
+        assert.ok(columnTexts.every(cell => cell.includes('已驗證')), 'the receipt column still reads verified');
+        assert.equal(await status.locator('[data-last-status=Failed]').count(), 1);
+        assert.deepEqual(errors, []); await context.close();
+      }
+      // I3 cancelled is not reported as failed
+      {
+        const { page, errors, context } = await open(states.cancelledNewer);
+        const text = await page.locator('#backup-panel-backed .backup-copy-status').innerText();
+        assert.ok(text.includes('較新的嘗試：已取消') && !text.includes('較新的嘗試：失敗'), 'cancelled text: ' + text);
+        assert.deepEqual(errors, []); await context.close();
+      }
+      // I4 an attempt older than the receipt is not shown; the receipt block stays
+      {
+        const { page, errors, context } = await open(states.failedOlder);
+        const status = page.locator('#backup-panel-backed .backup-copy-status');
+        assert.equal(await status.locator('.backup-copy-last-attempt').count(), 0, 'older attempts are not shown');
+        assert.ok((await status.innerText()).includes('收據時間 2026-10-22'));
+        assert.deepEqual(errors, []); await context.close();
+      }
+      // I5 legacy projections (no new fields) and a not-verified column show no status block and no re-verify button
+      for (const copy of [COPY_STATES.verified, COPY_STATES.notVerified, COPY_STATES.unverifiable]) {
+        const { page, errors, context } = await open(copy);
+        assert.equal(await page.locator('#backup-panel-backed .backup-copy-status').count(), 0, 'no status block without the new fields');
+        assert.equal(await page.getByRole('button', { name: '重新驗證' }).count(), 0, 'no re-verify button without a receipt location');
+        assert.deepEqual(errors, []); await context.close();
+      }
+      // I6 hostile text stays text; long strings wrap; 320 and 390px never scroll the page sideways
+      for (const width of [320, 390, 1280]) {
+        const { page, errors, context } = await open(states.hostile, { width, height: 844 });
+        const status = page.locator('#backup-panel-backed .backup-copy-status');
+        assert.equal(await status.locator('img').count(), 0, 'reason text must not create elements');
+        assert.equal(await page.evaluate(() => window.__r7xss === undefined), true, 'no script from reason text');
+        assert.ok((await status.innerText()).includes('<img src=x onerror='), 'the markup is shown as text');
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        assert.ok(overflow <= 0, `${width}px: page overflows by ${overflow}px`);
+        const box = await status.boundingBox();
+        assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1, `${width}px: status block leaves the viewport (${JSON.stringify(box)})`);
+        const buttonBox = await page.locator('#backup-panel-backed').getByRole('button', { name: '重新驗證' }).boundingBox();
+        assert.ok(buttonBox && buttonBox.x + buttonBox.width <= width + 1, `${width}px: re-verify button leaves the viewport`);
+        await page.screenshot({ path: path.join(screens, `a1-copy-status-${width}.png`) });
+        assert.deepEqual(errors, []); await context.close();
+      }
     }
 
     assert.deepEqual(allErrors, [], 'no console errors expected');

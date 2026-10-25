@@ -376,7 +376,13 @@ function ConvertTo-WsmWizardBackupResult($Attempt,[string]$OperationId) {
     $itemResults=$(if($Attempt.PSObject.Properties['ItemResults']){$Attempt.ItemResults}else{$null})
     $offlineReport=$(if($Attempt.PSObject.Properties['OfflineReport']){$Attempt.OfflineReport}else{$null})
     $offlineReadiness=$(if(-not (Test-WsmWizardBackupAttemptDelivered $Attempt)){'NotDelivered'}elseif($independentCopy -and $independentCopy.PSObject.Properties['Status'] -and $independentCopy.Status -ceq 'Verified'){[string]$independentCopy.Availability}else{'AwaitingIndependentCopy'})
-    [pscustomobject][ordered]@{Kind='WizardBackupResult';Status=[string]$Attempt.Stage;PairId=[string]$Attempt.PairId;AttemptId=[string]$Attempt.AttemptId;OperationId=$OperationId;StartedByOperationId=[string]$Attempt.StartedByOperationId;Stage=[string]$Attempt.Stage;DeliveryMode=$(if($Attempt.PSObject.Properties['DeliveryMode']){[string]$Attempt.DeliveryMode}else{''});VolumeBytes=$(if($Attempt.PSObject.Properties['VolumeBytes']){[long]$Attempt.VolumeBytes}else{0});Freeze=$Attempt.Freeze;CoreExport=$Attempt.CoreExport;PackageTest=$Attempt.PackageTest;Delivery=$Attempt.Delivery;ChannelSummary=$Attempt.ChannelSummary;NonCStatus=$(if($Attempt.ChannelSummary){[string]$Attempt.ChannelSummary.NonC.Status}else{'Pending'});ResumeStage=$(if($Attempt.PSObject.Properties['ResumeStage']){[string]$Attempt.ResumeStage}else{''});CanResumeAfterReview=((Test-WsmWizardBackupAttemptResumable $Attempt) -and [string]$Attempt.Stage -cin @('Failed','Cancelled'));SourceResumeRequired=([bool]($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired));AuthoritativeApproval=$true;ProductionVerified=$false;ResumeRequired=[bool](Test-WsmWizardBackupAttemptResumable $Attempt);IndependentCopy=$independentCopy;OfflineReadiness=$offlineReadiness;ItemResults=$itemResults;OfflineReport=$offlineReport}
+    # A8：收據完整不等於媒體還在。副本資料夾或交付描述檔已不存在時，不再回報「已驗證」（進度卡與結果頁都吃這個值）。
+    if($offlineReadiness -cin @('Verified','VerifiedNetworkAvailabilityUnconfirmed') -and $Attempt.PSObject.Properties['Delivery'] -and $Attempt.Delivery){
+        $copyRootText=$(if($independentCopy.PSObject.Properties['CopyRoot']){[string]$independentCopy.CopyRoot}else{''});$copyMedia=$(if($independentCopy.PSObject.Properties['MediaClass']){[string]$independentCopy.MediaClass}else{''})
+        if((Test-WsmIndependentCopyReceiptInvalidated $Attempt) -or (Test-WsmIndependentCopyMediaPresent $copyRootText $copyMedia $Attempt.Delivery) -ceq 'Missing'){$offlineReadiness='MediaNeedsReverification'}
+    }
+    $lastCopyAttempt=$(if($Attempt.PSObject.Properties['IndependentCopyLastAttempt']){$Attempt.IndependentCopyLastAttempt}else{$null})
+    [pscustomobject][ordered]@{Kind='WizardBackupResult';Status=[string]$Attempt.Stage;PairId=[string]$Attempt.PairId;AttemptId=[string]$Attempt.AttemptId;OperationId=$OperationId;StartedByOperationId=[string]$Attempt.StartedByOperationId;Stage=[string]$Attempt.Stage;DeliveryMode=$(if($Attempt.PSObject.Properties['DeliveryMode']){[string]$Attempt.DeliveryMode}else{''});VolumeBytes=$(if($Attempt.PSObject.Properties['VolumeBytes']){[long]$Attempt.VolumeBytes}else{0});Freeze=$Attempt.Freeze;CoreExport=$Attempt.CoreExport;PackageTest=$Attempt.PackageTest;Delivery=$Attempt.Delivery;ChannelSummary=$Attempt.ChannelSummary;NonCStatus=$(if($Attempt.ChannelSummary){[string]$Attempt.ChannelSummary.NonC.Status}else{'Pending'});ResumeStage=$(if($Attempt.PSObject.Properties['ResumeStage']){[string]$Attempt.ResumeStage}else{''});CanResumeAfterReview=((Test-WsmWizardBackupAttemptResumable $Attempt) -and [string]$Attempt.Stage -cin @('Failed','Cancelled'));SourceResumeRequired=([bool]($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired));AuthoritativeApproval=$true;ProductionVerified=$false;ResumeRequired=[bool](Test-WsmWizardBackupAttemptResumable $Attempt);IndependentCopy=$independentCopy;IndependentCopyLastAttempt=$lastCopyAttempt;OfflineReadiness=$offlineReadiness;ItemResults=$itemResults;OfflineReport=$offlineReport}
 }
 
 function Get-WsmWizardBackupDeliverySettings([string]$Workspace,[string]$PairId,$Profile,$Existing,[bool]$ModeSpecified,[string]$RequestedMode,[bool]$VolumeSpecified,$RequestedVolume) {
@@ -661,16 +667,57 @@ function Test-WsmWizardOfflineFullSetPlan($Plan) {
     [bool]($Plan.PSObject.Properties['Assistive'] -and $Plan.Assistive -and $Plan.Assistive.ContractVersion -eq 2)
 }
 
+function Get-WsmDriveTypeName([string]$Root) {
+    # 觀測縫：只回報磁碟型別名稱，媒體分級的路徑處理才能在不依賴實體磁碟的情況下測試。
+    [string](New-Object IO.DriveInfo($Root)).DriveType
+}
+
+# R6：判斷 UNC 主機是不是這台機器自己（localhost、本機名稱、環回 IP、本機網卡 IP、ipv6-literal）。
+# 只比對名稱與位址，不做 DNS 解析（遠端主機名稱不會在這裡卡住）。
+function Test-WsmLocalMachineHostName([string]$HostName) {
+    if([string]::IsNullOrWhiteSpace($HostName)){return $false}
+    $name=$HostName.Trim().TrimEnd('.')
+    if($name -match '^(.+)\.ipv6-literal\.net$'){$name=(($Matches[1] -replace 's.*$','').Replace('-',':'))}
+    if($name -ieq 'localhost'){return $true}
+    $address=$null
+    if([Net.IPAddress]::TryParse($name,[ref]$address)){
+        if([Net.IPAddress]::IsLoopback($address)){return $true}
+        try{foreach($nic in [Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()){foreach($unicast in $nic.GetIPProperties().UnicastAddresses){if($unicast.Address.Equals($address)){return $true}}}}catch{}
+        return $false
+    }
+    $short=$name.Split('.')[0]
+    if($short -ieq $env:COMPUTERNAME){return $true}
+    try{$machine=[Net.Dns]::GetHostName();if($name -ieq $machine -or $short -ieq $machine.Split('.')[0]){return $true}}catch{}
+    $false
+}
+
+# R6：獨立副本目的地的唯一正規化入口。先走既有的 ConvertTo-WsmCanonicalPath（拒絕裝置路徑 \\?\ \\.\、ADS、..、萬用字元、相對路徑），
+# 再判斷 UNC 主機是不是本機：本機別名（\\localhost\C$、\\127.0.0.1\C$、\\本機名稱\C$）折回實體磁碟路徑，依實體磁碟分級；
+# 本機的非管理共用無法折回磁碟，LocalPath 為 $null（分級為 Unknown，直接拒絕）。外部主機維持 Network。
+function Resolve-WsmIndependentCopyDestination([string]$DestinationRoot) {
+    if([string]::IsNullOrWhiteSpace($DestinationRoot)){throw 'Independent copy destination is empty.'}
+    $canonical=ConvertTo-WsmCanonicalPath ($DestinationRoot.Trim().Replace('/','\'))
+    $isUnc=$canonical.StartsWith('\\');$hostName='';$isLocalAlias=$false;$localPath=$canonical
+    if($isUnc){
+        $segments=$canonical.Substring(2).Split('\')
+        $hostName=[string]$segments[0];$localPath=$null
+        if(Test-WsmLocalMachineHostName $hostName){
+            $isLocalAlias=$true
+            if($segments.Count -ge 2 -and $segments[1] -match '^([A-Za-z])\$$'){$localPath=$Matches[1].ToUpperInvariant()+':\'+((@($segments | Select-Object -Skip 2)) -join '\')}
+        }
+    }
+    [pscustomobject]@{Canonical=$canonical;IsUnc=$isUnc;HostName=$hostName;IsLocalAlias=$isLocalAlias;LocalPath=$localPath}
+}
+
 function Get-WsmIndependentCopyMediaClass([string]$DestinationRoot) {
     if([string]::IsNullOrWhiteSpace($DestinationRoot)){return 'Unknown'}
-    if($DestinationRoot.StartsWith('\\')){return 'Network'}
+    try{$resolved=Resolve-WsmIndependentCopyDestination $DestinationRoot}catch{return 'Unknown'}
+    if($resolved.IsUnc -and -not $resolved.IsLocalAlias){return 'Network'}
+    if(-not $resolved.LocalPath){return 'Unknown'}
     try {
-        $full=[IO.Path]::GetFullPath($DestinationRoot)
-        if($full.StartsWith('\\')){return 'Network'}
-        $root=[IO.Path]::GetPathRoot($full)
+        $root=[IO.Path]::GetPathRoot($resolved.LocalPath)
         if([string]::IsNullOrWhiteSpace($root)){return 'Unknown'}
-        $drive=New-Object IO.DriveInfo($root)
-        $dt=[string]$drive.DriveType
+        $dt=Get-WsmDriveTypeName $root
         if($dt -ceq 'Removable'){return 'Removable'}
         if($dt -ceq 'Network'){return 'Network'}
         if($dt -ceq 'Fixed'){return 'LocalFixed'}
@@ -678,6 +725,79 @@ function Get-WsmIndependentCopyMediaClass([string]$DestinationRoot) {
     }catch{
         return 'Unknown'
     }
+}
+
+# R6：實體路徑（\Device\HarddiskVolumeN\...，subst／junction／符號連結都已解開）。路徑尚不存在時，解析最近的既有祖先再接回尚未存在的名稱。
+function Get-WsmIndependentCopyPhysicalKey([string]$Path) {
+    $cursor=[IO.Path]::GetFullPath($Path).TrimEnd('\');if($cursor.Length -eq 2){$cursor+='\'}
+    $tail=New-Object 'System.Collections.Generic.Stack[string]'
+    while(-not [IO.Directory]::Exists($cursor) -and -not [IO.File]::Exists($cursor)){
+        $trimmed=$cursor.TrimEnd('\');$leaf=[IO.Path]::GetFileName($trimmed);$parent=[IO.Path]::GetDirectoryName($trimmed)
+        if(-not $parent -or $parent -ceq $cursor){throw 'Physical location of the independent copy destination cannot be established.'}
+        $tail.Push($leaf);$cursor=$parent
+    }
+    Initialize-WsmPhysicalPathApi
+    $physical=([WsmPhysicalPath]::Resolve($cursor)).TrimEnd('\')
+    while($tail.Count){$physical+='\'+$tail.Pop()}
+    $physical
+}
+
+function Test-WsmIndependentCopyInsideWorkspace([string]$LocalPath,[string]$Workspace) {
+    $workspaceFull=[IO.Path]::GetFullPath($Workspace).TrimEnd('\')
+    $candidate=[IO.Path]::GetFullPath($LocalPath).TrimEnd('\')
+    if($candidate -ieq $workspaceFull -or $candidate.StartsWith($workspaceFull+'\',[StringComparison]::OrdinalIgnoreCase)){return $true}
+    try{
+        $left=(Get-WsmIndependentCopyPhysicalKey $LocalPath).TrimEnd('\');$right=(Get-WsmIndependentCopyPhysicalKey $Workspace).TrimEnd('\')
+        return ($left -ieq $right -or $left.StartsWith($right+'\',[StringComparison]::OrdinalIgnoreCase))
+    }catch{
+        # 安全檢查不可在出錯時放行：實體位置無法確立就拒絕，而不是當成「在工作區外」。
+        throw ('Independent copy destination physical location cannot be compared with the source workspace: '+[string]$_.Exception.Message)
+    }
+}
+
+# R7 收尾：已驗證收據對應的媒體是否已被證明不可信。對「收據的同一個 CopyRoot」做的驗證或複製失敗（不含取消、不含寫入前就拒絕的空間不足）
+# 代表那份媒體已和收據不符；收據保留作歷史，但不得再當成已驗證。結果與投影都只看這個判定。
+function Test-WsmIndependentCopyReceiptInvalidated($Attempt) {
+    if(-not $Attempt -or -not $Attempt.PSObject.Properties['IndependentCopy'] -or -not $Attempt.IndependentCopy){return $false}
+    $receipt=$Attempt.IndependentCopy
+    return [bool]($receipt.PSObject.Properties['MediaIntegrity'] -and $receipt.MediaIntegrity -and [string]$receipt.MediaIntegrity.Status -ceq 'NeedsReverification')
+}
+
+# A8：副本媒體是否還在。Quick 只看副本資料夾與交付描述檔（進度卡每次輪詢都會用）；Full 另讀描述檔（核對雜湊）並逐一確認成員或分卷存在且大小相符（不雜湊內容）。
+# 網路位置不在讀取時探測（離線或逾時會卡住畫面），回 NotChecked。回傳 Present／Missing／NotChecked。
+function Test-WsmIndependentCopyMediaPresent([string]$CopyRoot,[string]$MediaClass,$Delivery,[switch]$Full) {
+    if([string]$MediaClass -ceq 'Network'){return 'NotChecked'}
+    try{
+        if([string]::IsNullOrWhiteSpace($CopyRoot) -or -not [IO.Directory]::Exists($CopyRoot)){return 'Missing'}
+        $mode=[string]$Delivery.Mode
+        if($mode -ceq 'Directory'){$descriptorPath=Join-Path $CopyRoot ('transport\'+[IO.Path]::GetFileName([string]$Delivery.Path))}
+        elseif($mode -ceq 'Zip'){$descriptorPath=Join-Path $CopyRoot 'transport\transport.json'}
+        else{return 'Missing'}
+        if(-not [IO.File]::Exists($descriptorPath)){return 'Missing'}
+        if(-not $Full){return 'Present'}
+        $descriptor=Read-WsmTrustedJson $descriptorPath ([string]$Delivery.SHA256)
+        if($mode -ceq 'Directory'){
+            foreach($member in @($descriptor.Members)){
+                $memberPath=Join-Path $CopyRoot ('transport\delivery\'+([string]$member.Name).Replace('/','\'))
+                if(-not [IO.File]::Exists($memberPath) -or (New-Object IO.FileInfo($memberPath)).Length -ne [long]$member.Bytes){return 'Missing'}
+            }
+        }else{
+            foreach($volume in @($descriptor.Volumes)){
+                $volumePath=Join-Path $CopyRoot ('transport\'+[string]$volume.Name)
+                if(-not [IO.File]::Exists($volumePath) -or (New-Object IO.FileInfo($volumePath)).Length -ne [long]$volume.Bytes){return 'Missing'}
+            }
+        }
+        'Present'
+    }catch{'Missing'}
+}
+
+# 容量預檢用的可用空間：本機路徑沿用 Get-WsmAvailableBytes（測試替身的觀測縫）；外部 UNC 以最近的既有祖先呼叫 GetDiskFreeSpaceEx。
+function Get-WsmIndependentCopyAvailableBytes($Resolved) {
+    if($Resolved.LocalPath){return [long](Get-WsmAvailableBytes ([string]$Resolved.LocalPath))}
+    $cursor=([string]$Resolved.Canonical).TrimEnd('\')
+    while(-not [IO.Directory]::Exists($cursor)){$parent=[IO.Path]::GetDirectoryName($cursor);if(-not $parent -or $parent -ceq $cursor){throw 'Capacity directory is unavailable.'};$cursor=$parent}
+    Initialize-WsmAssistiveCapacityApi
+    [long][WsmAssistiveCapacity]::Available($cursor.TrimEnd('\')+'\')
 }
 
 function Test-WsmIndependentCopyFiles([string]$CopyRoot,$Delivery,[string]$ItemResultsSHA256,[string]$OfflineReportSHA256,$CancellationToken=$null,[string]$OfflineGuideSHA256='',[string]$OfflineGuideTextSHA256='') {
@@ -790,10 +910,10 @@ function Invoke-WsmWizardIndependentCopy {
     if(-not (Test-WsmWizardBackupAttemptDelivered $attempt) -or -not ($attempt.PSObject.Properties['Delivery'] -and $attempt.Delivery -and $attempt.Delivery.PSObject.Properties['SHA256'] -and $attempt.Delivery.SHA256)){
         throw 'Independent copy requires a delivered backup attempt for this operation.'
     }
-    $destination=[IO.Path]::GetFullPath($DestinationRoot)
-    $workspaceFull=[IO.Path]::GetFullPath($Workspace)
-    $workspacePrefix=$workspaceFull.TrimEnd('\')+'\'
-    if($destination.TrimEnd('\') -ieq $workspaceFull.TrimEnd('\') -or $destination.TrimEnd('\').StartsWith($workspacePrefix,[StringComparison]::OrdinalIgnoreCase)){
+    # R6：目的地先走正規化（拒絕裝置路徑、ADS、..、相對路徑）；本機別名 UNC 折回實體磁碟；工作區包含檢查比對實體路徑（subst／junction 換拼法也擋得住）。
+    try{$resolved=Resolve-WsmIndependentCopyDestination $DestinationRoot}catch{throw ('Independent copy destination is not an allowed path: '+$_.Exception.Message)}
+    $destination=[string]$resolved.Canonical
+    if($resolved.LocalPath -and (Test-WsmIndependentCopyInsideWorkspace ([string]$resolved.LocalPath) $Workspace)){
         throw 'Independent copy destination must be outside the source workspace.'
     }
     $mediaClass=Get-WsmIndependentCopyMediaClass $destination
@@ -848,8 +968,22 @@ function Invoke-WsmWizardIndependentCopy {
         $filesToCopy+=@([pscustomobject]@{Source=$guideSourceHtml;Dest=(Join-Path $copyRoot 'transport\offline-guide.html');Bytes=((New-Object IO.FileInfo($guideSourceHtml)).Length);SHA256=$offlineGuideExpectedHash})
         $filesToCopy+=@([pscustomobject]@{Source=$guideSourceText;Dest=(Join-Path $copyRoot 'transport\offline-guide.txt');Bytes=((New-Object IO.FileInfo($guideSourceText)).Length);SHA256=$offlineGuideTextExpectedHash})
     }
+    $capacity=[pscustomobject][ordered]@{Status='NotApplicable';RequiredBytes=[long]0;AvailableBytes=[long]0;Warning=''}
     try {
         if($Mode -ceq 'Copy'){
+            # 容量預檢：寫入任何檔案之前先比較目的地可用空間與還沒複製到位的位元組數（算式沿用 Get-WsmAssistiveCapacityRequiredBytes，含 256 MiB 緩衝）。
+            # 空間不足就以穩定原因碼 InsufficientSpace 拒絕，不留半寫的副本、不動先前的收據；取不到可用空間（例如 UNC 查詢失敗）則警告後允許，並寫進收據。
+            $neededBytes=[long]0
+            foreach($file in $filesToCopy){if([IO.File]::Exists($file.Dest) -and (New-Object IO.FileInfo($file.Dest)).Length -eq [long]$file.Bytes){continue};$neededBytes+=[long]$file.Bytes}
+            $requiredBytes=[long](Get-WsmAssistiveCapacityRequiredBytes $neededBytes)
+            $availableBytes=$null;$capacityWarning=''
+            try{$availableBytes=[long](Get-WsmIndependentCopyAvailableBytes $resolved)}catch{$capacityWarning=('無法讀取目的地的可用空間（'+[string]$_.Exception.Message+'）；已繼續複製，空間不足時會在複製中途失敗，先前的收據不受影響。');if($capacityWarning.Length -gt 300){$capacityWarning=$capacityWarning.Substring(0,300)}}
+            if($null -ne $availableBytes -and $availableBytes -lt $requiredBytes){
+                $spaceError=New-Object InvalidOperationException ('InsufficientSpace: the destination has '+$availableBytes+' bytes free but the independent copy needs '+$requiredBytes+' bytes (including a 256 MiB reserve). Free space on the destination or choose another location, then copy again.')
+                $spaceError.Data['WsmErrorCode']='InsufficientSpace';$spaceError.Data['RequiredBytes']=$requiredBytes;$spaceError.Data['AvailableBytes']=$availableBytes
+                throw $spaceError
+            }
+            $capacity=[pscustomobject][ordered]@{Status=$(if($null -ne $availableBytes){'Sufficient'}else{'Unknown'});RequiredBytes=$requiredBytes;AvailableBytes=$(if($null -ne $availableBytes){[long]$availableBytes}else{[long]0});Warning=$capacityWarning}
             foreach($file in $filesToCopy){
                 Assert-WsmCancellationBoundary $CancellationToken 'IndependentCopyFile'
                 if([IO.File]::Exists($file.Dest)){
@@ -896,6 +1030,7 @@ function Invoke-WsmWizardIndependentCopy {
             MediaClass=$mediaClass
             Availability=$availability
             Mode=$Mode
+            CapacityCheck=$capacity
             FileCount=[int]$verified.FileCount
             TotalBytes=[long]$verified.TotalBytes
             VerifiedUtc=$verifiedUtc
@@ -911,22 +1046,52 @@ function Invoke-WsmWizardIndependentCopy {
             ReceiptPath=[IO.Path]::GetFullPath($receiptPath)
             ReceiptSHA256=$receiptHash
             VerifiedUtc=$verifiedUtc
+            CapacityCheck=$capacity
         }
         if($attempt.PSObject.Properties['IndependentCopy']){$attempt.IndependentCopy=$indObj}else{Add-Member -InputObject $attempt -NotePropertyName IndependentCopy -NotePropertyValue $indObj}
+        # 成功就清掉先前失敗／取消的 LastAttempt，避免結果頁一直顯示過期的「較新的嘗試」。
+        if($attempt.PSObject.Properties['IndependentCopyLastAttempt']){$attempt.PSObject.Properties.Remove('IndependentCopyLastAttempt')}
         $attempt.UpdatedUtc=Get-WsmUtc
         Write-WsmWizardBackupAttempt $attemptPath $attempt $Workspace
     } catch {
         $errText=[string]$_.Exception.Message
         if($errText.Length -gt 300){$errText=$errText.Substring(0,300)}
-        $failedObj=[pscustomobject]@{
-            Status='Failed'
-            Availability='NotVerified'
-            MediaClass=$mediaClass
-            CopyRoot=[IO.Path]::GetFullPath($copyRoot)
-            Error=$errText
-            UpdatedUtc=Get-WsmUtc
+        # R7：失敗或取消不抹掉先前已驗證的收據。本次結果另存成 LastAttempt（Failed 與 Cancelled 分開，含時間、原因碼與下一步）；
+        # 只有先前沒有 Verified 收據時，才維持舊行為把 IndependentCopy 記成 Failed／Cancelled。
+        $wasCancelled=[bool]$_.Exception.Data['CancellationRequested']
+        $failureCode=$(if($wasCancelled){'Cancelled'}elseif($_.Exception.Data['WsmErrorCode']){[string]$_.Exception.Data['WsmErrorCode']}elseif($Mode -ceq 'VerifyExisting'){'VerifyFailed'}else{'CopyFailed'})
+        $nextStepText=switch -CaseSensitive ($failureCode) {
+            'Cancelled' {'複製已依要求停止；先前已驗證的收據仍有效。要重新複製請再執行一次獨立副本，已複製且相符的檔案會直接沿用。'}
+            'InsufficientSpace' {'目的地空間不足，沒有寫入任何檔案。請釋出空間或換一個目的地後再執行；先前已驗證的收據不受影響。'}
+            'VerifyFailed' {'副本媒體上的檔案缺少或與收據不符。請確認媒體已接上並完整，或改用「由工具複製並驗證」重新建立副本。'}
+            default {'複製沒有完成，先前已驗證的收據不受影響。請檢查目的地與原因後再執行一次獨立副本。'}
         }
-        if($attempt.PSObject.Properties['IndependentCopy']){$attempt.IndependentCopy=$failedObj}else{Add-Member -InputObject $attempt -NotePropertyName IndependentCopy -NotePropertyValue $failedObj}
+        $lastAttempt=[ordered]@{Status=$(if($wasCancelled){'Cancelled'}else{'Failed'});Code=$failureCode;Reason=$errText;NextStep=$nextStepText;AttemptedUtc=(Get-WsmUtc);Mode=$Mode;MediaClass=$mediaClass;CopyRoot=[IO.Path]::GetFullPath($copyRoot)}
+        if($failureCode -ceq 'InsufficientSpace'){$lastAttempt['RequiredBytes']=[long]$_.Exception.Data['RequiredBytes'];$lastAttempt['AvailableBytes']=[long]$_.Exception.Data['AvailableBytes']}
+        $lastAttemptObj=[pscustomobject]$lastAttempt
+        if($attempt.PSObject.Properties['IndependentCopyLastAttempt']){$attempt.IndependentCopyLastAttempt=$lastAttemptObj}else{Add-Member -InputObject $attempt -NotePropertyName IndependentCopyLastAttempt -NotePropertyValue $lastAttemptObj}
+        $hasVerifiedReceipt=($attempt.PSObject.Properties['IndependentCopy'] -and $attempt.IndependentCopy -and $attempt.IndependentCopy.PSObject.Properties['Status'] -and [string]$attempt.IndependentCopy.Status -ceq 'Verified')
+        if($hasVerifiedReceipt -and -not $wasCancelled -and $failureCode -cne 'InsufficientSpace'){
+            $receiptRoot=$(if($attempt.IndependentCopy.PSObject.Properties['CopyRoot']){[string]$attempt.IndependentCopy.CopyRoot}else{''})
+            $sameMedia=$false;try{$sameMedia=[bool]$receiptRoot -and [string]::Equals([IO.Path]::GetFullPath($receiptRoot).TrimEnd('\'),[IO.Path]::GetFullPath($copyRoot).TrimEnd('\'),[StringComparison]::OrdinalIgnoreCase)}catch{$sameMedia=$true}
+            if($sameMedia){
+                # 失敗發生在收據自己的媒體上：重新驗證不符、目的地內容與收據不同或複製後驗證失敗，都證明這份媒體已不可信。
+                $integrity=[pscustomobject][ordered]@{Status='NeedsReverification';Code=$failureCode;DetectedUtc=(Get-WsmUtc)}
+                if($attempt.IndependentCopy.PSObject.Properties['MediaIntegrity']){$attempt.IndependentCopy.MediaIntegrity=$integrity}else{Add-Member -InputObject $attempt.IndependentCopy -NotePropertyName MediaIntegrity -NotePropertyValue $integrity}
+                $lastAttemptObj.NextStep='這份獨立副本的媒體與收據不符，已不能當成已驗證的離線還原材料。請改用一個空的目的地重新建立副本，確認媒體後再按「重新驗證」。'
+            }
+        }
+        if(-not $hasVerifiedReceipt){
+            $failedObj=[pscustomobject]@{
+                Status=$(if($wasCancelled){'Cancelled'}else{'Failed'})
+                Availability='NotVerified'
+                MediaClass=$mediaClass
+                CopyRoot=[IO.Path]::GetFullPath($copyRoot)
+                Error=$errText
+                UpdatedUtc=Get-WsmUtc
+            }
+            if($attempt.PSObject.Properties['IndependentCopy']){$attempt.IndependentCopy=$failedObj}else{Add-Member -InputObject $attempt -NotePropertyName IndependentCopy -NotePropertyValue $failedObj}
+        }
         $attempt.UpdatedUtc=Get-WsmUtc
         try{Write-WsmWizardBackupAttempt $attemptPath $attempt $Workspace}catch{}
         throw

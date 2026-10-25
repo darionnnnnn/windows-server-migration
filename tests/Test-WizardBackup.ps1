@@ -322,8 +322,12 @@ try {
             if(-not $tamperFailed){throw 'Case c: Tampered payload blob was not rejected.'}
             $attemptAfterTamper = (Get-WsmWizardBackupAttemptForOperation $sourceRoot $catalog.PairId (Read-WsmOutputProfile $sourceRoot) $successOperationId).Attempt
             $tamperResult = ConvertTo-WsmWizardBackupResult $attemptAfterTamper $successOperationId
-            if($attemptAfterTamper.IndependentCopy.Status -cne 'Failed' -or $tamperResult.OfflineReadiness -cne 'AwaitingIndependentCopy'){
-                throw 'Case c: Attempt status or OfflineReadiness after tamper did not record failure.'
+            # A1/R7 收尾：對收據自己的媒體重新驗證失敗，證明那份媒體已不可信。收據保留作歷史（Status 仍為 Verified），
+            # 但標上 MediaIntegrity=NeedsReverification，離線就緒不得再是 Verified；失敗另記在 LastAttempt（VerifyFailed）。
+            $tamperLast = $(if($attemptAfterTamper.PSObject.Properties['IndependentCopyLastAttempt']){$attemptAfterTamper.IndependentCopyLastAttempt}else{$null})
+            $tamperIntegrity = $(if($attemptAfterTamper.IndependentCopy.PSObject.Properties['MediaIntegrity']){$attemptAfterTamper.IndependentCopy.MediaIntegrity}else{$null})
+            if($attemptAfterTamper.IndependentCopy.Status -cne 'Verified' -or -not $tamperLast -or $tamperLast.Status -cne 'Failed' -or $tamperLast.Code -cne 'VerifyFailed' -or -not $tamperIntegrity -or $tamperIntegrity.Status -cne 'NeedsReverification' -or $tamperResult.OfflineReadiness -cne 'MediaNeedsReverification'){
+                throw ('Case c: a failed re-verification of the receipt''s own media must keep the receipt only as history (MediaIntegrity NeedsReverification), record LastAttempt VerifyFailed and drop OfflineReadiness from Verified; got readiness '+[string]$tamperResult.OfflineReadiness+'.')
             }
 
             # Case d: Missing file

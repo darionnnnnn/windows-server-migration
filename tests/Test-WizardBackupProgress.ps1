@@ -27,6 +27,8 @@ try {
             @{Job='Running';Stage='';Offline='';Failed=0;State='Running';Reason=''}
             @{Job='CancelRequested';Stage='';Offline='';Failed=0;State='CancelRequested';Reason=''}
             @{Job='Succeeded';Stage='Delivered';Offline='AwaitingIndependentCopy';Failed=0;State='AwaitingDelivery';Reason=''}
+            @{Job='Succeeded';Stage='Delivered';Offline='MediaNeedsReverification';Failed=0;State='AwaitingDelivery';Reason=''}
+            @{Job='ReviewRequired';Stage='ReviewRequired';Offline='MediaNeedsReverification';Failed=0;State='AwaitingDelivery';Reason=''}
             @{Job='Succeeded';Stage='Delivered';Offline='Verified';Failed=0;State='Completed';Reason=''}
             @{Job='Succeeded';Stage='Delivered';Offline='VerifiedNetworkAvailabilityUnconfirmed';Failed=0;State='Completed';Reason=''}
             @{Job='Succeeded';Stage='Delivered';Offline='Verified';Failed=2;State='PartialFailure';Reason=''}

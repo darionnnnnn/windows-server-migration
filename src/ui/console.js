@@ -845,7 +845,7 @@
     if(state.wizardRuntimeLoading!==identity)loadWizardRuntime(projection,false).then(()=>{if(location.hash==='#wizard'&&runtimeIdentity(state.wizard||{})===identity)renderWizard(state.wizard);});
   }
   function offlineReadinessText(value){
-    const map={NotDelivered:'尚未完成交付',AwaitingIndependentCopy:'等待建立獨立副本（舊機關機後還無法還原）',Verified:'獨立副本已驗證',VerifiedNetworkAvailabilityUnconfirmed:'獨立副本已驗證（網路位置：請在新機確認可以存取）'};
+    const map={NotDelivered:'尚未完成交付',AwaitingIndependentCopy:'等待建立獨立副本（舊機關機後還無法還原）',Verified:'獨立副本已驗證',MediaNeedsReverification:'獨立副本收據完整，但媒體需重新驗證（舊機關機前請先確認副本還在）',VerifiedNetworkAvailabilityUnconfirmed:'獨立副本已驗證（網路位置：請在新機確認可以存取）'};
     return Object.prototype.hasOwnProperty.call(map,value)?map[value]:'狀態不明';
   }
   function renderSourceBackupRuntime(content,projection){const identity=runtimeIdentity(projection),card=el('article','wizard-action-card wizard-runtime-source-backup');card.appendChild(el('h2','','檢查來源影響並建立備份'));if(state.wizardRuntimeIdentity!==identity||!state.wizardRuntimeProjection){wizardMessage(card,state.wizardRuntimeUnavailableIdentity===identity?'無法核驗這份執行畫面；請明確重新讀取後再操作。':'正在讀取此核准計畫綁定的備份範圍、來源影響與既有作業…',state.wizardRuntimeUnavailableIdentity===identity?'callout':'wizard-loading');content.appendChild(card);loadRuntimeCard(card,projection,identity);return;}const response=state.wizardRuntimeProjection,runtime=response.runtime||response.Runtime||response,source=runtime.source||runtime.Source||runtime,preview=source.backupPreview||source.BackupPreview||null,freeze=source.sourceFreeze||source.SourceFreeze||{},resumeRoute=freeze.resumeRoute||freeze.ResumeRoute||{},resumeRouteManualReview=freeze.manualReviewRequired===true||freeze.ManualReviewRequired===true||resumeRoute.manualReviewRequired===true||resumeRoute.ManualReviewRequired===true,resumeRouteSourceResumed=freeze.sourceResumed===true||freeze.SourceResumed===true||resumeRoute.sourceResumed===true||resumeRoute.SourceResumed===true,resumeAvailable=freeze.resumeAvailable===true||freeze.ResumeAvailable===true,availability=source.backupResult||source.BackupResult||null,action=wizardRuntimeAction(response,'StartBackup'),resumeAction=wizardRuntimeAction(response,'SourceResume'),startBackupAvailable=!!(action&&action.available===true),currentJob=runtimeJobFor('StartBackup'),jobStatus=String(currentJob&&(currentJob.status||currentJob.Status)||'');
@@ -1909,9 +1909,10 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
   const BACKUP_RESTORE_LABEL = { Restorable: '可還原', RequiresPrerequisite: '需前置條件', ManualOnly: '僅人工處理', NotApplicable: '不適用' };
   const BACKUP_RESTORE_ICON = { Restorable: '✓', RequiresPrerequisite: '◐', ManualOnly: '!', NotApplicable: '—' };
   const BACKUP_RESTORE_CLASS = { Restorable: 'ok', RequiresPrerequisite: 'warn', ManualOnly: 'warn', NotApplicable: 'neutral' };
-  const BACKUP_COPY_LABEL = { Verified: '已驗證', NotVerified: '尚未驗證', Unverifiable: '收據無法核對', Unrecorded: '未記錄' };
-  const BACKUP_COPY_ICON = { Verified: '✓', NotVerified: '○', Unverifiable: '!', Unrecorded: '?' };
-  const BACKUP_COPY_CLASS = { Verified: 'ok', NotVerified: 'neutral', Unverifiable: 'bad', Unrecorded: 'neutral' };
+  const BACKUP_COPY_LABEL = { Verified: '已驗證', MediaMissing: '收據完整；媒體需重新驗證', NotVerified: '尚未驗證', Unverifiable: '收據無法核對', Unrecorded: '未記錄' };
+  const BACKUP_COPY_ICON = { Verified: '✓', MediaMissing: '!', NotVerified: '○', Unverifiable: '!', Unrecorded: '?' };
+  const BACKUP_COPY_CLASS = { Verified: 'ok', MediaMissing: 'warn', NotVerified: 'neutral', Unverifiable: 'bad', Unrecorded: 'neutral' };
+  const BACKUP_LAST_ATTEMPT_LABEL = { Failed: '失敗', Cancelled: '已取消' };
   function backupPlain(value) { return value == null ? '' : String(value); }
   // Q2: UNC 項目不會被一鍵備份擷取；未備份表把原因與下一步換成責任分類（資料列的 Reason／ReasonCode 不變，篩選仍照原因代碼）。
   function backupUncInfo(r) { const unc = r && r.UncResponsibility; return unc && typeof unc === 'object' ? unc : null; }
@@ -1927,7 +1928,47 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
   }
   function backupCopyInfo(data) {
     const copy = data && data.independentCopy, code = copy && Object.prototype.hasOwnProperty.call(BACKUP_COPY_LABEL, backupPlain(copy.state)) ? copy.state : 'Unrecorded';
-    return { code, text: BACKUP_COPY_LABEL[code], icon: BACKUP_COPY_ICON[code], cls: BACKUP_COPY_CLASS[code], verifiedUtc: copy ? backupPlain(copy.verifiedUtc) : '', networkUnconfirmed: !!(copy && copy.networkUnconfirmed), reason: copy ? backupPlain(copy.reason) : '' };
+    return { code, text: BACKUP_COPY_LABEL[code], icon: BACKUP_COPY_ICON[code], cls: BACKUP_COPY_CLASS[code], verifiedUtc: copy ? backupPlain(copy.verifiedUtc) : '', networkUnconfirmed: !!(copy && copy.networkUnconfirmed), reason: copy ? backupPlain(copy.reason) : '', canReverify: !!(copy && copy.canReverify === true), destinationRoot: copy ? backupPlain(copy.destinationRoot) : '', lastAttempt: copy && copy.lastAttempt && typeof copy.lastAttempt === 'object' ? copy.lastAttempt : null };
+  }
+  // R7：「重新驗證」沿用既有的 IndependentCopy 動作（Mode=VerifyExisting，目的地取自收據所在位置），不新增後端動作。
+  // 忙碌時用 aria-disabled（鍵盤仍可聚焦）；提交只建立持久作業，結果以重新整理明細確認。
+  async function reverifyIndependentCopy(button, data, copy) {
+    if (button.getAttribute('aria-disabled') === 'true') return;
+    if (state.pendingOperation) { fail('上一筆操作結果尚未確認；請先查詢原作業，不可重送。'); return; }
+    const backupOperationId = backupPlain(data && data.backupOperationId), destinationRoot = backupPlain(copy.destinationRoot);
+    if (!backupOperationId || !destinationRoot) { fail('缺少備份作業或副本位置，無法重新驗證；請改到「備份」步驟的獨立副本表單操作。'); return; }
+    const request = buildOperationRequest('IndependentCopy', { BackupOperationId: backupOperationId, DestinationRoot: destinationRoot, Mode: 'VerifyExisting' }, state.session.revision);
+    state.busy = true; button.dataset.busy = 'true'; button.setAttribute('aria-disabled', 'true');
+    try {
+      const response = await endpoint('/api/operations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) }), job = response && (response.job || response), id = String(job && (job.jobId || job.id || job.operationId) || '');
+      if (!id || id !== String(request.operationId)) throw new Error('回應缺少與這次提交相同的持久作業識別碼。');
+      state.jobs.set(id, job); await refreshJobs();
+      announce(`已提交重新驗證，工作 ${id}。完成後請按「重新整理明細」確認結果。`);
+    } catch (error) { if (error.message !== 'session expired') fail(state.pendingOperation ? '重新驗證的提交結果尚未確認；已保留原作業識別碼，不會重送。請查詢原作業。' : `無法提交重新驗證：${error.message}`); }
+    finally { state.busy = false; button.dataset.busy = 'false'; button.setAttribute('aria-disabled', 'false'); }
+  }
+  // R7：獨立副本欄之外的狀態區塊（全部用 textContent）：收據時間、「收據完整；媒體需重新驗證」說明、重新驗證按鈕，
+  // 以及比收據新的失敗／取消嘗試（與收據並列，附原因與下一步）。
+  function renderBackupCopyStatus(panel, data, copy) {
+    const hasReceipt = copy.code === 'Verified' || copy.code === 'MediaMissing', last = copy.lastAttempt && typeof copy.lastAttempt === 'object' && copy.lastAttempt.newer !== false ? copy.lastAttempt : null;
+    if (!copy.canReverify && !last) return;
+    const box = el('section', 'backup-copy-status'); box.dataset.copyState = copy.code; box.setAttribute('aria-label', '副本收據與重新驗證');
+    if (copy.code === 'MediaMissing') { const note = wizardMessage(box, `收據完整；媒體需重新驗證：${copy.reason || '副本媒體上的檔案已不存在或大小不符。'}`, 'callout'); note.dataset.copyNote = 'media-missing'; }
+    else if (copy.code === 'Verified' && copy.canReverify) { const note = wizardMessage(box, '收據完整；媒體目前是否可讀取，須按「重新驗證」確認。', 'inline-note'); note.dataset.copyNote = 'receipt-intact'; }
+    if (hasReceipt && copy.verifiedUtc) { const time = wizardMessage(box, `收據時間 ${backupTimeText(copy.verifiedUtc)}`, 'inline-note backup-copy-receipt-time'); time.dataset.copyNote = 'receipt-time'; }
+    if (hasReceipt && copy.canReverify) {
+      const button = el('button', 'secondary-button', '重新驗證'); button.type = 'button'; button.dataset.copyAction = 'reverify'; button.setAttribute('aria-disabled', 'false');
+      button.addEventListener('click', () => reverifyIndependentCopy(button, data, copy)); box.appendChild(button);
+    }
+    if (last) {
+      const label = Object.prototype.hasOwnProperty.call(BACKUP_LAST_ATTEMPT_LABEL, backupPlain(last.status)) ? BACKUP_LAST_ATTEMPT_LABEL[last.status] : '未完成';
+      const attempt = el('div', 'backup-copy-last-attempt callout'); attempt.setAttribute('role', 'group'); attempt.dataset.lastStatus = backupPlain(last.status);
+      attempt.appendChild(el('strong', '', `較新的嘗試：${label}（${backupTimeText(last.attemptedUtc)}）`));
+      if (last.reason) attempt.appendChild(el('p', 'backup-copy-last-reason', `原因：${backupPlain(last.reason)}`));
+      if (last.nextStep) attempt.appendChild(el('p', 'backup-copy-last-next', `下一步：${backupPlain(last.nextStep)}`));
+      box.appendChild(attempt);
+    }
+    panel.appendChild(box);
   }
   async function fetchBackupItemFiles(itemId, page) {
     const s = state.session;
@@ -2047,10 +2088,10 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       const restoreOptions = [...Object.keys(BACKUP_RESTORE_LABEL).filter(code => restoreCodes.includes(code)), ...restoreCodes.filter(code => !Object.prototype.hasOwnProperty.call(BACKUP_RESTORE_LABEL, code))].map(code => ({ value: code, text: Object.prototype.hasOwnProperty.call(BACKUP_RESTORE_LABEL, code) ? BACKUP_RESTORE_LABEL[code] : '未記錄' }));
       filters = [typeFilter,
         { key: 'restore', label: '可還原條件', options: restoreOptions, match: (r, value) => backupRestoreInfo(r).code === value },
-        { key: 'copy', label: '獨立副本', options: ['Verified', 'NotVerified', 'Unverifiable', 'Unrecorded'].map(code => ({ value: code, text: BACKUP_COPY_LABEL[code] })), match: (r, value) => copy.code === value }];
+        { key: 'copy', label: '獨立副本', options: ['Verified', 'NotVerified', 'Unverifiable', 'Unrecorded'].concat(copy.code === 'MediaMissing' ? ['MediaMissing'] : []).map(code => ({ value: code, text: BACKUP_COPY_LABEL[code] })), match: (r, value) => copy.code === value }];
       columns = [{ h: '名稱', text: r => backupPlain(r.Name) }, { h: '類型', nowrap: true, text: r => backupPlain(r.Kind) }, { h: '工作負載', text: backupWorkloadText }, { h: '原位置', text: r => backupPlain(r.Location) }, { h: '通道', nowrap: true, text: r => backupChannelText(r.Channel) }, { h: '檔案數', nowrap: true, text: r => r.Files == null ? '' : r.Files }, { h: '大小', nowrap: true, text: r => formatBytes(r.Bytes) },
         { h: '狀態', text: () => statusBadge.text, badge: () => statusBadge }, { h: '可還原條件', text: r => backupRestoreInfo(r).text, badge: r => backupRestoreInfo(r) },
-        { h: '獨立副本', csv: false, text: () => copy.text, badge: () => copy, extra: () => copy.code === 'Verified' && copy.verifiedUtc ? `收據時間 ${backupTimeText(copy.verifiedUtc)}${copy.networkUnconfirmed ? '；網路位置，可用性未確認' : ''}` : '' }];
+        { h: '獨立副本', csv: false, text: () => copy.text, badge: () => copy, extra: () => (copy.code === 'Verified' || copy.code === 'MediaMissing') && copy.verifiedUtc ? `收據時間 ${backupTimeText(copy.verifiedUtc)}${copy.networkUnconfirmed ? '；網路位置，可用性未確認' : ''}` : '' }];
     } else {
       const reasonSeen = new Map(); rows.forEach(r => { const code = backupPlain(r.ReasonCode); if (code && !reasonSeen.has(code)) reasonSeen.set(code, backupPlain(r.Reason) || code); });
       filters = [typeFilter, { key: 'reason', label: '原因', options: [...reasonSeen.entries()].map(([value, text]) => ({ value, text })), match: (r, value) => backupPlain(r.ReasonCode) === value }];
@@ -2059,6 +2100,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     if (backed) {
       panel.appendChild(el('p', 'inline-note backup-copy-note', '「獨立副本」欄只表示備份可取用（收據在每次讀取時重新核對），不授權關閉舊機；舊機何時可以關閉，仍須另依停機窗口與負責人確認。'));
       if (copy.code === 'Unverifiable') wizardMessage(panel, `獨立副本收據無法核對，整欄不顯示為已驗證：${copy.reason || '收據檔遺失或內容已被更改。'}`, 'callout');
+      renderBackupCopyStatus(panel, data, copy);
     }
     const view = renderBackupPagedTable(panel, { id: `backup-${kind}`, name: backed ? '已備份' : '未備份', caption: backed ? '已備份項目' : '未備份項目', columns, rows, filters, initial, csvMeta: true, search: r => [r.Name, r.Location], csvName: backed ? 'backup-backed-up.csv' : 'backup-not-backed-up.csv', drill: backed ? { load: fetchBackupItemFiles } : null, onChange: v => { if (state.backupResultsTab === kind) writeBackupHash(kind, v); } });
     if (!backed) { renderBackupCoverageRegions(panel, data); renderBackupExcludedRegions(panel, data); }

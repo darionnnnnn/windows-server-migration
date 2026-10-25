@@ -37,7 +37,7 @@ function ConvertTo-WsmWizardHtmlValue($Value,[int]$Depth=0) {
     $allowed+=@('CutoverPlanHash','CutoverStage')
     $allowed+=@('UncResponsibility','Responsibility','EvidenceText','BackupText')
     $allowed+=@('manualReviewRequired','manualReviewReason','sourceResumed','resumeAvailable')
-    $allowed+=@('IndependentCopy','offlineReadiness','OfflineReadiness','Availability','MediaClass','CopyRoot','ReceiptSHA256','VerifiedUtc','BackupOperationId','DestinationRoot')
+    $allowed+=@('IndependentCopy','offlineReadiness','OfflineReadiness','Availability','MediaClass','CopyRoot','ReceiptSHA256','VerifiedUtc','BackupOperationId','DestinationRoot','IndependentCopyLastAttempt','AttemptedUtc','RequiredBytes','AvailableBytes','CapacityCheck','Warning')
     $allowed+=@('TargetLocalComparison','Provenance')
     # P8：重試失敗項目的唯讀投影欄位（候選清單、排除原因、來源收據與預填值）。
     $allowed+=@('TargetRetryFailedItems','RetryOfReceiptHash','retry','visible','candidateItemIds','candidateCount','succeededCount','notSucceededCount','excluded','sourceAttemptId','sourceReceiptHash','sourceReceiptShort','sourceStage','defaultOwner','defaultReason','code','lastStatus')

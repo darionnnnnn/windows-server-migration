@@ -121,6 +121,7 @@ function Get-WsmHtmlLegacyProgressProjection($Job) {
 #                       (OfflineReadiness Verified / VerifiedNetworkAvailabilityUnconfirmed)
 #                                                                                -> Completed       完成
 #   Succeeded           otherwise (OfflineReadiness AwaitingIndependentCopy,
+#                       MediaNeedsReverification (A8: receipt intact, copy media gone),
 #                       NotDelivered or unreadable)                              -> AwaitingDelivery 等待交付 (never success)
 #   ReviewRequired      delivery evidence (the delivery was verified; the plan only contains manual / external /
 #                       unsupported items) is judged exactly like Succeeded:
@@ -148,7 +149,7 @@ function Get-WsmBackupProgressState([string]$JobStatus,[string]$AttemptStage='',
         'ReviewRequired' {
             if($FailedCount -gt 0){$state='PartialFailure'}
             elseif($OfflineReadiness -cin $verifiedReadiness){$state='Completed'}
-            elseif($OfflineReadiness -ceq 'AwaitingIndependentCopy'){$state='AwaitingDelivery'}
+            elseif($OfflineReadiness -cin @('AwaitingIndependentCopy','MediaNeedsReverification')){$state='AwaitingDelivery'}
             else{$state='PartialFailure'}
         }
         'Failed' {$state='Failed'}
@@ -1350,7 +1351,7 @@ function ConvertTo-WsmBackupFailureView($Attempt,$PlanRef=$null) {
 #                cites another result set; never presented as verified
 # The attempt records only its newest receipt hash, so older receipts cannot be bound and are not consulted.
 # This function only reads; sealed bytes are never modified (16.5: the receipt is stored apart from the set).
-function Get-WsmWizardIndependentCopyProjection([string]$Workspace,[string]$PairId,$Attempt,[string]$ItemResultsSha256) {
+function Get-WsmWizardIndependentCopyReceiptState([string]$Workspace,[string]$PairId,$Attempt,[string]$ItemResultsSha256) {
     $notVerified=[pscustomobject][ordered]@{state='NotVerified';text='尚未驗證';verifiedUtc='';networkUnconfirmed=$false;reason='尚未建立並驗證獨立副本。'}
     $copy=$null;if($Attempt.PSObject.Properties['IndependentCopy']){$copy=$Attempt.IndependentCopy}
     if(-not $copy -or -not $copy.PSObject.Properties['Status'] -or [string]$copy.Status -cne 'Verified'){return $notVerified}
@@ -1372,10 +1373,52 @@ function Get-WsmWizardIndependentCopyProjection([string]$Workspace,[string]$Pair
         if($Attempt.PSObject.Properties['OfflineGuide'] -and $Attempt.OfflineGuide -and $Attempt.OfflineGuide.PSObject.Properties['Status'] -and [string]$Attempt.OfflineGuide.Status -ceq 'Generated'){
             if(-not $receipt.PSObject.Properties['OfflineGuideSHA256'] -or -not $receipt.PSObject.Properties['OfflineGuideTextSHA256'] -or [string]$receipt.OfflineGuideSHA256 -ine [string]$Attempt.OfflineGuide.SHA256 -or [string]$receipt.OfflineGuideTextSHA256 -ine [string]$Attempt.OfflineGuide.TextSHA256){return (& $unverifiable '收據沒有引用、或引用的不是目前的離線使用說明。')}
         }
-        [pscustomobject][ordered]@{state='Verified';text='已驗證';verifiedUtc=[string]$receipt.VerifiedUtc;networkUnconfirmed=([string]$receipt.Availability -ceq 'VerifiedNetworkAvailabilityUnconfirmed');reason=''}
+        $receiptCopyRoot='';if($receipt.PSObject.Properties['CopyRoot']){$receiptCopyRoot=[string]$receipt.CopyRoot}
+        $receiptMedia='';if($receipt.PSObject.Properties['MediaClass']){$receiptMedia=[string]$receipt.MediaClass}
+        [pscustomobject][ordered]@{state='Verified';text='已驗證';verifiedUtc=[string]$receipt.VerifiedUtc;networkUnconfirmed=([string]$receipt.Availability -ceq 'VerifiedNetworkAvailabilityUnconfirmed');reason='';copyRoot=$receiptCopyRoot;mediaClass=$receiptMedia}
     }catch{
         & $unverifiable '收據無法讀取或核對。'
     }
+}
+
+# R7：結果頁的獨立副本欄。收據核對（上面）之外再補三件事：
+#   1. 媒體是否還在（A8）。收據完整但副本媒體已被刪或缺檔 -> state=MediaMissing「收據完整；媒體需重新驗證」，不再宣稱已驗證完成。
+#   2. canReverify／destinationRoot：有收據時提供「重新驗證」所需的目的地（沿用既有 IndependentCopy 動作的 VerifyExisting 模式）。
+#   3. lastAttempt：最近一次失敗／取消的嘗試（獨立於收據保存）；比收據新時 newer=true，畫面與收據並列顯示。
+function Get-WsmWizardIndependentCopyProjection([string]$Workspace,[string]$PairId,$Attempt,[string]$ItemResultsSha256) {
+    $state=Get-WsmWizardIndependentCopyReceiptState $Workspace $PairId $Attempt $ItemResultsSha256
+    $copyRoot=$(if($state.PSObject.Properties['copyRoot']){[string]$state.copyRoot}else{''});$mediaClass=$(if($state.PSObject.Properties['mediaClass']){[string]$state.mediaClass}else{''})
+    foreach($private in @('copyRoot','mediaClass')){if($state.PSObject.Properties[$private]){$state.PSObject.Properties.Remove($private)}}
+    $mediaState='NotChecked';$destinationRoot='';$canReverify=$false
+    if([string]$state.state -ceq 'Verified'){
+        $mediaState=Test-WsmIndependentCopyMediaPresent $copyRoot $mediaClass $Attempt.Delivery -Full
+        if($copyRoot){try{$destinationRoot=[IO.Path]::GetDirectoryName($copyRoot.TrimEnd('\','/'))}catch{}}
+        $canReverify=[bool]$destinationRoot
+        if($mediaState -ceq 'Missing'){
+            $state.state='MediaMissing';$state.text='收據完整；媒體需重新驗證'
+            $state.reason='收據完整，但獨立副本媒體上的檔案已不存在或大小不符；請接上媒體後按「重新驗證」，或重新建立副本。'
+        }
+        elseif(Test-WsmIndependentCopyReceiptInvalidated $Attempt){
+            $state.state='MediaMissing';$state.text='收據完整；媒體需重新驗證'
+            $state.reason='最近一次對這份副本的驗證或複製失敗，媒體已和收據不符；請改用空的目的地重新建立副本，或確認媒體後按「重新驗證」。'
+        }
+    }
+    $last=$null;if($Attempt.PSObject.Properties['IndependentCopyLastAttempt']){$last=$Attempt.IndependentCopyLastAttempt}
+    $lastView=$null
+    if($last -and $last.PSObject.Properties['Status'] -and [string]$last.Status -cin @('Failed','Cancelled')){
+        $newer=$true
+        if([string]$state.verifiedUtc -and $last.PSObject.Properties['AttemptedUtc']){try{$newer=([DateTime]::Parse([string]$last.AttemptedUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind) -gt [DateTime]::Parse([string]$state.verifiedUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind))}catch{$newer=$true}}
+        $field={param([string]$Name)if($last.PSObject.Properties[$Name]){[string]$last.$Name}else{''}}
+        $lastView=[ordered]@{status=[string]$last.Status;code=(& $field 'Code');reason=(& $field 'Reason');nextStep=(& $field 'NextStep');attemptedUtc=(& $field 'AttemptedUtc');newer=$newer}
+        if($last.PSObject.Properties['RequiredBytes']){$lastView['requiredBytes']=[long]$last.RequiredBytes}
+        if($last.PSObject.Properties['AvailableBytes']){$lastView['availableBytes']=[long]$last.AvailableBytes}
+        $lastView=[pscustomobject]$lastView
+    }
+    $state | Add-Member NoteProperty mediaState $mediaState -Force
+    $state | Add-Member NoteProperty destinationRoot $destinationRoot -Force
+    $state | Add-Member NoteProperty canReverify $canReverify -Force
+    $state | Add-Member NoteProperty lastAttempt $lastView -Force
+    $state
 }
 
 # Shared by the results view and the file drill-down: the verified item-results document of the latest delivered attempt.
