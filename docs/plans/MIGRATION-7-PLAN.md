@@ -2567,6 +2567,66 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 若 Move 完成後、Completed 寫入前當機，而同一段時間內外部清掉 staging 並放入同內容的檔案，這種情況無法與工具寫入區分。
   - 主旅程的真實當機劇本 `Test-OfflineRestoreJourney` 沒有重跑；收尾前由使用者重跑主旅程時一併涵蓋。
 
+### 17.119 Q6b：HTTP／socket 測試缺口與環境類失敗（本機 loopback 過濾器）
+
+- 規格：`work/r7/specs/Q6b-http-test-gaps.md`（(d)(h)(j)＋(k)(l)(m)(n)）。
+  - Sonnet 5.5 subagent 實作到一半時，使用者要求暫停，所以停下來。
+  - 恢復後由主代理審查半成品並沿用，補上安全標頭、啟動重試、失敗分類、CI 開關與原生傳送測試，做突變並獨立重跑。
+  - 盤點工作階段（使用者）加了三個條件，都已做到：
+    1. 走退路時，PASS 行要印出從磁碟提供的檔案數與重載次數，並寫進本節與 F1／F2 帳本的 limitations。
+    2. 提供 `WSM_TEST_NO_DISK_UI=1` 可關閉退路，四個 workflow 都要設定。
+    3. 至少保留一支測試，不走退路，直接 GET `/ui/console.js` 並比對位元組長度與雜湊。
+- **環境根因（主代理實測，不是產品缺陷）**：本機 AdGuard 服務（WFP 驅動 adgnetworkwfpdrv）會攔截 loopback。
+  - **重設新連線**：會重設一部分新的 loopback TCP 連線，在送出任何回應位元組前就斷掉。兩個純 node 程序之間也會發生。
+  - **大回應卡住**：大於約 64 KiB 的回應會卡在 65,535 位元組左右。主代理對照組：純 node 伺服器以「header＋整個 body＋Connection: close」送出 console.js，慢讀與正常讀取都卡在 65,535；同一份檔案由正式 console 送出時卡在 65,153＋header。所以不是 `Write-WsmLocalHttpResponse` 的寫法（WriteTimeout 2 秒）造成的。
+  - **改寫 HTML**：會改寫 text/html。node 客戶端也會收到插入的 `<script>`，回應少了 Content-Length，多出 502～504 位元組。瀏覽器裡的雜湊比對因此失敗，觸發 resource-incomplete 橫幅，這就是 (k) 的根因。
+  - 本機 AdGuard 設定不變（沿用帳本 F2 的既有限制）。
+- **(d) 帳密端點**：body 上限、Host、Origin、token 檢查都在共用層，已實作。`Test-HttpSocketEdgeCases.js` 經由 `/api/jobs/<id>/service-credentials` 驗證，包含正例。
+- **(h) Test-HtmlBridge 的 URL 正規化**：
+  - 改用原始 socket 送出未正規化的路徑：`/api/../`、`%2e%2e`、`%2f`、`%5c`、絕對形式等 9 個加 1 個，確認都被拒，且沒有送出任何原始碼。
+  - 第六輪的 RST 失敗屬於環境重設，也就是上面的根因。
+  - 大回應（actions 約 300 KB、inventory）原生傳送會卡住時，改用測試伺服器 `-ResponseCapturePath` 在寫入 socket 前擷取的正式回應，檢查同樣的斷言，並在 PASS 行計數。擷取檔必須是這次請求期間寫入的。
+- **(j) 真 socket**：
+  - 測到的情況：部分 header 後 reset、body 一半後 reset、完整請求後 reset、閒置、停住、慢速滴送。
+  - 伺服器存活，沒有留下 job、作業紀錄或半寫檔案，之後的請求照常成功。
+  - 讀取逾時有作用：首位元組約 2 秒、停住約 2 秒、整個請求期限約 5 秒。
+- **(l)(n) 重試規則**：StartBackupReplayHttp、C2D2HtmlActions、HtmlBridge、HttpSocketEdgeCases 只在「沒有收到任何回應位元組的 ECONNRESET」時重試，每個請求最多 6 次，重試清單印在 PASS 行。
+  - 狀態碼、內容、時間上限、伺服器端紀錄都不放寬。
+  - 重送的 POST 可能已經被處理過，所以 202 只在 `Retries>0` 時才接受正式重播回的 200。
+- **(k)(m) 瀏覽器**（新 helper `tests/Browser-UiDelivery.js`）：
+  - **退路的啟用條件**：先用 node 探測 `/ui/console.js` 三次，都完整才走原生導覽；否則以 `page.route` 從 `src/ui` 提供 UI 檔。`/api/*` 一律送到真實 console。
+  - **安全標頭**：從磁碟提供的回應，帶真實 console 對小檔回的 CSP、nosniff、referrer、cache 標頭。取不到就拒絕走退路，不會在沒有 CSP 的情況下執行。
+  - **啟動重試**：啟動期間若有 `/api/*` 被重設，最多重新載入 4 次並計數。
+  - **失敗分類**：
+    - 執行期間有觀察到 API 被重設的失敗，印 `ENVIRONMENT-LIMITED`，以 exit 3 結束，不算通過。
+    - 沒有觀察到重設的失敗，就是 FAIL。
+    - `WSM_TEST_NO_DISK_UI=1` 時，關掉退路與 ENVIRONMENT-LIMITED 分類，任何失敗都是 FAIL。四個 workflow 都已在頂層設定。
+  - **BackupProgressBrowser**：G4 的 fixture session 會量測哪些 HTML 資產到達瀏覽器時位元組被改寫，只把這些 HTML 移出雜湊比對並印出。css/js 仍逐一比對；非 HTML 被改寫則失敗。
+- **新測試 `Test-ConsoleAssetTransport.js`**：
+  - 不走退路，以原生 GET 取得 5 個 `/ui` 資產，比對狀態、Content-Length、長度、SHA-256，並和 `/api/session` 的 assetHashes 對照。
+  - 同時檢查每個 workflow 都設了 `WSM_TEST_NO_DISK_UI: '1'`。
+  - 資產未完整送達，或被改寫成缺少 Content-Length 時，印 ENVIRONMENT-LIMITED 並以 exit 3 結束；嚴格模式下則以 exit 1 結束。
+- **主代理突變**：全部以備份還原，cmp 確認一致。
+  - 拿掉 body 上限：HttpSocketEdgeCases 轉紅（拒絕前等待了宣告的 body，2081 ms）。
+  - 請求期限 5 秒改 30 秒：HttpSocketEdgeCases 轉紅（j7：慢速滴送沒有被結束）。
+  - `/api/context` 固定以 RST 結束：
+    - HtmlBridge 轉紅，exit 1。重試 6 次後仍失敗，伺服器端錯誤紀錄有對應列。
+    - NativeWizardJourney 在本機為 ENVIRONMENT-LIMITED（exit 3），列出被重設的 GET /api/context。這證實本機分類無法區分環境重設與產品端重設，見限制。
+    - NativeWizardJourney 在 `WSM_TEST_NO_DISK_UI=1` 下為 FAIL（exit 1）。
+  - console.css 第一個位元組翻轉：ConsoleAssetTransport 轉紅（雜湊不符，exit 1）。
+  - 沒有突變、在嚴格模式下跑 ConsoleAssetTransport：exit 1（HTML 被改寫）。
+- **驗證**（主代理獨立重跑）：
+  - HttpSocketEdgeCases 109、StartBackupReplayHttp 17、C2D2HtmlActions 185、HtmlBridge 45（本機第一次失敗，重跑通過）、BackupProgressBrowser 110＋F2 6（真實 console 讀回時，9 個 UI 檔從磁碟提供）。
+  - HtmlSubmission 8、HtmlPreconnectRecovery、ConsoleIdlePreconnect、ScriptEncoding 339 檔、NativeWizardRuntimeHandler（PASS）、NativeAcceptanceScope 124。
+  - NativeWizardJourney 兩次都是 ENVIRONMENT-LIMITED（exit 3，各有 4 個 API 請求被重設）。
+  - ConsoleAssetTransport 為 ENVIRONMENT-LIMITED：console.js 有一次在第 3 次嘗試時完整送達，雜湊相符，另一次三次都卡在 65,153；nonc.js 與 console.css 原生驗證相符；index.html 與 guide.html 被改寫。
+- **限制**：
+  - 本機沒有任何一支瀏覽器測試驗證到真實 console 對 UI 靜態檔的傳送；這部分由 ConsoleAssetTransport 回報 ENVIRONMENT-LIMITED，並要靠 CI（`WSM_TEST_NO_DISK_UI=1`）證明。
+  - 本機的 ENVIRONMENT-LIMITED 分類無法區分「環境重設」與「產品端確定性的重設或截斷」，突變 context-reset 證實了這一點（本機為 exit 3，嚴格模式為 exit 1）。所以 exit 3 一律不算通過，而且四個 workflow 都設了嚴格模式。
+  - NativeWizardJourney 在本機目前無法完整跑完。
+  - HTML 檔在本機無法以原生方式比對位元組。
+  - 沿用帳本既有限制「local AdGuard policy remains unchanged」，本輪不改本機 AdGuard 設定。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -2785,7 +2845,8 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R4 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1`、`src/ui/console.js` | 含人工、外部或不支援項目的備份（stage 為 ReviewRequired，但交付已驗證）被當成未交付：結果頁顯示「尚無已交付備份」、獨立副本停用、進度卡顯示「部分失敗」 | 抽出共用的「已交付」判定（以交付證據為準，排除非 C 待處理），取代 5 處寫死的 `'Delivered'`；ReviewRequired 改為附註「含 N 項需人工或外部處理」與「完成（含待人工處理）」（17.110） | `Test-BackupCurrencyAndReview`（R4 區段）、G3、BackupWorkbenchBrowser／BackupProgressBrowser 新增區段 | b808884 |
 | R5 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1` | 「目前這一代」有兩套判定，對舊 attempt 做獨立副本後結果頁翻回舊世代；「可續作」有兩份判定，其中一份沒有排除已交接的 attempt | 共用 helper 改依 StartedUtc／世代／AttemptId 排序，不用 UpdatedUtc；「可續作」改為單一判定並排除已交接（17.110） | `Test-BackupCurrencyAndReview`（R5 區段與 13 個可續作情境） | b808884 |
 | R26-B6 | `src/AssistiveRestore.ps1` 容量加總、`src/WizardRuntime.ps1` 原因文字 | 同一磁碟的容量加總也算進已還原的項目，已還原完成後，其他項目仍被誤判為容量不足 | 已還原項目改用 `Get-WsmAssistiveRestoredItemIdSet` 判定，不計入加總、也不標記；改為逐項判定（單項超量只擋該項），合計不足時標記同磁碟所有待寫項目，並附合計數字（17.114，與 Q3 同一段） | `Test-TargetCapacityStaging`（B6 三個情境，先在原版重現誤判再修正） | 539408f |
-| Q6a-i | `src/Recovery.ps1` Complete-WsmAssistiveOperationRepair、`src/AssistiveRestore.ps1` 寫入器 | 沒有 owner 的 intent 遇到同內容外部檔時，Repair 記為工具擁有，回復時會移走外部檔 | 寫入器在 Move 前記錄綁定封存雜湊的 Prepared 證據；Repair 必須同時具備「intent、Move 前紀錄、staging 已消耗」才記為工具擁有，否則一律記為 AdoptedExisting（17.118） | `Test-RoundSevenGapCoverage` I 區段（I1～I10，含真實寫入器在 Move 後當機）、`Test-JournalReplayCoverage` | （Q6A2-COMMIT） |
+| Q6a-i | `src/Recovery.ps1` Complete-WsmAssistiveOperationRepair、`src/AssistiveRestore.ps1` 寫入器 | 沒有 owner 的 intent 遇到同內容外部檔時，Repair 記為工具擁有，回復時會移走外部檔 | 寫入器在 Move 前記錄綁定封存雜湊的 Prepared 證據；Repair 必須同時具備「intent、Move 前紀錄、staging 已消耗」才記為工具擁有，否則一律記為 AdoptedExisting（17.118） | `Test-RoundSevenGapCoverage` I 區段（I1～I10，含真實寫入器在 Move 後當機）、`Test-JournalReplayCoverage` | `88f7e8e` |
+| Q6b | `tests/Test-HtmlBridge.js`、`Test-StartBackupReplayHttp.js`、`Test-C2D2HtmlActions.ps1`、`Test-BackupProgressBrowser.js`、`Test-NativeWizardJourney.js` | 本機 AdGuard 會重設 loopback 連線、卡住超過約 64 KiB 的回應、改寫 HTML，五支測試因此長期失敗；`new URL()` 把 `/api/../` 正規化，路徑拒絕從未真正測到；帳密端點與 socket 邊界沒有測試 | 只在沒收到任何回應位元組時重試，並計數；原始 socket 路徑探針；瀏覽器在本機可從磁碟提供 UI，帶 console 安全標頭並計數；本機遇環境重設回報 ENVIRONMENT-LIMITED（exit 3，不算通過）；四個 workflow 設 `WSM_TEST_NO_DISK_UI=1`，CI 關閉退路；新測試用原生 GET 比對 UI 位元組（17.119） | `Test-HttpSocketEdgeCases.js`（109）、`Test-ConsoleAssetTransport.js`、`Test-HtmlBridge.js`（45）、`Test-StartBackupReplayHttp.js`（17）、`Test-C2D2HtmlActions.ps1`（185）、`Test-BackupProgressBrowser.js` | （Q6B-COMMIT） |
 
 ### 第六輪終檢
 

@@ -12,6 +12,9 @@ on:
         options: [all, basic, launcher, release, target, source-cancel]
 permissions:
   contents: read
+# Browser tests must exercise the real console static-file transport in CI: the local disk fallback in tests/Browser-UiDelivery.js is off.
+env:
+  WSM_TEST_NO_DISK_UI: '1'
 jobs:
   native:
     runs-on: windows-latest

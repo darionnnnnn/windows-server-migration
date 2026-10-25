@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const assert = require('node:assert/strict');
+const { gotoConsole, reportFailure, deliverySummary } = require('./Browser-UiDelivery.js');
 
 const runtime = process.env.WSM_NODE_MODULES || 'C:/Users/eldar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules';
 const { chromium } = require(path.join(runtime, 'playwright'));
@@ -59,8 +60,7 @@ async function stopServer() {
       }
     });
     page.on('pageerror', error => records.push({ pageError: error.message }));
-    await page.goto(origin + '/ui/index.html', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.WsmConsole && window.WsmConsole.state.wizard, null, { timeout: 30000 });
+    await gotoConsole(page, origin, '/ui/index.html', { repoRoot, ready: p => p.waitForFunction(() => window.WsmConsole && window.WsmConsole.state.wizard, null, { timeout: 30000 }) });
     assert.equal(await page.locator('#view-wizard').isVisible(), true);
     assert.equal(await page.locator('input[name="wizard-role"]').count(), 3, 'native projection must render actual available intent choices');
     const firstGet = records.find(record => record.method === 'GET');
@@ -73,7 +73,7 @@ async function stopServer() {
     await page.locator('#developer-probe-button').click();
     const probeResponse=await probeAccepted;assert.equal(probeResponse.status(),202,await probeResponse.text());const probeRequest=probeResponse.request().postDataJSON();assert.equal(probeRequest.action,'DeveloperProbe');assert.deepEqual(probeRequest.args,{});
     const probeId=(await probeResponse.json()).job.jobId;assert.ok(probeId,'one-click probe should return an authoritative durable job id');
-    let probeJob=null;const probeDeadline=Date.now()+120000;while(Date.now()<probeDeadline){const record=await page.evaluate(async id=>{const value=await window.WsmConsole.endpoint(`/api/jobs/${encodeURIComponent(id)}`);return value&&(value.job||value);},probeId);if(record&&record.jobId===probeId&&['Succeeded','ReviewRequired','Failed','Cancelled','Interrupted','Blocked','Deferred'].includes(record.status)){probeJob=record;break;}await new Promise(resolve=>setTimeout(resolve,1000));}assert.ok(probeJob,'actual durable DeveloperProbe did not reach a terminal state within two minutes');assert.ok(['Succeeded','ReviewRequired'].includes(probeJob.status),`native probe ended ${probeJob.status}: ${JSON.stringify(probeJob.error||probeJob.outputs)}`);assert.equal(probeJob.action,'DeveloperProbe');assert.ok(probeJob.outputs?.[0]?.CollectorResults?.length,'terminal probe should expose real collector results');assert.ok(probeJob.artifacts?.some(artifact=>artifact.kind==='Download'&&artifact.contentType==='application/zip'),'terminal probe should expose its ZIP through a safe download artifact');assert.ok(probeJob.artifacts?.some(artifact=>artifact.kind==='Folder'),'terminal probe should expose the validated artifact folder action');
+    let probeJob=null,pollResets=0;const probeDeadline=Date.now()+120000;while(Date.now()<probeDeadline){let record=null;try{record=await page.evaluate(async id=>{const value=await window.WsmConsole.endpoint(`/api/jobs/${encodeURIComponent(id)}`);return value&&(value.job||value);},probeId);}catch(error){/* an idempotent GET poll: an environmental loopback reset (the page reports connection_error) is retried and counted; any other error still fails */if(!/connection_error|無法連線本機服務|ERR_CONNECTION_RESET/.test(String(error&&error.message))||pollResets>=12)throw error;pollResets++;console.log('environmental loopback reset while polling the probe job (retry '+pollResets+')');await new Promise(resolve=>setTimeout(resolve,500));continue;}if(record&&record.jobId===probeId&&['Succeeded','ReviewRequired','Failed','Cancelled','Interrupted','Blocked','Deferred'].includes(record.status)){probeJob=record;break;}await new Promise(resolve=>setTimeout(resolve,1000));}assert.ok(probeJob,'actual durable DeveloperProbe did not reach a terminal state within two minutes');assert.ok(['Succeeded','ReviewRequired'].includes(probeJob.status),`native probe ended ${probeJob.status}: ${JSON.stringify(probeJob.error||probeJob.outputs)}`);assert.equal(probeJob.action,'DeveloperProbe');assert.ok(probeJob.outputs?.[0]?.CollectorResults?.length,'terminal probe should expose real collector results');assert.ok(probeJob.artifacts?.some(artifact=>artifact.kind==='Download'&&artifact.contentType==='application/zip'),'terminal probe should expose its ZIP through a safe download artifact');assert.ok(probeJob.artifacts?.some(artifact=>artifact.kind==='Folder'),'terminal probe should expose the validated artifact folder action');
     await page.evaluate(()=>window.WsmConsole.navigate('jobs',{force:true}));
     await page.waitForFunction(id=>{const card=[...document.querySelectorAll('#job-list .job-card')].find(node=>node.textContent.includes(id));return card&&card.textContent.includes('環境探測摘要')&&card.textContent.includes('本機盤點');},probeId,{timeout:30000});
     const probeCard=page.locator('#job-list .job-card').filter({hasText:probeId});assert.match(await probeCard.innerText(),/已取得|部分資料/,'job history should show actual terminal collector status');
@@ -110,8 +110,7 @@ async function stopServer() {
     page.on('request',request=>{if(new URL(request.url()).origin===origin&&request.method()==='POST'&&new URL(request.url()).pathname==='/api/wizard')records.push({method:'POST',status:null,requestBody:request.postDataJSON(),utc:new Date().toISOString()});});
     page.on('response',response=>{const url=new URL(response.url());if(url.origin===origin&&url.pathname==='/api/wizard'){const record={method:response.request().method(),status:response.status(),utc:new Date().toISOString(),bodyPromise:response.text().catch(error=>JSON.stringify({bodyError:error.message}))};records.push(record);record.bodyPromise.then(value=>{record.body=value;delete record.bodyPromise;}).catch(error=>{record.body=JSON.stringify({bodyError:error.message});delete record.bodyPromise;});}});
     page.on('pageerror',error=>records.push({pageError:error.message}));
-    await page.goto(origin+'/ui/index.html',{waitUntil:'domcontentloaded'});
-    await page.waitForFunction(()=>window.WsmConsole&&window.WsmConsole.state.wizard);
+    await gotoConsole(page, origin, '/ui/index.html', { repoRoot, ready: p => p.waitForFunction(()=>window.WsmConsole&&window.WsmConsole.state.wizard, null, { timeout: 30000 }) });
     assert.equal(await page.locator('input[name="wizard-role"]').count(),0,'a pre-enrolled fixture should continue its existing Manager role');
     assert.equal(await page.locator('input[name="wizard-mode"][value="ItemByItem"]').count(),1);
     await page.locator('input[name="wizard-mode"][value="ItemByItem"]').check();
@@ -166,7 +165,7 @@ async function stopServer() {
     await page.setViewportSize({ width: 320, height: 900 });
     await page.screenshot({ path: path.join(screenshotDir, 'wizard-native-manager-mobile.png'), fullPage: true });
     assert.deepEqual(records.filter(record => record.pageError), []);
-    process.stdout.write('PASS: Edge used the actual Start-WsmHtmlConsole PowerShell handler for initial empty projection, explicit Manager enrollment, and durable wizard-state CAS. The seeded inventory is test data; no migration or restore operation ran.\n');
+    process.stdout.write('PASS: Edge used the actual Start-WsmHtmlConsole PowerShell handler for initial empty projection, explicit Manager enrollment, and durable wizard-state CAS. The seeded inventory is test data; no migration or restore operation ran. Probe-job poll retries after environmental resets: ' + pollResets + '. ' + deliverySummary() + '.\n');
   } finally {
     if (browser) await browser.close();
     await stopServer();
@@ -174,4 +173,4 @@ async function stopServer() {
     if (!absolute.startsWith(tempRoot)) throw new Error('Refusing to remove native wizard test data outside the OS temp directory.');
     fs.rmSync(absolute, { recursive: true, force: true });
   }
-})().catch(error => { console.error(error);console.error('Native wizard route trace:',JSON.stringify(records.filter(record=>record.requestBody||record.pageError).slice(-25).map(record=>({method:record.method,status:record.status,operation:record.requestBody&&record.requestBody.operation,expectedWizardRevision:record.requestBody&&record.requestBody.expectedWizardRevision,changes:record.requestBody&&record.requestBody.changes,error:record.pageError})))); process.exitCode = 1; });
+})().catch(error => { console.error(error);console.error('Native wizard route trace:',JSON.stringify(records.filter(record=>record.requestBody||record.pageError).slice(-25).map(record=>({method:record.method,status:record.status,operation:record.requestBody&&record.requestBody.operation,expectedWizardRevision:record.requestBody&&record.requestBody.expectedWizardRevision,changes:record.requestBody&&record.requestBody.changes,error:record.pageError})))); process.exitCode = reportFailure(error, 'native wizard journey'); });

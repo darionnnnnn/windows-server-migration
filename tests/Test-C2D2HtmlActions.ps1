@@ -5,6 +5,13 @@ $ErrorActionPreference='Stop'
 # projection and the real console routes (real listener processes, real workers) for both the read and the write side.
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru -DisableNameChecking -WarningAction SilentlyContinue
 $script:checks=0
+# Environmental loopback resets: on this machine AdGuard's WFP driver resets a share of FRESH loopback TCP connections (20-50% between two bare node
+# processes, no project code involved), so an Invoke-WebRequest can die with a WebException that has NO HTTP response ("the underlying connection was
+# closed"). Invoke-Console retries exactly that case (max $script:MaxEnvAttempts tries) and counts it; every retry is printed and the total is in the PASS
+# line. An HTTP error status (400/403/404/409 ...) is a real answer and is never retried; no assertion is relaxed. Because a re-sent POST may
+# already have been processed, Invoke-Console reports Retries and the three 202 checks accept the formal replay (200) only when Retries -gt 0.
+$script:MaxEnvAttempts=6
+$script:EnvRetries=@()
 function Check([bool]$Condition,[string]$Message){$script:checks++;if(-not $Condition){throw $Message};Write-Output ('PASS '+$Message)}
 function Reject([scriptblock]$Action,[string]$Message,[string]$Pattern=''){$script:checks++;$rejected=$false;$text='';try{& $Action|Out-Null}catch{$rejected=$true;$text=[string]$_.Exception.Message};if(-not $rejected){throw $Message};if($Pattern -and $text -notmatch $Pattern){throw ($Message+' (rejected with an unexpected message: '+$text+')')};Write-Output ('PASS '+$Message)}
 function New-TestRoot([string]$Prefix){
@@ -116,13 +123,21 @@ function Invoke-Console($Console,[string]$Method,[string]$Path,$Body,[string]$To
     $headers=@{Accept='application/json'};if($Token){$headers['X-Wsm-Token']=$Token}
     $parameters=@{Uri=($Console.Url+$Path);Method=$Method;Headers=$headers;UseBasicParsing=$true;TimeoutSec=60}
     if($Method -ceq 'POST'){$headers['Origin']=$Console.Url;$parameters.ContentType='application/json';$parameters.Body=[Text.Encoding]::UTF8.GetBytes(($Body|ConvertTo-Json -Depth 30 -Compress))}
-    try{$response=Invoke-WebRequest @parameters;$status=[int]$response.StatusCode;$text=[string]$response.Content}
+    $retries=0
+    while($true){
+    try{$response=Invoke-WebRequest @parameters;$status=[int]$response.StatusCode;$text=[string]$response.Content;break}
     catch{
-        if(-not $_.Exception.Response){throw}
-        $status=[int]$_.Exception.Response.StatusCode;$errorStream=$_.Exception.Response.GetResponseStream();if($errorStream.CanSeek){$errorStream.Position=0};$reader=New-Object IO.StreamReader($errorStream,[Text.Encoding]::UTF8);$text=$reader.ReadToEnd();$reader.Dispose()
+        if(-not $_.Exception.Response){
+            if(($retries+1) -ge $script:MaxEnvAttempts){throw}
+            $retries++;$script:EnvRetries+=@($Method+' '+$Path+' try '+$retries)
+            Write-Output ('ENV-RETRY environmental loopback reset: '+$Method+' '+$Path+' try '+$retries+' of '+$script:MaxEnvAttempts+'; retrying')
+            continue
+        }
+        $status=[int]$_.Exception.Response.StatusCode;$errorStream=$_.Exception.Response.GetResponseStream();if($errorStream.CanSeek){$errorStream.Position=0};$reader=New-Object IO.StreamReader($errorStream,[Text.Encoding]::UTF8);$text=$reader.ReadToEnd();$reader.Dispose();break
+    }
     }
     $parsed=$null;if($text){try{$parsed=$text|ConvertFrom-Json}catch{}}
-    [pscustomobject]@{Status=$status;Body=$parsed;Text=$text}
+    [pscustomobject]@{Status=$status;Body=$parsed;Text=$text;Retries=$retries}
 }
 function Get-ConsoleSession($Console){$session=Invoke-Console $Console GET '/api/session' $null '';if($session.Status -ne 200){throw 'Console session request failed.'};$session.Body}
 function New-ConsoleRequest($Session,[string]$Action,$Arguments){
@@ -204,7 +219,7 @@ try{
     $submitArguments=@{ExpectedRevision=[int]$read.Body.DecisionRevision;ExpectedPreviewHash=[string]$read.Body.PreviewHash;Ack=$true;Decisions=@(@{SoftwareId=[string]$normal.SoftwareId;Disposition='Reinstall';Owner='o';Reason='r';Evidence='e'})}
     $operation=New-ConsoleRequest $session 'SoftwareDispositionReviewSubmit' $submitArguments;$operation.operationId=[Guid]::NewGuid().ToString('D');$operation.idempotencyKey=[Guid]::NewGuid().ToString('D')
     $accepted=Invoke-Console $c2Console POST '/api/operations' $operation $token
-    Check ($accepted.Status -eq 202) 'the console accepts a software disposition submit as a durable operation'
+    Check ($accepted.Status -eq 202 -or ($accepted.Retries -gt 0 -and $accepted.Status -eq 200)) 'the console accepts a software disposition submit as a durable operation'
     $finished=Wait-ConsoleJob $c2Console $token ([string]$operation.operationId)
     Check ($finished.status -ceq 'Succeeded' -and $finished.action -ceq 'SoftwareDispositionReviewSubmit') 'the worker applied the submit and the job is durable'
     $afterRevision=(Get-WsmCatalog $workspace $pairId).DecisionRevision
@@ -216,7 +231,7 @@ try{
     $badHash=New-ConsoleRequest $fresh 'SoftwareDispositionReviewSubmit' @{ExpectedRevision=[int]$fresh.decisionRevision;ExpectedPreviewHash=('0'*64);Ack=$true;Decisions=@(@{SoftwareId=[string]$normal.SoftwareId;Disposition='External';Owner='o';Reason='r';Evidence='e'})};$badHash.operationId=[Guid]::NewGuid().ToString('D');$badHash.idempotencyKey=[Guid]::NewGuid().ToString('D')
     $badAccepted=Invoke-Console $c2Console POST '/api/operations' $badHash $token
     $badJob=Wait-ConsoleJob $c2Console $token ([string]$badHash.operationId)
-    Check ($badAccepted.Status -eq 202 -and $badJob.status -ceq 'Failed' -and $badJob.error.code -ceq 'stale_context') 'a wrong preview hash fails the durable job with the stale_context code (no write)'
+    Check (($badAccepted.Status -eq 202 -or ($badAccepted.Retries -gt 0 -and $badAccepted.Status -eq 200)) -and $badJob.status -ceq 'Failed' -and $badJob.error.code -ceq 'stale_context') 'a wrong preview hash fails the durable job with the stale_context code (no write)'
     Check ((Get-WsmCatalog $workspace $pairId).DecisionRevision -eq $fresh.decisionRevision) 'the failed stale-hash job did not change the catalog'
     $c2SourceRoleConsole=Start-ConsoleProcess $workspace $pairId 'Source' $c2Root 'c2-source'
     $sourceSession=Get-ConsoleSession $c2SourceRoleConsole
@@ -313,7 +328,7 @@ try{
     $mappingOperation=New-ConsoleRequest $session 'SourceCandidateMappingSubmit' $mappingArguments;$mappingOperation.operationId=[Guid]::NewGuid().ToString('D');$mappingOperation.idempotencyKey=[Guid]::NewGuid().ToString('D')
     $mappingAccepted=Invoke-Console $d2Manager POST '/api/operations' $mappingOperation $token
     $mappingJob=Wait-ConsoleJob $d2Manager $token ([string]$mappingOperation.operationId)
-    Check ($mappingAccepted.Status -eq 202 -and $mappingJob.status -ceq 'ReviewRequired' -and @($mappingJob.outputs|Where-Object {$_.Status -ceq 'SubmittedReviewRequired'}).Count -eq 1) 'the mapping review submit runs as a durable console operation; its job is ReviewRequired with output status SubmittedReviewRequired (re-review and re-approval follow)'
+    Check (($mappingAccepted.Status -eq 202 -or ($mappingAccepted.Retries -gt 0 -and $mappingAccepted.Status -eq 200)) -and $mappingJob.status -ceq 'ReviewRequired' -and @($mappingJob.outputs|Where-Object {$_.Status -ceq 'SubmittedReviewRequired'}).Count -eq 1) 'the mapping review submit runs as a durable console operation; its job is ReviewRequired with output status SubmittedReviewRequired (re-review and re-approval follow)'
     $afterMapping=Get-WsmCatalog $managerWorkspace $pairId
     Check ($afterMapping.DecisionRevision -gt $mappingReview.DecisionRevision -and @($afterMapping.WorkloadDiscovery.FileScopeMappings|Where-Object {$_.Decision -ceq 'Include'}).Count -eq 1) 'the mapping is stored and the revision advanced'
     $staleMapping=New-ConsoleRequest $session 'SourceCandidateMappingSubmit' $mappingArguments;$staleMapping.operationId=[Guid]::NewGuid().ToString('D');$staleMapping.idempotencyKey=[Guid]::NewGuid().ToString('D')
@@ -333,7 +348,7 @@ try{
     Check ($managerActionOnSource.Status -eq 400 -and $managerActionOnSource.Body.code -ceq 'invalid_request') 'a Source console refuses the Manager confirmation review'
     $exportAsView=Invoke-Console $d2Source POST '/api/view' (New-ConsoleRequest $sourceSession 'SourceCandidateConfirmExport' @{ScanId=[string]$scan.ScanId;ExpectedCandidateHash=[string]$scan.CandidateHash;CandidateId=[string]$candidate.CandidateId}) $sourceToken
     Check ($exportAsView.Status -eq 400) 'the export is refused on the read endpoint'
-    Write-Output ('PASS Test-C2D2HtmlActions: '+$script:checks+' action map, role/route gate, argument, C2 batch/CAS, D2 flow, closed projection and real console checks.')
+    Write-Output ('PASS Test-C2D2HtmlActions: '+$script:checks+' action map, role/route gate, argument, C2 batch/CAS, D2 flow, closed projection and real console checks. Environmental loopback resets retried: '+@($script:EnvRetries).Count+$(if(@($script:EnvRetries).Count){' ['+(@($script:EnvRetries) -join '; ')+']'}else{''}))
 }finally{
     Stop-ConsoleProcess $d2Source;Stop-ConsoleProcess $d2Manager
     Remove-TestRoot $root $d2Prefix

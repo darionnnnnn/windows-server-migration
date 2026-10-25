@@ -7,6 +7,9 @@ on:
 # The workflow always runs so the aggregate "required-checks" job always reports a result.
 # Docs-only changes are detected by the scope job; the contract jobs are then skipped, and the
 # aggregate treats "skipped because docs-only" as success instead of leaving a required check pending.
+# Browser tests must exercise the real console static-file transport in CI: the local disk fallback in tests/Browser-UiDelivery.js is off.
+env:
+  WSM_TEST_NO_DISK_UI: '1'
 jobs:
   scope:
     runs-on: ubuntu-latest

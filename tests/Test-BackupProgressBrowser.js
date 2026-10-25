@@ -8,6 +8,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
+const { gotoConsole, reportFailure, deliverySummary } = require('./Browser-UiDelivery.js');
 
 const runtime = process.env.WSM_NODE_MODULES || 'C:/Users/eldar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules';
 const { chromium } = require(path.join(runtime, 'playwright'));
@@ -27,6 +28,25 @@ const server = http.createServer((request, response) => {
   fs.createReadStream(file).pipe(response);
 });
 
+// Session asset hashes the fixture hands to the page. The page re-fetches every /ui asset and compares its SHA-256 (verifyAssets in console.js).
+// On this machine AdGuard injects <script src="//local.adguard.org?..."> into text/html responses that reach msedge.exe (+515 bytes, random nonce, so
+// the bytes differ on every fetch). That makes the hash check of index.html / guide.html fail by itself and raise a sticky resource-incomplete banner,
+// which races with the banner a scenario is waiting for (G4 saw resource-incomplete instead of reset-timeout; PLAN 17.119). detectRewrittenHtmlAssets()
+// measures this in the real browser before the scenarios run; only HTML assets that really arrive different are dropped from the session hash set
+// (printed), css/js stay verified, and a non-HTML mismatch fails the run. In a clean environment nothing is dropped and all five hashes are checked.
+let sessionAssetHashes = assetHashes;
+async function detectRewrittenHtmlAssets(browser) {
+  const context = await browser.newContext(); const page = await context.newPage();
+  try {
+    await page.goto(`http://127.0.0.1:${server.address().port}/ui/console.css`);
+    const observed = await page.evaluate(async routes => {
+      const rows = {};
+      for (const route of routes) { const response = await fetch(route, { cache: 'no-store', credentials: 'same-origin' }); const digest = await crypto.subtle.digest('SHA-256', await response.arrayBuffer()); rows[route] = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join(''); }
+      return rows;
+    }, Object.keys(assetHashes));
+    return Object.keys(assetHashes).filter(route => observed[route] !== assetHashes[route]);
+  } finally { await context.close(); }
+}
 const PAIR = 'fixture-pair', JOB = '11111111-2222-4333-8444-555555555555';
 const iso = ms => new Date(Date.now() + ms).toISOString();
 function backupView(over) {
@@ -50,7 +70,7 @@ async function openPage(browser, scenario, hash, contextOptions) {
   const errors = [], posts = { cancel: 0, operations: 0 }, ctl = { jobs: scenario.jobs || [], failures: scenario.failures || {} };
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
-  const session = { token: 'memory-only-test-token', sessionId: 'fixture-session', contextId: 'fixture-context', hostName: 'fixture-host', role: 'Source', workspace: root, pairId: PAIR, revision: 5, decisionRevision: 7, selectionRevision: 3, sourceSelectionRevision: 3, dataVersion: 'fixture-data-1', principal: 'fixture-user', assetHashes: scenario.assetHashes || assetHashes };
+  const session = { token: 'memory-only-test-token', sessionId: 'fixture-session', contextId: 'fixture-context', hostName: 'fixture-host', role: 'Source', workspace: root, pairId: PAIR, revision: 5, decisionRevision: 7, selectionRevision: 3, sourceSelectionRevision: 3, dataVersion: 'fixture-data-1', principal: 'fixture-user', assetHashes: scenario.assetHashes || sessionAssetHashes };
   const viewContext = () => ({ sessionId: session.sessionId, contextId: session.contextId, pairId: PAIR, role: 'Source', revision: 5, decisionRevision: 7, selectionRevision: 3, sourceSelectionRevision: 3, dataVersion: session.dataVersion, readUtc: new Date().toISOString() });
   await page.route(/\/api\/.*/, async route => {
     const request = route.request(), parsed = new URL(request.url()), pathname = parsed.pathname, method = request.method();
@@ -89,6 +109,13 @@ const noHorizontalOverflow = async (page, width) => { const overflow = await pag
 (async () => {
   await new Promise((resolve, reject) => server.listen(0, '127.0.0.1', resolve).once('error', reject));
   const browser = await chromium.launch({ headless: true, executablePath: process.env.WSM_EDGE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' });
+  const rewrittenAssets = await detectRewrittenHtmlAssets(browser);
+  const nonHtmlRewritten = rewrittenAssets.filter(route => !route.endsWith('.html'));
+  assert.deepEqual(nonHtmlRewritten, [], 'non-HTML assets reach the browser with different bytes than on disk: ' + nonHtmlRewritten.join(', '));
+  if (rewrittenAssets.length) {
+    sessionAssetHashes = Object.fromEntries(Object.entries(assetHashes).filter(([route]) => !rewrittenAssets.includes(route)));
+    console.log('environment note: the browser receives ' + rewrittenAssets.join(', ') + ' with bytes that differ from disk (AdGuard HTML injection); dropped from the fixture session hash set, ' + Object.keys(sessionAssetHashes).length + ' of ' + Object.keys(assetHashes).length + ' assets still hash-verified.');
+  } else console.log('environment note: all ' + Object.keys(assetHashes).length + ' assets reach the browser byte-identical to disk; every hash is verified.');
   const mainErrors = [];
   let counts = { cardChecks: 0, f2: 0 };
   try {
@@ -437,11 +464,11 @@ const noHorizontalOverflow = async (page, width) => { const overflow = await pag
     await realConsoleReadback(browser, mainErrors);
 
     assert.deepEqual(mainErrors, [], 'zero console errors on the progress card pages: ' + JSON.stringify(mainErrors));
-    process.stdout.write(`PASS: B1 progress card (${counts.cardChecks} checks) and F2 connection prompts (${counts.f2} cases) in Edge; screenshots in work/r7/screens/b1-*.png\n`);
+    process.stdout.write(`PASS: B1 progress card (${counts.cardChecks} checks) and F2 connection prompts (${counts.f2} cases) in Edge; real-console readback: ${deliverySummary()}; screenshots in work/r7/screens/b1-*.png\n`);
   } finally {
     await browser.close(); server.close();
   }
-})().catch(error => { process.stderr.write(String(error && error.stack || error) + '\n'); process.exit(1); });
+})().catch(error => { process.exit(reportFailure(error, 'B1/F2 progress browser suite (fixture-API scenarios run first; resets are tracked only on the real-console readback page)')); });
 
 async function realConsoleReadback(browser, errorSink) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wsm-b1-real-'));
@@ -480,7 +507,7 @@ async function realConsoleReadback(browser, errorSink) {
     origin = await start();
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } }); const page = await context.newPage();
     page.on('pageerror', e => errorSink.push('real pageerror: ' + e.message)); page.on('console', m => { const where = m.location() && m.location().url || ''; /* the real handler answers the browser's automatic favicon probe with 403; that is not a page error */ if (m.type() === 'error' && !/\/favicon\.ico$/.test(where)) errorSink.push('real console: ' + m.text() + ' @ ' + where); });
-    await page.goto(origin + '/ui/index.html#wizard', { waitUntil: 'domcontentloaded' });
+    await gotoConsole(page, origin, '/ui/index.html#wizard', { repoRoot: root, ready: p => p.waitForFunction(() => window.WsmConsole && window.WsmConsole.state.session, null, { timeout: 30000 }) });
     await page.waitForSelector('.progress-card[data-progress-card="wizard"]:not([hidden])', { timeout: 300000 });
     const c = page.locator('.progress-card[data-progress-card="wizard"]'), text = await c.textContent();
     assert.ok(text.includes('2 / 5') && text.includes('還原用工作負載') && text.includes('last-file.txt'), 'the restarted console must serve the last progress by job id: ' + text);

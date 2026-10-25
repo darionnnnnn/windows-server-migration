@@ -12,6 +12,23 @@ const crypto = require('node:crypto');
 const { spawn, execFileSync } = require('node:child_process');
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+// Environmental loopback resets: on this machine AdGuard's WFP driver resets a share of FRESH loopback TCP connections (20-50% between two bare
+// node processes, no project code involved; PLAN 17.119). The poll loop in waitJob opens hundreds of connections, so a bare fetch fails every time.
+// A request that dies with ECONNRESET is retried (max MAX_ENV_ATTEMPTS tries), every retry is printed and counted in the PASS line. Every
+// request in this file is idempotent by design (GETs, and replays that carry the same operationId/idempotencyKey), and no assertion is relaxed:
+// a console that resets deterministically still fails after the last try, and a wrong status or body fails on the first try.
+const MAX_ENV_ATTEMPTS = 6;
+const envRetries = [];
+const isEnvReset = error => { for (let e = error; e; e = e.cause) { if (e.code === 'ECONNRESET' || /ECONNRESET/.test(String(e.message))) return true; } return false; };
+async function envRetry(label, fn) {
+  for (let attempt = 1; ; attempt++) {
+    try { return await fn(); } catch (error) {
+      if (!isEnvReset(error) || attempt >= MAX_ENV_ATTEMPTS) throw error;
+      envRetries.push(label + ' try ' + attempt);
+      if (envRetries.length <= 20) console.log('environmental loopback reset: ' + label + ' try ' + attempt + ' of ' + MAX_ENV_ATTEMPTS + '; retrying');
+    }
+  }
+}
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'wsm-replay-'));
 const drive = [...'RSTUVWXYZ'].find(letter => !fs.existsSync(`${letter}:\\`));
 if (!drive) throw new Error('No free drive letter is available for the short fixture work root.');
@@ -74,18 +91,17 @@ if ($env:WSM_RUNTIME_TEST_IDENTITY -eq '1') {
   const origin = JSON.parse(fs.readFileSync(ready, 'utf8')).Url.replace(/\/$/, '');
   const port = Number(new URL(origin).port);
   const fixture = JSON.parse(fs.readFileSync(ready + '.fixture', 'utf8'));
-  const sessionResponse = await fetch(origin + '/api/session', { signal: AbortSignal.timeout(30000) });
-  const session = await sessionResponse.json();
+  const session = await envRetry('GET /api/session', async () => (await fetch(origin + '/api/session', { signal: AbortSignal.timeout(30000) })).json());
   assert.equal(session.role, 'Source');
   assert.equal(String(session.pairId || ''), String(fixture.PairId));
 
   const headers = { 'Content-Type': 'application/json', Origin: origin, 'X-Wsm-Token': session.token };
-  const call = async (route, body) => {
+  const call = (route, body) => envRetry((body ? 'POST ' : 'GET ') + route.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, '<id>'), async () => {
     const response = await fetch(origin + route, { signal: AbortSignal.timeout(60000), method: body ? 'POST' : 'GET', headers, ...(body ? { body: JSON.stringify(body) } : {}) });
     let data = null;
-    try { data = await response.json(); } catch (error) { data = null; }
+    try { data = await response.json(); } catch (error) { if (isEnvReset(error)) throw error; data = null; }
     return { status: response.status, data };
-  };
+  });
   const requestFor = (operationId, idempotencyKey) => ({
     action: 'StartBackup',
     args: {
@@ -112,6 +128,22 @@ if ($env:WSM_RUNTIME_TEST_IDENTITY -eq '1') {
     });
     socket.on('error', reject);
   });
+  // The abandoned submission only counts when the console really took it (its job record exists). A connection that the environment reset
+  // before the request arrived is sent again; the scenario premise (accepted, 202 lost) is checked, not assumed.
+  const abandonUntilAccepted = async body => {
+    for (let attempt = 1; ; attempt++) {
+      try { await sendAndAbandon(body); } catch (error) { if (!isEnvReset(error)) throw error; }
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline) {
+        const lookup = await call('/api/jobs/' + body.operationId);
+        if (lookup.status === 200 && lookup.data) return attempt;
+        await sleep(250);
+      }
+      if (attempt >= MAX_ENV_ATTEMPTS) throw new Error('the abandoned submission never reached the console in ' + attempt + ' tries');
+      envRetries.push('abandoned POST /api/operations never arrived, try ' + attempt);
+      console.log('environmental loopback reset: the abandoned submission never arrived (no job record), try ' + attempt + '; sending again');
+    }
+  };
   const sourceRoot = path.join(workspace, 'source');
   const pairId = String(fixture.PairId);
   const attemptsDir = path.join(sourceRoot, 'workspace-control', 'wizard-backups', pairId);
@@ -147,7 +179,8 @@ if ($env:WSM_RUNTIME_TEST_IDENTITY -eq '1') {
   const idempotencyKey = crypto.randomUUID();
   const body = requestFor(operationId, idempotencyKey);
 
-  await sendAndAbandon(body);
+  const abandonTries = await abandonUntilAccepted(body);
+  console.log('abandoned submission accepted by the console after ' + abandonTries + ' send(s); its 202 was never read');
   // In-flight replay: the first worker may still be freezing / capturing.
   const inFlight = await call('/api/operations', body);
   check([200, 202].includes(inFlight.status) && inFlight.data && inFlight.data.job && inFlight.data.job.jobId === operationId, 'in-flight replay returned the original job: ' + JSON.stringify(inFlight));
@@ -187,7 +220,7 @@ if ($env:WSM_RUNTIME_TEST_IDENTITY -eq '1') {
   check(digest(attemptFile) === attemptDigest && treeDigest(path.join(pairsDir, pairId, 'attempts')) === attemptTree, 'replays changed the backup attempt or its output');
   const jobsList = await call('/api/jobs');
   check(jobsList.status === 200 && (jobsList.data.items || []).filter(job => job.jobId === operationId).length === 1, 'the job registry holds the operation exactly once');
-  console.log(`PASS: ${checks} route-level checks: lost 202, same operation id replayed in flight and after completion, one worker, one freeze, original job returned.`);
+  console.log(`PASS: ${checks} route-level checks: lost 202, same operation id replayed in flight and after completion, one worker, one freeze, original job returned. Environmental ECONNRESET retries: ${envRetries.length}${envRetries.length ? ' [' + envRetries.slice(0, 30).join('; ') + (envRetries.length > 30 ? '; ...' : '') + ']' : ''}.`);
 }
 
 (async () => {

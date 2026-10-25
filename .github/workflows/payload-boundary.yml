@@ -7,6 +7,9 @@ on:
     types: [opened, reopened, ready_for_review]
     paths: ['src/**', 'Start-ServerMigration.ps1', 'tests/Test-LargePayload.ps1', '.github/workflows/payload-boundary.yml']
   workflow_dispatch:
+# Browser tests must exercise the real console static-file transport in CI: the local disk fallback in tests/Browser-UiDelivery.js is off.
+env:
+  WSM_TEST_NO_DISK_UI: '1'
 jobs:
   large-payload:
     runs-on: windows-latest

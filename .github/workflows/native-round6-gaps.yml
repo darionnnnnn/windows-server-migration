@@ -16,6 +16,9 @@ on:
         options: [both, powershell, pwsh]
 permissions:
   contents: read
+# Browser tests must exercise the real console static-file transport in CI: the local disk fallback in tests/Browser-UiDelivery.js is off.
+env:
+  WSM_TEST_NO_DISK_UI: '1'
 jobs:
   scope:
     runs-on: windows-latest
