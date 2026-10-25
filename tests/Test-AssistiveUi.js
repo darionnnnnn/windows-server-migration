@@ -883,3 +883,11 @@ test('production verification flags never render as yes even when a projection c
   const overview=ui.__getElement('overview-provenance').textContent;
   assert.match(overview,/正式環境驗證 否/); assert.doesNotMatch(overview,/正式環境驗證 是/);
 });
+
+test('console.css 長字串只用 overflow-wrap:anywhere，不得使用 word-break:break-all（18.3）', () => {
+  const css = fs.readFileSync(path.join(root, 'src/ui/console.css'), 'utf8');
+  assert.doesNotMatch(css, /word-break\s*:\s*break-all/i);
+  assert.doesNotMatch(css, /break-all/i);
+  assert.match(css, /\.b5-hash code,\.b5-code,\.b5-path\{overflow-wrap:anywhere/);
+  assert.match(css, /\.backup-failed-path code\{overflow-wrap:anywhere/);
+});

@@ -220,6 +220,10 @@ try{
     $reduced=@(& $module {param($Report) Get-WsmExternalAcceptanceCoverage $Report} $noCulture)
     Assert-Cli (@($reduced[1].MissingMaterials) -contains '語系' -and @($full[1].MissingMaterials) -notcontains '語系') 'removing a collector field turns that material into a reported gap'
 
+    # Q5(b): the Start-ServerMigration.ps1 -Action DeveloperProbe entry prints the same failure-location lines (AST: the DeveloperProbe branch calls the shared formatter on CollectorResults).
+    $entryAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'Start-ServerMigration.ps1'),[ref]$null,[ref]$null)
+    $probeBranch=@($entryAst.FindAll({param($n) $n -is [Management.Automation.Language.IfStatementAst] -and $n.Clauses[0].Item1.Extent.Text -match "Action -ceq 'DeveloperProbe'"},$true))
+    Assert-Cli ($probeBranch.Count -ge 1 -and $probeBranch[0].Clauses[0].Item2.Extent.Text.Contains('Get-WsmDeveloperProbeFailureLocationLines') -and $probeBranch[0].Clauses[0].Item2.Extent.Text.Contains('CollectorResults')) 'the -Action DeveloperProbe entry prints the failure-location lines'
     Write-Host ('PASS: '+$script:checkCount+' CLI failure-location checks (mapping table, 7 scenarios, redaction, real worker end to end, no HTTP writes from the CLI, external material alignment) on '+$PSVersionTable.PSEdition+' '+$PSVersionTable.PSVersion)
 }finally{
     if(Test-Path -LiteralPath $testRoot){Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue}

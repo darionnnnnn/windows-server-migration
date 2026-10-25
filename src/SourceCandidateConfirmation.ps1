@@ -112,6 +112,8 @@ function Get-WsmSourceCandidateFreshMembers([string]$ScopeRoot,[string]$Candidat
         $row=$candidateDirectories[$emptyDirectory.ToLowerInvariant()];$info=Get-Item -LiteralPath $emptyDirectory -Force -ErrorAction Stop
         $members.Add([pscustomobject][ordered]@{RelativePath=$relative;SHA256='';Length=[long]0;LastWriteUtc=[string]$info.LastWriteTimeUtc.ToString('o');CandidateId=[string]$row.CandidateId;EntryType='Directory'})
     }
+    # Q5(c): same blocked-name rule the ExactMembers import applies to every member (files and empty-directory members); reject at confirmation, not at import.
+    foreach($member in $members){if(Test-WsmExactMemberBlockedName ([string]$member.RelativePath)){throw ('Selected directory contains a member whose name carries a blocked extension ('+[string]$member.RelativePath+'); ExactMembers would refuse it at import. Exclude or rename it before confirming.')}}
     @($members|Sort-Object { $_.RelativePath.ToLowerInvariant() })
 }
 
@@ -131,6 +133,7 @@ function New-WsmSourceCandidateConfirmationCore([string]$Workspace,$Profile,$Inv
             $scopeRoot=[IO.Path]::GetDirectoryName($candidatePathFull);$relative=Get-WsmCandidateRelativePath $scopeRoot $candidatePathFull
             if(Test-WsmSourceCandidateExcludedPath $candidatePathFull $sourceRootFull $validated.Policy){throw 'Selected exact-file candidate is now excluded by source path policy.'}
             if($validated.Policy.ExcludedAbsoluteRoots | Where-Object {$candidatePathFull -ieq [string]$_ -or $candidatePathFull.StartsWith(([string]$_).TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)}){throw 'Selected exact-file candidate is beneath a trusted installed-software root.'}
+            if(Test-WsmExactMemberBlockedName $relative){throw ('Selected exact-file candidate name carries a blocked extension ('+$relative+'); ExactMembers would refuse it at import.')}
             Assert-WsmFileScopeGuard -Path $candidatePathFull -Mode ExactMembers -SourceRoot $scopeRoot -RelativePath $relative -CheckPhysicalAlias
             Assert-WsmAssistiveFileTopology -Path $candidatePathFull
             $info=Get-Item -LiteralPath $candidatePathFull -Force -ErrorAction Stop

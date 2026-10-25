@@ -256,6 +256,8 @@ function Complete-WsmAssistiveFileRollback($Item,$Operation,$Paths,$State) {
         }elseif(-not [IO.File]::Exists($target) -and $retainedHash -eq $currentHash){Add-WsmJournal $Paths $State 'AssistiveRollbackNewFileRetained' $Item.ItemId ([pscustomobject]@{Target=$target;Retained=$retained;Hash=$currentHash})}
         else{throw 'Assistive rollback cannot prove a safe exact prior file state.'}
     }
+    $adoptedAclRecord=@($State.Items | Where-Object ItemId -CEQ $Item.ItemId);$adoptedAclSnapshots=@();if($adoptedAclRecord.Count -eq 1 -and $adoptedAclRecord[0].PSObject.Properties['OwnedFiles']){$adoptedAclSnapshots=@(Get-WsmAdoptedFileAclSnapshots $adoptedAclRecord[0].OwnedFiles $root)}
+    try{
     foreach($directory in @($Operation.Directories | Sort-Object @{Expression={if($_.RelativePath){$_.RelativePath.Split([char]92).Count}else{0}};Descending=$true})){
         $path=[IO.Path]::GetFullPath([string]$directory.TargetPath);if(($path -ine $root -and -not $path.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase))){throw 'Assistive rollback directory escapes its approved target scope.'};Assert-WsmNoReparse $path
         if(-not [IO.Directory]::Exists($path)){if($directory.CreatedByTool){Add-WsmJournal $Paths $State 'AssistiveRollbackDirectoryAbsent' $Item.ItemId ([pscustomobject]@{Target=$path});continue};throw 'Previously owned Assistive directory is absent during rollback.'}
@@ -266,6 +268,7 @@ function Complete-WsmAssistiveFileRollback($Item,$Operation,$Paths,$State) {
         if(-not $directory.BackupMetadata -or -not $directory.BackupMetadataHash){throw 'Existing Assistive directory has no exact prior metadata snapshot; rollback is blocked.'}
         Set-WsmFileMetadata $path $directory.BackupMetadata @{};$restored=Get-WsmFileMetadata $path $spec.Metadata;if((Get-WsmAssistiveMetadataHash $restored) -ine [string]$directory.BackupMetadataHash){throw 'Assistive directory prior metadata restoration failed native readback.'};Add-WsmJournal $Paths $State 'AssistiveRollbackDirectoryMetadataRestored' $Item.ItemId ([pscustomobject]@{Target=$path;MetadataHash=$directory.BackupMetadataHash})
     }
+    }finally{Restore-WsmAdoptedFileAclSnapshots $adoptedAclSnapshots}
     # Parent metadata restoration may propagate ACLs after an earlier child readback.
     # Do not retire the ownership or durable intent until every final prior state matches.
     foreach($file in @($Operation.Files)){

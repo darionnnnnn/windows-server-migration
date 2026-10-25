@@ -289,3 +289,55 @@ function Assert-WsmOfflineFullSetOriginalLocation($Plan,$Spec) {
     if($source -ine $target){throw 'OfflineFullSet restore requires the approved original location; the target path differs from the captured source path.'}
     if($target -notmatch '^[A-Za-z]:\\'){throw 'OfflineFullSet restore requires a drive-rooted original location.'}
 }
+
+# Q5(d)：工具擁有的目錄帶可繼承 ACE 時，套用或回復「目錄」ACL 會由 Windows 傳播到底下未保護的子檔，
+# 連「沿用既有檔（AdoptedExisting）」的 SDDL 也會被改寫（P10 已知限制）。沿用檔不是工具寫的，ACL 不得被工具動到。
+# 做法：目錄 ACL 變動前保存沿用檔的原始 security descriptor，變動後若 SDDL 不同，用「不經繼承重算」的
+# SetKernelObjectSecurity 原樣寫回（Set-Acl 對未保護的檔會再依父目錄重新繼承，無法還原舊的繼承 ACE）。
+# 不採「設為 protected」：那會改掉檔案自己的繼承旗標與 ACE 旗標，SDDL 位元組就不同了。
+function Get-WsmAdoptedFileAclSnapshots {
+    param($OwnedFiles,[string]$Root)
+    $rootPrefix=[IO.Path]::GetFullPath($Root).TrimEnd('\')+'\'
+    $sections=[Security.AccessControl.AccessControlSections]::Access -bor [Security.AccessControl.AccessControlSections]::Owner -bor [Security.AccessControl.AccessControlSections]::Group
+    $snapshots=New-Object 'System.Collections.Generic.List[object]'
+    # foreach directly over the argument: @($List) here trips a Windows PowerShell 5.1 binder type-mismatch (ArgumentException) when the same site sees different collection types.
+    foreach($file in $OwnedFiles){
+        if(-not (Test-WsmAssistiveOwnedFileAdopted $file) -or -not $file.PSObject.Properties['TargetPath']){continue}
+        $path=[IO.Path]::GetFullPath([string]$file.TargetPath)
+        if(-not $path.StartsWith($rootPrefix,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.File]::Exists($path)){continue}
+        try{Assert-WsmNoReparse $path;$acl=Get-Acl -LiteralPath $path -ErrorAction Stop;$snapshots.Add([pscustomobject]@{Path=$path;Sddl=$acl.GetSecurityDescriptorSddlForm($sections);Descriptor=[byte[]]$acl.GetSecurityDescriptorBinaryForm()})}catch{continue}
+    }
+    $snapshots.ToArray()
+}
+function Restore-WsmAdoptedFileAclSnapshots {
+    param($Snapshots)
+    $sections=[Security.AccessControl.AccessControlSections]::Access -bor [Security.AccessControl.AccessControlSections]::Owner -bor [Security.AccessControl.AccessControlSections]::Group
+    foreach($snapshot in $Snapshots){
+        if(-not [IO.File]::Exists([string]$snapshot.Path)){continue}
+        Assert-WsmNoReparse ([string]$snapshot.Path)
+        if((Get-Acl -LiteralPath ([string]$snapshot.Path)).GetSecurityDescriptorSddlForm($sections) -ceq [string]$snapshot.Sddl){continue}
+        if(-not ('WsmRawFileSecurity' -as [type])){
+            Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public static class WsmRawFileSecurity {
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern SafeFileHandle CreateFileW(string p,uint a,uint s,IntPtr sec,uint c,uint f,IntPtr t);
+ [DllImport("advapi32.dll",SetLastError=true)] static extern bool SetKernelObjectSecurity(SafeFileHandle h,uint info,byte[] sd);
+ public static void SetDacl(string path,byte[] sd) {
+  using(var h=CreateFileW(path,0x00040000,7,IntPtr.Zero,3,0x00200000,IntPtr.Zero)) {
+   if(h.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+   if(!SetKernelObjectSecurity(h,4,sd)) throw new Win32Exception(Marshal.GetLastWin32Error());
+  }
+ }
+}
+'@
+        }
+        $descriptor=[byte[]]$snapshot.Descriptor.Clone()
+        # SE_DACL_AUTO_INHERIT_REQ：讓寫回後保留原本的 AI（auto-inherited）旗標，ID 位元的 ACE 不會被重算。
+        $descriptor[3]=$descriptor[3] -bor 1
+        [WsmRawFileSecurity]::SetDacl([string]$snapshot.Path,$descriptor)
+        if((Get-Acl -LiteralPath ([string]$snapshot.Path)).GetSecurityDescriptorSddlForm($sections) -cne [string]$snapshot.Sddl){throw 'An adopted existing file ACL could not be restored exactly after a directory ACL change; preserve it and review it manually.'}
+    }
+}

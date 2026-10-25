@@ -47,6 +47,9 @@ try{
     $fileOne=Join-Path $business 'customers.dat';$fileTwo=Join-Path $nested 'index.db';$driftFile=Join-Path $driftRoot 'change.bin';$rootLooseFile=Join-Path $fixtureC 'loose-root.txt'
     [IO.File]::WriteAllText($fileOne,'customer data fixture');[IO.File]::WriteAllText($fileTwo,'index fixture');[IO.File]::WriteAllText($driftFile,'before')
     [IO.File]::WriteAllText($rootLooseFile,'root exact-file fixture')
+    $blockedRoot=Join-Path $fixtureC 'Blocked Name Scope';$blockedLeaf=Join-Path $blockedRoot 'old-image.iso';$okLeaf=Join-Path $blockedRoot 'plain-empty';[void][IO.Directory]::CreateDirectory($blockedLeaf);[void][IO.Directory]::CreateDirectory($okLeaf);[IO.File]::WriteAllText((Join-Path $blockedRoot 'keep.txt'),'blocked-name fixture')
+    $looseBlocked=Join-Path $fixtureC 'loose-blocked.cab';[IO.File]::WriteAllText($looseBlocked,'blocked-name exact file fixture')
+    $cleanRoot=Join-Path $fixtureC 'Clean Name Scope';$cleanLeaf=Join-Path $cleanRoot 'archive.iso.d';[void][IO.Directory]::CreateDirectory($cleanLeaf);[IO.File]::WriteAllText((Join-Path $cleanRoot 'keep.txt'),'clean-name fixture')
     & $module {param($fixture) $script:WsmSourceCandidateTestRoot=$fixture;Set-Item Function:\Get-WsmSourceCandidateRoot -Value {param([string]$Workspace,$Profile)$script:WsmSourceCandidateTestRoot}} $fixtureC
     $scan=Invoke-WsmSourceCandidateScan -Workspace $sourceWorkspace -Jobs @($job)
     Check ($scan.ScanStatus -ceq 'Succeeded' -and -not $scan.ContinuationRequired -and $scan.CandidateHash -match '^[a-f0-9]{64}$') 'registered source scan emits a complete fixture artifact with independent hash'
@@ -58,6 +61,24 @@ try{
     $deepCandidate=@($artifact.Candidates|Where-Object {$_.CandidateType -ceq 'DirectoryRoot' -and $_.Path -ieq $deepRoot})[0]
     $voidCandidate=@($artifact.Candidates|Where-Object {$_.CandidateType -ceq 'DirectoryRoot' -and $_.Path -ieq $voidRoot})[0]
     Check ($deepCandidate -and $voidCandidate) 'fixture scan discovered the nested-empty and the completely empty directory roots'
+    # Q5(c): a directory member whose name carries a blocked extension is refused at confirmation, with the reason, using the same rule as the ExactMembers import.
+    $blockedCandidate=@($artifact.Candidates|Where-Object {$_.CandidateType -ceq 'DirectoryRoot' -and $_.Path -ieq $blockedRoot})[0]
+    $cleanCandidate=@($artifact.Candidates|Where-Object {$_.CandidateType -ceq 'DirectoryRoot' -and $_.Path -ieq $cleanRoot})[0]
+    Check ($blockedCandidate -and $cleanCandidate) 'fixture scan discovered the blocked-name and the clean-name directory roots'
+    $looseBlockedCandidate=@($artifact.Candidates|Where-Object {$_.CandidateType -ceq 'ExactFile' -and $_.Path -ieq $looseBlocked})[0]
+    Check ($null -ne $looseBlockedCandidate) 'fixture scan discovered the loose exact file whose name carries a blocked extension'
+    $looseBlockedReason='';try{[void](Export-WsmSourceCandidateConfirmation -Workspace $sourceWorkspace -ScanId $scan.ScanId -ExpectedCandidateHash $scan.CandidateHash -CandidateId $looseBlockedCandidate.CandidateId -Jobs @($job))}catch{$looseBlockedReason=[string]$_.Exception.Message}
+    Check ($looseBlockedReason -match 'blocked extension' -and $looseBlockedReason.Contains('loose-blocked.cab')) ('an exact-file candidate named *.cab is rejected at confirmation with its reason (got: '+$looseBlockedReason+')')
+    $blockedReason='';try{[void](Export-WsmSourceCandidateConfirmation -Workspace $sourceWorkspace -ScanId $scan.ScanId -ExpectedCandidateHash $scan.CandidateHash -CandidateId $blockedCandidate.CandidateId -Jobs @($job))}catch{$blockedReason=[string]$_.Exception.Message}
+    Check ($blockedReason -match 'blocked extension' -and $blockedReason.Contains('old-image.iso') -and $blockedReason -match 'refuse it at import') ('a directory member named *.iso is rejected at confirmation with its reason (got: '+$blockedReason+')')
+    $cleanConfirmed=Export-WsmSourceCandidateConfirmation -Workspace $sourceWorkspace -ScanId $scan.ScanId -ExpectedCandidateHash $scan.CandidateHash -CandidateId $cleanCandidate.CandidateId -Jobs @($job)
+    Check ($cleanConfirmed.Status -ceq 'Confirmed' -and $cleanConfirmed.MemberCount -eq 2) 'an ordinary directory (a name that merely contains .iso in the middle) still confirms normally'
+    $sharedRule=& $module {[pscustomobject]@{Iso=(Test-WsmExactMemberBlockedName 'a\b\x.ISO');Vhdx=(Test-WsmExactMemberBlockedName 'x.vhdx');Cab=(Test-WsmExactMemberBlockedName 'x.cab');Plain=(Test-WsmExactMemberBlockedName 'a.iso.d');Txt=(Test-WsmExactMemberBlockedName 'notes.txt')}}
+    Check ($sharedRule.Iso -and $sharedRule.Vhdx -and $sharedRule.Cab -and -not $sharedRule.Plain -and -not $sharedRule.Txt) 'the shared blocked-name rule matches by trailing extension of the leaf only, case-insensitively'
+    $contractsText=[IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\src\MigrationContracts.ps1'));$guardText=[IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\src\FileScopeGuard.ps1'))
+    $contractsCalls=([regex]::Matches($contractsText,'Test-WsmExactMemberBlockedName')).Count;$contractsInline=([regex]::Matches($contractsText,'-imatch ''\\\.\(sys\|drv')).Count
+    $guardList=[regex]::Match($guardText,"function Test-WsmExactMemberBlockedName[\s\S]*?-imatch '\\\.\(([a-z|]+)\)\`$'").Groups[1].Value
+    Check ($contractsCalls -ge 1 -and $contractsInline -eq 0 -and $guardList) ('the ExactMembers import rule in MigrationContracts.ps1 calls the one shared blocked-name rule and keeps no inline copy (calls '+$contractsCalls+', inline '+$contractsInline+')')
     Check ($businessCandidate -and $emptyCandidate -and $driftCandidate -and $looseCandidate) 'fixture scan discovered separate business, empty-directory, content-drift and C-root loose-file candidates'
     $confirmed=Export-WsmSourceCandidateConfirmation -Workspace $sourceWorkspace -ScanId $scan.ScanId -ExpectedCandidateHash $scan.CandidateHash -CandidateId $businessCandidate.CandidateId -Jobs @($job)
     Check ($confirmed.Status -ceq 'Confirmed' -and $confirmed.MemberCount -eq 2 -and $confirmed.ConfirmationHash -match '^[a-f0-9]{64}$') 'source confirmation freshly enumerates and hashes exactly the selected business-directory members'

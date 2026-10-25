@@ -117,6 +117,13 @@ function Assert-WsmFileScopeInstalledRoots {
     return [pscustomobject]@{Status=$inventoryRoots.Status;RootsChecked=@($inventoryRoots.Roots).Count;Diagnostics=@($inventoryRoots.Diagnostics)}
 }
 
+# Q5(c)：ExactMembers 成員（檔案與空目錄成員）的名稱不得帶有這些副檔名。規則本體與 MigrationContracts.ps1 的 ExactMembers 驗證相同，
+# 候選確認端呼叫本函式，確認階段就擋下，避免「確認後匯入被拒」。Test-SourceCandidateConfirmation 以原始碼比對兩處的副檔名清單必須一致。
+function Test-WsmExactMemberBlockedName {
+    param([Parameter(Mandatory)][string]$RelativePath)
+    [IO.Path]::GetFileName($RelativePath) -imatch '\.(sys|drv|ocx|com|msi|msp|cab|iso|wim|esd|vhd|vhdx|appx|msix)$'
+}
+
 function Assert-WsmFileScopeContent {
     param([Parameter(Mandatory)][string]$Path,[switch]$ExactConfig)
     $extension=[IO.Path]::GetExtension($Path)

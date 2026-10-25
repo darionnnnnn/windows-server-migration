@@ -2448,6 +2448,46 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 鍵盤測試只確認焦點不會落在勾選框上。
 - 教訓：Edit 工具會把混用換行的檔案整份正規化成 CRLF；Git Bash 的 sed 輸出會吃掉 CR。改這類檔案要用 Python 以位元組比對。
 
+### 17.116 Q5 四項小修正：CSS 換行、CLI DeveloperProbe 失敗定位、確認階段擋封鎖副檔名、目錄 ACL 不傳播到沿用既有檔
+
+- 規格：`work/r7/specs/Q5-small-fixes.md`。Sonnet 5.5 effort medium subagent 完成 (a)(c)(d)；(b) 需要改白名單外的檔案，以及 (c) 的單一來源收斂，都由主代理補上。主代理另做突變並獨立重跑。
+- **(a) 長字串換行**：移除 `console.css` 兩處 `word-break:break-all`，依 18.3 只用 `overflow-wrap:anywhere`。
+  - 守門：`Test-AssistiveUi`，現為 49 項。
+  - 瀏覽器：F1、BackupWorkbench 涵蓋 320／390px 不溢位。
+  - 突變：塞回 `break-all` 後轉紅。
+- **(b) CLI DeveloperProbe 失敗定位**：
+  - 文字選單路徑原本就已接上。缺口在 `Start-ServerMigration.ps1 -Action DeveloperProbe`，它只印 Format-List。
+  - 主代理補上：對每筆結果的 CollectorResults 呼叫 `Get-WsmDeveloperProbeFailureLocationLines` 並逐行輸出，與文字選單相同。
+  - 實際執行 DeveloperProbe 需要完整的探測環境，所以 `Test-CliFailureLocation` 改加一項 AST 守門（現為 193 項）。
+  - 突變：拿掉這段接線後轉紅。
+- **(c) 候選確認階段擋封鎖副檔名**：
+  - 規格指的 `FileScopeGuard.ps1:122` 只是內容檢查；真正讓「確認後匯入被拒」的規則在 `MigrationContracts.ps1:199`，以成員名稱的最後一段副檔名判斷。
+  - 規則抽成共用的 `Test-WsmExactMemberBlockedName`，以下三處都呼叫它：
+    - 確認端：目錄的所有成員，以及 ExactFile 候選。
+    - 主代理補上：`MigrationContracts.ps1` 的 ExactMembers 匯入規則。
+  - 測試從「兩份清單相等」改為「匯入端呼叫共用規則、不保留 inline 副本」。`Test-SourceCandidateConfirmation` 為 48 項。
+  - 突變（三個，皆轉紅）：確認端的兩處檢查拿掉，以及匯入端改回 inline 副本。
+- **(d) 可繼承 ACE 不得傳播到沿用既有檔**：
+  - 實驗確認：目錄 ACL 一變動，Windows 會把新的可繼承 ACE 傳播到其下未受保護的子檔，沿用既有檔因此被判為漂移。
+  - 處理方式：在套用與回復目錄 ACL 之前，先保存沿用既有檔的 security descriptor；變動之後以 `SetKernelObjectSecurity` 原樣寫回，不經繼承重算，並保留 AI 旗標；寫回後再讀回驗證。兩處都以 try/finally 包住。
+  - 不採用「設為 protected」：那會改掉 P 與 ID 旗標，SDDL 位元組就不同了。
+  - 一般工具擁有的檔案照原行為繼承，作為對照組。
+  - 新測試 `Test-AdoptedFileAclPropagation`，22 項：
+    - 用真實 NTFS 繼承做對照，證明不保護時確實會被改。
+    - 套用與回復後，SDDL 位元組都不變。
+    - AST 守門檢查兩個呼叫點。
+  - 三個突變皆轉紅。
+  - `Test-AdoptedExistingOwnership` A3 的 OwnedFiles 讀取者清單，新增 `Complete-WsmAssistiveFileRollback`。只增不減，這正是守門要求新讀取者登記的設計。
+- **驗證**（主代理重跑，數字見本段 commit）：
+  - 涵蓋所有呼叫被改函式的測試：還原、回復、ExactMembers、MigrationContracts、候選確認與探索、CliFailureLocation、HtmlConsole、ScriptEncoding。
+  - AssistiveUi（node --test）。
+  - Edge：F1、BackupWorkbench、PathResolution。
+- **限制**：
+  - (d) 不處理 SACL。
+  - (d) 沒有端到端 fixture。因為外部事先建立的目錄只會被保留、不會被套 ACL，所以改用真實 NTFS 繼承驗證 helper，並以 AST 守門確認兩個呼叫點。
+  - `Test-C2D2HtmlActions` 在原始碼副本上同樣失敗（`$wrongWorkspace` 的 POST 拿不到回應），已排入 Q6b。
+- **教訓**：PS 5.1 中，helper 內對參數使用 `@($x)` 可能觸發 binder 的 ArgumentException，應直接 foreach。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。

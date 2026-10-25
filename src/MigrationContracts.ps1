@@ -196,7 +196,7 @@ function Assert-WsmAssistiveMigrationSpec($Spec) {
                 if(-not $memberPaths.Add($relative)){throw (New-WsmContractError 'ExactMembers contains duplicate/case-colliding canonical relative paths.')}
                 if($isDirectoryMember){if([string]$member.SHA256 -cne ''){throw (New-WsmContractError 'An ExactMembers directory member carries no content hash.')};$directoryMemberPaths.Add($relative)}
                 elseif([string]$member.SHA256 -cnotmatch '^[a-f0-9]{64}$'){throw (New-WsmContractError 'Every ExactMembers entry requires a lowercase SHA256 baseline.')}
-                if([IO.Path]::GetFileName($relative) -imatch '\.(sys|drv|ocx|com|msi|msp|cab|iso|wim|esd|vhd|vhdx|appx|msix)$'){throw (New-WsmContractError 'ExactMembers does not accept operating-system drivers, installers, or image formats.')}
+                if(Test-WsmExactMemberBlockedName $relative){throw (New-WsmContractError 'ExactMembers does not accept operating-system drivers, installers, or image formats.')}
             }
             # Directory members are leaf-only: a directory that contains another member would make the member set ambiguous.
             foreach($directoryPath in $directoryMemberPaths){foreach($otherPath in $memberPaths){if($otherPath.StartsWith($directoryPath.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){throw (New-WsmContractError 'An ExactMembers directory member must be a leaf and cannot contain another member.')}}}

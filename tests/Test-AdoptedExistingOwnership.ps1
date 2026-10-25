@@ -65,6 +65,7 @@ try {
             'Recovery.ps1:Get-WsmRollbackPreview'='adopted rows are never blocked, only reported'
             'Recovery.ps1:Remove-WsmAssistiveRolledBackOwnership'='R2: rollback releases the rolled-back per-file ownership; rows outside the rollback vector (AdoptedExisting) are kept verbatim'
             'Recovery.ps1:Invoke-WsmRollback'='adopted rows are excluded from the per-file rollback vector'
+            'Recovery.ps1:Complete-WsmAssistiveFileRollback'='Q5(d): snapshots the adopted rows (only their ACL) before the directory metadata rollback and restores it afterwards so inherited ACEs never reach an adopted file; the rollback vector itself still excludes them'
             'WizardRuntime.ps1:Get-WsmWizardTargetItemOptions'='projection: adoptedExistingCount/Note'
         }
         $found=New-Object 'System.Collections.Generic.List[string]'

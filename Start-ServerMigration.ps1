@@ -85,6 +85,8 @@ try {
         if(-not $PSBoundParameters.ContainsKey('Role')){$profile=& $migrationModule {param($root) Read-WsmOutputProfile $root} $Workspace;$probeRole=if($profile){[string]$profile.Role}else{'Manager'}}
         $result=Export-WsmDeveloperProbe -Workspace $Workspace -Role $probeRole
         $result | Select-Object Status,Path,SHA256,HtmlPath,CollectorCounts,FormatVersion | Format-List
+        # Q5(b): the -Action DeveloperProbe entry prints the same failure-location lines as the text menu (N9a), from the projected collector results.
+        foreach($probeRow in @($result)){if($probeRow -and $probeRow.PSObject.Properties['CollectorResults']){foreach($locationLine in @(& $migrationModule {param($rows) Get-WsmDeveloperProbeFailureLocationLines $rows} $probeRow.CollectorResults)){Write-Host $locationLine}}}
         exit (Get-WsmOperationStatusCode $result)
     }
     if ($Action -eq 'Operation') { $result=Invoke-WsmOperationRequest $Path $ExpectedHash; $result; exit (Get-WsmOperationStatusCode $result) }
