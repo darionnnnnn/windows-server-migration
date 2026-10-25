@@ -2991,6 +2991,7 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - subagent 已跑：FrontendCodeCoverage 4、AssistiveUi 49、BackupItemFileIndexCache、OfflineReportFileLists、BackupWorkbenchView，以及 BackupWorkbenchBrowser、OfflineReportBrowser、RestoreSelectionBrowser、F1AcceptanceBrowser、RetryFailedItemsBrowser、RestorableSetBrowser、WizardRuntimeUi、WaitingConsistencyUi、HtmlBrowser、SoftwareTabBrowser、C2D2Browser；另含呼叫端 11 支。
   - 主代理重跑：SecretSentinelBackupSweep 151（離線報告現在帶出檔名，仍沒有祕密外洩）、ScriptEncoding 348、BackupItemFileIndexCache、OfflineReportFileLists、BackupWorkbenchView、BackupResultSetV2、FrontendCodeCoverage 4。
   - `Test-BackupProgressBrowser.js` 在本機為 ENVIRONMENT-LIMITED（同 17.119），不算通過。
+- **E-PS7 回歸修正**：a1e996c 的 native-release 在 pwsh 上失敗（備份明細表逾時），507baf5 時仍是 success。原因是 R22 的 `Get-WsmBackupItemFileIndex` 用了 `System.Web.Extensions` 的 JavaScriptSerializer，PowerShell 7（.NET）沒有這個組件。修法是依引擎分流：5.1 照舊用 JavaScriptSerializer；PS7 改用 `ConvertFrom-Json -AsHashtable`，回傳的同樣是以鍵讀取的字典。本機沒有 PS7，所以 PS7 這條路徑要靠 CI 的 native-release（pwsh）驗證。另記教訓：只用 .NET Framework 的 API 前要先確認雙引擎相容；本機只有 5.1，跑不出這類回歸。
 
 ### 17.43 Test-TextConsole 既有失敗修正
 

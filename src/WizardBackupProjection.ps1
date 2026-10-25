@@ -1586,16 +1586,16 @@ function Get-WsmBackupItemFileIndex([string]$IndexPath,[string]$ExpectedHash) {
         $key=$actualHash.ToLowerInvariant()
         if(-not (Test-Path variable:script:WsmBackupItemFileIndexCache) -or $null -eq $script:WsmBackupItemFileIndexCache){$script:WsmBackupItemFileIndexCache=New-Object 'System.Collections.Specialized.OrderedDictionary'}
         if($script:WsmBackupItemFileIndexCache.Contains($key)){return $script:WsmBackupItemFileIndexCache[$key]}
-        Add-Type -AssemblyName System.Web.Extensions
-        $serializer=New-Object System.Web.Script.Serialization.JavaScriptSerializer
-        $serializer.MaxJsonLength=[int]::MaxValue
+        # Windows PowerShell 5.1 parses with JavaScriptSerializer (ConvertFrom-Json per line is ~25x slower there); PowerShell 7 has no
+        # System.Web.Extensions, so it uses ConvertFrom-Json -AsHashtable, which is fast on .NET. Both return a dictionary read by key below.
+        $serializer=$null;if($PSVersionTable.PSEdition -ne 'Core'){Add-Type -AssemblyName System.Web.Extensions;$serializer=New-Object System.Web.Script.Serialization.JavaScriptSerializer;$serializer.MaxJsonLength=[int]::MaxValue}
         $items=@{}
         $stream.Position=0
         $reader=New-Object IO.StreamReader($stream,[Text.Encoding]::UTF8,$true)
         while($null -ne ($line=$reader.ReadLine())){
             if($line.Length -gt 1048576){throw 'Artifact index row exceeds the supported length.'}
             if(-not $line.Trim()){continue}
-            $row=$serializer.DeserializeObject($line)
+            $row=$(if($serializer){$serializer.DeserializeObject($line)}else{ConvertFrom-Json -InputObject $line -AsHashtable})
             $id=[string]$row['ItemId']
             if(-not $items.ContainsKey($id)){$items[$id]=[pscustomobject]@{Total=[long]0;Directories=[long]0;Rows=(New-Object 'System.Collections.Generic.List[object]')}}
             $isDirectory=[bool]$row['Directory']
