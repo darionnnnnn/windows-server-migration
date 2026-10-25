@@ -45,6 +45,8 @@ jobs:
             esac
           done <<< "$changed"
           echo "code=$code" >> "$GITHUB_OUTPUT"
+  # Contract steps carry `if: ${{ !cancelled() }}`: each one reports its own result even when an earlier step of the job failed,
+  # so one failing contract never hides the others (the job and required-checks still fail).
   fixtures:
     needs: scope
     if: needs.scope.outputs.code == 'true'
@@ -53,33 +55,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Windows PowerShell script encoding and parsing
+        if: ${{ !cancelled() }}
         shell: powershell
         run: ./tests/Test-ScriptEncoding.ps1
       - name: Windows PowerShell 5.1 contracts
+        if: ${{ !cancelled() }}
         shell: powershell
         run: ./tests/Test-Contracts.ps1
       - name: Windows PowerShell 5.1 collector fixtures
+        if: ${{ !cancelled() }}
         shell: powershell
         run: ./tests/Test-InventoryFixture.ps1
       - name: General host scope classification contracts
+        if: ${{ !cancelled() }}
         shell: powershell
         run: ./tests/Test-ScopeClassification.ps1
       - name: ZIP transport boundaries
+        if: ${{ !cancelled() }}
         shell: powershell
         run: ./tests/Test-TransportBoundaries.ps1
       - name: Advanced review and fleet contracts
+        if: ${{ !cancelled() }}
         shell: powershell
         run: ./tests/Test-AdvancedReview.ps1
       - name: Enterprise discovery fixtures
+        if: ${{ !cancelled() }}
         shell: powershell
         run: ./tests/Test-EnterpriseDiscovery.ps1
       - name: Disabled staging adapter contracts
+        if: ${{ !cancelled() }}
         shell: powershell
         run: ./tests/Test-Adapters.ps1
       - name: Payload restore cutover and crash recovery fixtures
+        if: ${{ !cancelled() }}
         shell: powershell
         run: ./tests/Test-MigrationPipeline.ps1
       - name: Recovery request and IIS contracts
+        if: ${{ !cancelled() }}
         shell: powershell
         run: |
           & powershell.exe -NoProfile -File ./tests/Test-RecoveryContracts.ps1
@@ -111,6 +123,7 @@ jobs:
           & powershell.exe -NoProfile -File ./tests/Test-SpecScale.ps1 -Items 200
           if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
       - name: Durable activation account and installer contracts
+        if: ${{ !cancelled() }}
         shell: powershell
         run: |
           & powershell.exe -NoProfile -File ./tests/Test-ActivationRecovery.ps1
@@ -170,18 +183,23 @@ jobs:
           & powershell.exe -NoProfile -File ./tests/Test-TaskFolderJournal.ps1
           if ($LASTEXITCODE -ne 0) { throw "Fixture child process failed with exit code $LASTEXITCODE" }
       - name: Inventory ZIP trust and extraction boundaries
+        if: ${{ !cancelled() }}
         shell: powershell
         run: ./tests/Test-Archive.ps1
       - name: Noninteractive exit code contract
+        if: ${{ !cancelled() }}
         shell: powershell
         run: ./tests/Test-EntryPoint.ps1
       - name: PowerShell 7 contracts
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: ./tests/Test-Contracts.ps1
       - name: Offline report controls
+        if: ${{ !cancelled() }}
         shell: powershell
         run: ./tests/Test-Report.ps1
       - name: Fleet integration (small CI fixture)
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: ./tests/Test-FleetScale.ps1 -Hosts 10 -ItemsPerHost 200
       - name: Retain synthetic failure diagnostics
@@ -199,9 +217,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Windows PowerShell delta workflow
+        if: ${{ !cancelled() }}
         shell: powershell
         run: ./tests/Test-DeltaWorkflow.ps1
       - name: PowerShell 7 delta workflow
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: ./tests/Test-DeltaWorkflow.ps1
   migration-round-two:
@@ -215,6 +235,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Delivery receipt producer and consumer contracts
+        if: ${{ !cancelled() }}
         timeout-minutes: 3
         shell: pwsh
         run: |
@@ -222,6 +243,7 @@ jobs:
           & $engine -NoProfile -NonInteractive -File ./tests/Test-DeliveryReceipts.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Delivery receipt child process failed.' }
       - name: Windows settings review contracts
+        if: ${{ !cancelled() }}
         timeout-minutes: 3
         shell: pwsh
         run: |
@@ -229,6 +251,7 @@ jobs:
           & $engine -NoProfile -NonInteractive -File ./tests/Test-WindowsSettingsReview.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Windows settings review child process failed.' }
       - name: General host, environment, ownership and delivery contracts
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           $engine = '${{ matrix.engine }}'
@@ -249,6 +272,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Assistive producer and consumer contracts
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           $engine = '${{ matrix.engine }}'
@@ -264,6 +288,7 @@ jobs:
         with:
           node-version: '22'
       - name: Offline HTML interaction contracts
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           node --check src/ui/console.js
