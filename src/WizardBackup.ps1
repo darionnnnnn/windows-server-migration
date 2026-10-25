@@ -321,10 +321,36 @@ function Test-WsmWizardBackupAttemptResumable($Attempt) {
     $false
 }
 
+# R10：備份 attempt 檔的「可辨識」全站只有這一個判定（啟動端、續作入口、結果頁、可用性列都走這裡）。
+# 壞 JSON、舊 ToolVersion、缺欄位、屬於別的工作區／主機／配對，一律是「無法讀取的備份紀錄」：不丟例外、不擋新備份、
+# 不會被當成任何一個 attempt（因此也不可能被選成目前 attempt）；只回報檔名與粗分類，絕不帶路徑或檔案內容。
+# 例外：reparse point 仍照原樣 fail-closed（那是安全問題，不是壞檔）。
+function Get-WsmWizardBackupAttemptScan([string]$Root,[string]$Workspace,[string]$PairId,$Profile) {
+    $rows=New-Object 'System.Collections.Generic.List[object]'
+    $unreadable=New-Object 'System.Collections.Generic.List[object]'
+    if($Root -and [IO.Directory]::Exists($Root)){
+        foreach($file in @(Get-ChildItem -LiteralPath $Root -Filter '*.json' -File)){
+            Assert-WsmNoReparse $file.FullName
+            $row=$null;$reason=''
+            try{$row=Read-WsmJson $file.FullName}catch{$reason='InvalidJson'}
+            if(-not $reason){try{[void](Assert-WsmWizardBackupAttempt $row $Workspace $PairId $Profile)}catch{$reason='NotRecognized'}}
+            if($reason){$unreadable.Add([pscustomobject][ordered]@{FileName=[string]$file.Name;Reason=$reason});continue}
+            $rows.Add([pscustomobject]@{Path=$file.FullName;Attempt=$row})
+        }
+    }
+    [pscustomobject][ordered]@{Rows=@($rows.ToArray());Unreadable=@($unreadable.ToArray())}
+}
+
+# 結果頁與啟動結果共用的「無法讀取紀錄」報告：只有數量與檔名（上限 20 個，超過只計數）。
+function ConvertTo-WsmWizardUnreadableAttemptReport($Unreadable) {
+    $names=@(@($Unreadable)|Where-Object {$_}|ForEach-Object {[string]$_.FileName}|Select-Object -First 20)
+    [pscustomobject][ordered]@{count=[int]@($Unreadable|Where-Object {$_}).Count;files=@($names)}
+}
+
 function Get-WsmWizardBackupAttempt([string]$Workspace,[string]$PairId,$Profile,[string]$PlanHash) {
     $root=Get-WsmWizardBackupRoot $Workspace $PairId
     $rows=New-Object 'System.Collections.Generic.List[object]'
-    foreach($file in @(Get-ChildItem -LiteralPath $root -Filter '*.json' -File)){Assert-WsmNoReparse $file.FullName;$row=Read-WsmJson $file.FullName;Assert-WsmWizardBackupAttempt $row $Workspace $PairId $Profile|Out-Null;if($row.PlanHash -ieq $PlanHash -and (Test-WsmWizardBackupAttemptResumable $row)){$rows.Add([pscustomobject]@{Path=$file.FullName;Attempt=$row})}}
+    foreach($candidate in @((Get-WsmWizardBackupAttemptScan $root $Workspace $PairId $Profile).Rows)){$row=$candidate.Attempt;if($row.PlanHash -ieq $PlanHash -and (Test-WsmWizardBackupAttemptResumable $row)){$rows.Add($candidate)}}
     # A crash after the fresh backup attempt is durable but before the previous
     # SourceResumed record is marked handed off leaves two visible records.
     # The child's exact parent id and source attempt reference prove the durable
@@ -338,10 +364,10 @@ function Get-WsmWizardBackupAttempt([string]$Workspace,[string]$PairId,$Profile,
 
 function Get-WsmWizardBackupAttemptForOperation([string]$Workspace,[string]$PairId,$Profile,[string]$OperationId) {
     $root=Get-WsmWizardBackupRoot $Workspace $PairId
-    foreach($file in @(Get-ChildItem -LiteralPath $root -Filter '*.json' -File)){
-        Assert-WsmNoReparse $file.FullName;$row=Read-WsmJson $file.FullName;Assert-WsmWizardBackupAttempt $row $Workspace $PairId $Profile|Out-Null
+    foreach($candidate in @((Get-WsmWizardBackupAttemptScan $root $Workspace $PairId $Profile).Rows)){
+        $row=$candidate.Attempt
         $operationIds=@();if($row.PSObject.Properties['OperationIds']){$operationIds=@($row.OperationIds)}else{$operationIds=@([string]$row.StartedByOperationId)}
-        if($operationIds -ccontains $OperationId){return [pscustomobject]@{Path=$file.FullName;Attempt=$row}}
+        if($operationIds -ccontains $OperationId){return $candidate}
     }
     $null
 }
@@ -366,12 +392,19 @@ function New-WsmWizardBackupCaptureFailure($Plan,$Exception) {
         if($inner -is [UnauthorizedAccessException]){$errorClass='PermissionDenied'}
         elseif($inner -is [IO.FileNotFoundException] -or $inner -is [IO.DirectoryNotFoundException]){$errorClass='NotFound'}
         elseif($inner -is [IO.IOException]){$errorClass='IOError'}
+        # R11：穩定原因碼只看例外型別與 HResult（共用違規 0x20／0x21），絕不比對訊息文字；無法辨識沿用 Failed。
+        $reasonCode='Failed'
+        if($inner -is [IO.PathTooLongException]){$reasonCode='PathTooLong'}
+        elseif($inner -is [UnauthorizedAccessException]){$reasonCode='AccessDenied'}
+        elseif($inner -is [IO.FileNotFoundException] -or $inner -is [IO.DirectoryNotFoundException]){$reasonCode='Missing'}
+        elseif($inner -is [IO.IOException] -and (([int]$inner.HResult -band 0xFFFF) -in @(32,33))){$reasonCode='Locked'}
+        $relativeDepth=$null;$leafName='';if($Exception.Data.Contains('WsmCaptureFailedDepth')){$relativeDepth=[int]$Exception.Data['WsmCaptureFailedDepth'];$leafName=[string]$Exception.Data['WsmCaptureFailedLeaf']}
         $channel='';if($planItem.PSObject.Properties['MigrationSpec'] -and $planItem.MigrationSpec){$spec=$planItem.MigrationSpec;if([string]$spec.Adapter -ceq 'Certificate'){$channel='Certificate'}elseif([string]$spec.Adapter -ceq 'FileScope'){$channel=$(if($spec.PSObject.Properties['TransferChannel'] -and [string]$spec.TransferChannel){[string]$spec.TransferChannel}else{'C'})}}
-        [pscustomobject][ordered]@{ItemId=$failedId;Name=[string]$planItem.Name;Kind=[string]$planItem.Kind;Channel=$channel;ErrorClass=$errorClass;ErrorKind=$typeName}
+        [pscustomobject][ordered]@{ItemId=$failedId;Name=[string]$planItem.Name;Kind=[string]$planItem.Kind;Channel=$channel;ErrorClass=$errorClass;ErrorKind=$typeName;ReasonCode=$reasonCode;RelativeDepth=$relativeDepth;LeafName=$leafName}
     }catch{$null}
 }
 
-function ConvertTo-WsmWizardBackupResult($Attempt,[string]$OperationId) {
+function ConvertTo-WsmWizardBackupResult($Attempt,[string]$OperationId,$Unreadable=@()) {
     $independentCopy=$(if($Attempt.PSObject.Properties['IndependentCopy']){$Attempt.IndependentCopy}else{$null})
     $itemResults=$(if($Attempt.PSObject.Properties['ItemResults']){$Attempt.ItemResults}else{$null})
     $offlineReport=$(if($Attempt.PSObject.Properties['OfflineReport']){$Attempt.OfflineReport}else{$null})
@@ -382,7 +415,8 @@ function ConvertTo-WsmWizardBackupResult($Attempt,[string]$OperationId) {
         if((Test-WsmIndependentCopyReceiptInvalidated $Attempt) -or (Test-WsmIndependentCopyMediaPresent $copyRootText $copyMedia $Attempt.Delivery) -ceq 'Missing'){$offlineReadiness='MediaNeedsReverification'}
     }
     $lastCopyAttempt=$(if($Attempt.PSObject.Properties['IndependentCopyLastAttempt']){$Attempt.IndependentCopyLastAttempt}else{$null})
-    [pscustomobject][ordered]@{Kind='WizardBackupResult';Status=[string]$Attempt.Stage;PairId=[string]$Attempt.PairId;AttemptId=[string]$Attempt.AttemptId;OperationId=$OperationId;StartedByOperationId=[string]$Attempt.StartedByOperationId;Stage=[string]$Attempt.Stage;DeliveryMode=$(if($Attempt.PSObject.Properties['DeliveryMode']){[string]$Attempt.DeliveryMode}else{''});VolumeBytes=$(if($Attempt.PSObject.Properties['VolumeBytes']){[long]$Attempt.VolumeBytes}else{0});Freeze=$Attempt.Freeze;CoreExport=$Attempt.CoreExport;PackageTest=$Attempt.PackageTest;Delivery=$Attempt.Delivery;ChannelSummary=$Attempt.ChannelSummary;NonCStatus=$(if($Attempt.ChannelSummary){[string]$Attempt.ChannelSummary.NonC.Status}else{'Pending'});ResumeStage=$(if($Attempt.PSObject.Properties['ResumeStage']){[string]$Attempt.ResumeStage}else{''});CanResumeAfterReview=((Test-WsmWizardBackupAttemptResumable $Attempt) -and [string]$Attempt.Stage -cin @('Failed','Cancelled'));SourceResumeRequired=([bool]($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired));AuthoritativeApproval=$true;ProductionVerified=$false;ResumeRequired=[bool](Test-WsmWizardBackupAttemptResumable $Attempt);IndependentCopy=$independentCopy;IndependentCopyLastAttempt=$lastCopyAttempt;OfflineReadiness=$offlineReadiness;ItemResults=$itemResults;OfflineReport=$offlineReport}
+    $unreadableReport=ConvertTo-WsmWizardUnreadableAttemptReport $Unreadable
+    [pscustomobject][ordered]@{Kind='WizardBackupResult';Status=[string]$Attempt.Stage;PairId=[string]$Attempt.PairId;AttemptId=[string]$Attempt.AttemptId;OperationId=$OperationId;StartedByOperationId=[string]$Attempt.StartedByOperationId;Stage=[string]$Attempt.Stage;DeliveryMode=$(if($Attempt.PSObject.Properties['DeliveryMode']){[string]$Attempt.DeliveryMode}else{''});VolumeBytes=$(if($Attempt.PSObject.Properties['VolumeBytes']){[long]$Attempt.VolumeBytes}else{0});Freeze=$Attempt.Freeze;CoreExport=$Attempt.CoreExport;PackageTest=$Attempt.PackageTest;Delivery=$Attempt.Delivery;ChannelSummary=$Attempt.ChannelSummary;NonCStatus=$(if($Attempt.ChannelSummary){[string]$Attempt.ChannelSummary.NonC.Status}else{'Pending'});ResumeStage=$(if($Attempt.PSObject.Properties['ResumeStage']){[string]$Attempt.ResumeStage}else{''});CanResumeAfterReview=((Test-WsmWizardBackupAttemptResumable $Attempt) -and [string]$Attempt.Stage -cin @('Failed','Cancelled'));SourceResumeRequired=([bool]($Attempt.PSObject.Properties['SourceResumeRequired'] -and $Attempt.SourceResumeRequired));AuthoritativeApproval=$true;ProductionVerified=$false;ResumeRequired=[bool](Test-WsmWizardBackupAttemptResumable $Attempt);IndependentCopy=$independentCopy;IndependentCopyLastAttempt=$lastCopyAttempt;OfflineReadiness=$offlineReadiness;ItemResults=$itemResults;OfflineReport=$offlineReport;UnreadableAttemptCount=$unreadableReport.count;UnreadableAttemptFiles=@($unreadableReport.files)}
 }
 
 function Get-WsmWizardBackupDeliverySettings([string]$Workspace,[string]$PairId,$Profile,$Existing,[bool]$ModeSpecified,[string]$RequestedMode,[bool]$VolumeSpecified,$RequestedVolume) {
@@ -518,8 +552,10 @@ function Invoke-WsmWizardStartBackup {
     $nonCIncluded=@($included|Where-Object {$_.MigrationSpec -and $_.MigrationSpec.Adapter -ceq 'FileScope' -and $_.MigrationSpec.TransferChannel -ceq 'NonC'}).Count -gt 0
     $mutableIncluded=@($included|Where-Object {$_.MigrationSpec -and $_.MigrationSpec.Adapter -ceq 'FileScope' -and $_.MigrationSpec.Consistency -cne 'Immutable'}).Count -gt 0
     $freezeRequired=($nonCIncluded -or $mutableIncluded)
+    # R10：無法辨識的紀錄不擋新備份；啟動前掃描一次，結果物件回報檔名清單。
+    $startUnreadable=@((Get-WsmWizardBackupAttemptScan (Get-WsmWizardBackupRoot $Workspace $PairId) $Workspace $PairId $profile).Unreadable)
     $operationAttempt=Get-WsmWizardBackupAttemptForOperation $Workspace $PairId $profile $OperationId
-    if($operationAttempt){$replaySettings=Get-WsmWizardBackupDeliverySettings $Workspace $PairId $profile $operationAttempt ($PSBoundParameters.ContainsKey('DeliveryMode')) $DeliveryMode ($PSBoundParameters.ContainsKey('VolumeBytes')) $VolumeBytes;return (ConvertTo-WsmWizardBackupResult $operationAttempt.Attempt $OperationId)}
+    if($operationAttempt){$replaySettings=Get-WsmWizardBackupDeliverySettings $Workspace $PairId $profile $operationAttempt ($PSBoundParameters.ContainsKey('DeliveryMode')) $DeliveryMode ($PSBoundParameters.ContainsKey('VolumeBytes')) $VolumeBytes;return (ConvertTo-WsmWizardBackupResult $operationAttempt.Attempt $OperationId $startUnreadable)}
     $authorizedFreezeEpoch=''
     if($freezeRequired){if(-not $FreezeAuthorization -or [string]::IsNullOrWhiteSpace($Owner) -or [string]::IsNullOrWhiteSpace($Evidence) -or -not $FreezeExternalEvidencePath -or $FreezeExternalEvidenceHash -notmatch '^[a-fA-F0-9]{64}$'){throw 'A final backup for mutable or NonC data requires a separate explicit freeze authorization, a human owner, quiescence evidence, and independently verified SourceFreezeReady file/hash.'};$externalRecord=Read-WsmTrustedJson $FreezeExternalEvidencePath $FreezeExternalEvidenceHash;$authorizedFreezeEpoch=[string]$externalRecord.FreezeEpoch;$external=Assert-WsmSourceFreezeEvidence $FreezeExternalEvidencePath $FreezeExternalEvidenceHash $plan $planRef.SHA256 $authorizedFreezeEpoch;if($external.Owner -cne $Owner){throw 'Source freeze evidence owner does not match the named responsible owner.'}}
     $root=Get-WsmWizardBackupRoot $Workspace $PairId
@@ -536,7 +572,7 @@ function Invoke-WsmWizardStartBackup {
     if($resumedPreviousSourceAttempt -and -not $operationAttempt){$previousBackupAttempt.SourceResumeRequired=$false;$previousBackupAttempt | Add-Member NoteProperty SourceResumed $true -Force;$previousBackupAttempt | Add-Member NoteProperty SourceResumeFreshFreezePending $true -Force;$previousBackupAttempt | Add-Member NoteProperty SourceAttemptPath $previousSourceAttemptPath -Force;$previousBackupAttempt | Add-Member NoteProperty SourceAttemptHash $previousSourceAttemptHash -Force;$previousBackupAttempt.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $previousBackupPath $previousBackupAttempt $Workspace}
     $settingsAttempt=$existing;if($operationAttempt){$settingsAttempt=$operationAttempt}
     $deliverySettings=Get-WsmWizardBackupDeliverySettings $Workspace $PairId $profile $settingsAttempt ($PSBoundParameters.ContainsKey('DeliveryMode')) $DeliveryMode ($PSBoundParameters.ContainsKey('VolumeBytes')) $VolumeBytes
-    if($operationAttempt){return (ConvertTo-WsmWizardBackupResult $operationAttempt.Attempt $OperationId)}
+    if($operationAttempt){return (ConvertTo-WsmWizardBackupResult $operationAttempt.Attempt $OperationId $startUnreadable)}
     if($deliverySettings.Mode -ceq 'Directory'){
         $plannedAttempt=if($existing){[string]$existing.Attempt.OutputRoot}else{Join-Path (Join-Path (Join-Path (Join-Path $profile.WorkRoot 'pairs') $PairId) 'attempts') $OperationId}
         Assert-WsmDirectoryDeliveryPathBudget (Join-Path (Join-Path $plannedAttempt 'transport') 'delivery') @(Get-WsmWizardBackupDirectoryMemberNames $plan)
@@ -660,7 +696,7 @@ function Invoke-WsmWizardStartBackup {
         }catch{$resumeStage='PackageVerified';$record.ResumeStage=$resumeStage;$record.Stage=if($_.Exception.Data['CancellationRequested']){'Cancelled'}else{'Failed'};if($freezeRequired -and $record.Freeze){$record.SourceResumeRequired=$true};$record.Error=[pscustomobject]@{Code=$(if($record.Stage -eq 'Cancelled'){'cancelled'}else{'delivery_failed'});Message='搬移封裝已核驗，但交接材料未完整產生；可從同一作業嘗試續作。'};$record.UpdatedUtc=Get-WsmUtc;Write-WsmWizardBackupAttempt $path $record $Workspace;Complete-WsmWizardBackupProgress $progress $(if($record.Stage -ceq 'Cancelled'){'Cancelled'}else{'Failed'});throw}
     }
     Complete-WsmWizardBackupProgress $progress 'Succeeded'
-    ConvertTo-WsmWizardBackupResult $record $OperationId
+    ConvertTo-WsmWizardBackupResult $record $OperationId $startUnreadable
 }
 
 function Test-WsmWizardOfflineFullSetPlan($Plan) {

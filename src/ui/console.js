@@ -855,11 +855,11 @@
     appendSummaryRows(card,[['預覽狀態',statusName(status)],['來源主機',`${sourceHost.Name||sourceHost.name||'目前來源'} · ${sourceHost.Fingerprint||sourceHost.fingerprint||''}`],['核准計畫 SHA-256',preview.PlanHash||preview.planHash],['來源盤點版本',preview.InventoryRevision||preview.inventoryRevision],['封裝範圍',preview.PackageScope||preview.packageScope],['來源停寫',preview.FreezeRequired===true||preview.freezeRequired===true?'需要另行授權':'不需要']]);
     const producers=preview.Producers||preview.producers||[];const list=el('section','wizard-runtime-producers');list.appendChild(el('h3','','本次選取的來源項目與停寫影響'));if(!producers.length)wizardMessage(list,'核准計畫沒有列出可封裝的項目。','inline-note');else{const ul=el('ul','');producers.forEach(row=>{const item=el('li');item.append(el('strong','',String(row.Name||row.name||'搬移項目')),el('span','',` · ${String(row.Adapter||row.adapter||row.Kind||row.kind||'')}`));if(row.SourcePath||row.sourcePath)item.append(el('div','item-sub',`來源位置：${row.SourcePath||row.sourcePath}`));if(row.RequiresSourceFreeze||row.requiresSourceFreeze)item.append(el('div','item-sub','此來源範圍需要停寫後才能安全封裝。'));if(row.ProducerQuiescedIfFreezeRuns||row.producerQuiescedIfFreezeRuns)item.append(el('div','item-sub','若其他所選範圍需要凍結，此項 producer 也可能被暫停。'));ul.appendChild(item);});list.appendChild(ul);}card.appendChild(list);
     const shared=preview.SharedImpact||preview.sharedImpact||[];if(shared.length){const impacts=el('section','wizard-runtime-shared-impact');impacts.appendChild(el('h3','','共享資源與其他使用者影響'));const ul=el('ul');shared.forEach(row=>ul.appendChild(el('li','',runtimeSharedImpactText(row,producers))));impacts.appendChild(ul);card.appendChild(impacts);}const prior=preview.PriorState||preview.priorState||{};if(prior.Description||prior.description||prior.Location||prior.location)wizardMessage(card,`原始狀態保留位置：${prior.Description||prior.description||''} ${prior.Location||prior.location||''}`,'wizard-provenance');if(preview.QuiescenceDisclosure||preview.quiescenceDisclosure)wizardMessage(card,String(preview.QuiescenceDisclosure||preview.quiescenceDisclosure),'callout');const evidence=preview.EvidenceRequirements||preview.evidenceRequirements||[];if(evidence.length){const details=el('details','wizard-runtime-evidence');details.appendChild(el('summary','','凍結證據與責任要求'));const ul=el('ul');evidence.forEach(row=>ul.appendChild(el('li','',String(row))));details.appendChild(ul);card.appendChild(details);}
-    const result=availability||{},resultStatus=String(result.status||result.Status||''),hasResult=!!(result.hasDurableRecord||result.HasDurableRecord||resultStatus);if(hasResult){wizardMessage(card,`最近一次備份嘗試：${statusName(resultStatus||result.stage||result.Stage||'Unknown')}。${result.resumeRequired||result.ResumeRequired?'請核對來源狀態與原作業，再明確選擇恢復或續作。':''}`,'notice');appendSummaryRows(card,[['已保存 attempt',result.attemptId||result.AttemptId],['封裝世代',result.generation||result.Generation],['產生時間',formatEvidenceTime(result.producedUtc||result.ProducedUtc)],['封裝材料',result.hasPackage===true||result.HasPackage===true?'已驗證':'尚未驗證／未交付']]);}
+    const result=availability||{},resultStatus=String(result.status||result.Status||''),hasResult=!!(result.hasDurableRecord||result.HasDurableRecord||resultStatus),review=source.backupReview||source.BackupReview||{},reviewRequired=review.required===true||review.Required===true;if(hasResult){wizardMessage(card,`最近一次備份嘗試：${resultStatus==='ReviewRequired'&&reviewRequired?'已完成，結果需要審閱':statusName(resultStatus||result.stage||result.Stage||'Unknown')}。${result.resumeRequired||result.ResumeRequired?'請核對來源狀態與原作業，再明確選擇恢復或續作。':''}`,'notice');if(reviewRequired){const reviewNote=wizardMessage(card,`需要審閱：${runtimeScalar(review.reason||review.Reason)||'上一次備份的結果需要審閱。'}`,'inline-note backup-review-note');reviewNote.dataset.reviewRequired='true';}appendSummaryRows(card,[['已保存 attempt',result.attemptId||result.AttemptId],['封裝世代',result.generation||result.Generation],['產生時間',formatEvidenceTime(result.producedUtc||result.ProducedUtc)],['封裝材料',result.hasPackage===true||result.HasPackage===true?'已驗證':'尚未驗證／未交付']]);}
     renderIndependentCopyForm(card,projection,response,source);
     if(resumeRouteManualReview&&!resumeRouteSourceResumed){const reason=runtimeScalar(freeze.manualReviewReason||freeze.ManualReviewReason||resumeRoute.manualReviewReason||resumeRoute.ManualReviewReason),stateDirectory=runtimeScalar(resumeRoute.sourceStateDirectory||resumeRoute.SourceStateDirectory);wizardMessage(card,`需要人工檢查：${reason||'核心未提供明確原因。'}`,'callout');if(stateDirectory)appendSummaryRows(card,[['核心指出的來源狀態資料夾',stateDirectory]]);if(resumeAction&&resumeAction.available===true)renderSourceResumeForm(card,projection,resumeAction,response.viewContext);if(!startBackupAvailable){content.appendChild(card);return;}}
     if(!resumeRouteManualReview&&!resumeRouteSourceResumed&&(freeze.resumeRequired===true||freeze.ResumeRequired===true)){wizardMessage(card,resumeAction&&resumeAction.available===true?'來源停寫可能尚未恢復。請核對來源狀態、持久作業與材料引用，再明確選擇既有恢復流程；工具不會自動重新啟動服務、排程或共用資源。':'來源停寫可能尚未恢復。核心目前沒有提供可執行的 SourceResume；請先核對來源狀態、持久作業與材料引用。工具不會自動重新啟動服務、排程或共用資源。','callout');if(resumeAction&&resumeAction.available===true)renderSourceResumeForm(card,projection,resumeAction,response.viewContext);if(!startBackupAvailable){content.appendChild(card);return;}}
-    else if(!resumeRouteManualReview&&!resumeRouteSourceResumed&&(resumeAvailable||resumeAction&&resumeAction.available===true)){wizardMessage(card,'可選來源恢復流程；請明確核對持久作業與來源狀態後決定是否續作。','inline-note');if(resumeAction&&resumeAction.available===true)renderSourceResumeForm(card,projection,resumeAction,response.viewContext);}    if(status!=='Previewed'&&status!=='Ready'){wizardMessage(card,String(preview.Reason||preview.reason||'目前備份前置條件未滿足；請依上方原因處理。'),'callout');content.appendChild(card);return;}
+    else if(!resumeRouteManualReview&&!resumeRouteSourceResumed&&(resumeAvailable||resumeAction&&resumeAction.available===true)){wizardMessage(card,'可選來源恢復流程；請明確核對持久作業與來源狀態後決定是否續作。','inline-note');if(resumeAction&&resumeAction.available===true)renderSourceResumeForm(card,projection,resumeAction,response.viewContext);}    const startForm=source.startForm||source.StartForm||null;if(!startForm||(startForm.usable!==true&&startForm.Usable!==true)){wizardMessage(card,String(startForm&&(startForm.reason||startForm.Reason)||preview.Reason||preview.reason||'目前備份前置條件未滿足；請依上方原因處理。'),'callout');content.appendChild(card);return;}
     const available=!!action&&action.available===true,defaults=action&&action.defaults||{},missing=action&&action.missing||[],frozenAttempt=!!(source.delivery&&source.delivery.attemptId||source.Delivery&&source.Delivery.AttemptId),modeSelect=document.createElement('select'),modeLabel=el('label','wizard-field-label','封裝交付格式');modeSelect.setAttribute('aria-label','封裝交付格式');modeSelect.dataset.runtimeField='DeliveryMode';[['Directory','Directory（受控資料夾）'],['Zip','ZIP（分卷封裝）']].forEach(([value,label])=>modeSelect.appendChild(new Option(label,value)));modeSelect.value=String(defaults.DeliveryMode||defaults.deliveryMode||mode);modeSelect.disabled=frozenAttempt;modeLabel.appendChild(modeSelect);card.appendChild(modeLabel);const modeKey=runtimeInputKey(projection,'StartBackup','DeliveryMode');if(state.wizardRuntimeInputs.has(modeKey))modeSelect.value=state.wizardRuntimeInputs.get(modeKey);const volumeWrap=el('label','wizard-field-label','ZIP 每卷大小（MiB）'),volumeInput=document.createElement('input');volumeInput.type='number';volumeInput.min='128';volumeInput.max='1024';volumeInput.step='1';volumeInput.inputMode='numeric';volumeInput.dataset.runtimeField='VolumeMiB';volumeInput.setAttribute('aria-label','ZIP 每卷大小（MiB）');volumeInput.value=String(state.wizardRuntimeInputs.get(runtimeInputKey(projection,'StartBackup','VolumeMiB'))||mib);volumeInput.disabled=frozenAttempt||modeSelect.value!=='Zip';volumeWrap.appendChild(volumeInput);card.appendChild(volumeWrap);wizardMessage(card,'ZIP 大小必須是 128–1024 MiB 的整數；預設 512 MiB。逐項模式預設 Directory，自動模式預設 ZIP；可以在首次作業前明確改選。已建立的 attempt 格式會固定。','wizard-field-hint');
     const syncMode=()=>{state.wizardRuntimeInputs.set(modeKey,modeSelect.value);const raw=volumeInput.value;state.wizardRuntimeInputs.set(runtimeInputKey(projection,'StartBackup','VolumeMiB'),raw);volumeInput.disabled=frozenAttempt||modeSelect.value!=='Zip';state.wizardDirty=true;if(typeof sync==='function')sync();};modeSelect.addEventListener('change',syncMode);volumeInput.addEventListener('input',syncMode);volumeInput.addEventListener('change',syncMode);
     const freezeRequired=preview.FreezeRequired===true||preview.freezeRequired===true;let owner=null,evidenceInput=null,readyPath=null,readyHash=null,consent=null;if(freezeRequired){wizardMessage(card,'凍結是獨立的來源變更授權：先核對上方 producer、共享影響與原始狀態，再由責任人提供 SourceFreezeReady 外部證據並分開確認。開始備份本身不授權停寫。','callout');owner=runtimeTextInput(card,projection,'StartBackup','Owner','來源停寫負責人','由實際負責人提供；工具不會代填。');evidenceInput=runtimeTextInput(card,projection,'StartBackup','Evidence','停寫證據與觀察','記錄已核對的生產者、影響範圍與停寫狀態。',true);readyPath=runtimeTextInput(card,projection,'StartBackup','FreezeExternalEvidencePath','獨立 SourceFreezeReady 證據檔位置','從核准的外部準備流程取得，不可使用本畫面自行產生的材料。');readyHash=runtimeTextInput(card,projection,'StartBackup','FreezeExternalEvidenceHash','該外部證據的 SHA-256','從與目前頁面分開的可信來源取得；不可由檔案自行算出後當成信任。');const label=el('label','wizard-choice'),input=document.createElement('input');input.type='checkbox';input.dataset.runtimeField='FreezeAuthorization';input.checked=state.wizardRuntimeInputs.get(runtimeInputKey(projection,'StartBackup','FreezeAuthorization'))===true;label.append(input,el('span','wizard-choice-copy'));label.lastChild.append(el('strong','','我已核對影響並明確授權來源凍結'),el('span','','只授權本次預覽所列來源範圍；不會自動恢復來源。'));card.appendChild(label);consent=input;input.addEventListener('change',()=>{state.wizardRuntimeInputs.set(runtimeInputKey(projection,'StartBackup','FreezeAuthorization'),input.checked);state.wizardDirty=true;});}
@@ -1868,6 +1868,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     if (!data || data.available !== true) {
       wizardMessage(section, data && data.reason ? data.reason : '目前無法顯示備份明細。', data && data.integrity === 'Failed' ? 'callout' : 'inline-note');
       if (data && data.failedAttempt && typeof data.failedAttempt === 'object') renderBackupFailedAttempt(section, data.failedAttempt);
+      renderBackupUnreadable(section, data && data.unreadableAttempts);
       const again = el('button', 'secondary-button', '重新整理明細'); again.type = 'button'; again.addEventListener('click', () => loadBackupResults(true)); section.appendChild(again); return;
     }
     const sources = { PackageControls: '封裝內的來源盤點', TrustedInventory: '已核驗的來源盤點', Unavailable: '無法取得來源盤點' }, counts = data.counts || {}, allRows = Array.isArray(data.rows) ? data.rows : [];
@@ -1876,6 +1877,8 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     // R4: delivery was verified, but the plan contains items this tool does not move (manual / external / unsupported); they are listed under 未備份.
     const reviewItems = Number.isFinite(Number(data.reviewItemCount)) && Number(data.reviewItemCount) > 0 ? Math.floor(Number(data.reviewItemCount)) : 0;
     if (reviewItems > 0) { const reviewNote = wizardMessage(section, `含 ${reviewItems} 項需人工或外部處理`, 'inline-note backup-review-note'); reviewNote.dataset.reviewItems = String(reviewItems); }
+    renderBackupNewerAttempt(section, data.newerAttempt);
+    renderBackupUnreadable(section, data.unreadableAttempts);
     renderBackupCompleteness(section, data);
     const refresh = el('button', 'secondary-button', '重新整理明細'); refresh.type = 'button'; refresh.addEventListener('click', () => loadBackupResults(true)); section.appendChild(refresh);
     const hashState = backupHashState(), views = {}, initialFor = key => hashState.tab === key ? hashState.filters : null;
@@ -1912,7 +1915,49 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
   const BACKUP_COPY_LABEL = { Verified: '已驗證', MediaMissing: '收據完整；媒體需重新驗證', NotVerified: '尚未驗證', Unverifiable: '收據無法核對', Unrecorded: '未記錄' };
   const BACKUP_COPY_ICON = { Verified: '✓', MediaMissing: '!', NotVerified: '○', Unverifiable: '!', Unrecorded: '?' };
   const BACKUP_COPY_CLASS = { Verified: 'ok', MediaMissing: 'warn', NotVerified: 'neutral', Unverifiable: 'bad', Unrecorded: 'neutral' };
-  const BACKUP_LAST_ATTEMPT_LABEL = { Failed: '失敗', Cancelled: '已取消' };
+  const BACKUP_LAST_ATTEMPT_LABEL = { Failed: '失敗', Cancelled: '已取消', Interrupted: '未完成' };
+  // R11：擷取失敗的穩定原因碼（伺服端另附同碼的下一步文案）。無法辨識的碼沿用「其他錯誤」。
+  const BACKUP_REASON_CODE_TEXT = { PathTooLong: '路徑太長', Locked: '檔案被鎖定', Missing: '途中被刪除', AccessDenied: '沒有讀取權限', Failed: '其他錯誤' };
+  function backupReasonRows(item) {
+    const code = Object.prototype.hasOwnProperty.call(BACKUP_REASON_CODE_TEXT, backupPlain(item && item.ReasonCode)) ? item.ReasonCode : 'Failed', rows = [];
+    if (code !== 'Failed') rows.push(['原因', `${BACKUP_REASON_CODE_TEXT[code]}${item.ReasonText ? `：${backupPlain(item.ReasonText)}` : ''}`]);
+    const location = item && item.Location && typeof item.Location === 'object' ? item.Location : null;
+    if (location && backupPlain(location.name)) rows.push(['位置', `範圍根下第 ${backupPlain(location.depth)} 層：${backupPlain(location.name)}${location.truncated === true ? '（名稱已截斷）' : ''}`]);
+    return rows;
+  }
+  // R10：結果頁回報無法讀取的備份紀錄（只有數量與檔名）。這些紀錄不會被當成備份，也不會擋住新的備份。
+  function renderBackupUnreadable(section, report) {
+    const count = report && Number.isFinite(Number(report.count)) ? Math.max(0, Math.floor(Number(report.count))) : 0;
+    if (!count) return;
+    const files = Array.isArray(report.files) ? report.files.map(backupPlain).filter(Boolean) : [];
+    const box = el('section', 'backup-unreadable callout'); box.setAttribute('role', 'note'); box.dataset.unreadableCount = String(count);
+    box.appendChild(el('strong', '', `發現 ${count} 個無法讀取的備份紀錄`));
+    box.appendChild(el('p', 'inline-note', '這些紀錄可能損毀、來自舊版工具或欄位不完整；它們不會被當成備份，也不會擋住新的備份。請保留檔案，必要時交由負責人檢查。'));
+    if (files.length) {
+      const details = el('details', 'backup-unreadable-files'); details.appendChild(el('summary', '', '查看檔名'));
+      const list = el('ul'); files.forEach(name => list.appendChild(el('li', '', name)));
+      if (count > files.length) list.appendChild(el('li', '', `另有 ${count - files.length} 個未列出`));
+      details.appendChild(list); box.appendChild(details);
+    }
+    section.appendChild(box);
+  }
+  // R9：已有交付後，比目前交付更新的失敗／取消／未完成嘗試，與結果並列顯示（沿用獨立副本「較新的嘗試」的樣式）。
+  function renderBackupNewerAttempt(section, newer) {
+    if (!newer || typeof newer !== 'object') return;
+    const label = Object.prototype.hasOwnProperty.call(BACKUP_LAST_ATTEMPT_LABEL, backupPlain(newer.status)) ? BACKUP_LAST_ATTEMPT_LABEL[newer.status] : '未完成';
+    const box = el('div', 'backup-newer-attempt callout'); box.setAttribute('role', 'group'); box.dataset.newerStatus = backupPlain(newer.status);
+    box.appendChild(el('strong', '', `較新的嘗試：${label}（${backupTimeText(newer.attemptedUtc)}）`));
+    if (newer.title) box.appendChild(el('p', 'backup-newer-title', backupPlain(newer.title)));
+    if (newer.detail) box.appendChild(el('p', 'backup-newer-detail', backupPlain(newer.detail)));
+    const item = newer.failedItem && typeof newer.failedItem === 'object' ? newer.failedItem : null;
+    if (item) {
+      box.appendChild(el('p', 'backup-newer-item', `失敗項目：${backupPlain(item.Name)}（${backupPlain(item.Kind)}）`));
+      backupReasonRows(item).forEach(([name, value]) => box.appendChild(el('p', 'backup-newer-reason', `${name}：${value}`)));
+      if (item.ReasonNextStep) box.appendChild(el('p', 'backup-newer-reason-next', `針對這個原因：${backupPlain(item.ReasonNextStep)}`));
+    }
+    if (newer.nextStep) box.appendChild(el('p', 'backup-newer-next', `下一步：${backupPlain(newer.nextStep)}`));
+    section.appendChild(box);
+  }
   function backupPlain(value) { return value == null ? '' : String(value); }
   // Q2: UNC 項目不會被一鍵備份擷取；未備份表把原因與下一步換成責任分類（資料列的 Reason／ReasonCode 不變，篩選仍照原因代碼）。
   function backupUncInfo(r) { const unc = r && r.UncResponsibility; return unc && typeof unc === 'object' ? unc : null; }
@@ -2009,8 +2054,9 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     wizardMessage(box, backupPlain(failed.detail), 'callout');
     const item = failed.failedItem;
     if (item && typeof item === 'object') {
-      appendSummaryRows(box, [['失敗項目', backupPlain(item.Name)], ['項目類型', backupPlain(item.Kind)], ['通道', backupChannelText(item.Channel)], ['錯誤分類', Object.prototype.hasOwnProperty.call(BACKUP_ERROR_CLASS_TEXT, backupPlain(item.ErrorClass)) ? BACKUP_ERROR_CLASS_TEXT[item.ErrorClass] : backupPlain(item.ErrorClass)], ['錯誤型別', backupPlain(item.ErrorKind)]]);
+      appendSummaryRows(box, [['失敗項目', backupPlain(item.Name)], ['項目類型', backupPlain(item.Kind)], ['通道', backupChannelText(item.Channel)], ['錯誤分類', Object.prototype.hasOwnProperty.call(BACKUP_ERROR_CLASS_TEXT, backupPlain(item.ErrorClass)) ? BACKUP_ERROR_CLASS_TEXT[item.ErrorClass] : backupPlain(item.ErrorClass)], ['錯誤型別', backupPlain(item.ErrorKind)]].concat(backupReasonRows(item)));
       box.dataset.failedItem = backupPlain(item.ItemId);
+      if (item.ReasonNextStep) wizardMessage(box, `針對這個原因：${backupPlain(item.ReasonNextStep)}`, 'inline-note backup-reason-next');
       renderBackupFailedItemPath(box, item.SourcePath);
     } else if (backupPlain(failed.classification) === 'CaptureFailed') wizardMessage(box, '這次失敗沒有記錄到特定項目（失敗不在逐項擷取之內）。', 'inline-note');
     if (failed.nextStep) wizardMessage(box, `下一步：${backupPlain(failed.nextStep)}`, 'inline-note');

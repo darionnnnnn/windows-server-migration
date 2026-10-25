@@ -2733,6 +2733,68 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - `C:\` 底下有約 40 個更早的 `wsm-*` 測試殘留目錄，是上述寫死 `C:\` 的測試在先前失敗時留下的。這次沒有刪除，交由使用者決定。
   - 這三支寫死 `C:\` 的測試，在一般權限的開發機上無法執行。這次不改，記為環境限制。
 
+### 17.122 A2：備份 attempt 與結果頁（R4b、R9、R10、R11）
+
+- 規格：`work/r7/specs/A2-backup-attempts.md`，共通規則見 `RS-common.md`。由 Sonnet 5.5 subagent 實作。主代理審查 diff，另做一個突變並補上一條測試，再自行重跑關鍵測試。
+- **R10**（`src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1`）
+  - 根因：
+    - 啟動端 `Get-WsmWizardBackupAttempt` 與 `ForOperation` 逐檔 Assert 卻沒有 try，只要有一個壞檔或舊 ToolVersion 檔，整個 pair 的 StartBackup 就會丟例外。
+    - 讀取端有三處各自 `catch{continue}`，靜默略過、不計數。
+  - 修法：
+    - 新增 `Get-WsmWizardBackupAttemptScan`，作為「可辨識與否」的唯一判定，分成 InvalidJson 與 NotRecognized 兩類。
+    - 啟動端、續作入口、可用性列、LatestResult、LatestFailed 全部改用它。
+    - 結果頁回報 `unreadableAttempts{count, files}`，只列檔名，最多 20 個。StartBackup 的結果回報 `UnreadableAttemptCount` 與 `UnreadableAttemptFiles`。
+    - 無法辨識的檔案不會成為目前的 attempt，也不擋新的備份。
+  - **主代理突變**：讓掃描在遇到 reparse point 時靜默略過，原有測試全部存活。因此補上 R10-5：attempts 資料夾中的 reparse 紀錄仍要讓掃描拒絕（fail closed），不能被當成單純「無法讀取」。這條測試以替換 `Assert-WsmNoReparse` 作為觀測縫，掃描本身走真實函式。補上後，同一個突變會轉紅。
+- **R9**（`src/WizardBackupProjection.ps1`、`src/ui/console.js`）
+  - 根因：已有交付時，結果視圖不看比交付更新、但未交付的嘗試。
+  - 修法：
+    - 對同一計畫所有可辨識的 attempt，以 `Get-WsmWizardCurrentBackupAttempt`（R5 的單一判定）取出目前那一份；若它沒有交付，就輸出 `newerAttempt`，與結果並列顯示。
+    - `newerAttempt` 的狀態為 Failed、Cancelled 或 Interrupted，並附時間、FailedItem 摘要與下一步。
+    - 欄位命名與畫面樣式沿用 A1。
+- **R11**（`src/Payload.ps1`、`src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1`、`src/ui/console.js`）
+  - 根因：
+    - 239 字元的路徑限制以字串 throw 報錯，沒有例外型別。
+    - 擷取失敗只有 ErrorClass，沒有穩定的原因碼，也沒有失敗位置。
+  - 修法：
+    - 路徑過長改丟型別化的 `PathTooLongException`。
+    - 失敗位置換算成「相對深度＋檔名」，只放在例外的 Data 中。走訪迴圈、估算與擷取三處都會標記。
+    - 原因碼只看例外型別與 HResult，不比對訊息文字：
+      - PathTooLongException → PathTooLong
+      - UnauthorizedAccess → AccessDenied
+      - FileNotFound／DirectoryNotFound → Missing
+      - IOException 且 HResult 低 16 位為 0x20 或 0x21 → Locked
+      - 其餘維持 Failed
+    - FailedItem 新增 `ReasonCode`、`RelativeDepth`、`LeafName`，ErrorClass 不變。
+    - 投影時提供原因文字、下一步與 `Location`。檔名經 P4 的安全文字化處理，不含完整路徑。
+  - **與 P4 的差異（主代理接受）**：attempt 紀錄會保存失敗檔案的檔名（葉名）與相對深度。檔名不是路徑；而且失敗位置在事後無法重新推得。交付材料本來就含有檔名，祕密掃描（SecretSentinelBackupSweep 151）也維持全綠。
+- **R4b**（`src/WizardRuntime.ps1`、`src/WizardHtmlRuntime.ps1`、`src/ui/console.js`）
+  - 重現結果：真實精靈在 ReviewRequired 時，表單其實可以使用（`preview=Previewed`，StartBackup `available=True`）。17.110 描述的「被判成前置條件未滿足」在目前的程式碼重現不到。
+  - 實際的問題有兩個：
+    - 備份卡把 ReviewRequired 顯示成「帳戶範圍待審閱」。
+    - 表單能不能用，前端另外自己判斷一次，與後端是兩份規則。
+  - 修法：
+    - 後端新增 `startForm{usable,reason}` 與 `backupReview{required,delivered,itemCount,reason}`。
+    - 前端只讀 `startForm.usable`；欄位缺失時視為不可用。ReviewRequired 時顯示「已完成，結果需要審閱」並附原因。
+- **測試**：
+  - 新增 `Test-BackupAttemptsA2.ps1`，共 100 checks，含主代理補的 R10-5。
+  - `Test-BackupWorkbenchBrowser.js` 新增 A2 區塊。
+  - `Test-WizardRuntimeUi.js` 新增 R4b 兩個情境。
+  - 沒有修改任何既有斷言，只在夾具中轉送新欄位。
+- **突變**：subagent 做了 21 個，全部轉紅（掃描、計數、目前 attempt 排除、啟動回報、較新嘗試、排序、四個原因碼、HResult、訊息比對、位置標記、完整路徑洩漏、R4b 前後端各三）。主代理另做 1 個，在補上測試後轉紅。
+- **驗證**（subagent 跑完全部必跑測試，主代理再重跑其中關鍵幾支）：
+  - BackupAttemptsA2 100
+  - WizardBackup、WizardBackupReliability 62、WizardBackupRecovery 21、BackupCurrencyAndReview 109
+  - FailedItemSourcePath、BackupUnbackedReasons、WizardRuntime 182、RoundSevenGapCoverage 156
+  - ScriptEncoding 341 檔、SecretSentinelBackupSweep 151
+  - BackupWorkbenchBrowser、F1AcceptanceBrowser、WizardRuntimeUi、NativeWizardRuntimeHandler、WaitingConsistencyUi、AssistiveUi 49
+  - 另外 grep 到的 28 支呼叫端測試
+- **限制**：
+  - `Test-BackupProgressBrowser.js` 在本機為 ENVIRONMENT-LIMITED（exit 3，同 17.119），不算通過。
+  - 投影無法得知 job 是否仍在執行，所以仍在進行中的嘗試也會以 Interrupted 顯示，文案寫明「可能被中斷，或仍在進行中」。
+  - AccessDenied 只驗證了單一使用者 ReadData deny 的情境。
+  - R19 的對照表守門留給批次 E。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -2957,6 +3019,10 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R7 | `Invoke-WsmWizardIndependentCopy` catch、`ConvertTo-WsmWizardBackupResult`、`Get-WsmWizardIndependentCopyProjection` | 第二次副本失敗或取消會抹掉先前的 Verified；媒體被刪後仍顯示「已驗證」 | 保留收據，另存 `IndependentCopyLastAttempt`（Failed／Cancelled）；媒體缺失或在收據自己的媒體上驗證失敗時，改為「收據完整；媒體需重新驗證」並附「重新驗證」按鈕（17.120） | `Test-IndependentCopyHardening`（R7、same-media、A8）、`Test-WizardBackup` Case c、`Test-BackupWorkbenchBrowser` I 區塊 | `0c8f6ad` |
 | A1-容量 | `Invoke-WsmWizardIndependentCopy` | 獨立副本沒有容量預檢 | 寫入前比較可用空間：不足時以 `InsufficientSpace` 拒絕且零寫入；查詢失敗時警告並記為 Unknown（17.120） | `Test-IndependentCopyHardening`（容量段） | `0c8f6ad` |
 | C1 | `.github/workflows/contracts.yml`、`tests/Test-ObservationWorkflow.ps1`、`tests/Test-AssistiveWorkloadIntegration.ps1` | contracts 自 dev 74418af 起每次失敗：步驟一失敗就遮住後面的合約；Durable activation 第 3 支替身過期（01ca319），後面 25 支從未在 CI 執行；round-three 的 NonC 結果列 fixture 過期（第六輪 6204dc0） | 合約步驟加 `!cancelled()`；替身補 `-IncludeSoftwareCatalog`；fixture 結果列補 `AccountMap`／`RequireSacl`；四個 workflow 在 19b2b91 全綠，payload-boundary 改在本機驗證（17.121） | contracts（全部 job）、`Test-LargePayload`（本機） | `3ed1708`、`0e8b827`、`19b2b91` |
+| R4b | `src/WizardRuntime.ps1` `Get-WsmWizardRuntimeSource`、`src/ui/console.js` 備份卡 | availability 為 ReviewRequired 時，備份卡顯示「帳戶範圍待審閱」；表單是否可用由前端另判一份規則（實測表單本身可用） | 後端新增 `startForm`、`backupReview`，前端只讀欄位；ReviewRequired 時顯示審閱原因；真正前置條件未滿足仍擋（17.122） | `Test-BackupAttemptsA2`（R4b）、`Test-WizardRuntimeUi.js` R4b 情境 | （A2-COMMIT） |
+| R9 | `src/WizardBackupProjection.ps1` 結果視圖 | 已有交付後，第二次備份失敗、取消或未完成時，結果頁沒有提示 | 新增 `newerAttempt`，由 `Get-WsmWizardCurrentBackupAttempt` 判定，與結果並列顯示（17.122） | `Test-BackupAttemptsA2`（R9）、`Test-BackupWorkbenchBrowser.js` A2 區塊 | （A2-COMMIT） |
+| R10 | `src/WizardBackup.ps1` attempt 讀取、投影讀取端 | 一個壞檔或舊 ToolVersion 檔，就讓整個 pair 的 StartBackup 丟例外；讀取端靜默略過 | 共用 `Get-WsmWizardBackupAttemptScan` 判定，略過並回報檔名清單；reparse 紀錄仍拒絕（17.122） | `Test-BackupAttemptsA2`（R10-1～5） | （A2-COMMIT） |
+| R11 | `src/Payload.ps1`、`src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1` | 擷取失敗沒有穩定原因碼，使用者不知道原因與下一步 | 改丟型別化的 PathTooLong；PathTooLong／Locked／Missing／AccessDenied 只依例外型別與 HResult 判斷；附下一步，以及「相對深度＋檔名」位置（17.122） | `Test-BackupAttemptsA2`（R11，以真實檔案系統建立情境） | （A2-COMMIT） |
 
 ### 第六輪終檢
 

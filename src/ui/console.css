@@ -196,7 +196,7 @@ body{font-size:18px}
 .backup-detail table{min-width:36rem}
 .backup-detail-title{margin:0 0 6px;font-size:15px}
 .backup-coverage{margin-top:6px}
-.backup-excluded,.backup-failed-attempt{margin-top:6px}.backup-failed-path{min-width:0;overflow-wrap:anywhere}.backup-failed-path code{overflow-wrap:anywhere}
+.backup-newer-attempt{display:block;margin:0 0 12px;border-left:4px solid var(--warn);min-width:0;overflow-wrap:anywhere}.backup-newer-attempt p{margin:4px 0 0}.backup-unreadable{margin:0 0 12px;min-width:0;overflow-wrap:anywhere}.backup-unreadable p,.backup-unreadable ul{margin:4px 0 0}.backup-unreadable ul{padding-left:20px}.backup-excluded,.backup-failed-attempt{margin-top:6px}.backup-failed-path{min-width:0;overflow-wrap:anywhere}.backup-failed-path code{overflow-wrap:anywhere}
 .backup-region-toggle{white-space:normal;text-align:left;font-size:13px;min-height:36px;max-width:100%}
 .backup-region-summary{margin-top:6px}
 .backup-detail .region-counts{margin:0 0 8px;overflow-wrap:anywhere}

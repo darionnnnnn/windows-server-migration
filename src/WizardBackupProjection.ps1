@@ -21,9 +21,9 @@
     }
 
     $rows=New-Object 'System.Collections.Generic.List[object]'
-    foreach($file in @(Get-ChildItem -LiteralPath $root -Filter '*.json' -File)){
-        Assert-WsmNoReparse $file.FullName
-        try{$attempt=Read-WsmJson $file.FullName;Assert-WsmWizardBackupAttempt $attempt $workspacePath $PairId $Profile|Out-Null}catch{continue}
+    # R10：與啟動端共用同一個「可辨識」判定；無法辨識的紀錄不參與可用性判斷。
+    foreach($scanned in @((Get-WsmWizardBackupAttemptScan $root $workspacePath $PairId $Profile).Rows)){
+        $attempt=$scanned.Attempt
         if([string]$attempt.PlanHash -ine [string]$planRef.SHA256 -or [string]$attempt.InventoryHash -ine [string]$plan.InventoryHash -or [int]$attempt.InventoryRevision -ne [int]$plan.InventoryRevision){continue}
         if([string]$attempt.HostId -cne [string]$Profile.HostId -or [string]$plan.Source.HostId -cne [string]$Profile.HostId -or [string]$plan.Source.Fingerprint -ine [string]$Profile.Fingerprint){continue}
         $operationIds=@([string]$attempt.StartedByOperationId)
@@ -1250,16 +1250,19 @@ function Test-WsmBackupOfflineGuideFiles($Attempt) {
 # R5: "current" is the shared helper (StartedUtc, generation, AttemptId), never UpdatedUtc, so an independent copy made for an older
 # attempt cannot turn this view back to an older generation.
 # Read-only: the backup root is computed without the owned-directory helper, which would create it.
-function Get-WsmWizardLatestResultAttempt([string]$Workspace,[string]$PairId,$Profile,$PlanRef) {
+# R10：目錄掃描走 Get-WsmWizardBackupAttemptScan（與啟動端同一個「可辨識」判定）；呼叫端可傳入已掃描的結果避免重複讀檔。
+function Get-WsmWizardBackupViewScan([string]$Workspace,[string]$PairId,$Profile) {
     $viewBackupRoot=Join-Path (Join-Path (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'workspace-control') 'wizard-backups') $PairId
-    if(-not [IO.Directory]::Exists($viewBackupRoot)){return $null}
+    if(-not [IO.Directory]::Exists($viewBackupRoot)){return [pscustomobject][ordered]@{Rows=@();Unreadable=@()}}
     Assert-WsmNoReparse $viewBackupRoot
+    Get-WsmWizardBackupAttemptScan $viewBackupRoot $Workspace $PairId $Profile
+}
+
+function Get-WsmWizardLatestResultAttempt([string]$Workspace,[string]$PairId,$Profile,$PlanRef,$Scan=$null) {
+    if(-not $Scan){$Scan=Get-WsmWizardBackupViewScan $Workspace $PairId $Profile}
     $candidates=New-Object 'System.Collections.Generic.List[object]'
-    foreach($file in @(Get-ChildItem -LiteralPath $viewBackupRoot -Filter '*.json' -File)){
-        try{
-            $row=Read-WsmJson $file.FullName
-            [void](Assert-WsmWizardBackupAttempt $row $Workspace $PairId $Profile)
-        }catch{continue}
+    foreach($scanned in @($Scan.Rows)){
+        $row=$scanned.Attempt
         if([string]$row.PlanHash -ine [string]$PlanRef.SHA256 -or -not (Test-WsmWizardBackupAttemptDelivered $row) -or -not $row.PSObject.Properties['ItemResults']){continue}
         $candidates.Add($row)
     }
@@ -1268,16 +1271,11 @@ function Get-WsmWizardLatestResultAttempt([string]$Workspace,[string]$PairId,$Pr
 
 # N3: a failed (not delivered) attempt bound to the approved plan. Capture is all-or-nothing, so a failed attempt has no
 # result set; this is the only place a capture failure or a failed read-back can be shown. Read-only, like the helper above.
-function Get-WsmWizardLatestFailedAttempt([string]$Workspace,[string]$PairId,$Profile,$PlanRef) {
-    $viewBackupRoot=Join-Path (Join-Path (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'workspace-control') 'wizard-backups') $PairId
-    if(-not [IO.Directory]::Exists($viewBackupRoot)){return $null}
-    Assert-WsmNoReparse $viewBackupRoot
+function Get-WsmWizardLatestFailedAttempt([string]$Workspace,[string]$PairId,$Profile,$PlanRef,$Scan=$null) {
+    if(-not $Scan){$Scan=Get-WsmWizardBackupViewScan $Workspace $PairId $Profile}
     $candidates=New-Object 'System.Collections.Generic.List[object]'
-    foreach($file in @(Get-ChildItem -LiteralPath $viewBackupRoot -Filter '*.json' -File)){
-        try{
-            $row=Read-WsmJson $file.FullName
-            [void](Assert-WsmWizardBackupAttempt $row $Workspace $PairId $Profile)
-        }catch{continue}
+    foreach($scanned in @($Scan.Rows)){
+        $row=$scanned.Attempt
         if([string]$row.PlanHash -ine [string]$PlanRef.SHA256 -or [string]$row.Stage -cne 'Failed' -or -not $row.PSObject.Properties['Error'] -or $null -eq $row.Error){continue}
         $candidates.Add($row)
     }
@@ -1326,6 +1324,17 @@ function Get-WsmBackupFailedItemSourcePathView($PlanRef,[string]$ExpectedPlanHas
     }
 }
 
+# R11：原因碼對照（文字與下一步由伺服端統一提供，前端只照字面顯示）。Failed／未知碼沒有額外文案，沿用既有的錯誤分類。
+function Get-WsmBackupReasonCodeInfo([string]$Code) {
+    switch -CaseSensitive ($Code){
+        'PathTooLong' {[pscustomobject][ordered]@{Text='路徑太長（超過 239 個字元）';NextStep='把這個範圍移到較淺的位置，或縮短資料夾與檔案名稱，讓整條路徑不超過 239 個字元，再重新備份；在那之前重按只會得到同樣的失敗。'}}
+        'Locked' {[pscustomobject][ordered]@{Text='檔案被其他程式鎖定';NextStep='先停止正在使用該檔案的程式或服務（或改在沒有人使用的時段），確認檔案已釋放後，從同一個作業續作。'}}
+        'Missing' {[pscustomobject][ordered]@{Text='檔案在備份途中被刪除或移走';NextStep='確認這個檔案是否本來就會消失（例如暫存檔）；備份期間請避免異動來源資料，確認內容穩定後重新備份。'}}
+        'AccessDenied' {[pscustomobject][ordered]@{Text='沒有讀取權限';NextStep='請改用有讀取權限的帳戶執行，或請資料擁有者授權讀取該檔案，再從同一個作業續作。'}}
+        default {$null}
+    }
+}
+
 function ConvertTo-WsmBackupFailureView($Attempt,$PlanRef=$null) {
     $code=[string]$Attempt.Error.Code
     $table=@{
@@ -1337,9 +1346,39 @@ function ConvertTo-WsmBackupFailureView($Attempt,$PlanRef=$null) {
     $failedItem=$null
     if($Attempt.Error.PSObject.Properties['FailedItem'] -and $Attempt.Error.FailedItem){
         $item=$Attempt.Error.FailedItem
-        $failedItem=[pscustomobject][ordered]@{ItemId=[string]$item.ItemId;Name=[string]$item.Name;Kind=[string]$item.Kind;Channel=[string]$item.Channel;ErrorClass=[string]$item.ErrorClass;ErrorKind=[string]$item.ErrorKind;SourcePath=(Get-WsmBackupFailedItemSourcePathView $PlanRef ([string]$Attempt.PlanHash) ([string]$item.ItemId))}
+        $reasonCode='Failed';if($item.PSObject.Properties['ReasonCode'] -and [string]$item.ReasonCode){$reasonCode=[string]$item.ReasonCode}
+        $reasonInfo=Get-WsmBackupReasonCodeInfo $reasonCode;if(-not $reasonInfo){$reasonCode='Failed'}
+        # 位置只給「範圍根起算的相對深度＋檔名」（檔名走 P4 的安全路徑文字化）；完整路徑不寫進紀錄、也不在這裡出現。
+        $location=$null;if($item.PSObject.Properties['RelativeDepth'] -and $null -ne $item.RelativeDepth -and $item.PSObject.Properties['LeafName']){$safeLeaf=ConvertTo-WsmBackupSafePathText ([string]$item.LeafName) 255;$location=[pscustomobject][ordered]@{depth=[int]$item.RelativeDepth;name=$safeLeaf.text;truncated=[bool]$safeLeaf.truncated}}
+        $failedItem=[pscustomobject][ordered]@{ItemId=[string]$item.ItemId;Name=[string]$item.Name;Kind=[string]$item.Kind;Channel=[string]$item.Channel;ErrorClass=[string]$item.ErrorClass;ErrorKind=[string]$item.ErrorKind;ReasonCode=$reasonCode;ReasonText=$(if($reasonInfo){[string]$reasonInfo.Text}else{''});ReasonNextStep=$(if($reasonInfo){[string]$reasonInfo.NextStep}else{''});Location=$location;SourcePath=(Get-WsmBackupFailedItemSourcePathView $PlanRef ([string]$Attempt.PlanHash) ([string]$item.ItemId))}
     }
     [pscustomobject][ordered]@{attemptId=[string]$Attempt.AttemptId;errorCode=$code;classification=$entry[0];title=$entry[1];detail=$entry[2];nextStep=$entry[3];updatedUtc=[string]$Attempt.UpdatedUtc;failedItem=$failedItem}
+}
+
+# R9：已有交付後，比目前交付「更新」的失敗／取消／未完成嘗試。「更新」只由 Get-WsmWizardCurrentBackupAttempt 決定（R5 的單一判定，
+# 對這份計畫的所有可辨識 attempt 取目前那一份），不另寫排序。目前那份若就是已交付的結果、或本身也已交付，就沒有東西要提醒。
+# 欄位沿用 A1 獨立副本「較新的嘗試」的命名：status／attemptedUtc／nextStep，另附 title、detail、failedItem 摘要。
+function ConvertTo-WsmBackupNewerAttemptView($Attempt,$PlanRef=$null) {
+    $stage=[string]$Attempt.Stage
+    $status=switch -CaseSensitive ($stage){'Failed'{'Failed'}'Cancelled'{'Cancelled'}default{'Interrupted'}}
+    $title='備份尚未完成';$detail='這次備份在完成前停了下來（可能被中斷，或仍在進行中）；結果頁顯示的仍是先前已交付的備份。';$nextStep='先確認這次備份是否仍在進行；若已中斷，請從同一個作業續作。'
+    $code='';$failedItem=$null
+    if($Attempt.PSObject.Properties['Error'] -and $Attempt.Error -and $Attempt.Error.PSObject.Properties['Code']){$code=[string]$Attempt.Error.Code}
+    if($status -ceq 'Cancelled'){$title='備份已取消';$detail='這次備份依要求停止；結果頁顯示的仍是先前已交付的備份。';$nextStep='需要更新的備份時，請重新開始備份；先前已交付的備份沒有被改動。'}
+    elseif($status -ceq 'Failed'){
+        $title='備份失敗';$detail='這次備份沒有完成；結果頁顯示的仍是先前已交付的備份。';$nextStep='查看作業紀錄後再續作；先前已交付的備份沒有被改動。'
+        if($code){try{$base=ConvertTo-WsmBackupFailureView $Attempt $PlanRef;$title=[string]$base.title;$detail=[string]$base.detail+' 結果頁顯示的仍是先前已交付的備份。';$nextStep=[string]$base.nextStep;$failedItem=$base.failedItem}catch{}}
+    }
+    $when=[string]$Attempt.UpdatedUtc;if(-not $when -and $Attempt.PSObject.Properties['StartedUtc']){$when=[string]$Attempt.StartedUtc}
+    [pscustomobject][ordered]@{status=$status;attemptId=[string]$Attempt.AttemptId;attemptedUtc=$when;errorCode=$code;title=$title;detail=$detail;nextStep=$nextStep;failedItem=$failedItem}
+}
+
+function Get-WsmWizardNewerBackupAttemptView($Scan,$PlanRef,$DeliveredAttempt) {
+    if(-not $DeliveredAttempt -or -not $Scan){return $null}
+    $bound=@(@($Scan.Rows)|Where-Object {[string]$_.Attempt.PlanHash -ieq [string]$PlanRef.SHA256}|ForEach-Object {$_.Attempt})
+    $current=Get-WsmWizardCurrentBackupAttempt $bound
+    if(-not $current -or [string]$current.AttemptId -ceq [string]$DeliveredAttempt.AttemptId -or (Test-WsmWizardBackupAttemptDelivered $current)){return $null}
+    ConvertTo-WsmBackupNewerAttemptView $current $PlanRef
 }
 
 # Re-checks the independent-copy receipt every time the view is read. The receipt is a set-level record
@@ -1423,9 +1462,9 @@ function Get-WsmWizardIndependentCopyProjection([string]$Workspace,[string]$Pair
 
 # Shared by the results view and the file drill-down: the verified item-results document of the latest delivered attempt.
 # Failure is the user-facing view object when nothing can be shown; callers must stop on it.
-function Get-WsmWizardVerifiedResultSet([string]$Workspace,[string]$PairId,$Profile,$PlanRef) {
+function Get-WsmWizardVerifiedResultSet([string]$Workspace,[string]$PairId,$Profile,$PlanRef,$Scan=$null) {
     $none=[pscustomobject]@{kind='BackupItemResultsView';available=$false;reason='目前還沒有已交付的備份。'}
-    $attempt=Get-WsmWizardLatestResultAttempt $Workspace $PairId $Profile $PlanRef
+    $attempt=Get-WsmWizardLatestResultAttempt $Workspace $PairId $Profile $PlanRef $Scan
     if(-not $attempt){return [pscustomobject]@{Failure=$none;Attempt=$null;Document=$null;ResultsSha256=''}}
     $itemResults=$attempt.ItemResults
     if($itemResults.Status -cne 'Generated'){
@@ -1450,15 +1489,19 @@ function Get-WsmWizardBackupItemResultsView([string]$Workspace,[string]$PairId) 
     if(-not $profile -or $profile.Role -cne 'Source'){throw 'Backup item results are only available on the enrolled Source workspace.'}
     $planRef=Get-WsmWizardReceivedApprovedPlan $Workspace $PairId $profile
     if(-not $planRef){return [pscustomobject]@{kind='BackupItemResultsView';available=$false;reason='尚未匯入已核准計畫，沒有備份結果可查看。'}}
-    $set=Get-WsmWizardVerifiedResultSet $Workspace $PairId $profile $planRef
+    $scan=Get-WsmWizardBackupViewScan $Workspace $PairId $profile
+    $unreadableReport=ConvertTo-WsmWizardUnreadableAttemptReport $scan.Unreadable
+    $set=Get-WsmWizardVerifiedResultSet $Workspace $PairId $profile $planRef $scan
     if($set.Failure){
         # N3: nothing delivered yet. A failed attempt explains why (capture failed / read-back failed); it never becomes a result row.
-        if(-not $set.Attempt){try{$failedAttempt=Get-WsmWizardLatestFailedAttempt $Workspace $PairId $profile $planRef;if($failedAttempt){$set.Failure | Add-Member NoteProperty failedAttempt (ConvertTo-WsmBackupFailureView $failedAttempt $planRef) -Force}}catch{}}
+        if(-not $set.Attempt){try{$failedAttempt=Get-WsmWizardLatestFailedAttempt $Workspace $PairId $profile $planRef $scan;if($failedAttempt){$set.Failure | Add-Member NoteProperty failedAttempt (ConvertTo-WsmBackupFailureView $failedAttempt $planRef) -Force}}catch{}}
+        $set.Failure | Add-Member NoteProperty unreadableAttempts $unreadableReport -Force
         return $set.Failure
     }
     $attempt=$set.Attempt;$document=$set.Document
+    $newerAttempt=$null;try{$newerAttempt=Get-WsmWizardNewerBackupAttemptView $scan $planRef $attempt}catch{$newerAttempt=$null}
     $excludedRecorded=($document.PSObject.Properties['ExcludedRegions'] -and $null -ne $document.ExcludedRegions)
-    [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software;schemaVersion=$(if($document.PSObject.Properties['SchemaVersion']){[int]$document.SchemaVersion}else{1});coverageRegions=$(if($document.PSObject.Properties['CoverageRegions']){@($document.CoverageRegions)}else{$null});excludedRegions=$(if($excludedRecorded){@($document.ExcludedRegions)}else{$null});excludedRegionsBinding=$(if($document.PSObject.Properties['ExcludedRegionsBinding']){$document.ExcludedRegionsBinding}else{$null});excludedCompleteness=$(if($excludedRecorded){Get-WsmBackupExcludedCompleteness @($document.ExcludedRegions)}else{Get-WsmBackupExcludedCompleteness $null});independentCopy=(Get-WsmWizardIndependentCopyProjection $Workspace $PairId $attempt $set.ResultsSha256);reviewItemCount=(Get-WsmWizardBackupReviewItemCount $attempt.ChannelSummary)}
+    [pscustomobject][ordered]@{kind='BackupItemResultsView';available=$true;integrity='Verified';attemptId=[string]$attempt.AttemptId;backupOperationId=[string]$attempt.StartedByOperationId;generatedUtc=$document.GeneratedUtc;inventorySource=$document.InventorySource;offlineReadiness=(ConvertTo-WsmWizardBackupResult $attempt ([string]$attempt.StartedByOperationId)).OfflineReadiness;counts=$document.Counts;rows=@($document.Rows);software=$document.Software;schemaVersion=$(if($document.PSObject.Properties['SchemaVersion']){[int]$document.SchemaVersion}else{1});coverageRegions=$(if($document.PSObject.Properties['CoverageRegions']){@($document.CoverageRegions)}else{$null});excludedRegions=$(if($excludedRecorded){@($document.ExcludedRegions)}else{$null});excludedRegionsBinding=$(if($document.PSObject.Properties['ExcludedRegionsBinding']){$document.ExcludedRegionsBinding}else{$null});excludedCompleteness=$(if($excludedRecorded){Get-WsmBackupExcludedCompleteness @($document.ExcludedRegions)}else{Get-WsmBackupExcludedCompleteness $null});independentCopy=(Get-WsmWizardIndependentCopyProjection $Workspace $PairId $attempt $set.ResultsSha256);reviewItemCount=(Get-WsmWizardBackupReviewItemCount $attempt.ChannelSummary);newerAttempt=$newerAttempt;unreadableAttempts=$unreadableReport}
 }
 
 # Read-only drill-down (action BackupItemFiles): the archived files of one backed-up item, 100 per page.

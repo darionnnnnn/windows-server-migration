@@ -89,7 +89,7 @@ async function openWorkbench(browser, fixture, scenario, hash, contextOptions) {
   const session = { token: 'memory-only-test-token', sessionId: 'fixture-session', contextId: 'fixture-context', hostName: 'fixture-host', role: 'Source', workspace: root, pairId: 'fixture-pair', revision: 5, decisionRevision: 7, selectionRevision: 3, sourceSelectionRevision: 3, dataVersion: 'fixture-data-1', principal: 'fixture-user' };
   const viewContext = () => ({ sessionId: session.sessionId, contextId: session.contextId, pairId: 'fixture-pair', role: 'Source', revision: session.revision, decisionRevision: session.decisionRevision, selectionRevision: session.selectionRevision, sourceSelectionRevision: session.sourceSelectionRevision, dataVersion: session.dataVersion, readUtc: new Date().toISOString() });
   const results = scenario.results;
-  const view = () => ({ kind: 'BackupItemResultsView', available: true, integrity: 'Verified', attemptId: 'fixture-attempt', backupOperationId: 'fixture-op', generatedUtc: results.GeneratedUtc, inventorySource: results.InventorySource, offlineReadiness: 'AwaitingIndependentCopy', counts: results.Counts, rows: results.Rows, software: results.Software, schemaVersion: results.SchemaVersion || 1, coverageRegions: Object.prototype.hasOwnProperty.call(results, 'CoverageRegions') ? results.CoverageRegions : null, excludedRegions: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegions') ? results.ExcludedRegions : null, excludedRegionsBinding: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegionsBinding') ? results.ExcludedRegionsBinding : null, excludedCompleteness: Object.prototype.hasOwnProperty.call(results, 'ExcludedCompleteness') ? results.ExcludedCompleteness : null, independentCopy: scenario.copy, reviewItemCount: scenario.reviewItemCount, viewContext: viewContext() });
+  const view = () => ({ kind: 'BackupItemResultsView', available: true, integrity: 'Verified', attemptId: 'fixture-attempt', backupOperationId: 'fixture-op', generatedUtc: results.GeneratedUtc, inventorySource: results.InventorySource, offlineReadiness: 'AwaitingIndependentCopy', counts: results.Counts, rows: results.Rows, software: results.Software, schemaVersion: results.SchemaVersion || 1, coverageRegions: Object.prototype.hasOwnProperty.call(results, 'CoverageRegions') ? results.CoverageRegions : null, excludedRegions: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegions') ? results.ExcludedRegions : null, excludedRegionsBinding: Object.prototype.hasOwnProperty.call(results, 'ExcludedRegionsBinding') ? results.ExcludedRegionsBinding : null, excludedCompleteness: Object.prototype.hasOwnProperty.call(results, 'ExcludedCompleteness') ? results.ExcludedCompleteness : null, independentCopy: scenario.copy, reviewItemCount: scenario.reviewItemCount, newerAttempt: scenario.newerAttempt === undefined ? null : scenario.newerAttempt, unreadableAttempts: scenario.unreadableAttempts === undefined ? { count: 0, files: [] } : scenario.unreadableAttempts, viewContext: viewContext() });
   await page.route(/\/api\/.*/, async route => {
     const request = route.request(), parsed = new URL(request.url()), pathname = parsed.pathname;
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -104,7 +104,7 @@ async function openWorkbench(browser, fixture, scenario, hash, contextOptions) {
       if (parsed.searchParams.get('action') === 'backup-items') {
         if (scenario.delayView) await scenario.delayView;
         if (scenario.viewError) return json({ code: 'package_changed', message: '備份明細暫時無法讀取。', nextStep: '稍後重試。', correlationId: 'fixture-view-error' });
-        if (scenario.failedAttempt) return json({ kind: 'BackupItemResultsView', available: false, reason: '目前還沒有已交付的備份。', failedAttempt: scenario.failedAttempt, viewContext: viewContext() });
+        if (scenario.failedAttempt) return json({ kind: 'BackupItemResultsView', available: false, reason: '目前還沒有已交付的備份。', failedAttempt: scenario.failedAttempt, unreadableAttempts: scenario.unreadableAttempts === undefined ? { count: 0, files: [] } : scenario.unreadableAttempts, viewContext: viewContext() });
         return json(view());
       }
       return json({ viewContext: viewContext(), rows: [], items: [] });
@@ -838,6 +838,83 @@ const waitResults = async page => { await page.waitForSelector('#backup-item-res
         const buttonBox = await page.locator('#backup-panel-backed').getByRole('button', { name: '重新驗證' }).boundingBox();
         assert.ok(buttonBox && buttonBox.x + buttonBox.width <= width + 1, `${width}px: re-verify button leaves the viewport`);
         await page.screenshot({ path: path.join(screens, `a1-copy-status-${width}.png`) });
+        assert.deepEqual(errors, []); await context.close();
+      }
+    }
+
+    // A2 (R9, R10, R11): a newer failed / cancelled / interrupted attempt beside the delivered result, unreadable records,
+    // and the stable capture-failure reason codes. All text is textContent; narrow widths never scroll sideways.
+    {
+      const failedItem = code => ({ ItemId: 'item-0001', Name: 'Newer <b>folder</b>', Kind: 'DataRoot', Channel: 'C', ErrorClass: 'IOError', ErrorKind: 'System.IO.IOException', ReasonCode: code, ReasonText: code === 'Failed' ? '' : 'reason-text-' + code, ReasonNextStep: code === 'Failed' ? '' : 'next-step-' + code, Location: { depth: 4, name: 'deep-file.dat', truncated: false } });
+      const newerFor = (status, extra) => ({ status, attemptId: 'fixture-newer', attemptedUtc: '2026-10-24T03:00:00Z', errorCode: status === 'Failed' ? 'core_export_failed' : status === 'Cancelled' ? 'cancelled' : '', title: 'newer-title-' + status, detail: 'newer-detail-' + status, nextStep: 'newer-next-' + status, failedItem: status === 'Failed' ? failedItem('Locked') : null, ...(extra || {}) });
+      const open = async (scenario, viewport, hash) => { const opened = await openWorkbench(browser, fixture, { ...base, ...scenario }, hash || '#jobs?filter=backup&tab=backed', viewport ? { viewport } : undefined); return opened; };
+      // R9: both the delivered result and the newer attempt are shown
+      for (const [status, label] of [['Failed', '失敗'], ['Cancelled', '已取消'], ['Interrupted', '未完成']]) {
+        const { page, errors, context } = await open({ newerAttempt: newerFor(status) });
+        await page.waitForSelector('#backup-item-results .backup-newer-attempt', { timeout: 30000 });
+        assert.equal(await page.locator('#backup-item-results [role=tablist]').count(), 1, 'the delivered result must stay visible next to the newer attempt');
+        const box = page.locator('#backup-item-results .backup-newer-attempt'), text = await box.innerText();
+        assert.equal(await box.getAttribute('data-newer-status'), status);
+        assert.ok(text.includes('較新的嘗試：' + label) && text.includes('newer-title-' + status) && text.includes('newer-detail-' + status) && text.includes('下一步：newer-next-' + status), 'newer attempt text for ' + status + ': ' + text);
+        if (status === 'Failed') {
+          assert.ok(text.includes('Newer <b>folder</b>') && text.includes('檔案被鎖定：reason-text-Locked') && text.includes('範圍根下第 4 層：deep-file.dat') && text.includes('針對這個原因：next-step-Locked'), 'failed item summary: ' + text);
+          assert.equal(await box.locator('b').count(), 0, 'the failed item name must be text, not markup');
+        } else assert.ok(!text.includes('失敗項目'), 'no failed item for ' + status);
+        assert.deepEqual(errors, []); await context.close();
+      }
+      // only a delivered result: no newer-attempt block (and no unreadable note)
+      {
+        const { page, errors, context } = await open({});
+        await page.waitForSelector('#backup-item-results [role=tablist]', { timeout: 30000 });
+        assert.equal(await page.locator('#backup-item-results .backup-newer-attempt').count(), 0, 'no newer attempt: no block');
+        assert.equal(await page.locator('#backup-item-results .backup-unreadable').count(), 0, 'no unreadable records: no note');
+        assert.deepEqual(errors, []); await context.close();
+      }
+      // R10: unreadable records, in the delivered branch and in the nothing-delivered branch; names only, text only
+      const hostile = '<img src=x onerror="window.__a2=1">.json';
+      for (const scenario of [{ unreadableAttempts: { count: 3, files: ['garbage-record.json', 'old-tool.json', hostile] } }, { failedAttempt: { attemptId: 'fixture-failed', errorCode: 'core_export_failed', classification: 'CaptureFailed', title: 'capture-title', detail: 'capture-detail', nextStep: 'capture-next', updatedUtc: '2026-10-23T01:00:00Z', failedItem: null }, unreadableAttempts: { count: 3, files: ['garbage-record.json', 'old-tool.json', hostile] } }]) {
+        const { page, errors, context } = await open(scenario);
+        await page.waitForSelector('#backup-item-results .backup-unreadable', { timeout: 30000 });
+        const box = page.locator('#backup-item-results .backup-unreadable'), text = await box.innerText();
+        assert.equal(await box.getAttribute('data-unreadable-count'), '3');
+        assert.ok(text.includes('發現 3 個無法讀取的備份紀錄'), 'count text: ' + text);
+        await box.locator('summary').click();
+        const listText = await box.innerText();
+        assert.ok(listText.includes('garbage-record.json') && listText.includes('old-tool.json') && listText.includes(hostile), 'file names are listed as text: ' + listText);
+        assert.equal(await box.locator('img').count(), 0, 'a hostile file name must not create elements');
+        assert.equal(await page.evaluate(() => window.__a2 === undefined), true, 'no script from a file name');
+        assert.deepEqual(errors, []); await context.close();
+      }
+      {
+        const { page, errors, context } = await open({ unreadableAttempts: { count: 25, files: Array.from({ length: 20 }, (_, i) => 'file-' + i + '.json') } });
+        await page.waitForSelector('#backup-item-results .backup-unreadable', { timeout: 30000 });
+        const box = page.locator('#backup-item-results .backup-unreadable'); await box.locator('summary').click();
+        assert.ok((await box.innerText()).includes('另有 5 個未列出'), 'the list is bounded and says how many are not listed');
+        assert.deepEqual(errors, []); await context.close();
+      }
+      // R11: each reason code on the failed-attempt card (nothing delivered); Failed keeps the old class line only
+      for (const code of ['PathTooLong', 'Locked', 'Missing', 'AccessDenied', 'Failed']) {
+        const failedAttempt = { attemptId: 'fixture-failed', errorCode: 'core_export_failed', classification: 'CaptureFailed', title: '擷取或封存失敗', detail: 'capture-detail', nextStep: '修正失敗項目的問題後，從同一個作業續作。', updatedUtc: '2026-10-23T01:00:00Z', failedItem: failedItem(code) };
+        const { page, errors, context } = await open({ failedAttempt }, undefined, '#jobs?filter=backup');
+        await page.waitForSelector('#backup-item-results .backup-failed-attempt', { timeout: 30000 });
+        const text = await page.locator('#backup-item-results .backup-failed-attempt').innerText();
+        const labels = { PathTooLong: '路徑太長', Locked: '檔案被鎖定', Missing: '途中被刪除', AccessDenied: '沒有讀取權限' };
+        assert.ok(text.includes('範圍根下第 4 層：deep-file.dat'), code + ' card shows the location: ' + text);
+        if (code === 'Failed') assert.ok(!text.includes('針對這個原因'), 'an unrecognized failure has no reason-specific next step');
+        else assert.ok(text.includes(labels[code] + '：reason-text-' + code) && text.includes('範圍根下第 4 層：deep-file.dat') && text.includes('針對這個原因：next-step-' + code), code + ' card text: ' + text);
+        assert.ok(!text.includes('C:\\'), 'the card must not carry a full path for the reason');
+        assert.deepEqual(errors, []); await context.close();
+      }
+      // layout: 320 / 390 / 1280, hostile long strings wrap
+      for (const width of [320, 390, 1280]) {
+        const long = 'L'.repeat(200);
+        const { page, errors, context } = await open({ newerAttempt: newerFor('Failed', { title: long, detail: long, nextStep: long, failedItem: { ...failedItem('PathTooLong'), Name: long, Location: { depth: 9, name: long, truncated: true } } }), unreadableAttempts: { count: 2, files: [long + '.json', 'b.json'] } }, { width, height: 844 });
+        await page.waitForSelector('#backup-item-results .backup-newer-attempt', { timeout: 30000 });
+        await page.locator('#backup-item-results .backup-unreadable summary').click();
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        assert.ok(overflow <= 0, `${width}px: page overflows by ${overflow}px`);
+        for (const selector of ['.backup-newer-attempt', '.backup-unreadable']) { const rect = await page.locator('#backup-item-results ' + selector).boundingBox(); assert.ok(rect && rect.x >= 0 && rect.x + rect.width <= width + 1, `${width}px: ${selector} leaves the viewport (${JSON.stringify(rect)})`); }
+        await page.screenshot({ path: path.join(screens, `a2-newer-attempt-${width}.png`) });
         assert.deepEqual(errors, []); await context.close();
       }
     }
