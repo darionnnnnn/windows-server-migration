@@ -11,6 +11,8 @@ const pairId = 'r6-pair', contextId = 'r6-context', hash = 'a'.repeat(64), hash2
 let stage = 'NeedsTargetDecision', revision = 2, receiptSelected = null;
 // Q4：還原進行中鎖定（null 或 { status, actionAvailable }）；投影欄位形狀同後端 runtime.restoreLock。
 let restoreLock = null;
+// R23：每個項目的檔案明細替身（欄位形狀同後端 itemOptions 的 fileList／fileListMore）；null 表示沒有明細。
+let fileDetail = {};
 const LOCK_REASON = '還原進行中，完成或取消後才能變更選擇。';
 
 const baseOptions = [
@@ -27,7 +29,7 @@ const previewRows = [
   { ItemId: 'task', Adapter: 'ScheduledTask', Action: 'DeferredBySelection', Status: 'Deferred', Reason: '這個核准項目沒有被選取。', FileCount: 1, Bytes: 200, MissingDependencies: [], AlreadyRestored: false }
 ];
 const action = (id, defaults = {}, missing = []) => ({ id, available: true, reason: `Fixture ${id}`, defaults: Object.assign({ Workspace: 'C:\\fixture\\target', PairId: pairId }, defaults), missing });
-function options() { return baseOptions.map(option => Object.assign({}, option, { preselected: receiptSelected ? receiptSelected.includes(option.value) : null })); }
+function options() { return baseOptions.map(option => Object.assign({}, option, fileDetail[option.value] || {}, { preselected: receiptSelected ? receiptSelected.includes(option.value) : null })); }
 function runtime() {
   const target = { status: stage, plan: { hash }, package: { ManifestHash: hash }, inventory: { SHA256: hash2 }, comparison: { Status: 'Imported' }, decision: null, restorePreview: null, restoreResult: null, mechanicalValidation: { available: false, status: 'NotRun' }, businessAcceptance: { available: false, status: 'NotAccepted' }, activation: { available: false, status: 'Locked' }, itemOptions: options(), restoreLock: restoreLock ? { active: true, status: restoreLock.status, reason: LOCK_REASON, parentOperationId: 'parent-1' } : { active: false, status: '', reason: '', parentOperationId: '' } };
   const actions = [action('CreateTargetDecisionReceipt', {}, ['Decision', 'Owner', 'Reason', 'SelectedItemIds'])];
@@ -280,6 +282,60 @@ const server = http.createServer((req, res) => {
     assert.equal(await card.locator('[data-runtime-item="site"]').isDisabled(), false, 'the checkboxes are usable again after the lock is gone');
     assert.equal(await card.locator('[data-restore-lock]').isVisible(), false, 'no lock text when nothing is in progress');
     await page.close();
+
+    // ---------------------------------------------------------------- 11. R23（§18.6）：每個項目可展開檔案明細（前 100 個＋總數＋另有 N 個）；鍵盤可操作；320／390px 不溢位；惡意檔名只當文字
+    stage = 'NeedsTargetDecision'; receiptSelected = null; restoreLock = null;
+    const longPath = 'deep\\' + 'segment_'.repeat(14) + 'name-without-any-break.bin';
+    const hundred = Array.from({ length: 100 }, (_, i) => `dir\\file-${String(i + 1).padStart(3, '0')}.txt`); hundred[99] = longPath;
+    const evilFiles = ['<img src=x onerror="window.__xss=1">.txt', '<script>window.__xss=1</script>.js', 'evil\u202Efdp.exe', 'a\'"&b.txt'];
+    fileDetail = { data: { fileCount: 250, bytes: 2500, fileList: hundred, fileListMore: 150 }, task: { fileCount: 4, bytes: 20, fileList: evilFiles, fileListMore: 0 }, site: { fileCount: 100, bytes: 100, fileList: hundred.slice(), fileListMore: 0 }, pool: { fileCount: 2, bytes: 2, fileList: ['p1.txt', 'p2.txt'], fileListMore: 0 } };
+    for (const width of [390, 320]) {
+      page = await openPage(width); card = page.locator('.wizard-runtime-target');
+      const dataBox = card.locator('[data-restore-files="data"]'), taskBox = card.locator('[data-restore-files="task"]'), siteBox = card.locator('[data-restore-files="site"]');
+      assert.equal(await dataBox.count(), 1, `the item has a details element (${width}px)`);
+      assert.equal(await card.locator('[data-restore-files="manual"]').count(), 0, 'an item without a file list has no details');
+      assert.equal(await dataBox.evaluate(node => node.tagName + ':' + node.open), 'DETAILS:false', 'native details, collapsed by default');
+      assert.equal(await dataBox.evaluate(node => !!node.closest('label')), false, 'the details are not nested inside the checkbox label');
+      assert.match(await dataBox.locator('summary').innerText(), /檔案明細（共 250 個，列出前 100 個）/, 'the summary names the total and how many are listed');
+      assert.equal(await dataBox.locator('li').count(), 0, 'rows are built only when the details are opened');
+      // 鍵盤：從勾選框 Tab 到 summary；Enter 展開、Enter 收合、Space 再展開；不會改變勾選
+      await card.locator('[data-runtime-item="data"]').focus(); const pickedBefore = await picked(page);
+      await page.keyboard.press('Tab');
+      assert.equal(await page.evaluate(() => document.activeElement.tagName + ':' + document.activeElement.parentElement.dataset.restoreFiles), 'SUMMARY:data', 'Tab from the checkbox reaches the details summary');
+      await page.keyboard.press('Enter'); assert.equal(await dataBox.evaluate(node => node.open), true, 'Enter opens the details');
+      await dataBox.locator('li').first().waitFor();   // toggle 事件是非同步的，第一次展開才建立清單
+      assert.equal(await dataBox.locator('li').count(), 101, 'the first 100 files plus one "more" note');
+      assert.equal(await dataBox.locator('li').first().innerText(), 'dir\\file-001.txt'); assert.equal(await dataBox.locator('li').nth(99).innerText(), longPath);
+      assert.match(await dataBox.locator('li').last().innerText(), /另有 150 個/, 'the note says how many files are not listed');
+      assert.equal(await dataBox.locator('li.wizard-runtime-file-more').count(), 1);
+      await noOverflow(page, `expanded 100-file list (${width}px)`);
+      assert.equal(await dataBox.locator('li').evaluateAll(items => items.every(item => item.getBoundingClientRect().right <= innerWidth + 1)), true, `every file row stays inside the viewport (${width}px)`);
+      await page.screenshot({ path: path.join(screens, `r23-files-${width}.png`), fullPage: true });
+      await page.keyboard.press('Enter'); assert.equal(await dataBox.evaluate(node => node.open), false, 'Enter closes the details');
+      await page.keyboard.press('Space'); assert.equal(await dataBox.evaluate(node => node.open), true, 'Space opens the details again');
+      assert.deepEqual(await picked(page), pickedBefore, 'operating the details does not change the selection');
+      // 重畫後仍展開；篩選時明細跟著列一起隱藏
+      await page.evaluate(() => { const app = window.WsmConsole; app.renderWizard(app.state.wizard); });
+      assert.equal(await dataBox.evaluate(node => node.open), true, 'the open state survives a redraw');
+      assert.equal(await dataBox.locator('li').count(), 101);
+      await card.getByLabel('類型篩選').selectOption('網站');
+      assert.equal(await dataBox.isVisible(), false, 'the details of a hidden group are hidden');
+      assert.equal(await siteBox.isVisible(), true);
+      assert.equal(await card.locator('[data-restore-files="pool"]').isVisible(), false, 'the details follow their own row when the type filter hides it inside a visible group');
+      await card.getByLabel('類型篩選').selectOption('');
+      // 恰好 100 個：全部列出、沒有「另有」提示
+      await siteBox.locator('summary').click(); await siteBox.locator('li').first().waitFor(); assert.equal(await siteBox.locator('li').count(), 100, 'exactly 100 files list all of them'); assert.equal(await siteBox.locator('li.wizard-runtime-file-more').count(), 0, 'no "more" note at 100 files');
+      // 惡意檔名：只當文字，不當 HTML，也沒有腳本執行
+      await taskBox.locator('summary').click(); await taskBox.locator('li').first().waitFor();
+      assert.equal(await taskBox.locator('li').count(), 4);
+      assert.equal(await taskBox.locator('img, script, [onerror]').count(), 0, 'markup in a file name creates no element');
+      assert.equal(await page.evaluate(() => window.__xss === undefined), true, 'no script from a file name ran');
+      assert.deepEqual(await taskBox.locator('li').allInnerTexts(), evilFiles, 'file names are shown exactly as text');
+      await noOverflow(page, `all details open (${width}px)`);
+      assert.equal(await card.locator('.wizard-runtime-items [aria-live]').count(), 1, 'the details add no live region');
+      await page.close();
+    }
+    fileDetail = {};
 
     // ---------------------------------------------------------------- 9. 寬螢幕與零錯誤
     stage = 'NeedsTargetDecision'; receiptSelected = null;

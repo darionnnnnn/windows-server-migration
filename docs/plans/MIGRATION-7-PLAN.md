@@ -2837,6 +2837,55 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 靜態守門只涵蓋這次白名單內的檔案。白名單外有 15 個 src 檔仍各自寫祕密名稱 regex，另有 6 個檔只是含有這些字樣；它們都列在守門的例外清單中，並有「清單過期」檢查。收斂工作排入 R26（`_pending-additions.md` R26-A3a），`WizardHtmlRuntime.ps1:27` 優先處理。
 - **驗證**（主代理在修正後重跑所有呼叫被改函式的測試）：見 commit 訊息。
 
+### 17.124 B：還原收據與舊 state 相容（R8、R12、R20、R23）；另修 A3 進度文字長度回歸
+
+- 規格：`work/r7/specs/B-restore-receipts.md`。由 Sonnet 5.5 subagent 實作；主代理審查、另做突變並重跑。
+- **R8**（`WizardRestore.ps1`）
+  - 根因：`Get-WsmWizardTargetDecisionRecord` 只依 CreatedUtc 排序，時鐘倒退時會選到舊收據；RetryOfReceiptHash 只用來擋關卡，沒有寫進收據。
+  - 修法：
+    - 決策收據在材料目錄的鎖內配置單調遞增的 Sequence，值為同 Pair 既有最大值加一。
+    - 選「最新」時先比 Sequence，再比 CreatedUtc。沒有 Sequence 的舊收據視為 0，排在所有新收據之前；兩張收據若兩者都相同，就丟出 ambiguous。
+    - 重試收據寫入 RetryOfReceiptHash，並與 Sequence 一起納入收據雜湊。
+    - 排序沿用既有的 `Get-WsmWizardTargetComparisonSequence`。
+  - 實作中踩到 `Invoke-WsmLocked` 的 `$Workspace` 參數同名問題，已改名避開。
+- **R12**（`WizardRestore.ps1`、`WizardRuntime.ps1`、`console.js`）
+  - 原本舊的 Interrupted 或 WaitingForInput job 會讓已回復的 state 回報 RestoreInProgress。
+  - 修法：RolledBack 判定提到最前面，以持久化的 state 為準。文案「已回復，請重新選擇還原」集中在 `Get-WsmWizardRolledBackReason`，執行畫面與前端都顯示。
+- **R20**（`WizardRestore.ps1`、`AssistiveRestore.ps1`、`JournalRecovery.ps1`、`WizardBackupProjection.ps1`）
+  - 修法：
+    - 新增唯一讀法 `Get-WsmAssistiveRestoreAttemptStatus`：有記錄就用記錄；缺欄位時以 Stage 判定；兩者都沒有就回空字串。兩個檔案中的直接讀取全部改用它，並以 AST 守門。
+    - 完成與取消時同步寫入 attempt.Status，journal 重播寫入同一個值。
+    - 進度檢視以 `Get-WsmProgressRawField` 守門。
+  - 白名單：`JournalRecovery.ps1` 原本只開放給 R8 使用，subagent 為了讓重播結果與即時寫入一致，在這裡加了兩行。主代理已接受。
+- **R23**（`WizardRuntime.ps1`、`WizardHtmlRuntime.ps1`、`console.js`、`console.css`）
+  - `Get-WsmWizardTargetArtifactTotals` 擴充為：每個項目最多列出 100 個經安全文字化的相對路徑，另附總數與「另有 N 個」。
+  - 快取以「索引雜湊＋根目錄」為鍵，保留最近 4 份。
+  - 前端用原生 details 元件，鍵盤可操作，320 與 390 px 寬度不溢位，內容一律以 textContent 輸出。
+- **A3 回歸修正**（`WizardBackupProjection.ps1` `ConvertTo-WsmProgressText`）
+  - 問題：A3（083223d）截斷時先切到 256 字元，再接上「…（已截斷）」，總長變成 262。`Test-WizardProgress` 要求不超過 256，因此失敗；這支測試在 2f0d7cc 是通過的。
+  - 修法：需要加標記時，先把本文截到 256 減掉標記長度，再接標記，總長維持 256，重複處理結果不變。
+  - 另外，`Test-SensitiveNameConvergence` 的長度斷言原本把錯誤長度（256＋標記）當成預期值，已改成「總長 256、結尾是標記」。
+  - 教訓：A3 的回歸名單是用函式名 grep 出來的，沒有沿呼叫鏈找到 `Get-WsmHtmlProgressProjection` 的消費端測試。之後批次的回歸名單要加上「呼叫端的呼叫端」。
+- **既有斷言變更**：
+
+| 檔案 | 舊斷言 | 為何與規格衝突 | 新斷言 |
+|---|---|---|---|
+| `tests/Test-SensitiveNameConvergence.ps1` | 截斷後長度 = 256＋標記長度 | 把 A3 的長度缺陷當成預期值；原有契約是進度文字不超過 256（`Test-WizardProgress`） | 長度 = 256，結尾為標記 |
+
+  `Test-JournalReplayCoverage` 的 restore-cancelled 手工模擬補上 `RestoreAttempt.Status='Cancelled'`，讓它與現在的即時寫入一致；這不是放寬判定。
+- **測試**：
+  - 新增 `Test-RestoreReceiptCompat.ps1`，202 項，全程在 strict 模式下執行。
+  - 擴充 RetryFailedItems（90 項，含時鐘倒退與竄改）、RollbackThenRestore（96 項）、JournalReplayCoverage（451 項）、Cv2NonCReservationLifecycle（57 項），以及 RestoreSelectionBrowser、RetryFailedItemsBrowser 兩支瀏覽器測試。
+- **突變**：
+  - subagent 做了 16 個：其中 M13（篩選時 details 不跟著列隱藏）第一次沒被抓到，補上同群組不同類型的 pool 項目後轉紅。
+  - 主代理做了 1 個（快取鍵只用根目錄），轉紅，失敗訊息為「index that does not match the trusted hash was accepted」。
+- **驗證**：
+  - subagent 跑完必跑測試，以及約 30 支呼叫端測試與 7 支瀏覽器測試。本機的瀏覽器測試都完整跑完，沒有出現 ENVIRONMENT-LIMITED。
+  - 主代理在修正後重跑：WizardProgress、SensitiveNameConvergence 326、WizardBackupProgress 267、HtmlConsole 175、RestoreReceiptCompat 202、JournalReplayCoverage 451、ScriptEncoding 343。
+- **後續**（已記入 `_pending-additions.md`）：
+  - R26-Q4b 補充：state 為 RolledBack、但最新 job 為 Interrupted 時，還原鎖仍會鎖住選取。
+  - R26-B20b：`HtmlConsole.ps1` 約 :847、:855、:896 仍直接讀取 Status。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -3065,7 +3114,12 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R9 | `src/WizardBackupProjection.ps1` 結果視圖 | 已有交付後，第二次備份失敗、取消或未完成時，結果頁沒有提示 | 新增 `newerAttempt`，由 `Get-WsmWizardCurrentBackupAttempt` 判定，與結果並列顯示（17.122） | `Test-BackupAttemptsA2`（R9）、`Test-BackupWorkbenchBrowser.js` A2 區塊 | `2f0d7cc` |
 | R10 | `src/WizardBackup.ps1` attempt 讀取、投影讀取端 | 一個壞檔或舊 ToolVersion 檔，就讓整個 pair 的 StartBackup 丟例外；讀取端靜默略過 | 共用 `Get-WsmWizardBackupAttemptScan` 判定，略過並回報檔名清單；reparse 紀錄仍拒絕（17.122） | `Test-BackupAttemptsA2`（R10-1～5） | `2f0d7cc` |
 | R11 | `src/Payload.ps1`、`src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1` | 擷取失敗沒有穩定原因碼，使用者不知道原因與下一步 | 改丟型別化的 PathTooLong；PathTooLong／Locked／Missing／AccessDenied 只依例外型別與 HResult 判斷；附下一步，以及「相對深度＋檔名」位置（17.122） | `Test-BackupAttemptsA2`（R11，以真實檔案系統建立情境） | `2f0d7cc` |
-| R18 | `src/WizardBackupProjection.ps1` `ConvertTo-WsmProgressText` | RTL 覆寫、零寬字元、U+0085、U+2028、U+2029 原樣輸出；超過 256 字元靜默截斷；另有第三套祕密 regex | 改用唯一的路徑安全化規則：不可見字元轉為可見，截斷時標示「…（已截斷）」，重複處理結果不變；祕密判定改用 Core 的共用函式（17.123） | `Test-SensitiveNameConvergence`（進度文字區段） | （A3-COMMIT） |
+| R18 | `src/WizardBackupProjection.ps1` `ConvertTo-WsmProgressText` | RTL 覆寫、零寬字元、U+0085、U+2028、U+2029 原樣輸出；超過 256 字元靜默截斷；另有第三套祕密 regex | 改用唯一的路徑安全化規則：不可見字元轉為可見，截斷時標示「…（已截斷）」，重複處理結果不變；祕密判定改用 Core 的共用函式（17.123） | `Test-SensitiveNameConvergence`（進度文字區段） | `083223d` |
+| R8 | `src/WizardRestore.ps1` `Get-WsmWizardTargetDecisionRecord` | 時鐘倒退會選到舊收據；RetryOfReceiptHash 沒有寫進收據 | 在鎖內配置單調遞增的 Sequence，先比 Sequence 再比 CreatedUtc，舊收據排前；RetryOfReceiptHash 與 Sequence 納入收據雜湊（17.124） | `Test-RestoreReceiptCompat`（R8）、`Test-RetryFailedItems` | （B-COMMIT） |
+| R12 | `src/WizardRestore.ps1` 重試候選、`src/WizardRuntime.ps1`、`console.js` | 回復後可能回報 RestoreInProgress，文案誤導 | 優先判定 RolledBack，統一文案「已回復，請重新選擇還原」（17.124） | `Test-RestoreReceiptCompat`（R12）、`Test-RollbackThenRestore`、`Test-RetryFailedItemsBrowser.js` | （B-COMMIT） |
+| R20 | `src/WizardRestore.ps1`、`src/AssistiveRestore.ps1`、`src/JournalRecovery.ps1`、`src/WizardBackupProjection.ps1` | 舊 state 缺少 Status 時 strict 模式崩潰；終態時 Status 停在 Running；進度卡因缺欄位而消失 | 統一以 `Get-WsmAssistiveRestoreAttemptStatus` 讀取並加 AST 守門；終態與重播都同步寫入 Status；進度欄位加守門（17.124） | `Test-RestoreReceiptCompat`（R20）、`Test-JournalReplayCoverage`、`Test-Cv2NonCReservationLifecycle` | （B-COMMIT） |
+| R23 | `src/WizardRuntime.ps1`、`src/WizardHtmlRuntime.ps1`、`console.js`、`console.css` | 還原選取器只顯示檔數與位元組，無法展開看檔案明細 | 每項列出前 100 個安全文字化路徑，附總數與「另有 N 個」；索引加快取；使用原生 details（17.124） | `Test-RestoreReceiptCompat`（R23）、`Test-RestoreSelectionBrowser.js` | （B-COMMIT） |
+| A3-長度 | `src/WizardBackupProjection.ps1` `ConvertTo-WsmProgressText` | A3 截斷後總長 262，超過上限 256（`Test-WizardProgress` 從 083223d 起失敗） | 預留截斷標記的長度後再截斷，總長維持 256（17.124） | `Test-WizardProgress`、`Test-SensitiveNameConvergence` | （B-COMMIT） |
 
 ### 第六輪終檢
 
@@ -3074,5 +3128,5 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | S1 | `src/OperationRequests.ps1` Get-WsmTextWizardJobs | 文字端狀態白名單少了 WaitingForInput 與 Queued。HTML 寫入一筆等待輸入的還原作業後，CLI 讀取歷史就丟例外，RESUME、TAKEOVER 都無法進入 | 狀態白名單抽成單一來源 `Get-WsmJobStatusValues`，文字端共用；console.js 狀態表由測試守門對齊；Recover 遇到 WaitingForInput 時保留原狀（17.111） | `Test-JobRecordCompatibility`（HTML 寫入的每一種 status 文字端都能讀回） | d128977 |
 | S2 | `src/OperationRequests.ps1` Recover、`src/HtmlConsole.ps1` 匯入、`src/WizardFlow.ps1` | 舊紀錄缺少 CompletedUtc／outputs 時，在 strict mode 下中斷整個復原；HTML 匯入時的例外被吞掉；Interrupted 的時間文字端與 HTML 端不一致 | 所有讀取點改走 `ConvertTo-WsmNormalizedJobRecord`（只補缺少的欄位）；Interrupted 的 CompletedUtc 統一為 null（17.111） | `Test-JobRecordCompatibility`（71 項，strict）、`Test-WizardTextRuntime` | d128977 |
 | S3 | `src/HtmlConsole.ps1` 服務迴圈 accept 與首位元組讀取 | 單執行緒同步讀取首位元組，每條閒置的預連線佔住迴圈約 2 秒；開 4 條時，其他請求要等約 8 秒 | accept 後改放入有界待讀佇列，只把已有位元組的連線交給原本的單執行緒流程，閒置滿 2 秒的連線回 400 後關閉；未改成多執行緒（17.112） | `Test-ConsoleIdlePreconnect.js`（4 條閒置加 4 個併發請求都在 1500 ms 內、閒置連線約 2.1 秒關閉、分段送出的慢客戶端仍成功） | 1f129b7 |
-| S6 | `src/DeveloperProbe.ps1` | 裸 UNC 路徑沒有遮蔽；Name 與 Value 分欄時值會外洩；Account、Domain 不在黑名單 | 路徑判斷改用 lookbehind；同列的值一起遮蔽；黑名單補上 account、domain；名稱判定改用共用函式（17.123） | `Test-SensitiveNameConvergence`（Probe 區段） | （A3-COMMIT） |
-| S11 | `src/AssistiveReviewForms.ps1`、`src/WizardDetails.ps1`、`src/Core.ps1` | 兩套 regex 漏掉 Passwords、Tokens、private_key 等；物件分支誤丟 Description、Transcript | 全部改用單一的 `Test-WsmSensitiveName`；主代理另補：比對前移除 Unicode 格式字元，token 在名稱任何位置都算（排除 tokeniz*）（17.123） | `Test-SensitiveNameConvergence`（名稱表、分支一致性、Cf 字元、靜態守門） | （A3-COMMIT） |
+| S6 | `src/DeveloperProbe.ps1` | 裸 UNC 路徑沒有遮蔽；Name 與 Value 分欄時值會外洩；Account、Domain 不在黑名單 | 路徑判斷改用 lookbehind；同列的值一起遮蔽；黑名單補上 account、domain；名稱判定改用共用函式（17.123） | `Test-SensitiveNameConvergence`（Probe 區段） | `083223d` |
+| S11 | `src/AssistiveReviewForms.ps1`、`src/WizardDetails.ps1`、`src/Core.ps1` | 兩套 regex 漏掉 Passwords、Tokens、private_key 等；物件分支誤丟 Description、Transcript | 全部改用單一的 `Test-WsmSensitiveName`；主代理另補：比對前移除 Unicode 格式字元，token 在名稱任何位置都算（排除 tokeniz*）（17.123） | `Test-SensitiveNameConvergence`（名稱表、分支一致性、Cf 字元、靜態守門） | `083223d` |

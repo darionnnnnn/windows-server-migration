@@ -74,14 +74,54 @@ function Get-WsmWizardTargetSnapshot([string]$Workspace,$Context,[object[]]$Jobs
     [pscustomobject]@{Path=[string]$inventory.Path;SHA256=[string]$inventory.SHA256;Inventory=$inventory.Inventory;JobId=[string]$inventory.JobId}
 }
 
-function Get-WsmWizardTargetDecisionRecord([string]$Workspace,[string]$PairId,[string]$ExpectedPlanHash='') {
-    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;if(-not [IO.Directory]::Exists($root)){return $null};Assert-WsmNoReparse $root
+# 決策收據選取規則（與比較材料用同一個單調序號概念，不靠時間戳）：
+#   1. 先比 Sequence（Create-WsmWizardTargetDecisionReceipt 在材料目錄鎖內寫入：同 Pair 既有最大值加一）。沒有 Sequence 的舊收據視為 0，
+#      所以一律排在任何有 Sequence 的收據之前；序號大者勝。
+#   2. Sequence 相同（舊收據彼此之間，或 Sequence 重複）再比 CreatedUtc，較晚者勝；CreatedUtc 無法解析視為最舊。
+#   3. 仍然相同就無從判斷哪一份較新：丟 ambiguous，不猜。
+# 時鐘倒退時，後建立的收據 CreatedUtc 較早但 Sequence 較大，仍會被選到。
+function Get-WsmWizardTargetDecisionRows([string]$Workspace,[string]$PairId,[string]$ExpectedPlanHash='') {
+    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;if(-not [IO.Directory]::Exists($root)){return @()};Assert-WsmNoReparse $root
     $rows=New-Object 'System.Collections.Generic.List[object]'
     foreach($file in @(Get-ChildItem -LiteralPath $root -Filter 'decision-*.json' -File)){
         try{Assert-WsmNoReparse $file.FullName;if($file.Length -gt 4194304){continue};$hash=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant();$receipt=Read-WsmTrustedJson $file.FullName $hash;Assert-WsmAssistiveContract $receipt TargetDecisionReceipt | Out-Null;if($receipt.PairId -cne $PairId -or ($ExpectedPlanHash -and $receipt.PlanHash -ine $ExpectedPlanHash)){continue};$rows.Add([pscustomobject]@{Path=$file.FullName;SHA256=$hash;Receipt=$receipt})}catch{}
     }
-    if($rows.Count -gt 1){$latest=@($rows.ToArray() | Sort-Object { [DateTimeOffset]::Parse([string]$_.Receipt.CreatedUtc) } -Descending);if($latest.Count -gt 1 -and [string]$latest[0].Receipt.CreatedUtc -ceq [string]$latest[1].Receipt.CreatedUtc){throw 'Target decision receipt selection is ambiguous; inspect the durable receipt artifacts.'};return $latest[0]}
-    if($rows.Count -eq 1){return $rows[0]};$null
+    $rows.ToArray()
+}
+
+function Compare-WsmWizardTargetDecisionPriority($Left,$Right) {
+    # 回傳負數代表 $Left 應該勝出，正數代表 $Right 勝出，0 代表無從判斷。
+    $leftSequence=Get-WsmWizardTargetComparisonSequence $Left.Receipt;$rightSequence=Get-WsmWizardTargetComparisonSequence $Right.Receipt
+    if($leftSequence -ne $rightSequence){if($leftSequence -gt $rightSequence){return -1}else{return 1}}
+    $leftTicks=[long]::MinValue;$rightTicks=[long]::MinValue
+    try{$leftTicks=([DateTimeOffset]::Parse([string]$Left.Receipt.CreatedUtc)).UtcTicks}catch{}
+    try{$rightTicks=([DateTimeOffset]::Parse([string]$Right.Receipt.CreatedUtc)).UtcTicks}catch{}
+    if($leftTicks -ne $rightTicks){if($leftTicks -gt $rightTicks){return -1}else{return 1}}
+    0
+}
+
+# 下一個決策收據序號：同 Pair 既有收據（不看計畫雜湊）的最大 Sequence 加一，舊收據視為 0。呼叫端必須在材料目錄鎖內使用。
+function Get-WsmWizardTargetNextDecisionSequence([string]$Workspace,[string]$PairId) {
+    $maxSequence=[long]0
+    foreach($row in @(Get-WsmWizardTargetDecisionRows $Workspace $PairId)){$priorSequence=Get-WsmWizardTargetComparisonSequence $row.Receipt;if($priorSequence -gt $maxSequence){$maxSequence=$priorSequence}}
+    [Math]::Min($maxSequence,[long]::MaxValue-1)+1
+}
+
+function Get-WsmWizardTargetDecisionRecord([string]$Workspace,[string]$PairId,[string]$ExpectedPlanHash='') {
+    $rows=@(Get-WsmWizardTargetDecisionRows $Workspace $PairId $ExpectedPlanHash)
+    if($rows.Count -eq 0){return $null}
+    $best=$rows[0];for($i=1;$i -lt $rows.Count;$i++){if((Compare-WsmWizardTargetDecisionPriority $rows[$i] $best) -lt 0){$best=$rows[$i]}}
+    foreach($row in $rows){if(-not [object]::ReferenceEquals($row,$best) -and (Compare-WsmWizardTargetDecisionPriority $row $best) -eq 0){throw 'Target decision receipt selection is ambiguous; inspect the durable receipt artifacts.'}}
+    $best
+}
+
+# 收據落檔前蓋上 Sequence（與重試來源 RetryOfReceiptHash，僅重試收據才有），再重算收據雜湊：兩個欄位都在雜湊範圍內，事後改動會被 Assert 抓到。
+function Set-WsmWizardTargetDecisionReceiptStamp($Receipt,[long]$Sequence,[string]$RetryOfReceiptHash='') {
+    $Receipt | Add-Member NoteProperty Sequence $Sequence -Force
+    if($RetryOfReceiptHash){$Receipt | Add-Member NoteProperty RetryOfReceiptHash $RetryOfReceiptHash.ToLowerInvariant() -Force}
+    $body=[ordered]@{};foreach($property in $Receipt.PSObject.Properties){if($property.Name -cne 'SHA256'){$body[$property.Name]=$property.Value}}
+    $Receipt.SHA256=Get-WsmHashText ($body | ConvertTo-Json -Depth 20 -Compress)
+    Assert-WsmAssistiveTargetDecisionReceipt $Receipt | Out-Null
 }
 
 # 比較材料選取規則（不依賴時間戳的唯一性）：
@@ -325,6 +365,9 @@ function Invoke-WsmWizardTargetRecheck {
     Invoke-WsmTargetRestoreRecheck -ManifestPath $packageRecord.ManifestPath -ExpectedHash $packageRecord.ManifestHash -StateDirectory (Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs') -ObservedSnapshotHash $snapshotHash -CancellationToken $CancellationToken
 }
 
+# R12：回復（RolledBack）是終態，不是「還原進行中」。回復後項目可以重新選取再還原，不屬於「重試失敗項目」；重試候選與畫面都用這一句說明。
+function Get-WsmWizardRolledBackReason { '已回復，請重新選擇還原。這次還原已被回復；回復後項目可以重新選取再還原，不屬於「重試失敗項目」。' }
+
 # P8：部分完成後的「重試失敗項目」候選（只讀；不寫入、不自動 repair）。
 # 純函式：全部輸入都由呼叫端傳入（最近一次母作業的 operation state、綁定的決策收據、目前的項目可還原判定），方便逐情境驗證。
 # 來源只有最近一次母作業 state.RestoreAttempt（含 ItemResults）與它綁定的最新決策收據；收據不是最新、世代不同或母作業未結束，一律不顯示。
@@ -335,10 +378,11 @@ function Invoke-WsmWizardTargetRecheck {
 function Get-WsmWizardTargetRetryCandidatesCore {
     [CmdletBinding()]param([Parameter(Mandatory)]$PackageRecord,$State,$DecisionRecord,[object[]]$ItemOptions=@(),$PendingRestore=$null,[object[]]$RecheckItems=@())
     $out=[ordered]@{NeedsRecheckItemIds=[string[]]@();Visible=$false;Eligible=$false;ReasonCode='';Reason='';CandidateItemIds=[string[]]@();SucceededItemIds=[string[]]@();NotSucceededItemIds=[string[]]@();Excluded=@();SourceAttemptId='';SourceReceiptHash='';SourceStage='';SourceOwner='';PriorAcceptedUnpreparedItemIds=[string[]]@();SuggestedReason=''}
+    # 已持久化的 state 才是真相：Stage 是 RolledBack 時，舊的 Interrupted／WaitingForInput 工作紀錄或殘留判定都不能把它說成「還原進行中」。
+    if($State -and $State.PSObject.Properties['Stage'] -and [string]$State.Stage -ceq 'RolledBack'){$out.SourceStage='RolledBack';$out.ReasonCode='RolledBack';$out.Reason=(Get-WsmWizardRolledBackReason);return [pscustomobject]$out}
     if($PendingRestore){$out.ReasonCode='RestoreInProgress';$out.Reason='還原尚未結束（等待輸入或已中斷），請先在還原畫面完成或續作。';return [pscustomobject]$out}
     if(-not $State -or -not $State.PSObject.Properties['RestoreAttempt'] -or -not $State.RestoreAttempt -or -not $DecisionRecord -or -not $DecisionRecord.PSObject.Properties['Receipt'] -or -not $DecisionRecord.Receipt){$out.ReasonCode='NoRestoreAttempt';$out.Reason='還沒有可重試的還原結果。';return [pscustomobject]$out}
     $attempt=$State.RestoreAttempt;$receipt=$DecisionRecord.Receipt;$stage=[string]$State.Stage;$out.SourceStage=$stage
-    if($stage -ceq 'RolledBack'){$out.ReasonCode='RolledBack';$out.Reason='這次還原已被回復；回復後項目可以重新選取再還原，不屬於「重試失敗項目」。';return [pscustomobject]$out}
     if($stage -notin @('Succeeded','Partial','RebootRequired','Cancelled','Failed')){$out.ReasonCode=$(if($stage -ceq 'Superseded'){'Superseded'}else{'RestoreInProgress'});$out.Reason=$(if($stage -ceq 'Superseded'){'這次還原已被新的嘗試取代。'}else{'還原尚未結束，結束後才能重試失敗項目。'});return [pscustomobject]$out}
     $receiptSelected=@($receipt.SelectedItemIds|ForEach-Object {[string]$_}|Sort-Object -Unique)
     if([string]$receipt.Decision -cne 'RestoreNow' -or [string]$attempt.DecisionReceiptHash -ine [string]$DecisionRecord.SHA256 -or [string]$attempt.ManifestHash -ine [string]$PackageRecord.ManifestHash -or [long]$attempt.Generation -ne [long]$PackageRecord.Package.Manifest.Generation -or (@($attempt.SelectedItemIds|ForEach-Object {[string]$_}|Sort-Object -Unique) -join "`n") -cne ($receiptSelected -join "`n")){$out.ReasonCode='AttemptNotCurrent';$out.Reason='最近一次還原不是依目前這份選擇紀錄進行的，沒有可重試的結果。';return [pscustomobject]$out}
@@ -417,8 +461,15 @@ function Create-WsmWizardTargetDecisionReceipt {
     foreach($id in $acceptedUnique){if(-not $eligible.ContainsKey([string]$id)){throw ('Accepted-unprepared item '+$id+' has no current core-derived software dependency issue to accept.') }}
     $args=@{PlanPath=[string]$ctx.Received.Path;PlanHash=[string]$ctx.Received.SHA256;ManifestHash=[string]$packageRecord.ManifestHash;Generation=[int]$packageRecord.Package.Manifest.Generation;TargetSnapshotHash=[string]$snapshot.SHA256;ComparisonRevision=[int]$comparison.Revision;SelectionRevision=[int]$ctx.Plan.Assistive.SourceSelectionsVersion;Decision=$Decision;Owner=$Owner;Reason=$Reason;SelectedItemIds=[string[]]$allowed;AcceptedUnpreparedItemIds=[string[]]$acceptedUnique;Comparison=$comparison}
     $receipt=New-WsmAssistiveTargetDecisionReceipt @args
-    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;[void](New-WsmOutputOwnedDirectory $root);$receiptHash=Get-WsmHashText ($receipt | ConvertTo-Json -Depth 100 -Compress);$path=Join-Path $root ('decision-'+$receiptHash+'.json')
-    if(-not [IO.File]::Exists($path)){Write-WsmJson $path $receipt}else{$oldHash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash;Assert-WsmNoReparse $path;$old=Read-WsmTrustedJson $path $oldHash;if((Get-WsmHashText ($old | ConvertTo-Json -Depth 100 -Compress)) -ine $receiptHash){throw 'Existing Target decision receipt path conflicts; preserve it for inspection.'}}
+    $root=Get-WsmWizardTargetMaterialRoot $Workspace $PairId;[void](New-WsmOutputOwnedDirectory $root)
+    # R8：Sequence 在材料目錄的鎖內決定（同 Pair 既有最大值加一），先後兩張收據一定有先後，時鐘倒退也不會選到舊收據；重試來源一併寫進收據並納入收據雜湊。
+    $ownerWorkspace=$Workspace  # Invoke-WsmLocked 自己的參數也叫 $Workspace（值是 $root），區塊內要用另一個名字才拿得到呼叫端的工作區。
+    $path=@(Invoke-WsmLocked $root {
+        Set-WsmWizardTargetDecisionReceiptStamp $receipt (Get-WsmWizardTargetNextDecisionSequence $ownerWorkspace $PairId) $RetryOfReceiptHash
+        $receiptHash=Get-WsmHashText ($receipt | ConvertTo-Json -Depth 100 -Compress);$storedPath=Join-Path $root ('decision-'+$receiptHash+'.json')
+        if(-not [IO.File]::Exists($storedPath)){[void](Write-WsmJson $storedPath $receipt)}else{$oldHash=(Get-FileHash -LiteralPath $storedPath -Algorithm SHA256).Hash;Assert-WsmNoReparse $storedPath;$old=Read-WsmTrustedJson $storedPath $oldHash;if((Get-WsmHashText ($old | ConvertTo-Json -Depth 100 -Compress)) -ine $receiptHash){throw 'Existing Target decision receipt path conflicts; preserve it for inspection.'}}
+        $storedPath
+    })[-1]
     [pscustomobject][ordered]@{Status='Succeeded';PairId=$PairId;ReceiptPath=[IO.Path]::GetFullPath($path);Path=[IO.Path]::GetFullPath($path);ReceiptHash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();SHA256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();ManifestHash=[string]$packageRecord.ManifestHash;Generation=[long]$packageRecord.Package.Manifest.Generation;PlanHash=[string]$ctx.Received.SHA256;TargetSnapshotHash=[string]$snapshot.SHA256;ComparisonRevision=[int]$comparison.Revision;SelectionRevision=[int]$ctx.Plan.Assistive.SourceSelectionsVersion;Decision=$Decision;SelectedItemIds=@($allowed);AcceptedUnpreparedItemIds=@($acceptedUnique);AuthoritativeApproval=$false;ProductionVerified=$false}
 }
 
@@ -456,7 +507,7 @@ function Invoke-WsmWizardTargetRestore {
     $waitingChallengeResume=$false
     if($state.PSObject.Properties['AssistiveServiceChallenge'] -and [string]$state.AssistiveServiceChallenge.State -ceq 'WaitingForInput'){
         $challenge=$state.AssistiveServiceChallenge;$attempt=$null;if($state.PSObject.Properties['RestoreAttempt']){$attempt=$state.RestoreAttempt}
-        if(-not $attempt -or [string]$state.Stage -cne 'WaitingForInput' -or [string]$attempt.Status -cne 'WaitingForInput' -or -not $OperationId -or [string]$challenge.ParentOperationId -cne $OperationId -or [string]$attempt.OperationId -cne $OperationId -or [string]$attempt.ManifestHash -ine $projection.ManifestHash -or [long]$attempt.Generation -ne [long]$projection.Generation -or [string]$attempt.DecisionReceiptHash -ine $projection.ReceiptHash -or [string]$attempt.TargetSnapshotHash -ine $projection.TargetSnapshotHash -or [string]$attempt.WizardPreviewHash -ine $PreviewHash -or [string]$challenge.PreviewHash -ine $PreviewHash -or (@($attempt.SelectedItemIds|Sort-Object -Unique)-join "`n") -cne (@($projection.SelectedItemIds|Sort-Object -Unique)-join "`n")){throw 'Waiting Service challenge does not match the exact durable TargetRestore parent; refresh or explicitly take over through the challenge control.'}
+        if(-not $attempt -or [string]$state.Stage -cne 'WaitingForInput' -or (Get-WsmAssistiveRestoreAttemptStatus $attempt $state) -cne 'WaitingForInput' -or -not $OperationId -or [string]$challenge.ParentOperationId -cne $OperationId -or [string]$attempt.OperationId -cne $OperationId -or [string]$attempt.ManifestHash -ine $projection.ManifestHash -or [long]$attempt.Generation -ne [long]$projection.Generation -or [string]$attempt.DecisionReceiptHash -ine $projection.ReceiptHash -or [string]$attempt.TargetSnapshotHash -ine $projection.TargetSnapshotHash -or [string]$attempt.WizardPreviewHash -ine $PreviewHash -or [string]$challenge.PreviewHash -ine $PreviewHash -or (@($attempt.SelectedItemIds|Sort-Object -Unique)-join "`n") -cne (@($projection.SelectedItemIds|Sort-Object -Unique)-join "`n")){throw 'Waiting Service challenge does not match the exact durable TargetRestore parent; refresh or explicitly take over through the challenge control.'}
         $waitingChallengeResume=$true
     }
     # A successful restore may itself change the live filesystem rows that fed the
@@ -488,7 +539,7 @@ function Invoke-WsmWizardTargetRestore {
     $freshHash=Get-WsmWizardTargetPreviewHash $freshPreview $PairId $projection.PlanHash $projection.ManifestHash ([long]$projection.Generation) $projection.ReceiptHash $projection.TargetSnapshotHash $projection.ComparisonHash ([int]$projection.ComparisonRevision) ([int]$projection.SelectionRevision) ([string]$projection.Decision)
     if($freshHash -ine $PreviewHash){throw 'Target preview rows or readiness gates changed before restore; refresh and require a new explicit confirmation.'}
     $freshPreview | Add-Member NoteProperty WizardPreviewHash $PreviewHash -Force
-    if(-not $waitingChallengeResume -and $state.PSObject.Properties['RestoreAttempt'] -and [string]$state.RestoreAttempt.Status -cne 'Superseded' -and [string]$state.RestoreAttempt.ManifestHash -ieq $projection.ManifestHash -and [string]$state.RestoreAttempt.DecisionReceiptHash -ieq $projection.ReceiptHash -and [long]$state.RestoreAttempt.Generation -eq [long]$projection.Generation){
+    if(-not $waitingChallengeResume -and $state.PSObject.Properties['RestoreAttempt'] -and (Get-WsmAssistiveRestoreAttemptStatus $state.RestoreAttempt $state) -cne 'Superseded' -and [string]$state.RestoreAttempt.ManifestHash -ieq $projection.ManifestHash -and [string]$state.RestoreAttempt.DecisionReceiptHash -ieq $projection.ReceiptHash -and [long]$state.RestoreAttempt.Generation -eq [long]$projection.Generation){
         if(@($state.PendingOperations).Count){throw 'The exact current restore attempt has an unresolved journal intent; repair it before retrying.'}
         if($state.Stage -in @('Succeeded','Partial','RebootRequired')){if(-not $state.RestoreAttempt.PSObject.Properties['ItemResults']){throw 'The exact current restore attempt has no durable item-result projection; retain the journal for review.'};$result=[pscustomobject]@{Results=@($state.RestoreAttempt.ItemResults);Deferred=@($projection.Rows | Where-Object Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired'))}}
         else{throw 'The exact current restore attempt is not terminal; inspect its journal and resume through core recovery before retrying.'}
@@ -552,7 +603,7 @@ function Update-WsmWizardTargetRestorePreviewBinding {
         $current=if($Package){Get-WsmOperationState $paths $Package}else{Read-WsmJson $paths.State}
         if(-not $current.PSObject.Properties['RestoreAttempt'] -or -not $current.RestoreAttempt -or [string]$current.RestoreAttempt.OperationId -cne $ParentOperationId){throw 'The TargetRestore parent changed while its preview binding was being refreshed.'}
         $currentAttempt=$current.RestoreAttempt
-        if([string]$currentAttempt.Status -cnotin @('Running','WaitingForInput')){throw 'The TargetRestore parent is no longer active, so its preview binding cannot be refreshed.'}
+        if((Get-WsmAssistiveRestoreAttemptStatus $currentAttempt $current) -cnotin @('Running','WaitingForInput')){throw 'The TargetRestore parent is no longer active, so its preview binding cannot be refreshed.'}
         $storedHash=[string]$currentAttempt.WizardPreviewHash
         $currentChallenge=$null
         if($current.PSObject.Properties['AssistiveServiceChallenge'] -and $current.AssistiveServiceChallenge -and [string]$current.AssistiveServiceChallenge.ParentOperationId -ceq $ParentOperationId -and [string]$current.AssistiveServiceChallenge.State -cin @('WaitingForInput','Running')){
@@ -579,7 +630,7 @@ function Resolve-WsmWizardTargetRestorePreviewBinding {
     $stateDirectory=Join-Path ([IO.Path]::GetFullPath($Workspace)) 'pairs';$statePath=Join-Path (Join-Path $stateDirectory $PairId) 'state.json'
     if(-not [IO.File]::Exists($statePath)){return $PreviewHash}
     $state=Read-WsmJson $statePath
-    if(-not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.RestoreAttempt -or [string]$state.RestoreAttempt.OperationId -cne $ParentOperationId -or [string]$state.RestoreAttempt.Status -cnotin @('Running','WaitingForInput')){return $PreviewHash}
+    if(-not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.RestoreAttempt -or [string]$state.RestoreAttempt.OperationId -cne $ParentOperationId -or (Get-WsmAssistiveRestoreAttemptStatus $state.RestoreAttempt $state) -cnotin @('Running','WaitingForInput')){return $PreviewHash}
     if([string]$state.RestoreAttempt.WizardPreviewHash -ine $PreviewHash){return $PreviewHash}
     $projection=$null;try{$projection=Get-WsmWizardTargetRestoreProjection -Workspace $Workspace -PairId $PairId -Jobs $Jobs -GeneralHostEvidence $GeneralHostEvidence}catch{return $PreviewHash}
     if(-not $projection -or [string]$projection.Status -cne 'Previewed'){return $PreviewHash}
@@ -598,7 +649,7 @@ function Revoke-WsmWizardTargetRestoreParent {
         $current=if($Package){Get-WsmOperationState $paths $Package}else{Read-WsmJson $paths.State}
         if(-not $current.PSObject.Properties['RestoreAttempt'] -or -not $current.RestoreAttempt -or [string]$current.RestoreAttempt.OperationId -cne $ParentOperationId){throw 'The TargetRestore parent changed while it was being superseded.'}
         $currentAttempt=$current.RestoreAttempt
-        if([string]$currentAttempt.Status -cnotin @('Running','WaitingForInput')){throw 'The TargetRestore parent is no longer active and cannot be superseded.'}
+        if((Get-WsmAssistiveRestoreAttemptStatus $currentAttempt $current) -cnotin @('Running','WaitingForInput')){throw 'The TargetRestore parent is no longer active and cannot be superseded.'}
         if($current.PSObject.Properties['AssistiveServiceChallenge'] -and $current.AssistiveServiceChallenge){
             $currentChallenge=$current.AssistiveServiceChallenge
             if([string]$currentChallenge.State -cin @('WaitingForInput','Running')){
@@ -628,7 +679,7 @@ function Stop-WsmWizardTargetRestoreParent {
         $current=Read-WsmJson $paths.State
         if($current.PairId -cne $PairId -or -not $current.PSObject.Properties['RestoreAttempt'] -or -not $current.RestoreAttempt -or [string]$current.RestoreAttempt.OperationId -cne $ParentOperationId){throw 'No durable TargetRestore parent matches the requested ParentOperationId.'}
         $currentAttempt=$current.RestoreAttempt
-        if([string]$currentAttempt.Status -cnotin @('Running','WaitingForInput')){throw ('The TargetRestore parent already reached a terminal state ('+[string]$currentAttempt.Status+') and cannot be cancelled again.')}
+        if((Get-WsmAssistiveRestoreAttemptStatus $currentAttempt $current) -cnotin @('Running','WaitingForInput')){throw ('The TargetRestore parent already reached a terminal state ('+(Get-WsmAssistiveRestoreAttemptStatus $currentAttempt $current)+') and cannot be cancelled again.')}
         $pendingCount=@($current.PendingOperations).Count
         if($current.PSObject.Properties['AssistiveServiceChallenge'] -and $current.AssistiveServiceChallenge){
             $currentChallenge=$current.AssistiveServiceChallenge
@@ -654,7 +705,7 @@ function Invoke-WsmWizardSupersedeStaleTargetRestoreParent {
     $state=Read-WsmJson $statePath
     if(-not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.RestoreAttempt){return ''}
     $attempt=$state.RestoreAttempt;$oldId=[string]$attempt.OperationId
-    if(-not $oldId -or $oldId -ceq $OperationId -or [string]$attempt.Status -cnotin @('Running','WaitingForInput') -or [string]$state.Stage -cnotin @('Running','WaitingForInput')){return ''}
+    if(-not $oldId -or $oldId -ceq $OperationId -or (Get-WsmAssistiveRestoreAttemptStatus $attempt $state) -cnotin @('Running','WaitingForInput') -or [string]$state.Stage -cnotin @('Running','WaitingForInput')){return ''}
     foreach($job in @($Jobs)){if($job -and $job.PSObject.Properties['jobId'] -and [string]$job.jobId -ceq $oldId -and $job.PSObject.Properties['status'] -and [string]$job.status -cin @('Running','CancelRequested')){throw 'An earlier TargetRestore parent still has a running worker; wait for it or request its safe cancellation before starting another restore.'}}
     if(-not $Projection){$Projection=Get-WsmWizardTargetRestoreProjection -Workspace $Workspace -PairId $PairId -Jobs $Jobs -GeneralHostEvidence $GeneralHostEvidence}
     if([string]$Projection.Status -cne 'Previewed'){return ''}
@@ -679,7 +730,7 @@ function Get-WsmWizardTargetRestoreResumePreview {
     $attempt=$state.RestoreAttempt;$result.ParentOperationId=[string]$attempt.OperationId;if($attempt.PSObject.Properties['WizardPreviewHash']){$result.PreviewHash=[string]$attempt.WizardPreviewHash}
     if($ParentOperationId -and [string]$attempt.OperationId -cne $ParentOperationId){$result.Reason='ParentMismatch';return [pscustomobject]$result}
     $challenge=$null;if($state.PSObject.Properties['AssistiveServiceChallenge'] -and $state.AssistiveServiceChallenge){$challenge=$state.AssistiveServiceChallenge;$result.ChallengeState=[string]$challenge.State;if($challenge.PSObject.Properties['Requirements']){$result.CredentialRequirements=@($challenge.Requirements)}}
-    $attemptStatus=[string]$attempt.Status
+    $attemptStatus=Get-WsmAssistiveRestoreAttemptStatus $attempt $state
     if($attemptStatus -ceq 'Superseded' -or [string]$state.Stage -ceq 'Superseded' -or $result.ChallengeState -ceq 'Revoked'){$result.Reason='Superseded';return [pscustomobject]$result}
     if($attemptStatus -ceq 'Cancelled' -or [string]$state.Stage -ceq 'Cancelled' -or $result.ChallengeState -ceq 'Cancelled'){$result.Reason='Cancelled';return [pscustomobject]$result}
     if($attemptStatus -cnotin @('Running','WaitingForInput') -or [string]$state.Stage -cnotin @('Running','WaitingForInput')){$result.Reason='Terminal';return [pscustomobject]$result}
@@ -712,7 +763,7 @@ function Resume-WsmWizardTargetRestore {
         return $replay
     }
     $challenge=$null;if($state.PSObject.Properties['AssistiveServiceChallenge'] -and $state.AssistiveServiceChallenge){$challenge=$state.AssistiveServiceChallenge}
-    $challengeState=if($challenge){[string]$challenge.State}else{''};$attemptStatus=[string]$attempt.Status
+    $challengeState=if($challenge){[string]$challenge.State}else{''};$attemptStatus=Get-WsmAssistiveRestoreAttemptStatus $attempt $state
     if($challengeState -cin @('Cancelled','Revoked') -or $attemptStatus -cin @('Cancelled','Superseded') -or [string]$state.Stage -cin @('Cancelled','Superseded')){throw 'This TargetRestore parent was cancelled or superseded and can never be resumed; preview again to create a new restore.'}
     if([string]$state.Stage -cnotin @('Running','WaitingForInput') -or $attemptStatus -cnotin @('Running','WaitingForInput')){throw ('This TargetRestore parent already reached a terminal result ('+[string]$state.Stage+'); preview again to create a new restore instead of continuing it.')}
     $storedHash=[string]$attempt.WizardPreviewHash;if($storedHash -notmatch '^[a-f0-9]{64}$'){throw 'The durable TargetRestore parent has no exact reviewed preview hash; preview again.'}

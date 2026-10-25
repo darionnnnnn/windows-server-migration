@@ -141,6 +141,7 @@ try {
             $rcnl=RestoreNow $c;$stc=StateOf $c
             Check ([string]$rcnl.Stage -ceq 'Cancelled' -and [string]$stc.Stage -ceq 'Cancelled' -and $script:writerCalls.Count -eq 1) ($channel+' cancel: the real cancellation token did not stop the restore at the writer boundary.')
             Check (@($rcnl.Results|Where-Object ItemId -CEQ $ca.ItemId).Count -eq 0) ($channel+' cancel: a cancelled item must not get a result.')
+            Check ([string]$stc.RestoreAttempt.Status -ceq 'Cancelled' -and [string]$stc.RestoreAttempt.Status -ceq [string]$stc.Stage) ($channel+' cancel: R20 the terminal Stage was written without the matching RestoreAttempt.Status.')
             $own=@(OwnerOf $ca)
             Check ($own.Count -eq 1 -and [string]$own[0].Owner.Channel -ceq $channel -and [string]$own[0].Owner.DriftStatus -ceq 'Unverified' -and -not [string]$own[0].Owner.EvidenceHash) ($channel+' cancel: the reservation of a cancelled item must be retained as Unverified (same rule as failure).')
             $log.Add('cancel|'+(Shape $ca))

@@ -1,4 +1,12 @@
-﻿function Get-WsmAssistiveRestoreDecision {
+﻿# R20：RestoreAttempt.Status 的唯一讀法。舊版 state 的 RestoreAttempt 沒有 Status 欄位，strict mode 下直接讀會丟 PropertyNotFound。
+# 有記錄就用記錄；沒有就以 state 的 Stage 為準（舊版只有 Stage 這一個事實：Running／WaitingForInput 仍在進行，其餘為終態）；兩者都不知道回傳空字串（視為非進行中）。
+function Get-WsmAssistiveRestoreAttemptStatus($Attempt,$State=$null) {
+    if($Attempt -and $Attempt.PSObject.Properties['Status']){return [string]$Attempt.Status}
+    if($State -and $State.PSObject.Properties['Stage']){return [string]$State.Stage}
+    ''
+}
+
+function Get-WsmAssistiveRestoreDecision {
     param([Parameter(Mandatory)]$Package,[Parameter(Mandatory)][string]$ManifestHash,[Parameter(Mandatory)][string]$DecisionReceiptPath,[Parameter(Mandatory)][string]$DecisionReceiptHash,[string]$TargetSnapshotPath='')
     if($Package.Plan.SchemaVersion -ne 3){throw 'Assistive decision receipts are required only for schema 3 plans.'}
     Assert-WsmAssistiveContract $Package.Plan MigrationPlan | Out-Null
@@ -41,13 +49,13 @@ function Resolve-WsmAssistiveRestoreParentOperationId([string]$OperationId,$Canc
 
 function Test-WsmAssistiveServiceChallengePreWriteRecovery([string]$StateDirectory,$State,[string]$OperationId) {
     $attempt=$State.RestoreAttempt;$challenge=$State.AssistiveServiceChallenge
-    if([string]$challenge.State -cne 'Running' -or [string]$challenge.ParentOperationId -cne $OperationId -or [string]$attempt.OperationId -cne $OperationId -or [string]$attempt.Status -notin @('WaitingForInput','Running') -or [string]$State.Stage -notin @('WaitingForInput','Running')){throw 'Service challenge is not in a recoverable pre-write state.'}
+    if([string]$challenge.State -cne 'Running' -or [string]$challenge.ParentOperationId -cne $OperationId -or [string]$attempt.OperationId -cne $OperationId -or (Get-WsmAssistiveRestoreAttemptStatus $attempt $State) -notin @('WaitingForInput','Running') -or [string]$State.Stage -notin @('WaitingForInput','Running')){throw 'Service challenge is not in a recoverable pre-write state.'}
     if(@($State.PendingOperations).Count){throw 'Service challenge has unresolved native intent; repair and read back the target before takeover.'}
     if(@($attempt.ItemResults).Count){throw 'Service challenge already has target item results; do not replay this parent automatically.'}
     $journal=Test-WsmJournal $StateDirectory ([string]$State.PairId);if(-not $journal.Consistent){throw 'Service challenge journal is inconsistent; repair and read back the target before takeover.'}
     $paths=Get-WsmOperationPaths $StateDirectory ([string]$State.PairId);$events=@(Read-WsmJournalEvents $paths);$restoreStarts=@($events|Where-Object {$_.Row.Action -ceq 'AssistiveRestoreStarted' -and $_.Row.Detail -and [string]$_.Row.Detail.OperationId -ceq $OperationId}|Sort-Object {$_.Row.Sequence})
     if($restoreStarts.Count){$startSequence=[long]$restoreStarts[-1].Row.Sequence;$postStart=@($events|Where-Object {[long]$_.Row.Sequence -gt $startSequence});if(@($postStart|Where-Object {$_.Row.Action -in @('AssistiveItemStarted','AssistiveItemCompleted','AssistiveItemFailed','AssistiveItemNeedsRepair','AssistiveRestoreCompleted','AssistiveRestoreCancelled')}).Count){throw 'Service challenge has crossed the native item boundary; explicit RepairOperation/readback is required before takeover.'}}
-    elseif([string]$State.Stage -ceq 'Running' -or [string]$attempt.Status -ceq 'Running'){throw 'Running service challenge has no matching durable restore-start journal; preserve it for manual reconciliation.'}
+    elseif([string]$State.Stage -ceq 'Running' -or (Get-WsmAssistiveRestoreAttemptStatus $attempt $State) -ceq 'Running'){throw 'Running service challenge has no matching durable restore-start journal; preserve it for manual reconciliation.'}
     $currentItems=@($State.Items|Where-Object {$_.ItemId -in @($attempt.SelectedItemIds) -and [string]$_.AppliedManifestHash -ieq [string]$attempt.ManifestHash -and [long]$_.AppliedGeneration -eq [long]$attempt.Generation});if($currentItems.Count){throw 'Service challenge parent already has current-generation item readback; do not replay it automatically.'}
     [pscustomobject]@{SafeToTakeOver=$true;JournalSequence=[long]$journal.JournalSequence;JournalHash=[string]$journal.JournalHash;NativeItemStarted=$false;PendingOperations=0}
 }
@@ -951,7 +959,7 @@ function Set-WsmAssistiveCredentialDeferral {
         if($state.PairId -cne $PairId -or -not $state.PSObject.Properties['AssistiveServiceChallenge'] -or -not $state.PSObject.Properties['RestoreAttempt']){throw 'Durable Service credential challenge was not found.'}
         $challenge=$state.AssistiveServiceChallenge;$attempt=$state.RestoreAttempt
         if([string]$challenge.ParentOperationId -cne $ParentOperationId -or [string]$attempt.OperationId -cne $ParentOperationId -or [string]$challenge.PairId -cne $PairId -or [string]$challenge.PreviewHash -ine $PreviewHash -or [string]$attempt.WizardPreviewHash -ine $PreviewHash){throw 'Credential deferral is not bound to this durable TargetRestore parent and preview.'}
-        if([string]$challenge.State -cne 'WaitingForInput' -or [string]$attempt.Status -cne 'WaitingForInput' -or [string]$state.Stage -cne 'WaitingForInput'){throw 'Credentials can only be deferred while the restore is waiting for input.'}
+        if([string]$challenge.State -cne 'WaitingForInput' -or (Get-WsmAssistiveRestoreAttemptStatus $attempt $state) -cne 'WaitingForInput' -or [string]$state.Stage -cne 'WaitingForInput'){throw 'Credentials can only be deferred while the restore is waiting for input.'}
         if(-not $challenge.PSObject.Properties['Requirements'] -or -not @($challenge.Requirements).Count){throw 'This challenge has no recorded credential requirements; refresh the restore preview.'}
         $required=@($challenge.RequiredSecretRefs|ForEach-Object {[string]$_})
         foreach($ref in $refs){if($ref -cnotin $required){throw 'A SecretRef to defer is not a current credential requirement of this challenge.'}}
@@ -976,8 +984,8 @@ function Takeover-WsmAssistiveServiceCredentialChallenge([string]$StateDirectory
         if($state.PairId -cne $PairId -or -not $state.PSObject.Properties['RestoreAttempt'] -or -not $state.PSObject.Properties['AssistiveServiceChallenge']){throw 'No durable TargetRestore parent is available for takeover.'}
         $attempt=$state.RestoreAttempt;$challenge=$state.AssistiveServiceChallenge
         if([string]$attempt.OperationId -cne $OperationId -or [string]$challenge.ParentOperationId -cne $OperationId -or [string]$challenge.PairId -cne $PairId -or [string]$challenge.PreviewHash -ine $PreviewHash -or [string]$attempt.WizardPreviewHash -ine $PreviewHash -or [string]$attempt.ManifestHash -ine [string]$challenge.ManifestHash -or [long]$attempt.Generation -ne [long]$challenge.Generation -or [int]$challenge.Revision -ne $Revision -or [string]$challenge.Role -cne 'Target'){throw 'Service credential challenge changed; takeover requires the same current durable TargetRestore parent and preview.'}
-        $readback=$null;if([string]$challenge.State -ceq 'Running'){$readback=Test-WsmAssistiveServiceChallengePreWriteRecovery $StateDirectory $state $OperationId;$state.Stage='WaitingForInput';$attempt.Status='WaitingForInput';$attempt|Add-Member NoteProperty LastPreWriteRecovery $readback -Force;$challenge.State='WaitingForInput';$challenge|Add-Member NoteProperty LastPreWriteRecovery $readback -Force}
-        elseif([string]$state.Stage -cne 'WaitingForInput' -or [string]$attempt.Status -cne 'WaitingForInput' -or [string]$challenge.State -cne 'WaitingForInput'){throw 'Service credential challenge state cannot be safely taken over.'}
+        $readback=$null;if([string]$challenge.State -ceq 'Running'){$readback=Test-WsmAssistiveServiceChallengePreWriteRecovery $StateDirectory $state $OperationId;$state.Stage='WaitingForInput';$attempt|Add-Member NoteProperty Status 'WaitingForInput' -Force;$attempt|Add-Member NoteProperty LastPreWriteRecovery $readback -Force;$challenge.State='WaitingForInput';$challenge|Add-Member NoteProperty LastPreWriteRecovery $readback -Force}
+        elseif([string]$state.Stage -cne 'WaitingForInput' -or (Get-WsmAssistiveRestoreAttemptStatus $attempt $state) -cne 'WaitingForInput' -or [string]$challenge.State -cne 'WaitingForInput'){throw 'Service credential challenge state cannot be safely taken over.'}
         if([string]$challenge.Actor -ceq $Actor -and [string]$challenge.SessionId -ceq $SessionId -and [string]$challenge.ContextId -ceq $ContextId){throw 'Current actor/session already owns this service challenge; takeover is unnecessary.'}
         $takeoverCount=0;if($challenge.PSObject.Properties['TakeoverCount']){$takeoverCount=[int]$challenge.TakeoverCount};$takeoverCount++
         $challenge.Actor=$Actor;$challenge.SessionId=$SessionId;$challenge.ContextId=$ContextId;$challenge|Add-Member NoteProperty TakeoverCount $takeoverCount -Force;$challenge|Add-Member NoteProperty LastTakeoverUtc (Get-WsmUtc) -Force
@@ -1121,7 +1129,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     # A parent that went back to WaitingForInput after a rejected password keeps the items it already settled (done, failed, deferred); they are
     # neither redone nor asked for a credential again. Only items that ended CredentialRejected (or were never attempted) are still open.
     $settledByParent=@{};$parentWasWaiting=$false
-    if($state.PSObject.Properties['RestoreAttempt'] -and $state.RestoreAttempt -and [string]$state.RestoreAttempt.OperationId -ceq $ParentOperationId -and [string]$state.RestoreAttempt.Status -ceq 'WaitingForInput'){
+    if($state.PSObject.Properties['RestoreAttempt'] -and $state.RestoreAttempt -and [string]$state.RestoreAttempt.OperationId -ceq $ParentOperationId -and (Get-WsmAssistiveRestoreAttemptStatus $state.RestoreAttempt $state) -ceq 'WaitingForInput'){
         $parentWasWaiting=$true
         if($state.RestoreAttempt.PSObject.Properties['ItemResults']){foreach($settledResult in @($state.RestoreAttempt.ItemResults)){if($settledResult -and $settledResult.PSObject.Properties['ItemId'] -and [string]$settledResult.Status -cne 'CredentialRejected'){$settledByParent[[string]$settledResult.ItemId]=$true}}}
     }
@@ -1209,9 +1217,11 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
         $blockedItems=Get-WsmAssistiveUnknownDependencyBlocks @($Package.Plan.Items) $unknownItems
     }
     $job=Register-WsmAssistivePackageMaterials $Package $decision $StateDirectory $Preview
+    # R20：舊 state 的 attempt 沒有 Status 時以「改成 Running 之前」的 Stage 判定，所以先取值再改 Stage。
+    $priorAttemptStatus='';if($state.PSObject.Properties['RestoreAttempt'] -and $state.RestoreAttempt){$priorAttemptStatus=Get-WsmAssistiveRestoreAttemptStatus $state.RestoreAttempt $state}
     $state.Stage='Running'
     # Only the same durable parent still waiting for input (or taken over before native writes) continues; an earlier finished or cancelled attempt never lends its identity to a new restore.
-    $attempt=$null;if($state.PSObject.Properties['RestoreAttempt'] -and [string]$state.RestoreAttempt.OperationId -ceq $ParentOperationId -and [string]$state.RestoreAttempt.Status -cin @('WaitingForInput','Running')){$attempt=$state.RestoreAttempt}
+    $attempt=$null;if($state.PSObject.Properties['RestoreAttempt'] -and [string]$state.RestoreAttempt.OperationId -ceq $ParentOperationId -and $priorAttemptStatus -cin @('WaitingForInput','Running')){$attempt=$state.RestoreAttempt}
     if(-not $attempt){$attempt=[pscustomobject]@{ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;PreviousManifest=$state.ManifestHash;OperationId=$ParentOperationId;DecisionReceiptPath=[string]$decision.ReceiptPath;DecisionReceiptHash=[string]$decision.ReceiptHash;TargetSnapshotPath=[string]$decision.SnapshotPath;TargetSnapshotHash=[string]$decision.Receipt.TargetSnapshotHash;SelectedItemIds=@($decision.SelectedItemIds);WizardPreviewHash=$(if($Preview.PSObject.Properties['WizardPreviewHash']){[string]$Preview.WizardPreviewHash}else{''});ItemResults=@();PreviewRowHashes=@(Get-WsmAssistivePreviewRowHashes $Preview.Rows)}}
     $attempt|Add-Member NoteProperty MaterialJobOperationId $job.OperationId -Force;$attempt|Add-Member NoteProperty MaterialIds @($job.MaterialIds) -Force;$attempt|Add-Member NoteProperty Status 'Running' -Force;$attempt|Add-Member NoteProperty StartedUtc (Get-WsmUtc) -Force
     $state | Add-Member NoteProperty RestoreAttempt $attempt -Force
@@ -1338,7 +1348,7 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
         # unresolved native intent remains authoritative in the state and journal.
         # Releasing the material lock records that this worker has stopped; it
         # does not repair or discard a pending operation.
-        $state.ManifestHash=$ManifestHash;$state.Generation=[long]$Package.Manifest.Generation;$state.Stage='Cancelled'
+        $state.ManifestHash=$ManifestHash;$state.Generation=[long]$Package.Manifest.Generation;$state.Stage='Cancelled';$attempt|Add-Member NoteProperty Status 'Cancelled' -Force
         $cancelResults=@(Merge-WsmAssistiveItemResults $priorItemResults $itemResults.ToArray());$attempt.ItemResults=$cancelResults
         $cancel=[ordered]@{Status='Cancelled';ManifestHash=$ManifestHash;Generation=[long]$Package.Manifest.Generation;OperationId='';Boundary='';PendingOperationCount=[int]@($state.PendingOperations).Count}
         if($_.Exception.Data['OperationId']){$cancel.OperationId=[string]$_.Exception.Data['OperationId']}
@@ -1401,6 +1411,8 @@ function Invoke-WsmAssistiveRestore($Package,[string]$ManifestHash,[string]$Stat
     $remaining=@($Preview.Rows | Where-Object {$_.Status -in @('Deferred','DeferredSoftware','Blocked','BlockedConflict','ManualEvidenceRequired') -and -not $resolvedPendingIds.ContainsKey([string]$_.ItemId)})
     $failedCount=@($finalResults | Where-Object Status -in @('Failed','BlockedConflict','Blocked','ManualEvidenceRequired','NeedsReconciliation','BlockedByUnknownDependency','Deferred')).Count
     $state.Stage='Succeeded';if($remaining.Count -or $failedCount -or @($state.PendingOperations).Count){$state.Stage='Partial'};if(@($finalResults | Where-Object Status -EQ RebootRequired).Count){$state.Stage='RebootRequired'}
+    # R20：到達終態時 attempt.Status 與 Stage 一起改（否則停在 Running，之後的作用中判定會誤把已結束的母作業當成還在進行）；journal replay 用同一個值重播。
+    $attempt|Add-Member NoteProperty Status ([string]$state.Stage) -Force
     if($challenge){$challenge.State='Completed';$challenge.UpdatedUtc=Get-WsmUtc}
     Add-WsmJournal $paths $state 'AssistiveRestoreCompleted' '' ([pscustomobject]@{Status=$state.Stage;ManifestHash=$ManifestHash;Generation=$Package.Manifest.Generation;DecisionReceiptHash=$decision.ReceiptHash;ItemResults=$finalResults;DeferredRows=$remaining})
     if($state.Stage -in @('Succeeded','Partial','RebootRequired') -and -not @($state.PendingOperations).Count){foreach($reservation in @($serviceReservations.ToArray())){Set-WsmAssistiveServiceReservationOperation -Workspace $StateDirectory -ResourceKey $reservation.ResourceKey -PairId $Package.Manifest.PairId -ItemId $reservation.ItemId -OperationId $ParentOperationId -State Released | Out-Null}}

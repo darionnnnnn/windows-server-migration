@@ -150,9 +150,16 @@ try {
     } @('PendingOperations')
     Invoke-ReplayScenario 'restore-cancelled' $runningSeed {
       param($c)$s=$c.State;$s.Stage='Cancelled';$s.ManifestHash=$mh;$s.Generation=[long]3
-      $results=@([pscustomobject]@{ItemId='i0';Status='Succeeded'},[pscustomobject]@{ItemId='i1';Status='NeedsReconciliation'});$s.RestoreAttempt.ItemResults=$results;$s.AssistiveServiceChallenge.State='Cancelled';$s.AssistiveServiceChallenge.UpdatedUtc=Get-WsmUtc
+      $results=@([pscustomobject]@{ItemId='i0';Status='Succeeded'},[pscustomobject]@{ItemId='i1';Status='NeedsReconciliation'});$s.RestoreAttempt.ItemResults=$results;$s.RestoreAttempt.Status='Cancelled';$s.AssistiveServiceChallenge.State='Cancelled';$s.AssistiveServiceChallenge.UpdatedUtc=Get-WsmUtc
       $cancel=[ordered]@{Status='Cancelled';ManifestHash=$mh;Generation=[long]3;OperationId='';Boundary='AssistiveBeforeItem';PendingOperationCount=0};$cancel['ItemResults']=@($results)
       Add-WsmJournal $c.Paths $s 'AssistiveRestoreCancelled' '' ([pscustomobject]$cancel)
+    } $challengeFields
+
+    # R20: reaching a terminal stage also writes RestoreAttempt.Status (the live writer does it in the same step); replay must land on the same attempt.
+    Invoke-ReplayScenario 'restore-completed' $runningSeed {
+      param($c)$s=$c.State;$s.Stage='Partial';$s.ManifestHash=$mh;$s.Generation=[long]3
+      $results=@([pscustomobject]@{ItemId='i0';Status='Succeeded'},[pscustomobject]@{ItemId='i1';Status='Failed'});$s.RestoreAttempt.ItemResults=$results;$s.RestoreAttempt.Status='Partial';$s.AssistiveServiceChallenge.State='Completed';$s.AssistiveServiceChallenge.UpdatedUtc=Get-WsmUtc
+      Add-WsmJournal $c.Paths $s 'AssistiveRestoreCompleted' '' ([pscustomobject]@{Status='Partial';ManifestHash=$mh;Generation=[long]3;DecisionReceiptHash=('e'*64);ItemResults=@($results);DeferredRows=@()})
     } $challengeFields
 
     # ---- Parent / continuation group (real writers) ------------------------------------------------------------------------------

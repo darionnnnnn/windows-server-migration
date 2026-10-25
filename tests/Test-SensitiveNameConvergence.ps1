@@ -64,7 +64,7 @@ $marker='…（已截斷）'
 $long=('x'*300)
 $truncated=InModule {param($t) ConvertTo-WsmProgressText $t} @($long)
 Check ($truncated.EndsWith($marker)) 'A truncated progress text carries no truncation marker.'
-Check ($truncated.StartsWith('x'*256) -and $truncated.Length -eq 256+$marker.Length) 'The truncated progress text has the wrong length.'
+Check ($truncated.StartsWith('x'*(256-$marker.Length)) -and $truncated.EndsWith($marker) -and $truncated.Length -eq 256) 'The truncated progress text must be exactly 256 characters including its truncation marker.'
 $again=InModule {param($t) ConvertTo-WsmProgressText $t} @($truncated)
 Check ($again -ceq $truncated) 'Sanitising an already truncated progress text again is not idempotent.'
 $exact=InModule {param($t) ConvertTo-WsmProgressText $t} @(('y'*256))

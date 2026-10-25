@@ -263,6 +263,11 @@ try {
             foreach($k in @('plain','single','mixed')){Check ([string]$pvRows[$ids[$k]].Status -ceq 'Ready') ('B4: the preview for '+$k+' is not Ready after the rollback: '+[string]$pvRows[$ids[$k]].Action+'/'+[string]$pvRows[$ids[$k]].Status+' '+[string]$pvRows[$ids[$k]].Reason)}
             $retry=Get-WsmWizardTargetRetryCandidates -Workspace $work -PairId $pair -Jobs $allJobs
             Check (-not $retry.Visible -and -not $retry.Eligible -and @($retry.CandidateItemIds).Count -eq 0 -and [string]$retry.ReasonCode -ceq 'RolledBack') ('B4: after the rollback the retry list must be hidden with its own reason (RolledBack), got '+[string]$retry.ReasonCode+' visible='+$retry.Visible)
+            # R12: the retry candidates and the runtime projection both say "rolled back, choose again" (not RestoreInProgress), in the same words.
+            $rolledText='已回復，請重新選擇還原'
+            Check (([string]$retry.Reason).Contains($rolledText) -and [string]$retry.ReasonCode -cne 'RestoreInProgress') 'R12: the retry candidates did not say that the restore was rolled back.'
+            $rolledRuntime=Get-WsmWizardRuntimeProjection -Workspace $work -PairId $pair -Role Target -Jobs $allJobs
+            Check ($rolledRuntime.runtime.retry.visible -eq $false -and [string]$rolledRuntime.runtime.retry.reasonCode -ceq 'RolledBack' -and ([string]$rolledRuntime.runtime.retry.reason).Contains($rolledText) -and @($rolledRuntime.actions|Where-Object {[string]$_.id -ceq 'TargetRetryFailedItems'}).Count -eq 0) 'R12: the runtime projection did not carry the rolled-back text, or offered a retry action.'
             $pkgRecord=Get-WsmWizardTargetPackage $work $pair $ctx $allJobs
             $gapState=StateNow
             foreach($k in @('plain','single','mixed')){

@@ -594,7 +594,8 @@
       restorable: read('restorable', 'Restorable'), reason: String(read('restorableReason', 'RestorableReason') || ''), code: String(read('restorableCode', 'RestorableCode') || ''), restored: read('restored', 'Restored') === true,
       counts: read('countsAvailable', 'CountsAvailable') === true, files: Math.max(0, Number(read('fileCount', 'FileCount')) || 0), bytes: Math.max(0, Number(read('bytes', 'Bytes')) || 0),
       dependencies: list(read('dependencies', 'Dependencies')), requiredBy: list(read('requiredBy', 'RequiredBy')), preselected: read('preselected', 'Preselected'),
-      adoptedCount: Math.max(0, Number(read('adoptedExistingCount', 'AdoptedExistingCount')) || 0), recheck: String(read('recheckStatus', 'RecheckStatus') || '')
+      adoptedCount: Math.max(0, Number(read('adoptedExistingCount', 'AdoptedExistingCount')) || 0), recheck: String(read('recheckStatus', 'RecheckStatus') || ''),
+      fileList: list(read('fileList', 'FileList')), fileMore: Math.max(0, Number(read('fileListMore', 'FileListMore')) || 0)
     };
   }
   // 確認對話框：Esc 或「返回修改選取」都不送出，焦點回到觸發的按鈕；只有「確認並建立決策收據」才呼叫 onConfirm。
@@ -623,12 +624,37 @@
     dialog.replaceChildren(...nodes); dialog.setAttribute('aria-labelledby', 'restore-selection-confirm-title');
     if (!dialog.open) dialog.showModal(); no.focus();
   }
+  // R23（§18.6）：每個勾選單位可展開檢視檔案明細（前 100 個相對路徑＋總數；超過時另有「另有 N 個」提示）。
+  // 資料來自後端封裝索引的有界清單（路徑已在後端安全文字化）；這裡一律 textContent，不當 HTML。用原生 details／summary：鍵盤 Tab 到 summary、Enter／Space 展開收合。
+  // 清單項目在第一次展開時才建立（一個封裝可能有上百個項目），展開狀態記在 wizardRuntimeInputs，重畫後保留。details 放在勾選列（label）之外，不巢狀在 label 裡。
+  function renderRestoreFileDetails(option, openKey) {
+    const listed = Array.isArray(option.fileList) ? option.fileList : [];
+    if (!listed.length) return null;
+    const total = Math.max(option.files, listed.length + option.fileMore), more = Math.max(0, total - listed.length);
+    const box = document.createElement('details'), head = document.createElement('summary');
+    box.className = 'wizard-runtime-item-files'; box.dataset.restoreFiles = option.value;
+    head.textContent = `檔案明細（共 ${total} 個${more > 0 ? `，列出前 ${listed.length} 個` : ''}）`; box.appendChild(head);
+    const fill = () => {
+      if (box.dataset.rendered === 'true') return; box.dataset.rendered = 'true';
+      const items = el('ul', 'wizard-runtime-file-list'); items.setAttribute('aria-label', `${option.label}的檔案`);
+      listed.forEach(name => items.appendChild(el('li', '', name)));
+      if (more > 0) items.appendChild(el('li', 'wizard-runtime-file-more', `另有 ${more} 個檔案未列出（完整明細見封裝的 artifacts 索引）`));
+      box.appendChild(items);
+    };
+    box.addEventListener('toggle', () => {
+      const ids = new Set(state.wizardRuntimeInputs.get(openKey) || []);
+      if (box.open) { ids.add(option.value); fill(); } else ids.delete(option.value);
+      state.wizardRuntimeInputs.set(openKey, [...ids]);
+    });
+    if ((state.wizardRuntimeInputs.get(openKey) || []).includes(option.value)) { box.open = true; fill(); }
+    return box;
+  }
   function renderRestoreItemPicker(section,projection,id,optionsList,restoreLock) {
     // Q4：還原父作業進行中（Running／WaitingForInput／Interrupted）時選取區整個鎖住；原因由後端投影（runtime.restoreLock）提供，以 textContent 顯示。
     const locked=!!(restoreLock&&restoreLock.active===true),lockNote=el('p','callout wizard-restore-lock','');
     lockNote.id='wizard-restore-lock-note';lockNote.dataset.restoreLock='true';lockNote.hidden=!locked;lockNote.setAttribute('role','status');
     if(locked)lockNote.textContent='⛔ '+String((restoreLock&&restoreLock.reason)||'還原進行中，完成或取消後才能變更選擇。');
-    const key=runtimeInputKey(projection,id,'SelectedItemIds'),filterKey=key+'\u001ftype-filter',box=el('fieldset','wizard-runtime-items');
+    const key=runtimeInputKey(projection,id,'SelectedItemIds'),filterKey=key+'\u001ftype-filter',filesOpenKey=key+'\u001ffiles-open',box=el('fieldset','wizard-runtime-items');
     box.appendChild(el('legend','','選擇要納入決策收據的核准項目'));
     const opts=(optionsList||[]).map(normalizeRestoreOption);
     if(!opts.length){wizardMessage(box,'目前沒有可由此比較收據確認的核准項目。','callout');section.appendChild(box);return box;}
@@ -676,7 +702,9 @@
         if(option.adoptedCount>0){const adoptedNote=el('span','wizard-runtime-item-meta',`${ADOPTED_EXISTING_LABEL} ${option.adoptedCount} 個：${ADOPTED_EXISTING_NOTE}`);adoptedNote.id=`wizard-runtime-adopted-${option.value}`;adoptedNote.dataset.adoptedExisting=String(option.adoptedCount);checkbox.setAttribute('aria-describedby',[checkbox.getAttribute('aria-describedby'),adoptedNote.id].filter(Boolean).join(' '));copy.appendChild(adoptedNote);}
         if(option.recheck==='NeedsRecheck'){const recheckNote=el('span','wizard-runtime-item-badge','⚠ 待核對：還原後內容或設定可能被改寫。要重新還原必須明確勾選；工具仍會保護已變動的內容，不會直接覆寫。');recheckNote.dataset.recheckBadge='NeedsRecheck';copy.appendChild(recheckNote);}
         copy.append(reapply,incomplete);
-        row.append(checkbox,copy);fieldset.appendChild(row);rows.push({option,checkbox,row,reapply,incomplete});
+        row.append(checkbox,copy);fieldset.appendChild(row);
+        const filesBox=renderRestoreFileDetails(option,filesOpenKey);if(filesBox)fieldset.appendChild(filesBox);
+        rows.push({option,checkbox,row,filesBox,reapply,incomplete});
         checkbox.addEventListener('change',()=>{if(locked){refresh();return;}const next=current();checkbox.checked&&canSelect(option)?next.add(option.value):next.delete(option.value);commit(next);});
       });
       views.push({members,parent,badge,fieldset});box.appendChild(fieldset);
@@ -685,8 +713,8 @@
     // 勾選／取消／全選／篩選結果之後呼叫：更新勾選狀態、群組三態、相依提示與摘要。
     function refresh() {
       const selected=current(),typeFilter=filter.value;
-      rows.forEach(({option,checkbox,row,reapply,incomplete})=>{
-        row.hidden=!!typeFilter&&option.typeLabel!==typeFilter;
+      rows.forEach(({option,checkbox,row,filesBox,reapply,incomplete})=>{
+        row.hidden=!!typeFilter&&option.typeLabel!==typeFilter;if(filesBox)filesBox.hidden=row.hidden;
         const picked=canSelect(option)&&selected.has(option.value);checkbox.checked=picked;
         reapply.hidden=!(picked&&option.restored);
         const missing=picked?missingOf(option,selected):[];incomplete.hidden=!missing.length;
@@ -939,6 +967,8 @@
     renderRetryOutcome(card);
     const retry = target.retry || target.Retry || null, stageName = String(target.status || response.status || '');
     const restoreLock = target.restoreLock || target.RestoreLock || null, lockActive = !!(restoreLock && restoreLock.active === true);
+    // R12：還原已被回復（RolledBack）是終態：不顯示重試面板，也不說「還原進行中」；說明文字來自後端（同一句），以純文字呈現。
+    if (retry && retry.visible !== true && String(retry.reasonCode || '') === 'RolledBack' && retry.reason) { const rolled = el('p', 'notice wizard-retry-rolledback', String(retry.reason)); rolled.dataset.rolledBackNote = 'true'; rolled.setAttribute('role', 'status'); card.appendChild(rolled); }
     if (retry && retry.visible === true && (!retryHiddenStatuses.has(stageName) || lockActive)) {
       const action = wizardRuntimeAction(response, 'TargetRetryFailedItems'), labels = new Map((target.itemOptions || target.ItemOptions || []).map(option => [String(option.value), String(option.label || option.value)]));
       const nameOf = id => labels.get(String(id)) || String(id), candidates = Array.isArray(retry.candidateItemIds) ? retry.candidateItemIds : [], excluded = Array.isArray(retry.excluded) ? retry.excluded : [];

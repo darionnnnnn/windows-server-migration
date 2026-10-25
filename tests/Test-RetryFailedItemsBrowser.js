@@ -194,6 +194,25 @@ const explainText = '同一份還原選擇再按一次只會顯示上次結果�
     assert.equal(await panel(page).count(), 0, 'a Partial status whose retry is not visible shows no panel');
     await page.close();
 
+    // ---- R12. 已回復（RolledBack）：不顯示重試面板，也不說「還原進行中」；畫面說「已回復，請重新選擇還原」，以純文字呈現
+    const rolledBackReason = '已回復，請重新選擇還原。這次還原已被回復；回復後項目可以重新選取再還原，不屬於「重試失敗項目」。';
+    for (const stage of ['ReadyForRestore', 'NeedsTargetDecision']) {
+      reset(); S.stage = stage; S.retryVisible = false; S.eligible = false; S.reasonCode = 'RolledBack'; S.reason = rolledBackReason; page = await openPage(390);
+      const rolled = page.locator('[data-rolled-back-note]');
+      assert.equal(await rolled.count(), 1, `${stage}: the rolled-back note is shown`);
+      assert.equal(await rolled.innerText(), rolledBackReason, `${stage}: the note carries the backend text`);
+      assert.equal(await rolled.getAttribute('role'), 'status', 'the note is a status message');
+      assert.equal(await rolled.evaluate(node => node.children.length), 0, 'the note is plain text (textContent), not markup');
+      assert.equal(await panel(page).count(), 0, `${stage}: no retry panel after a rollback`);
+      assert.equal(await page.locator('[data-retry-focus="submit"]').count(), 0, `${stage}: no retry button after a rollback`);
+      assert.doesNotMatch(await page.locator('.wizard-runtime-target').innerText(), /還原進行中/, `${stage}: a rolled-back restore is not reported as in progress`);
+      await noOverflow(page, `${stage}: rolled-back note`);
+      await page.close();
+    }
+    reset(); S.stage = 'Partial'; S.retryVisible = false; S.reasonCode = 'AllSucceeded'; S.reason = '這次還原所選的項目都已成功，沒有需要重試的項目。'; page = await openPage(390);
+    assert.equal(await page.locator('[data-rolled-back-note]').count(), 0, 'only the RolledBack reason produces the note');
+    await page.close();
+
     // ---------------------------------------------------------------- 7. 320px：很長的名稱與原因也不橫向溢出
     reset(); S.longNames = true; S.excluded = [{ itemId: 'site', name: longName, code: 'BlockedConflict', reason: '目標位置已有衝突，需要人工處理：' + 'A file occupies the approved directory target '.repeat(6), lastStatus: 'BlockedConflict' }];
     page = await openPage(320);

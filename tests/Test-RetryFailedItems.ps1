@@ -160,6 +160,7 @@ try {
             Check ($restore1.Status -ceq 'Partial' -and $by1[$id1] -ceq 'Succeeded' -and $by1[$id2] -ceq 'Succeeded' -and $by1[$id3] -ceq 'BlockedConflict') ('The target conflict did not produce one Partial result with exactly item 3 blocked: '+($by1.Values -join ','))
             $state1=Read-WsmJson $statePath
             Check (@($state1.PendingOperations).Count -eq 0) 'The blocked item left a pending intent; this scenario expects none.'
+            Check ([string]$state1.RestoreAttempt.Status -ceq 'Partial' -and [string]$state1.RestoreAttempt.Status -ceq [string]$state1.Stage) 'R20: the terminal Stage was written without the matching RestoreAttempt.Status.'
             $record1Before=@($state1.Items|Where-Object {[string]$_.ItemId -in @($id1,$id2)}|ForEach-Object {$_|ConvertTo-Json -Depth 20 -Compress})
             $hashes1=@($targets[0],$targets[1]|ForEach-Object {Sha (Join-Path $_ 'state.bin')})
             Check ([IO.File]::Exists($targets[2]) -and [IO.File]::ReadAllText($targets[2]) -ceq $conflictText) 'The conflicting file was touched by the restore.'
@@ -227,6 +228,12 @@ try {
             Check ($retryReceipt.Status -ceq 'Succeeded' -and $retryReceipt.Decision -ceq 'RestoreNow' -and (Ids $retryReceipt.SelectedItemIds) -ceq $id3 -and @($retryReceipt.SelectedItemIds).Count -eq 1 -and $retryReceipt.ReceiptHash -cne $receipt1.ReceiptHash) 'The retry receipt does not select exactly the failed item with RestoreNow.'
             $stored=Read-WsmTrustedJson $retryReceipt.ReceiptPath $retryReceipt.ReceiptHash
             Check ((Assert-WsmAssistiveContract $stored TargetDecisionReceipt) -and [string]$stored.Owner -ceq 'Retry operator' -and [string]$stored.Reason -ceq 'Retry the failed item after fixing the cause' -and @($stored.SelectedItemIds).Count -eq 1 -and [string]$stored.SelectedItemIds[0] -ceq $id3) 'The stored retry receipt lost the operator-provided owner and reason or the exact selection.'
+            # R8: the receipt carries a monotonic Sequence and (for a retry only) the source receipt hash, both inside the receipt hash.
+            $firstStored=Read-WsmTrustedJson $receipt1.ReceiptPath $receipt1.ReceiptHash
+            Check ([long]$firstStored.Sequence -gt 0 -and -not $firstStored.PSObject.Properties['RetryOfReceiptHash'] -and [long]$stored.Sequence -eq ([long]$firstStored.Sequence+1)) 'R8: the receipts do not carry consecutive Sequence numbers, or a non-retry receipt has a retry source.'
+            Check ([string]$stored.RetryOfReceiptHash -ceq $source) 'R8: the retry receipt did not record the receipt it retries.'
+            $tamperCopy=Join-Path $materialRoot ('decision-'+('0'*64)+'.json');[IO.File]::WriteAllText($tamperCopy,([IO.File]::ReadAllText($retryReceipt.ReceiptPath).Replace($source,('0'*64))),(New-Object Text.UTF8Encoding($false)))
+            try{$afterTamper=Get-WsmWizardTargetDecisionRecord $work $pair ([string]$planHash);Check ([string]$afterTamper.SHA256 -ceq [string]$retryReceipt.ReceiptHash) 'R8: a receipt whose RetryOfReceiptHash was edited was accepted next to the real one.'}finally{[IO.File]::Delete($tamperCopy)}
             Check (([Convert]::ToBase64String([IO.File]::ReadAllBytes($statePath))) -ceq ([Convert]::ToBase64String($stateBytesBefore))) 'Creating the retry receipt changed the operation state (a restore or a repair started).'
             Check ((($script:p8Calls.Keys|Sort-Object|ForEach-Object {$_+'='+$script:p8Calls[$_]}) -join ',') -ceq (($callsBefore.Keys|Sort-Object|ForEach-Object {$_+'='+$callsBefore[$_]}) -join ',')) 'Creating the retry receipt called a file writer.'
             Check (-not [IO.Directory]::Exists($targets[2]) -and -not [IO.File]::Exists($targets[2])) 'Creating the retry receipt wrote the failed item to the target.'
@@ -247,6 +254,16 @@ try {
             Check ((@($targets[0],$targets[1]|ForEach-Object {Sha (Join-Path $_ 'state.bin')}) -join ',') -ceq ($hashes1 -join ',') -and [IO.File]::Exists((Join-Path $targets[2] 'state.bin')) -and (Sha (Join-Path $targets[2] 'state.bin')) -ceq (Sha (Join-Path $scopes[2] 'state.bin'))) 'The bytes of the succeeded items changed, or the retried item does not hold its source bytes.'
             $final=Get-WsmWizardTargetRetryCandidates -Workspace $work -PairId $pair -Jobs $allJobs
             Check (-not $final.Visible -and $final.ReasonCode -ceq 'AllSucceeded') 'After a fully successful retry the retry entry is still shown.'
+            Check ([string]$state2.Stage -cin @('Succeeded','Partial') -and [string]$state2.RestoreAttempt.Status -ceq [string]$state2.Stage) 'R20: after the retry restore the terminal Stage and RestoreAttempt.Status disagree.'
+
+            # R8 (real flow): the clock steps back before the next receipt. The newer receipt has the older CreatedUtc but the larger Sequence and must still be the one selected.
+            $retryReceiptSequence=[long]$stored.Sequence
+            function Get-WsmUtc {'2001-01-01T00:00:00.0000000Z'}
+            try{$backReceipt=Create-WsmWizardTargetDecisionReceipt -Workspace $work -PairId $pair -Decision RestoreNow -Owner 'Clock owner' -Reason 'the clock stepped back' -SelectedItemIds ([string[]]@($id1)) -Jobs $allJobs}finally{Remove-Item -Path Function:\Get-WsmUtc}
+            $backStored=Read-WsmTrustedJson $backReceipt.ReceiptPath $backReceipt.ReceiptHash
+            Check ([string]$backStored.CreatedUtc -like '2001-*' -and [long]$backStored.Sequence -eq ($retryReceiptSequence+1)) 'R8: the fixture did not produce an older-dated receipt with the next Sequence.'
+            $selected=Get-WsmWizardTargetDecisionRecord $work $pair ([string]$planHash)
+            Check ([string]$selected.SHA256 -ceq [string]$backReceipt.ReceiptHash -and [string]$selected.Receipt.Owner -ceq 'Clock owner') 'R8: with the clock stepped back the older-dated newest receipt was not selected.'
         }finally{Set-Item -Path Function:\script:Invoke-WsmAssistiveFileScopeRestore -Value $script:p8OrigWriter}
         Write-Host ('PASS: retry failed items ('+$script:p8Checks+' checks): candidates exclude succeeded and unrestorable items with reasons, a pending intent or running restore blocks, the backend recomputes and refuses other item ids / owners / reasons / stale sources, creating the receipt writes nothing, the retry restore writes only the failed item.')
     } $root $workRoot

@@ -293,23 +293,40 @@ function Get-WsmWizardItemTypeLabel([string]$Adapter,[string]$Kind) {
     '其他'
 }
 
-# 每個項目的檔數與位元組，只取自已驗證封裝的 artifacts.jsonl（Read-WsmArtifactLines 會先核對索引雜湊，被改過就丟例外）。
+# 每個項目的檔數、位元組與檔案明細（前 N 個相對路徑），只取自已驗證封裝的 artifacts.jsonl（Read-WsmArtifactLines 會先核對索引雜湊，被改過就丟例外）。
 # 目錄列只是結構，不算檔案也不算位元組。沒有已驗證封裝（尚未匯入）時回傳 $null，呼叫端標示「數量尚未取得」。
+# R23：明細有上限（每個項目最多 100 個），路徑一律經 ConvertTo-WsmBackupSafePathText（17.123 收斂後的 ConvertTo-WsmPathDisplayText：控制／雙向覆寫／零寬字元改成可見的 \uXXXX、內嵌機密遮蔽、
+# 超長路徑明示截斷）；HTML 跳脫由顯示端 textContent 負責。結果以「索引雜湊＋封裝根目錄」為鍵快取（最近 4 份）：同一份已驗證索引不會因為每次重畫選取器就整份重讀、重算 SHA256。
+# 快取內容只在首次讀取時驗證過索引雜湊；還原本身仍會重新驗證，這裡只是顯示用的唯讀投影。
+$script:WsmRestoreFileListLimit=100
+function ConvertTo-WsmWizardRestoreFileText([string]$RelativePath) {
+    $safe=ConvertTo-WsmBackupSafePathText $RelativePath 260
+    $text=[string]$safe.text
+    if($safe.truncated){$text+='…（已截斷）'}
+    $text
+}
 function Get-WsmWizardTargetArtifactTotals($PackageRecord) {
     if(-not $PackageRecord -or -not $PackageRecord.PSObject.Properties['Package'] -or -not $PackageRecord.Package){return $null}
     $verified=$PackageRecord.Package
     if(-not $verified.PSObject.Properties['Root'] -or -not $verified.PSObject.Properties['Manifest'] -or -not $verified.Manifest.PSObject.Properties['ArtifactsHash']){return $null}
     $root=[string]$verified.Root;$expected=[string]$verified.Manifest.ArtifactsHash
     if(-not $root -or -not $expected){return $null}
+    $cacheKey=$expected.ToLowerInvariant()+'|'+$root.ToLowerInvariant()
+    if(-not (Test-Path variable:script:WsmArtifactTotalsCache) -or $null -eq $script:WsmArtifactTotalsCache){$script:WsmArtifactTotalsCache=New-Object 'System.Collections.Specialized.OrderedDictionary'}
+    if($script:WsmArtifactTotalsCache.Contains($cacheKey)){return $script:WsmArtifactTotalsCache[$cacheKey]}
     $totals=@{}
     Read-WsmArtifactLines (Join-Path $root 'artifacts.jsonl') $expected | ForEach-Object {
         $id=[string]$_.ItemId
-        if(-not $totals.ContainsKey($id)){$totals[$id]=[pscustomobject]@{Files=[long]0;Bytes=[long]0}}
+        if(-not $totals.ContainsKey($id)){$totals[$id]=[pscustomobject]@{Files=[long]0;Bytes=[long]0;Paths=(New-Object 'System.Collections.Generic.List[string]')}}
         if(-not [bool]$_.Directory){
             $totals[$id].Files++
             if($_.PSObject.Properties['Data'] -and $_.Data -and $_.Data.PSObject.Properties['Bytes']){$totals[$id].Bytes+=[long]$_.Data.Bytes}
+            if($totals[$id].Paths.Count -lt $script:WsmRestoreFileListLimit -and $_.PSObject.Properties['RelativePath']){$totals[$id].Paths.Add((ConvertTo-WsmWizardRestoreFileText ([string]$_.RelativePath)))}
         }
     }
+    foreach($id in @($totals.Keys)){$totals[$id].Paths=[string[]]@($totals[$id].Paths.ToArray())}
+    while($script:WsmArtifactTotalsCache.Count -ge 4){$script:WsmArtifactTotalsCache.RemoveAt(0)}
+    $script:WsmArtifactTotalsCache[$cacheKey]=$totals
     $totals
 }
 
@@ -425,12 +442,13 @@ function Get-WsmWizardTargetItemOptions($Context,$Package,$State,$Decision=$null
         $row=$rows[[string]$_.ItemId];$restored=[bool]($row -and -not $unproven.ContainsKey([string]$_.ItemId) -and [string]$row.Status -ceq 'Succeeded' -and $row.PSObject.Properties['AppliedManifestHash'] -and [string]$row.AppliedManifestHash -ceq $manifestHash)
         $optionId=[string]$_.ItemId;$fileCount=[long]0;$byteCount=[long]0
         if($null -ne $artifactTotals -and $artifactTotals.ContainsKey($optionId)){$fileCount=[long]$artifactTotals[$optionId].Files;$byteCount=[long]$artifactTotals[$optionId].Bytes}
+        $fileList=@();$fileListMore=[long]0;if($null -ne $artifactTotals -and $artifactTotals.ContainsKey($optionId)){$fileList=@($artifactTotals[$optionId].Paths);$fileListMore=[Math]::Max([long]0,$fileCount-[long]$fileList.Count)}
         $dependsOn=@();if($dependencyMap.ContainsKey($optionId)){$dependsOn=@($dependencyMap[$optionId].ToArray())}
         $neededBy=@();if($requiredByMap.ContainsKey($optionId)){$neededBy=@($requiredByMap[$optionId].ToArray())}
         $preselected=$null;if($null -ne $chosen){$preselected=[bool]$chosen.ContainsKey($optionId)}
         # P10：沿用既有檔（內容與備份相同但來歷不明）的個數；回復時這些檔案不會被刪除或覆寫。只讀狀態列的逐檔 Ownership。
         $adoptedExistingCount=0;if($row -and $row.PSObject.Properties['OwnedFiles']){$adoptedExistingCount=@(@($row.OwnedFiles)|Where-Object {Test-WsmAssistiveOwnedFileAdopted $_}).Count}
-        [pscustomobject]@{value=$optionId;label=[string]$_.Name;kind=[string]$_.Kind;adapter=$adapter;group=$group;typeLabel=(Get-WsmWizardItemTypeLabel $adapter ([string]$_.Kind));restorable=$restorable;restorableReason=$reason;restorableCode=$restorableCode;restored=$restored;fileCount=$fileCount;bytes=$byteCount;countsAvailable=[bool]($null -ne $artifactTotals);dependencies=$dependsOn;requiredBy=$neededBy;preselected=$preselected;adoptedExistingCount=$adoptedExistingCount;adoptedExistingNote=$(if($adoptedExistingCount){Get-WsmAssistiveAdoptedExistingNote}else{''})}
+        [pscustomobject]@{value=$optionId;label=[string]$_.Name;kind=[string]$_.Kind;adapter=$adapter;group=$group;typeLabel=(Get-WsmWizardItemTypeLabel $adapter ([string]$_.Kind));restorable=$restorable;restorableReason=$reason;restorableCode=$restorableCode;restored=$restored;fileCount=$fileCount;bytes=$byteCount;countsAvailable=[bool]($null -ne $artifactTotals);fileList=@($fileList);fileListMore=$fileListMore;dependencies=$dependsOn;requiredBy=$neededBy;preselected=$preselected;adoptedExistingCount=$adoptedExistingCount;adoptedExistingNote=$(if($adoptedExistingCount){Get-WsmAssistiveAdoptedExistingNote}else{''})}
     })
 }
 
@@ -521,6 +539,8 @@ function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,
     # 重新開啟頁面時，選擇器以最後一份決策收據的選取為準預選（讀不到就用預設）。
     $lastDecision=$null;try{$lastDecision=Get-WsmWizardTargetDecisionRecord $Workspace $PairId ([string]$received.SHA256)}catch{$lastDecision=$null}
     $result.itemOptions=@(Get-WsmWizardTargetItemOptions $context $package $itemState $lastDecision)
+    # R12：已回復的還原在任何後面的提早 return 之前就標出來（同一句說明，來源是重試候選用的 Get-WsmWizardRolledBackReason），畫面不會回報「還原進行中」或什麼都不說。
+    if($itemState -and $itemState.PSObject.Properties['Stage'] -and [string]$itemState.Stage -ceq 'RolledBack'){$result.retry=[pscustomobject][ordered]@{visible=$false;eligible=$false;reasonCode='RolledBack';reason=(Get-WsmWizardRolledBackReason);candidateItemIds=@();candidateCount=0}}
     # Q1：還原後重新核對。唯讀投影＋一個明確的「重新核對」動作；在還原結果、比較、決策等後面的提早 return 之前就先算好，匯入新盤點後（狀態會變成要重新比較）也看得到提示。
     $recheckPending=Get-WsmWizardRuntimeTargetPendingRestore $Workspace $PairId $Jobs
     # Q4：還原進行中（含 Running）時選取區與建立收據／重試按鈕一律停用；說明文字由後端提供。
@@ -562,7 +582,7 @@ function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,
     # 按鈕只是一個動作入口：後端在建立收據時會自己重新計算候選，不信任這裡的清單。
     $retryPending=$pendingRestore;if($stage){$retryPending=Get-WsmWizardRuntimeTargetPendingRestore $Workspace $PairId $Jobs}
     $retryCandidates=$null;try{$retryCandidates=Get-WsmWizardTargetRetryCandidatesCore -PackageRecord $package -State $itemState -DecisionRecord $decisionRecord -ItemOptions @($result.itemOptions) -RecheckItems @($result.recheck.items) -PendingRestore $retryPending}catch{$retryCandidates=$null}
-    $result.retry=[pscustomobject][ordered]@{visible=$false;eligible=$false;reasonCode=$(if($retryCandidates){[string]$retryCandidates.ReasonCode}else{'Unavailable'});reason='';candidateItemIds=@();candidateCount=0}
+    $result.retry=[pscustomobject][ordered]@{visible=$false;eligible=$false;reasonCode=$(if($retryCandidates){[string]$retryCandidates.ReasonCode}else{'Unavailable'});reason=$(if($retryCandidates -and [string]$retryCandidates.ReasonCode -ceq 'RolledBack'){[string]$retryCandidates.Reason}else{''});candidateItemIds=@();candidateCount=0}
     if($retryCandidates -and $retryCandidates.Visible -and -not $postActivation -and [string]$result.status -notin @('WaitingForInput','Interrupted','WaitingForInstall')){
         $retryShort=([string]$retryCandidates.SourceReceiptHash).Substring(0,12)
         $result.retry=[pscustomobject][ordered]@{visible=$true;eligible=([bool]$retryCandidates.Eligible -and -not $restoreLock);reasonCode=$(if($restoreLock){'RestoreInProgress'}else{[string]$retryCandidates.ReasonCode});reason=$(if($restoreLock){[string]$restoreLock.Reason}else{[string]$retryCandidates.Reason});candidateItemIds=@($retryCandidates.CandidateItemIds);candidateCount=@($retryCandidates.CandidateItemIds).Count;succeededCount=@($retryCandidates.SucceededItemIds).Count;notSucceededCount=@($retryCandidates.NotSucceededItemIds).Count;needsRecheckItemIds=@($retryCandidates.NeedsRecheckItemIds);excluded=@($retryCandidates.Excluded|ForEach-Object {[pscustomobject][ordered]@{itemId=[string]$_.ItemId;name=[string]$_.Name;code=[string]$_.Code;reason=[string]$_.Reason;lastStatus=[string]$_.LastStatus}});sourceAttemptId=[string]$retryCandidates.SourceAttemptId;sourceReceiptHash=[string]$retryCandidates.SourceReceiptHash;sourceReceiptShort=$retryShort;sourceStage=[string]$retryCandidates.SourceStage;defaultOwner=[string]$retryCandidates.SourceOwner;defaultReason=[string]$retryCandidates.SuggestedReason}

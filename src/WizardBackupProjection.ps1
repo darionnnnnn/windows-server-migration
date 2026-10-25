@@ -94,8 +94,9 @@ function ConvertTo-WsmProgressText([object]$Value) {
     $raw=([string]$Value).Trim();$hadMarker=$raw.EndsWith($marker)
     if($hadMarker){$raw=$raw.Substring(0,$raw.Length-$marker.Length)}
     $safe=ConvertTo-WsmBackupSafePathText $raw 256
-    $text=([string]$safe.text).Trim()
-    if($safe.truncated -or $hadMarker){$text+=$marker}
+    # 上限 256 含截斷標記：要加標記時先把本文截到 256-標記長度，總長才不會超過（Test-WizardProgress；A3 回歸修正）。
+    if($safe.truncated -or $hadMarker){$safe=ConvertTo-WsmBackupSafePathText $raw (256-$marker.Length);$text=([string]$safe.text).Trim()+$marker}
+    else{$text=([string]$safe.text).Trim()}
     $text
 }
 
@@ -169,6 +170,12 @@ function Get-WsmBackupProgressStageLabel([string]$Stage) {
     switch -CaseSensitive ($Stage) {'Capture'{'擷取與封存'}'Verify'{'驗證封裝'}'Deliver'{'交付'}default{''}}
 }
 
+# R20：進度紀錄是外部檔案（舊版或寫到一半的紀錄可能缺欄位）：缺欄位一律讀成 $null，由呼叫端既有的「未知」語意處理（未知總數、未知百分比），不丟例外，進度卡才不會因此消失。
+function Get-WsmProgressRawField($Raw,[string]$Name) {
+    if($null -ne $Raw -and $Raw.PSObject.Properties[$Name]){return $Raw.$Name}
+    $null
+}
+
 # Closed projection of one durable progress record for the HTML job card. The producer file is the only source of
 # progress facts; the job status (and, once finished, the attempt) decides the state. Every string and number
 # crosses ConvertTo-WsmWizardHtmlValue so unknown fields, secrets patterns and oversized text cannot pass.
@@ -177,33 +184,33 @@ function ConvertTo-WsmWizardBackupProgressView($Raw,[string]$JobStatus,[string]$
     $failed=0;if($Raw.PSObject.Properties['FailedCount']){try{$failed=[int]$Raw.FailedCount}catch{}}
     $stateRow=Get-WsmBackupProgressState $JobStatus $AttemptStage $OfflineReadiness $failed
     $names=$null;if($Raw.PSObject.Properties['ItemNames']){$names=$Raw.ItemNames}
-    $recent=@(foreach($entry in @($Raw.Recent|Select-Object -Last 20)){
+    $recent=@(foreach($entry in @((Get-WsmProgressRawField $Raw 'Recent')|Select-Object -Last 20)){
         if(-not $entry){continue}
-        $id=[string]$entry.ItemId;$name='';if($names -and $names.PSObject.Properties[$id]){$name=ConvertTo-WsmProgressText $names.PSObject.Properties[$id].Value}
-        [pscustomobject][ordered]@{ItemId=(ConvertTo-WsmProgressText $id);ItemName=$name;Result=(ConvertTo-WsmProgressText $entry.Result)}
+        $id=[string](Get-WsmProgressRawField $entry 'ItemId');$name='';if($names -and $names.PSObject.Properties[$id]){$name=ConvertTo-WsmProgressText $names.PSObject.Properties[$id].Value}
+        [pscustomobject][ordered]@{ItemId=(ConvertTo-WsmProgressText $id);ItemName=$name;Result=(ConvertTo-WsmProgressText (Get-WsmProgressRawField $entry 'Result'))}
     })
-    $itemsDone=$null;if($null -ne $Raw.ItemsDone){$itemsDone=[long]$Raw.ItemsDone}
-    $itemsTotal=$null;if($null -ne $Raw.ItemsTotal){$itemsTotal=[long]$Raw.ItemsTotal}
-    $bytesTotal=$null;if($null -ne $Raw.BytesTotal){$bytesTotal=[long]$Raw.BytesTotal}
+    $itemsDone=$null;if($null -ne (Get-WsmProgressRawField $Raw 'ItemsDone')){$itemsDone=[long](Get-WsmProgressRawField $Raw 'ItemsDone')}
+    $itemsTotal=$null;if($null -ne (Get-WsmProgressRawField $Raw 'ItemsTotal')){$itemsTotal=[long](Get-WsmProgressRawField $Raw 'ItemsTotal')}
+    $bytesTotal=$null;if($null -ne (Get-WsmProgressRawField $Raw 'BytesTotal')){$bytesTotal=[long](Get-WsmProgressRawField $Raw 'BytesTotal')}
     $percent=$null
-    if([string]$Raw.Stage -ceq 'Capture' -and $null -ne $itemsTotal -and $itemsTotal -gt 0 -and $null -ne $itemsDone){$percent=[int][Math]::Min(99,[Math]::Floor(100*[double]$itemsDone/[double]$itemsTotal))}
-    elseif([bool]$Raw.Terminal -and [string]$Raw.Outcome -ceq 'Succeeded'){$percent=100}
+    if([string](Get-WsmProgressRawField $Raw 'Stage') -ceq 'Capture' -and $null -ne $itemsTotal -and $itemsTotal -gt 0 -and $null -ne $itemsDone){$percent=[int][Math]::Min(99,[Math]::Floor(100*[double]$itemsDone/[double]$itemsTotal))}
+    elseif([bool](Get-WsmProgressRawField $Raw 'Terminal') -and [string](Get-WsmProgressRawField $Raw 'Outcome') -ceq 'Succeeded'){$percent=100}
     # N2: records written before the item fields existed are shown as unrecorded, never as an empty or zero value.
     $itemRecorded=[bool]($Raw.PSObject.Properties['CurrentItemId'] -and $Raw.PSObject.Properties['CurrentChannel'] -and $Raw.PSObject.Properties['FilesDone'])
     $channelCode='Unknown';$channelLabel='未記錄';$itemId='';$itemType='';$itemTypeLabel='未記錄';$filesDone=$null;$filesTotal=$null
     if($itemRecorded){
         $channelCode=[string]$Raw.CurrentChannel;$channelLabel=switch -CaseSensitive ($channelCode){'C'{'C 槽'}'NonC'{'非 C 槽'}default{'未知'}}
         if($channelLabel -ceq '未知'){$channelCode='Unknown'}
-        $itemId=ConvertTo-WsmProgressText $Raw.CurrentItemId;$itemType=ConvertTo-WsmProgressText $Raw.CurrentItemType;$itemTypeLabel=ConvertTo-WsmProgressText $Raw.CurrentItemTypeLabel
+        $itemId=ConvertTo-WsmProgressText $Raw.CurrentItemId;$itemType=ConvertTo-WsmProgressText (Get-WsmProgressRawField $Raw 'CurrentItemType');$itemTypeLabel=ConvertTo-WsmProgressText (Get-WsmProgressRawField $Raw 'CurrentItemTypeLabel')
         if($null -ne $Raw.FilesDone){$filesDone=[long]$Raw.FilesDone}
         if($Raw.PSObject.Properties['FilesTotal'] -and $null -ne $Raw.FilesTotal){$filesTotal=[long]$Raw.FilesTotal}
     }
     $view=[ordered]@{
-        Stage=[string]$Raw.Stage;StageLabel=(Get-WsmBackupProgressStageLabel ([string]$Raw.Stage));StageIndex=[int]$Raw.StageIndex;StageCount=[int]$Raw.StageCount
-        Workload=(ConvertTo-WsmProgressText $Raw.Workload);CurrentFile=(ConvertTo-WsmProgressText $Raw.CurrentFile)
+        Stage=[string](Get-WsmProgressRawField $Raw 'Stage');StageLabel=(Get-WsmBackupProgressStageLabel ([string](Get-WsmProgressRawField $Raw 'Stage')));StageIndex=[int](Get-WsmProgressRawField $Raw 'StageIndex');StageCount=[int](Get-WsmProgressRawField $Raw 'StageCount')
+        Workload=(ConvertTo-WsmProgressText (Get-WsmProgressRawField $Raw 'Workload'));CurrentFile=(ConvertTo-WsmProgressText (Get-WsmProgressRawField $Raw 'CurrentFile'))
         ItemFieldsRecorded=$itemRecorded;CurrentItemId=$itemId;CurrentItemType=$itemType;CurrentItemTypeLabel=$itemTypeLabel;CurrentChannel=$channelCode;CurrentChannelLabel=$channelLabel;FilesDone=$filesDone;FilesTotal=$filesTotal
-        ItemsDone=$itemsDone;ItemsTotal=$itemsTotal;BytesDone=$(if($null -ne $Raw.BytesDone){[long]$Raw.BytesDone}else{$null});BytesTotal=$bytesTotal;Percent=$percent
-        StartedUtc=[string]$Raw.StartedUtc;UpdatedUtc=[string]$Raw.UpdatedUtc;Recent=$recent;FailedCount=$failed;Terminal=[bool]$Raw.Terminal;Outcome=[string]$Raw.Outcome
+        ItemsDone=$itemsDone;ItemsTotal=$itemsTotal;BytesDone=$(if($null -ne (Get-WsmProgressRawField $Raw 'BytesDone')){[long](Get-WsmProgressRawField $Raw 'BytesDone')}else{$null});BytesTotal=$bytesTotal;Percent=$percent
+        StartedUtc=[string](Get-WsmProgressRawField $Raw 'StartedUtc');UpdatedUtc=[string](Get-WsmProgressRawField $Raw 'UpdatedUtc');Recent=$recent;FailedCount=$failed;Terminal=[bool](Get-WsmProgressRawField $Raw 'Terminal');Outcome=[string](Get-WsmProgressRawField $Raw 'Outcome')
         State=[string]$stateRow.State;EndReason=[string]$stateRow.EndReason;ReviewItemCount=[int][Math]::Max(0,$ReviewItemCount)
     }
     ConvertTo-WsmWizardHtmlValue ([pscustomobject]$view)
