@@ -260,6 +260,7 @@ jobs:
           }
           if ($failedTests.Count) { throw ('Failed: ' + ($failedTests -join ', ')) }
       - uses: actions/setup-node@v4
+        if: ${{ !cancelled() }}
         with:
           node-version: '22'
       - name: Offline HTML interaction contracts
@@ -270,6 +271,8 @@ jobs:
           node tests/Test-AssistiveUi.js
           if ($LASTEXITCODE -ne 0) { throw 'HTML interaction contracts failed.' }
       - name: Native HTTP socket edge cases (credential endpoint gates, resets, timeouts)
+        # Runs even when an earlier contract step of this job failed, so its own result is always reported.
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           node tests/Test-HttpSocketEdgeCases.js
