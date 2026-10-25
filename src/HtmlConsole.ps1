@@ -48,10 +48,10 @@ function Assert-WsmHtmlC2D2ActionAccess([string]$Action,[string]$Role,[string]$P
     $routes=Get-WsmHtmlC2D2ActionRoutes
     if(-not $routes.Contains($Action)){return}
     $kind=[string]$routes[$Action]
-    if(($kind -ceq 'view' -and $Route -cne '/api/view') -or ($kind -ceq 'operation' -and $Route -cne '/api/operations')){throw 'Unsupported operation route for this action: reads use the view endpoint and writes use the operation endpoint.'}
+    if(($kind -ceq 'view' -and $Route -cne '/api/view') -or ($kind -ceq 'operation' -and $Route -cne '/api/operations')){throw (New-WsmContractError 'Unsupported operation route for this action: reads use the view endpoint and writes use the operation endpoint.')}
     $required=Get-WsmTextActionGroup $Action
-    if($Role -cne $required){throw ('Unsupported operation role: this action requires the '+$required+' role.')}
-    if($required -ceq 'Manager' -and -not $PairId){throw 'Unsupported operation context: this action requires a selected Manager pair.'}
+    if($Role -cne $required){throw (New-WsmContractError ('Unsupported operation role: this action requires the '+$required+' role.'))}
+    if($required -ceq 'Manager' -and -not $PairId){throw (New-WsmContractError 'Unsupported operation context: this action requires a selected Manager pair.')}
 }
 function Get-WsmHtmlSourceCandidateList {
     [CmdletBinding()]
@@ -111,15 +111,15 @@ function Assert-WsmHtmlJobContextAccess($Record,[string]$Workspace,[string]$Pair
 }
 
 function Get-WsmHtmlWizardProjection([string]$Workspace,[string]$PairId,[string]$Role,[hashtable]$Jobs) {
-    if($Role -cnotin @('Source','Target','Manager')){throw 'Invalid role.'}
+    if($Role -cnotin @('Source','Target','Manager')){throw (New-WsmContractError 'Invalid role.')}
     if($PairId){Assert-WsmId $PairId}
     Get-WsmWizardProjection $Workspace $PairId $Role (Get-WsmHtmlWizardJobs $Jobs $Workspace)
 }
 
 function Assert-WsmHtmlWizardRevision($Body,[string]$Field) {
-    if(-not $Body.PSObject.Properties[$Field]){throw 'Malformed wizard revision.'}
+    if(-not $Body.PSObject.Properties[$Field]){throw (New-WsmContractError 'Malformed wizard revision.')}
     $value=$Body.$Field
-    if(($value -isnot [int] -and $value -isnot [long]) -or [long]$value -lt 0 -or [long]$value -gt [int]::MaxValue){throw 'Malformed wizard revision.'}
+    if(($value -isnot [int] -and $value -isnot [long]) -or [long]$value -lt 0 -or [long]$value -gt [int]::MaxValue){throw (New-WsmContractError 'Malformed wizard revision.')}
 }
 
 function Set-WsmHtmlSelection {
@@ -637,7 +637,7 @@ function Get-WsmHtmlView {
             $revision=Get-WsmHtmlRevision $Workspace $PairId
             Get-WsmHtmlOverviewProjection $catalog $stage $selected $Role $revision
         }
-        default {throw 'Unknown view.'}
+        default {throw (New-WsmContractError 'Unknown view.')}
     }
 }
 
@@ -652,6 +652,25 @@ function New-WsmHtmlError([string]$Message,[string]$Code,[string]$NextStep) {
     [pscustomobject]@{message=$Message;code=$Code;correlationId=[Guid]::NewGuid().ToString();nextStep=$NextStep}
 }
 
+# S14: a request body must be exactly one JSON object. Anything else is a contract error (System.IO.InvalidDataException), decided here by type,
+# so Get-WsmHtmlSafeError never has to guess "bad input" from words in an exception message.
+function ConvertFrom-WsmHtmlBody([string]$Text) {
+    $parsed=$null
+    try{$parsed=ConvertFrom-WsmJson $Text}catch{throw (New-WsmContractError 'Malformed JSON body.')}
+    if($parsed -isnot [System.Management.Automation.PSCustomObject]){throw (New-WsmContractError 'Malformed JSON body: a JSON object is required.')}
+    $parsed
+}
+# The real exception type behind the wrappers PowerShell puts around a failed worker (EndInvoke -> MethodInvocationException -> RuntimeException -> the thrown type).
+function Get-WsmHtmlExceptionTypeName($Exception) {
+    $wrappers=@('System.Management.Automation.MethodInvocationException','System.Management.Automation.RuntimeException','System.Management.Automation.ActionPreferenceStopException','System.Reflection.TargetInvocationException')
+    $current=$Exception;$depth=0
+    while($current -and $depth -lt 8){
+        $name=$current.GetType().FullName
+        if($name -cnotin $wrappers -or -not $current.InnerException){return $name}
+        $current=$current.InnerException;$depth++
+    }
+    if($current){$current.GetType().FullName}else{''}
+}
 function Get-WsmHtmlSafeError([string]$ExceptionMessage,[string]$ExceptionType='') {
     if($ExceptionMessage -match 'PreparationFieldValidation\|(/[A-Za-z0-9~/_-]+)\|(required|type|option|format|length)') {
         $pointer=$Matches[1];$reason=$Matches[2]
@@ -670,7 +689,7 @@ function Get-WsmHtmlSafeError([string]$ExceptionMessage,[string]$ExceptionType='
     if($ExceptionMessage -match 'worker limit|active jobs|Wait for active jobs|still has a running worker') { return (New-WsmHtmlError 'A local operation is still active.' 'active_operation' 'Check the operation history and wait for the active operation to finish.') }
     if($ExceptionMessage -match '^ReportUnavailable') { return (New-WsmHtmlError 'The verified report is unavailable.' 'report_unavailable' 'Refresh operation history and verify the report still exists and matches its recorded hash.') }
     if($ExceptionMessage -match 'JobContextMismatch|UnknownJob|Unknown report|hash changed|trusted file') { return (New-WsmHtmlError 'The requested operation or report is no longer available.' 'operation_unavailable' 'Refresh operation history and use its current report or recovery guidance.') }
-    if($ExceptionMessage -match 'Unknown route|Unknown view|Unknown action|Invalid role|Unsupported operation|parameter|JSON body|Malformed|Duplicate query') { return (New-WsmHtmlError 'The request could not be used.' 'invalid_request' 'Review the current page and its fields, then try again.') }
+    if($ExceptionType -ceq 'System.IO.InvalidDataException') { return (New-WsmHtmlError 'The request could not be used.' 'invalid_request' 'Review the current page and its fields, then try again.') }
     if($ExceptionMessage -match 'NoSafeCancellationBoundary|already stopped|requires a hash-bound safe cancellation') { return (New-WsmHtmlError 'The operation cannot be cancelled safely in its current state.' 'operation_not_cancellable' 'Inspect the operation history and authoritative journal before recovery.') }
     return (New-WsmHtmlError 'The local operation could not be completed.' 'operation_failed' 'Check operation history and the protected local logs before deciding whether to retry.')
 }
@@ -744,27 +763,27 @@ function Set-WsmHtmlImportPlanRoleBinding($Arguments,[string]$Role) {
 function ConvertTo-WsmHtmlArguments($Command,$Arguments) {
     $result=@{};$common=@('Verbose','Debug','ErrorAction','ErrorVariable','OutVariable','OutBuffer','PipelineVariable','InformationAction','InformationVariable','WarningAction','WarningVariable','Confirm','WhatIf','ProgressAction')
     foreach($p in $Arguments.PSObject.Properties){
-        if(-not $Command.Parameters.ContainsKey($p.Name) -or $p.Name -in $common){throw 'Unsupported operation parameter.'}
-        if($p.Name -in @('Jobs','OperationId','CancellationToken')){throw 'Internal operation parameter is prohibited.'}
-        $parameter=$Command.Parameters[$p.Name];if($parameter.ParameterType -eq [scriptblock] -or @($parameter.Attributes | Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.DontShow}).Count){throw 'Internal operation parameter is prohibited.'};$value=$p.Value
-        if($parameter.ParameterType -in @([bool],[Management.Automation.SwitchParameter]) -and $value -isnot [bool]){throw ('Boolean parameter must be a JSON boolean: '+$p.Name)}
+        if(-not $Command.Parameters.ContainsKey($p.Name) -or $p.Name -in $common){throw (New-WsmContractError 'Unsupported operation parameter.')}
+        if($p.Name -in @('Jobs','OperationId','CancellationToken')){throw (New-WsmContractError 'Internal operation parameter is prohibited.')}
+        $parameter=$Command.Parameters[$p.Name];if($parameter.ParameterType -eq [scriptblock] -or @($parameter.Attributes | Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.DontShow}).Count){throw (New-WsmContractError 'Internal operation parameter is prohibited.')};$value=$p.Value
+        if($parameter.ParameterType -in @([bool],[Management.Automation.SwitchParameter]) -and $value -isnot [bool]){throw (New-WsmContractError ('Boolean parameter must be a JSON boolean: '+$p.Name))}
         if($parameter.ParameterType -in @([int],[long],[uint32],[uint64])){
             $integerText=[Convert]::ToString($value,[Globalization.CultureInfo]::InvariantCulture)
-            if($integerText -notmatch '^-?\d+$'){throw ('Integer parameter must be a whole number: '+$p.Name)}
+            if($integerText -notmatch '^-?\d+$'){throw (New-WsmContractError ('Integer parameter must be a whole number: '+$p.Name))}
         }
         if($p.Name -ceq 'AdditionalShares'){
-            if($value -isnot [array] -or $value.Count -gt 15){throw 'AdditionalShares must be a JSON array with at most 15 explicit share/path pairs.'}
+            if($value -isnot [array] -or $value.Count -gt 15){throw (New-WsmContractError 'AdditionalShares must be a JSON array with at most 15 explicit share/path pairs.')}
             foreach($share in @($value)){
                 Assert-WsmFields $share @('ShareName','LocalPath') @('ShareName','LocalPath')
-                if($share.ShareName -isnot [string] -or $share.LocalPath -isnot [string] -or [string]::IsNullOrWhiteSpace($share.ShareName) -or [string]::IsNullOrWhiteSpace($share.LocalPath)){throw 'AdditionalShares requires nonempty string ShareName and LocalPath values.'}
+                if($share.ShareName -isnot [string] -or $share.LocalPath -isnot [string] -or [string]::IsNullOrWhiteSpace($share.ShareName) -or [string]::IsNullOrWhiteSpace($share.LocalPath)){throw (New-WsmContractError 'AdditionalShares requires nonempty string ShareName and LocalPath values.')}
             }
         }
         if($p.Name -ceq 'Secrets'){
             $value=@{};foreach($secret in @($p.Value)){
                 Assert-WsmFields $secret @('Ref','Kind','Value','UserName','Password') @('Ref','Kind')
-                if(-not $secret.Ref -or $value.ContainsKey($secret.Ref)){throw 'Invalid secret reference.'}
+                if(-not $secret.Ref -or $value.ContainsKey($secret.Ref)){throw (New-WsmContractError 'Invalid secret reference.')}
                 if($secret.Kind -ceq 'Credential'){$secure=ConvertTo-SecureString ([string]$secret.Password) -AsPlainText -Force;$value[$secret.Ref]=New-Object Management.Automation.PSCredential([string]$secret.UserName,$secure)}
-                elseif($secret.Kind -ceq 'SecureString'){$value[$secret.Ref]=ConvertTo-SecureString ([string]$secret.Value) -AsPlainText -Force}else{throw 'Unsupported secret kind.'}
+                elseif($secret.Kind -ceq 'SecureString'){$value[$secret.Ref]=ConvertTo-SecureString ([string]$secret.Value) -AsPlainText -Force}else{throw (New-WsmContractError 'Unsupported secret kind.')}
             }
         }
         elseif($parameter.ParameterType -eq [hashtable] -or $parameter.ParameterType -eq [System.Collections.IDictionary]){$value=@{};foreach($entry in $p.Value.PSObject.Properties){$value[$entry.Name]=$entry.Value};if($p.Name -ceq 'Fields' -and $value.ContainsKey('IisPoolSettings')){$settings=@{};foreach($setting in $value.IisPoolSettings.PSObject.Properties){$settings[$setting.Name]=$setting.Value};$value.IisPoolSettings=$settings}}
@@ -775,7 +794,7 @@ function ConvertTo-WsmHtmlArguments($Command,$Arguments) {
         elseif($parameter.ParameterType -eq [Security.SecureString]){$value=ConvertTo-SecureString ([string]$value) -AsPlainText -Force}
         $result[$p.Name]=$value
     }
-    foreach($parameter in $Command.Parameters.Values){$mandatory=@($parameter.Attributes|Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.Mandatory}).Count -gt 0;if($mandatory -and $parameter.Name -notin @('CancellationToken','OperationId','Jobs') -and -not $result.ContainsKey($parameter.Name)){throw ('Required parameter missing: '+$parameter.Name)}}
+    foreach($parameter in $Command.Parameters.Values){$mandatory=@($parameter.Attributes|Where-Object {$_ -is [Management.Automation.ParameterAttribute] -and $_.Mandatory}).Count -gt 0;if($mandatory -and $parameter.Name -notin @('CancellationToken','OperationId','Jobs') -and -not $result.ContainsKey($parameter.Name)){throw (New-WsmContractError ('Required parameter missing: '+$parameter.Name))}}
     $result
 }
 
@@ -947,9 +966,9 @@ function Invoke-WsmHtmlResumeRequest {
     if(-not $Jobs.ContainsKey($JobId)){throw 'UnknownJob'}
     $job=$Jobs[$JobId];Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role
     if($Role -cne 'Target' -or [string]$job.Record.action -cne 'TargetRestore'){throw 'Only a TargetRestore parent of the enrolled Target role can be resumed.'}
-    $body=ConvertFrom-WsmJson $BodyText;Assert-WsmFields $body @('continuationId','confirm') @('continuationId','confirm')
-    if($body.confirm -isnot [bool] -or -not $body.confirm){throw 'Malformed resume request: confirm must be the JSON boolean true.'}
-    $guid=[Guid]::Empty;if($body.continuationId -isnot [string] -or -not [Guid]::TryParseExact([string]$body.continuationId,'D',[ref]$guid)){throw 'Malformed resume request: continuationId must be a GUID string.'}
+    $body=ConvertFrom-WsmHtmlBody $BodyText;Assert-WsmFields $body @('continuationId','confirm') @('continuationId','confirm')
+    if($body.confirm -isnot [bool] -or -not $body.confirm){throw (New-WsmContractError 'Malformed resume request: confirm must be the JSON boolean true.')}
+    $guid=[Guid]::Empty;if($body.continuationId -isnot [string] -or -not [Guid]::TryParseExact([string]$body.continuationId,'D',[ref]$guid)){throw (New-WsmContractError 'Malformed resume request: continuationId must be a GUID string.')}
     $continuationId=$guid.ToString('D')
     # The same continuationId again never starts a second worker: it reports the current state of the same job.
     if($job.Record.PSObject.Properties['continuations'] -and @($job.Record.continuations|Where-Object {[string]$_.continuationId -ceq $continuationId}).Count){$Out.Status=202;$Out.Response=@{job=(ConvertTo-WsmHtmlPublicJobRecord $job.Record)};return}
@@ -1007,7 +1026,7 @@ function Complete-WsmHtmlFinishedJob($Job,[string]$Workspace,[hashtable]$Jobs,[s
     }catch{
         $workerFailure=$_;$Job.Record.Status=Get-WsmWorkerFailureStatus $workerFailure
         if([string]$Job.Record.action -ceq 'TargetRestore' -and $Job.Record.Status -ceq 'Failed'){try{$retryWait=Get-WsmHtmlTargetRestoreRetryWaitOutput $Workspace $Job.Record;if($retryWait){$waitingForInput=$true;$Job.Record.Status='WaitingForInput';$Job.Record.CompletedUtc=$null;$Job.Record|Add-Member NoteProperty requiredSecretRefs @($retryWait.RequiredSecretRefs) -Force;$Job.Record|Add-Member NoteProperty credentialRequirements @(Get-WsmHtmlOutputRequirements $retryWait) -Force;$output=@($retryWait)}}catch{}}
-        if(-not $waitingForInput -and $Job.Record.Status -ceq 'Failed'){$workerError=Get-WsmHtmlSafeError $workerFailure.Exception.Message $workerFailure.Exception.GetType().FullName;$Job.Record|Add-Member NoteProperty error $workerError -Force;try{Write-WsmHtmlErrorRecord $ErrorRoot $workerError '/worker' ([string]$Job.Record.pairId)}catch{}}
+        if(-not $waitingForInput -and $Job.Record.Status -ceq 'Failed'){$workerError=Get-WsmHtmlSafeError $workerFailure.Exception.Message (Get-WsmHtmlExceptionTypeName $workerFailure.Exception);$Job.Record|Add-Member NoteProperty error $workerError -Force;try{Write-WsmHtmlErrorRecord $ErrorRoot $workerError '/worker' ([string]$Job.Record.pairId)}catch{}}
     }
     if([string]$Job.Record.action -ceq 'TargetRestore'){
         $Job.Record|Add-Member NoteProperty resumable $(if([string]$Job.Record.status -ceq 'ReviewRequired' -and $Job.Record.PSObject.Properties['reason'] -and [string]$Job.Record.reason -ceq 'PreviewChanged'){$false}else{[bool](Get-WsmHtmlTargetRestoreResumable $Job.Record)}) -Force
@@ -1029,14 +1048,14 @@ function Submit-WsmHtmlCredentialDeferral {
     # ask for, the same job continues without input (same guard / worker start as the credential reply); otherwise it keeps waiting.
     $worker=$null;$resumeContext=$null;$workerStarted=$false;$job=$null;$deferralApplied=$false;$submissionGuard=$null;$workerArguments=$null
     try{
-        if(-not $Request.Headers.ContainsKey('content-type') -or $Request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw 'JSON body required.'}
+        if(-not $Request.Headers.ContainsKey('content-type') -or $Request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw (New-WsmContractError 'JSON body required.')}
         if(-not $Jobs.ContainsKey($JobId)){throw 'UnknownJob'};$job=$Jobs[$JobId];Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role
         if($Role -cne 'Target' -or [string]$job.Record.action -cne 'TargetRestore' -or [string]$job.Record.status -cne 'WaitingForInput'){throw 'TargetRestore parent is not waiting for secure service credentials.'}
-        $body=ConvertFrom-WsmJson $Request.Body
-        if($body -isnot [System.Management.Automation.PSCustomObject]){throw 'Malformed deferral request: an object with secretRefs is required.'}
+        $body=ConvertFrom-WsmHtmlBody $Request.Body
+        if($body -isnot [System.Management.Automation.PSCustomObject]){throw (New-WsmContractError 'Malformed deferral request: an object with secretRefs is required.')}
         Assert-WsmFields $body @('secretRefs') @('secretRefs')
-        if($body.secretRefs -isnot [array] -or @($body.secretRefs).Count -lt 1 -or @($body.secretRefs).Count -gt 64){throw 'Malformed deferral request: secretRefs must be a non-empty array.'}
-        $refs=@();foreach($ref in @($body.secretRefs)){if($ref -isnot [string] -or [string]::IsNullOrWhiteSpace($ref) -or $ref.Length -gt 256 -or $ref -match '[\x00-\x1f]'){throw 'Malformed deferral request: every SecretRef must be a plain string.'};$refs+=@([string]$ref)}
+        if($body.secretRefs -isnot [array] -or @($body.secretRefs).Count -lt 1 -or @($body.secretRefs).Count -gt 64){throw (New-WsmContractError 'Malformed deferral request: secretRefs must be a non-empty array.')}
+        $refs=@();foreach($ref in @($body.secretRefs)){if($ref -isnot [string] -or [string]::IsNullOrWhiteSpace($ref) -or $ref.Length -gt 256 -or $ref -match '[\x00-\x1f]'){throw (New-WsmContractError 'Malformed deferral request: every SecretRef must be a plain string.')};$refs+=@([string]$ref)}
         $refs=@($refs|Sort-Object -Unique)
         $challengeBinding=Get-WsmHtmlTargetRestoreChallenge $Workspace $job.Record
         if($challengeBinding.RecoverablePreWrite -or [string]$challengeBinding.Challenge.State -cne 'WaitingForInput'){throw 'Only a durably waiting challenge can have credential groups deferred.'}
@@ -1090,10 +1109,10 @@ function Submit-WsmHtmlServiceCredentials {
     param([string]$Workspace,[string]$PairId,[string]$Role,[hashtable]$Jobs,[string]$JobId,$Request,[string]$SessionId,[string]$ContextId,[string]$ModulePath,[hashtable]$Out)
     $worker=$null;$workerArguments=$null;$secretValues=$null;$submissionGuard=$null;$body=$null;$workerStarted=$false;$job=$null
     try{
-        if(-not $Request.Headers.ContainsKey('content-type') -or $Request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw 'JSON body required.'}
+        if(-not $Request.Headers.ContainsKey('content-type') -or $Request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw (New-WsmContractError 'JSON body required.')}
         if(-not $Jobs.ContainsKey($JobId)){throw 'UnknownJob'};$job=$Jobs[$JobId];Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role
         if($Role -cne 'Target' -or [string]$job.Record.action -cne 'TargetRestore' -or [string]$job.Record.status -cne 'WaitingForInput'){throw 'TargetRestore parent is not waiting for secure service credentials.'}
-        $body=ConvertFrom-WsmJson $Request.Body;Assert-WsmFields $body @('credentials','takeover') @('credentials');if($body.PSObject.Properties['takeover'] -and $body.takeover -isnot [bool]){throw 'Explicit takeover flag must be boolean.'}
+        $body=ConvertFrom-WsmHtmlBody $Request.Body;Assert-WsmFields $body @('credentials','takeover') @('credentials');if($body.PSObject.Properties['takeover'] -and $body.takeover -isnot [bool]){throw (New-WsmContractError 'Explicit takeover flag must be boolean.')}
         $challengeBinding=Get-WsmHtmlTargetRestoreChallenge $Workspace $job.Record;$takeover=$false;if($body.PSObject.Properties['takeover']){$takeover=[bool]$body.takeover}
         # The reviewed preview must still be the current one before any secret is materialized or a worker exists. A different preview revokes the
         # challenge in the core (attempt Superseded, reservations released), ends this job and starts nothing; the received secret is simply dropped.
@@ -1127,11 +1146,11 @@ function Submit-WsmHtmlServiceCredentials {
 }
 
 function ConvertTo-WsmHtmlServiceCredentials($InputObject,$Challenge) {
-    if(-not $InputObject -or $InputObject -isnot [System.Management.Automation.PSCustomObject]){throw 'Credentials must be an object keyed by the reviewed SecretRefs.'}
+    if(-not $InputObject -or $InputObject -isnot [System.Management.Automation.PSCustomObject]){throw (New-WsmContractError 'Credentials must be an object keyed by the reviewed SecretRefs.')}
     $refs=@($InputObject.PSObject.Properties|ForEach-Object {$_.Name}|Sort-Object -Unique);$expected=@($Challenge.RequiredSecretRefs|Sort-Object -Unique)
     if(($refs -join "`n") -cne ($expected -join "`n")){throw 'Credential SecretRef set differs from the durable challenge.'}
     $validated=@{}
-    foreach($ref in $expected){$entry=$InputObject.PSObject.Properties[$ref].Value;if(-not $entry -or $entry -isnot [System.Management.Automation.PSCustomObject]){throw 'Credential entry is malformed.'};Assert-WsmFields $entry @('username','password') @('username','password');$username=$entry.username;$password=$entry.password;if($username -isnot [string] -or $password -isnot [string] -or [string]::IsNullOrWhiteSpace($username) -or $username.Length -gt 256 -or $username -match '[\x00-\x1f]' -or [string]::IsNullOrEmpty($password) -or $password.Length -gt 4096){throw 'Credential entry is invalid.'};$validated[$ref]=@{Username=$username;Password=$password}}
+    foreach($ref in $expected){$entry=$InputObject.PSObject.Properties[$ref].Value;if(-not $entry -or $entry -isnot [System.Management.Automation.PSCustomObject]){throw (New-WsmContractError 'Credential entry is malformed.')};Assert-WsmFields $entry @('username','password') @('username','password');$username=$entry.username;$password=$entry.password;if($username -isnot [string] -or $password -isnot [string] -or [string]::IsNullOrWhiteSpace($username) -or $username.Length -gt 256 -or $username -match '[\x00-\x1f]' -or [string]::IsNullOrEmpty($password) -or $password.Length -gt 4096){throw (New-WsmContractError 'Credential entry is invalid.')};$validated[$ref]=@{Username=$username;Password=$password}}
     $credentials=@{}
     try{foreach($ref in $expected){$entry=$validated[$ref];$secure=ConvertTo-SecureString $entry.Password -AsPlainText -Force;$credentials[$ref]=New-Object Management.Automation.PSCredential($entry.Username,$secure)};return ,$credentials}catch{Clear-WsmHtmlServiceCredentialValues $credentials;throw}
 }
@@ -1264,7 +1283,7 @@ function Start-WsmHtmlConsole {
                 if($request.Headers.ContainsKey('origin') -and $request.Headers.origin -cne $origin){throw 'RejectedOrigin'}
                 if($request.Method -ceq 'POST' -and (-not $request.Headers.ContainsKey('origin') -or $request.Headers.origin -cne $origin)){throw 'RejectedOrigin'}
                 $uri=New-Object Uri($origin+$request.Target);$route=$uri.AbsolutePath
-                $query=@{};foreach($part in $uri.Query.TrimStart('?').Split('&')){if($part){$kv=$part.Split('=',2);if($query.ContainsKey($kv[0])){throw 'Duplicate query parameter.'};$query[$kv[0]]=[Uri]::UnescapeDataString($(if($kv.Count -gt 1){$kv[1]}else{''}))}}
+                $query=@{};foreach($part in $uri.Query.TrimStart('?').Split('&')){if($part){$kv=$part.Split('=',2);if($query.ContainsKey($kv[0])){throw (New-WsmContractError 'Duplicate query parameter.')};$query[$kv[0]]=[Uri]::UnescapeDataString($(if($kv.Count -gt 1){$kv[1]}else{''}))}}
                 $static=@{'/'='index.html';'/index.html'='index.html';'/console.js'='console.js';'/nonc.js'='nonc.js';'/console.css'='console.css';'/guide.html'='guide.html';'/ui/'='index.html';'/ui/console.js'='console.js';'/ui/nonc.js'='nonc.js';'/ui/console.css'='console.css';'/ui/guide.html'='guide.html';'/ui/index.html'='index.html'}
                 $docRoot=Join-Path ([IO.Path]::GetDirectoryName($PSScriptRoot)) 'docs'
                 $documents=Get-WsmHtmlDocuments $docRoot
@@ -1282,12 +1301,12 @@ function Start-WsmHtmlConsole {
                     if(-not $request.Headers.ContainsKey('x-wsm-token') -or $request.Headers['x-wsm-token'] -cne $token){throw 'RejectedToken'}
                     if($route -ceq '/api/context' -and $request.Method -ceq 'GET'){$response=Get-WsmHtmlContext $Workspace $PairId $Role $contextId}
                     elseif($route -ceq '/api/context' -and $request.Method -ceq 'POST'){
-                        $change=ConvertFrom-WsmJson $request.Body;Assert-WsmFields $change @('pairId','role','expectedRevision','expectedDecisionRevision','expectedSelectionRevision','expectedDataVersion','contextId') @('pairId','role','expectedRevision','contextId')
+                        $change=ConvertFrom-WsmHtmlBody $request.Body;Assert-WsmFields $change @('pairId','role','expectedRevision','expectedDecisionRevision','expectedSelectionRevision','expectedDataVersion','contextId') @('pairId','role','expectedRevision','contextId')
                         $currentVector=Get-WsmHtmlRevisionVector $Workspace $PairId
                         if($change.contextId -cne $contextId -or [int]$change.expectedRevision -ne [int]$currentVector.revision -or -not (Test-WsmHtmlExpectedVector $change $currentVector)){$status=409;$response=New-WsmHtmlError 'The context or data changed before switching.' 'stale_context' 'Refresh the context and review the requested change again.'}
                         elseif(@($jobs.Values|Where-Object {$_.Handle -and -not $_.Handle.IsCompleted}).Count){$status=409;$response=New-WsmHtmlError 'A local operation is still active.' 'active_operation' 'Check operation history and wait for the active operation to finish.'}
                         else{
-                            if($change.role -cnotin @('Source','Target','Manager')){throw 'Invalid role.'}
+                            if($change.role -cnotin @('Source','Target','Manager')){throw (New-WsmContractError 'Invalid role.')}
                             if($change.pairId){Assert-WsmId $change.pairId;$catalogPath=Get-WsmCatalogPath $Workspace ([string]$change.pairId);if([IO.File]::Exists($catalogPath)){[void](Get-WsmCatalog $Workspace $change.pairId)}else{$profile=Read-WsmOutputProfile $Workspace;if($change.role -cnotin @('Source','Target') -or -not $profile -or $profile.Role -cne [string]$change.role -or -not (Get-WsmWizardReceivedApprovedPlan $Workspace ([string]$change.pairId) $profile)){throw 'Selected pair is not a verified catalog or received-plan binding.'}}}
                             $PairId=[string]$change.pairId;$Role=[string]$change.role;$contextId=[Guid]::NewGuid().ToString();$response=Get-WsmHtmlContext $Workspace $PairId $Role $contextId
                         }
@@ -1298,7 +1317,7 @@ function Start-WsmHtmlConsole {
                     }
                     elseif($route -ceq '/api/wizard/defaults' -and $request.Method -ceq 'GET'){
                         if(($query.ContainsKey('contextId') -and $query.contextId -cne $contextId) -or ($query.ContainsKey('role') -and $query.role -cne $Role) -or ($query.ContainsKey('pairId') -and $query.pairId -cne $PairId)){$status=409;$response=New-WsmHtmlError 'The console context changed before this step was prepared.' 'stale_context' 'Refresh the current workflow and request its fields again.'}
-                        else{if(-not $query.ContainsKey('action')){throw 'Unknown action.'};$wizardRole=if($query.ContainsKey('role')){[string]$query.role}else{$Role};$wizardPair=if($query.ContainsKey('pairId')){[string]$query.pairId}else{$PairId};$response=Get-WsmWizardActionDefaults $Workspace $wizardPair $wizardRole $query.action (Get-WsmHtmlWizardJobs $jobs $Workspace)}
+                        else{if(-not $query.ContainsKey('action')){throw (New-WsmContractError 'Unknown action.')};$wizardRole=if($query.ContainsKey('role')){[string]$query.role}else{$Role};$wizardPair=if($query.ContainsKey('pairId')){[string]$query.pairId}else{$PairId};$response=Get-WsmWizardActionDefaults $Workspace $wizardPair $wizardRole $query.action (Get-WsmHtmlWizardJobs $jobs $Workspace)}
                     }
                     elseif($route -in @('/api/wizard/runtime','/api/wizard/nonc') -and $request.Method -ceq 'GET'){
                         if(-not $query.ContainsKey('contextId') -or $query.contextId -cne $contextId -or ($query.ContainsKey('role') -and $query.role -cne $Role) -or ($query.ContainsKey('pairId') -and $query.pairId -cne $PairId)){$status=409;$response=New-WsmHtmlError 'The console context changed before this runtime view was read.' 'stale_context' 'Refresh the current pair and role before continuing.'}
@@ -1307,8 +1326,8 @@ function Start-WsmHtmlConsole {
                         else{$response=Get-WsmHtmlWizardRuntime $Workspace $PairId $Role $jobs}
                     }
                     elseif($route -ceq '/api/wizard' -and $request.Method -ceq 'POST'){
-                        if(-not $request.Headers.ContainsKey('content-type') -or $request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw 'JSON body required.'}
-                        $body=ConvertFrom-WsmJson $request.Body;if(-not $body.PSObject.Properties['operation']){throw 'Unsupported operation.'};$op=[string]$body.operation
+                        if(-not $request.Headers.ContainsKey('content-type') -or $request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw (New-WsmContractError 'JSON body required.')}
+                        $body=ConvertFrom-WsmHtmlBody $request.Body;if(-not $body.PSObject.Properties['operation']){throw (New-WsmContractError 'Unsupported operation.')};$op=[string]$body.operation
                         $wizardGuard=Enter-WsmWorkspaceWorkerGuard -Workspace $Workspace -Role $Role -PairId $PairId -Action 'WizardStateSave'
                         try{
                         switch($op){
@@ -1345,7 +1364,7 @@ function Start-WsmHtmlConsole {
                             saveChoice {
                                 Assert-WsmFields $body @('operation','role','pairId','itemId','groupId','selected','reason','expectedWizardRevision','expectedDecisionRevision','expectedSelectionRevision','expectedAssistiveRevision','contextId') @('operation','role','pairId','itemId','selected','expectedWizardRevision','expectedDecisionRevision','expectedSelectionRevision','contextId')
                                 if($body.contextId -cne $contextId -or $body.role -cne $Role -or $body.pairId -cne $PairId){throw 'Review changed: wizard context.'}
-                                if($body.selected -isnot [bool]){throw 'Malformed selection flag.'}
+                                if($body.selected -isnot [bool]){throw (New-WsmContractError 'Malformed selection flag.')}
                                 foreach($revisionField in @('expectedWizardRevision','expectedDecisionRevision','expectedSelectionRevision')){Assert-WsmHtmlWizardRevision $body $revisionField}
                                 if($body.PSObject.Properties['expectedAssistiveRevision']){Assert-WsmHtmlWizardRevision $body 'expectedAssistiveRevision'}
                                 $assistiveRevision=-1;if($body.PSObject.Properties['expectedAssistiveRevision']){$assistiveRevision=[int]$body.expectedAssistiveRevision}
@@ -1353,7 +1372,7 @@ function Start-WsmHtmlConsole {
                                 $saved=Set-WsmWizardChoice -Workspace $Workspace -PairId $PairId -Role $Role -ItemId ([string]$body.itemId) -GroupId $groupId -Selected $body.selected -Reason $reason -ExpectedWizardRevision ([int]$body.expectedWizardRevision) -ExpectedDecisionRevision ([int]$body.expectedDecisionRevision) -ExpectedSelectionRevision ([int]$body.expectedSelectionRevision) -ExpectedAssistiveRevision $assistiveRevision -Jobs (Get-WsmHtmlWizardJobs $jobs $Workspace)
                                 $response=@{saved=$true;result=$saved;projection=(Get-WsmHtmlWizardProjection $Workspace $PairId $Role $jobs)}
                             }
-                            default {throw 'Unsupported operation.'}
+                            default {throw (New-WsmContractError 'Unsupported operation.')}
                         }
                         }finally{Exit-WsmWorkspaceWorkerGuard $wizardGuard}
                     }
@@ -1361,7 +1380,7 @@ function Start-WsmHtmlConsole {
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/reports/([0-9]+)/open$' -and $request.Method -ceq 'POST'){
                         $id=$Matches[1];$index=[int]$Matches[2];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'}
                         try{$record=$jobs[$id].Record;Assert-WsmHtmlJobContextAccess $record $Workspace $PairId $Role;if(-not $record.PSObject.Properties['reportArtifacts'] -or $index -ge @($record.reportArtifacts).Count){throw 'Unavailable'}
-                            $open=ConvertFrom-WsmJson $request.Body;Assert-WsmFields $open @('SHA256') @('SHA256');$artifact=$record.reportArtifacts[$index]
+                            $open=ConvertFrom-WsmHtmlBody $request.Body;Assert-WsmFields $open @('SHA256') @('SHA256');$artifact=$record.reportArtifacts[$index]
                             if($open.SHA256 -ine $artifact.SHA256){throw 'Unavailable'};Assert-WsmNoReparse $artifact.Path;Assert-WsmTrustedFile $artifact.Path $artifact.SHA256
                             Start-Process -FilePath $artifact.Path | Out-Null;$response=@{status='Opened';SHA256=$artifact.SHA256}
                         }catch{throw 'ReportUnavailable'}
@@ -1370,7 +1389,7 @@ function Start-WsmHtmlConsole {
                         $id=$Matches[1];$index=[int]$Matches[2];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};$record=$jobs[$id].Record;Assert-WsmHtmlJobContextAccess $record $Workspace $PairId $Role;if($record.action -cne 'DeveloperProbe' -or -not $record.PSObject.Properties['reportArtifacts'] -or $index -ge @($record.reportArtifacts).Count){throw 'ReportUnavailable'};$artifact=$record.reportArtifacts[$index];if($artifact.Kind -eq 'Folder' -or -not [IO.File]::Exists($artifact.Path)){throw 'ReportUnavailable'};Assert-WsmNoReparse $artifact.Path;Assert-WsmTrustedFile $artifact.Path $artifact.SHA256;$bytes=[IO.File]::ReadAllBytes($artifact.Path);$type=[string]$artifact.ContentType
                     }
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/artifacts/([0-9]+)/open$' -and $request.Method -ceq 'POST'){
-                        $id=$Matches[1];$index=[int]$Matches[2];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};try{$record=$jobs[$id].Record;Assert-WsmHtmlJobContextAccess $record $Workspace $PairId $Role;if($record.action -cne 'DeveloperProbe' -or -not $record.PSObject.Properties['reportArtifacts'] -or $index -ge @($record.reportArtifacts).Count){throw 'Unavailable'};$artifact=$record.reportArtifacts[$index];$open=ConvertFrom-WsmJson $request.Body;Assert-WsmFields $open @('SHA256') @('SHA256');if([string]$open.SHA256 -cne [string]$artifact.SHA256){throw 'Unavailable'}
+                        $id=$Matches[1];$index=[int]$Matches[2];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};try{$record=$jobs[$id].Record;Assert-WsmHtmlJobContextAccess $record $Workspace $PairId $Role;if($record.action -cne 'DeveloperProbe' -or -not $record.PSObject.Properties['reportArtifacts'] -or $index -ge @($record.reportArtifacts).Count){throw 'Unavailable'};$artifact=$record.reportArtifacts[$index];$open=ConvertFrom-WsmHtmlBody $request.Body;Assert-WsmFields $open @('SHA256') @('SHA256');if([string]$open.SHA256 -cne [string]$artifact.SHA256){throw 'Unavailable'}
                             if($artifact.Kind -eq 'Folder'){$probeRoot=[IO.Path]::GetFullPath((Join-Path $Workspace 'developer-probes')).TrimEnd('\')+'\';$folder=[IO.Path]::GetFullPath($artifact.Path);if(-not $folder.StartsWith($probeRoot,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.Directory]::Exists($folder)){throw 'Unavailable'};Assert-WsmNoReparse $folder;Start-Process -FilePath $folder | Out-Null}
                             else{Assert-WsmNoReparse $artifact.Path;Assert-WsmTrustedFile $artifact.Path $artifact.SHA256;Start-Process -FilePath $artifact.Path | Out-Null};$response=@{status='Opened';kind=$artifact.Kind;SHA256=$artifact.SHA256}
                         }catch{throw 'ReportUnavailable'}
@@ -1378,7 +1397,7 @@ function Start-WsmHtmlConsole {
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/service-credentials/cancel$' -and $request.Method -ceq 'POST'){
                         $id=$Matches[1];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};$job=$jobs[$id];Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role
                         if($Role -cne 'Target' -or [string]$job.Record.action -cne 'TargetRestore' -or [string]$job.Record.status -cne 'WaitingForInput'){throw 'TargetRestore parent is not waiting for secure service credentials.'}
-                        $body=ConvertFrom-WsmJson $request.Body;if($body -isnot [System.Management.Automation.PSCustomObject] -or @($body.PSObject.Properties).Count -ne 0){throw 'Credential cancellation body must be an empty JSON object.'};$binding=Get-WsmHtmlTargetRestoreChallenge $Workspace $job.Record
+                        $body=ConvertFrom-WsmHtmlBody $request.Body;if($body -isnot [System.Management.Automation.PSCustomObject] -or @($body.PSObject.Properties).Count -ne 0){throw (New-WsmContractError 'Credential cancellation body must be an empty JSON object.')};$binding=Get-WsmHtmlTargetRestoreChallenge $Workspace $job.Record
                         Cancel-WsmAssistiveServiceCredentialChallenge -StateDirectory $binding.StateDirectory -PairId ([string]$job.Record.pairId) -OperationId ([string]$job.Record.jobId) -PreviewHash ([string]$job.Record.targetRestorePreviewHash) | Out-Null
                         $job.Record.Status='Cancelled';$job.Record.CompletedUtc=Get-WsmUtc;$job.Record.canCancel=$false;$job.Record|Add-Member NoteProperty outputs @([pscustomobject]@{Status='Cancelled';ParentOperationId=[string]$job.Record.jobId;NoTargetWrites=$true;ProductionVerified=$false}) -Force;Write-WsmJson $job.Path $job.Record;$response=ConvertTo-WsmHtmlPublicJobRecord $job.Record
                     }
@@ -1399,7 +1418,7 @@ function Start-WsmHtmlConsole {
                     }
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/resume$' -and $request.Method -ceq 'POST'){
                         $resumeJobId=$Matches[1];# the header check below runs -notmatch, which overwrites the route captures
-                        if(-not $request.Headers.ContainsKey('content-type') -or $request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw 'JSON body required.'}
+                        if(-not $request.Headers.ContainsKey('content-type') -or $request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw (New-WsmContractError 'JSON body required.')}
                         $resumeOut=@{Status=202;Response=$null}
                         Invoke-WsmHtmlResumeRequest -Workspace $Workspace -PairId $PairId -Role $Role -Jobs $jobs -JobId $resumeJobId -BodyText $request.Body -SessionId $sessionId -ContextId $contextId -ModulePath $modulePath -Out $resumeOut
                         $status=$resumeOut.Status;$response=$resumeOut.Response
@@ -1420,18 +1439,18 @@ function Start-WsmHtmlConsole {
                     }
                     elseif($route -ceq '/api/spec-review' -and $request.Method -ceq 'GET'){
                         if($query.ContainsKey('contextId') -and $query.contextId -cne $contextId){$status=409;$response=New-WsmHtmlError 'The console context changed before this review was read.' 'stale_context' 'Refresh the current context and request the review again.'}
-                        else{if(-not $query.ContainsKey('itemId')){throw 'Unknown action.'};$specDataVersion=if($query.ContainsKey('dataVersion')){[string]$query['dataVersion']}else{''};$response=Get-WsmHtmlSpecReviewSnapshot $Workspace $PairId $query['itemId'] $Role $sessionId $contextId $specDataVersion}
+                        else{if(-not $query.ContainsKey('itemId')){throw (New-WsmContractError 'Unknown action.')};$specDataVersion=if($query.ContainsKey('dataVersion')){[string]$query['dataVersion']}else{''};$response=Get-WsmHtmlSpecReviewSnapshot $Workspace $PairId $query['itemId'] $Role $sessionId $contextId $specDataVersion}
                     }
                     elseif($route -ceq '/api/view' -and $request.Method -ceq 'GET'){
                         if($query.ContainsKey('contextId') -and $query.contextId -cne $contextId){$status=409;$response=New-WsmHtmlError 'The console context changed before this view was read.' 'stale_context' 'Refresh the context and request the view again.'}
                         else{$viewDataVersion=if($query.ContainsKey('dataVersion')){[string]$query['dataVersion']}else{''};$response=Get-WsmHtmlViewSnapshot $Workspace $PairId $query.action $Role $sessionId $contextId $viewDataVersion}
                     }
                     elseif($route -in @('/api/operations','/api/view') -and $request.Method -ceq 'POST'){
-                        if(-not $request.Headers.ContainsKey('content-type') -or $request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw 'JSON body required.'}
-                        $body=ConvertFrom-WsmJson $request.Body
+                        if(-not $request.Headers.ContainsKey('content-type') -or $request.Headers['content-type'] -notmatch '^application/json(?:;|$)'){throw (New-WsmContractError 'JSON body required.')}
+                        $body=ConvertFrom-WsmHtmlBody $request.Body
                         Assert-WsmFields $body @('action','args','operationId','idempotencyKey','expectedRevision','expectedDecisionRevision','expectedSelectionRevision','expectedDataVersion','contextId') @('action','args','expectedRevision','contextId')
                         if($body.contextId -cne $contextId){$status=409;throw 'Review changed: context changed.'}
-                        $map=Get-WsmHtmlActionMap;if(-not $map.Contains($body.action)){throw 'Unknown action.'}
+                        $map=Get-WsmHtmlActionMap;if(-not $map.Contains($body.action)){throw (New-WsmContractError 'Unknown action.')}
                         if($body.action -ceq 'TargetRestore'){if($Role -cne 'Target' -or -not $PairId){throw 'TargetRestore requires the enrolled Target role and pair.'};Assert-WsmFields $body.args @('PreviewHash','Workspace','PairId') @('PreviewHash');if($body.args.PSObject.Properties['Workspace'] -and [IO.Path]::GetFullPath([string]$body.args.Workspace) -ine [IO.Path]::GetFullPath($Workspace)){throw 'TargetRestore workspace binding does not match the enrolled workspace.'};if($body.args.PSObject.Properties['PairId'] -and [string]$body.args.PairId -cne [string]$PairId){throw 'TargetRestore pair binding does not match the enrolled pair.'};if([string]$body.args.PreviewHash -notmatch '^[a-fA-F0-9]{64}$'){throw 'TargetRestore requires the reviewed preview hash.'}}
                         $requestHash=$null
                         if($route -ceq '/api/operations'){
@@ -1536,7 +1555,7 @@ function Start-WsmHtmlConsole {
                                         if($null -eq $savedRevision){throw 'Quick-save operation did not return its authoritative revision.'}
                                         $record.status='Succeeded';$record.CompletedUtc=Get-WsmUtc;$record|Add-Member NoteProperty revision $savedRevision -Force;Write-WsmJson $recordPath $record;$response=@{jobId=$record.jobId;revision=$record.revision;status='Saved'}
                                     }
-                                    catch{$requestSafeError=Get-WsmHtmlSafeError $_.Exception.Message $_.Exception.GetType().FullName;$record.status='Failed';$record.CompletedUtc=Get-WsmUtc;$record|Add-Member NoteProperty error $requestSafeError -Force;Write-WsmJson $recordPath $record;throw}
+                                    catch{$requestSafeError=Get-WsmHtmlSafeError $_.Exception.Message (Get-WsmHtmlExceptionTypeName $_.Exception);$record.status='Failed';$record.CompletedUtc=Get-WsmUtc;$record|Add-Member NoteProperty error $requestSafeError -Force;Write-WsmJson $recordPath $record;throw}
                                     }finally{Exit-WsmWorkspaceWorkerGuard $quickGuard}
                                 }
                                 else{
@@ -1558,7 +1577,7 @@ function Start-WsmHtmlConsole {
                                         if($body.action -cne 'DeveloperProbe'){[void](Register-WsmWizardOperationJob $Workspace $record)}
                                         $handle=$worker.BeginInvoke();$job.PowerShell=$worker;$job.Handle=$handle;$job.CancellationToken=$cancellation
                                     }catch{
-                                        $requestSafeError=Get-WsmHtmlSafeError $_.Exception.Message $_.Exception.GetType().FullName
+                                        $requestSafeError=Get-WsmHtmlSafeError $_.Exception.Message (Get-WsmHtmlExceptionTypeName $_.Exception)
                                         $record.status='Failed';$record.CompletedUtc=Get-WsmUtc;$record.canCancel=$false;$record|Add-Member NoteProperty error $requestSafeError -Force
                                         $worker.Dispose();try{Write-WsmJson $recordPath $record}finally{if($job.WorkerGuard){Exit-WsmWorkspaceWorkerGuard $job.WorkerGuard;$job.WorkerGuard=$null}};throw
                                     }
@@ -1577,7 +1596,7 @@ function Start-WsmHtmlConsole {
                 Write-WsmLocalHttpResponse $client $status $type $bytes
             }catch{
                 $status=400;if($_.Exception.Message -match '^Rejected'){$status=403}elseif($_.Exception.Message -match 'Review changed|Context changed|Wizard progress changed'){$status=409}elseif($_.Exception.Message -match 'UnknownJob|Unknown route'){$status=404}
-                $safeError=$requestSafeError;if(-not $safeError){$safeError=Get-WsmHtmlSafeError $_.Exception.Message $_.Exception.GetType().FullName}
+                $safeError=$requestSafeError;if(-not $safeError){$safeError=Get-WsmHtmlSafeError $_.Exception.Message (Get-WsmHtmlExceptionTypeName $_.Exception)}
                 if($route -ceq '/api/operations'){
                     try {
                         $rejectedBody=ConvertFrom-WsmJson $request.Body

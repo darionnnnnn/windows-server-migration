@@ -562,7 +562,7 @@ function Export-WsmDeveloperProbe {
         [Parameter(DontShow)][hashtable]$CollectorAdapter
     )
     $ErrorActionPreference='Stop'
-    if([string]::IsNullOrWhiteSpace($Workspace) -or -not [IO.Path]::IsPathRooted($Workspace)){throw 'Workspace must be an absolute local path.'}
+    if([string]::IsNullOrWhiteSpace($Workspace) -or -not [IO.Path]::IsPathRooted($Workspace)){throw (New-WsmContractError 'Workspace must be an absolute local path.')}
     $workspacePath=[IO.Path]::GetFullPath($Workspace);$rootPath=[IO.Path]::GetPathRoot($workspacePath)
     if($workspacePath.StartsWith('\\') -or $rootPath.StartsWith('\\')){throw 'Developer probe output must stay on a local volume.'}
     if($CancellationToken -and [string]$CancellationToken.Kind -ceq 'DeveloperProbeCancellationToken'){$expectedCancellation=Get-WsmDeveloperProbeCancellationPath $workspacePath ([string]$CancellationToken.OperationId);if([IO.Path]::GetFullPath([string]$CancellationToken.Workspace) -ine $workspacePath -or [IO.Path]::GetFullPath([string]$CancellationToken.RequestPath) -ine [IO.Path]::GetFullPath($expectedCancellation)){throw 'Developer probe cancellation token does not belong to this workspace operation.'}}

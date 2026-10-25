@@ -2886,6 +2886,50 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - R26-Q4b 補充：state 為 RolledBack、但最新 job 為 Interrupted 時，還原鎖仍會鎖住選取。
   - R26-B20b：`HtmlConsole.ps1` 約 :847、:855、:896 仍直接讀取 Status。
 
+### 17.125 批 C：CLI 返回碼、Get-Credential 守門、HtmlConsole 依型別分類錯誤（R16、R17、S14）
+
+- 規格：`work/r7/specs/C-cli-entry.md`。由 Sonnet 5.5 subagent 實作，主代理審查並修正一個安全缺口。
+- 全程沒有任何測試或探針呼叫真實的 `Get-Credential`。驗證只用三種方式：AST 靜態掃描、模組內的計數替身、stdin 接 `/dev/null` 的子行程。
+- **R16**
+  - Operation／OperationRequest 的前置檢查（缺 Path、Hash 缺漏或格式錯、檔案不存在、JSON 損壞）改丟 `New-WsmContractError`，返回碼由 1 改為 4。Hash 與檔案內容不符時行為不變。
+  - Menu 會記錄每次型別化操作與進階 OperationRequest 的狀態碼，離開時回傳其中最差的一個。嚴重度由低到高為 0 < 2 < 3 < 4 < 1。
+    - 輸入在 EOF 結束時基準為 3，在等待輸入時結束基準為 2；兩者都不會蓋掉已記錄的更差值。
+    - 主 catch 區塊維持原狀，因為 `Test-CredentialDeferral` 會把它抽出來在子行程中執行。
+  - RESUME 提示遇到 EndOfStream 時，改丟出帶 `WsmWaitingForInput` 與 `ParentOperationId` 的例外，返回碼為 2（原為 3）。這是推論，已在函式層重現。
+  - DeveloperProbe 的入口先對 `-Workspace` 做 `GetFullPath`。路徑含非法字元時回 4（原為 1）。
+- **R17**
+  - 新增 `Get-WsmGuardedCredential` 與 `Test-WsmConsoleInputRedirected`。前者是整個 src 中唯一可以呼叫 `Get-Credential` 的地方；stdin 被重導時，它在呼叫之前就丟出 WaitingForInput（返回碼 2）。
+  - 7 個呼叫點全部改用這個守門函式，沒有任何一個改為 Blocked。原本無防線的是 MigrationWizard 的 :160 與 :298（DomainRename），以及 OperationRequests 的進階選項 4。原本 :177 的防線在函式被遮蔽時會失效。
+  - AST 靜態守門掃描 src、`Start-ServerMigration.ps1` 與 tools，並用 10 個掃描器案例鎖住掃描器本身的行為。
+  - **主代理修正**：subagent 版本中，`-InputRedirected` 的覆寫值會取代實際偵測。OperationRequests 只要帶了 PromptReader 就會傳入 `$false`，此時即使 stdin 實際已被重導，仍會呼叫真實的 `Get-Credential`，可能彈出憑證視窗；這個問題在改動前就存在。現在改為「覆寫值或實際偵測，任一為真就停止」，覆寫只能把防線加嚴。`Test-GuardedCredential` 原本斷言「覆寫為 $false 時會呼叫替身」，等於把這個缺陷寫成預期，已改為斷言三種情況呼叫次數都是 0。把版本換回 subagent 的作法當突變，測試轉紅。
+- **S14**
+  - `Get-WsmHtmlSafeError` 改為依型別分類：`System.IO.InvalidDataException` 判為 invalid_request。
+  - 新增 `ConvertFrom-WsmHtmlBody`：body 必須是單一 JSON 物件，共 9 個解析點改用它。
+  - 新增 `Get-WsmHtmlExceptionTypeName`：可穿透 worker 外層包裝的 MethodInvocationException 與 RuntimeException，取得真正的例外型別。
+  - HtmlConsole 中約 40 處描述請求形狀錯誤的字串 throw，改為丟契約錯誤。
+  - 仍保留 12 條訊息比對。它們都是跨多個檔案、以純字串 throw 的協定 token，測試已逐字鎖定，不得無聲擴大。
+  - operation_failed 的 HTTP 狀態維持 400，因為前端判斷 pending 時依賴它。
+- **既有斷言或測試設定變更**：
+
+| 檔案 | 舊 | 為何與規格衝突 | 新 |
+|---|---|---|---|
+| `tests/Test-C2D2HtmlActions.ps1` :31、:83 | 只傳訊息，預期得到 invalid_request | S14 改依型別分類 | 輔助函式多帶型別參數，仍預期 invalid_request |
+| `tests/Test-TargetRestoreContinuation.ps1` :292-293 | RESUME 遇輸入結束時回傳 `Status='InputUnavailable'` | R16 規定要丟 WaitingForInput 例外 | 斷言 EndOfStreamException，且帶 WsmWaitingForInput 與 ParentOperationId，寫入次數為 0 |
+| `tests/Test-CredentialDeferral.ps1` 段落 6 | 只用 `Function:\Get-Credential` 替身，靠「替身不是 Cmdlet」繞過舊防線 | 新守門在 stdin 重導時一律停止 | 該段模擬互動式主控台（`Test-WsmConsoleInputRedirected` 回 $false），finally 區塊還原；斷言不變 |
+
+- **驗證**：
+  - 新增測試：CliExitCodes 56、GuardedCredential 35、HtmlErrorClassification 160（含真實主控台的 4 條路由）。
+  - 必跑測試與兩層呼叫端：CliWaitingForInput 13、CliFailureLocation 193、CredentialPromptRedirected、TextConsole 18、MenuContracts、OperationRequests、HtmlConsole 175、HtmlSubmission 8、HttpSocketEdgeCases 109、DeveloperProbe、CredentialDeferral 68、TargetRestoreContinuation 133、EntryPoint、WizardTextRuntime 65、C2D2HtmlActions 185、ScriptEncoding 346，以及瀏覽器與 HTTP 測試 7 支，全部通過。
+  - 主代理修正後，另外重跑憑證與 CLI 相關的 11 支，全部通過。
+- **突變**：
+  - subagent 共做 19 個。除了 R16-M6（不接上目前目錄）屬於等價突變（.NET 的 GetFullPath 本來就以行程目前目錄為基準）之外，全部轉紅。
+  - 主代理另做 1 個（覆寫值改回取代實際偵測），轉紅。
+- **環境類失敗**：以下測試在同一份 HEAD 原始碼上就已失敗，不在本批範圍：
+  - FullDirectoryImport：SetAccessControl 失敗。
+  - NativeWizardManagerJourney、NativeProbeRoles、NativeWizardJourney：ECONNRESET 或 ENVIRONMENT-LIMITED。
+  - ConsoleAssetTransport：exit 3。
+- **後續**：`Test-NativeWizardBulkHandler.js` 的 UI 資產清單已過期；`Test-G3NonCFailureFreeze.ps1` 依賴被 .gitignore 的 `work\r7\`。兩者都記為 R26-C1b。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -3115,11 +3159,13 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R10 | `src/WizardBackup.ps1` attempt 讀取、投影讀取端 | 一個壞檔或舊 ToolVersion 檔，就讓整個 pair 的 StartBackup 丟例外；讀取端靜默略過 | 共用 `Get-WsmWizardBackupAttemptScan` 判定，略過並回報檔名清單；reparse 紀錄仍拒絕（17.122） | `Test-BackupAttemptsA2`（R10-1～5） | `2f0d7cc` |
 | R11 | `src/Payload.ps1`、`src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1` | 擷取失敗沒有穩定原因碼，使用者不知道原因與下一步 | 改丟型別化的 PathTooLong；PathTooLong／Locked／Missing／AccessDenied 只依例外型別與 HResult 判斷；附下一步，以及「相對深度＋檔名」位置（17.122） | `Test-BackupAttemptsA2`（R11，以真實檔案系統建立情境） | `2f0d7cc` |
 | R18 | `src/WizardBackupProjection.ps1` `ConvertTo-WsmProgressText` | RTL 覆寫、零寬字元、U+0085、U+2028、U+2029 原樣輸出；超過 256 字元靜默截斷；另有第三套祕密 regex | 改用唯一的路徑安全化規則：不可見字元轉為可見，截斷時標示「…（已截斷）」，重複處理結果不變；祕密判定改用 Core 的共用函式（17.123） | `Test-SensitiveNameConvergence`（進度文字區段） | `083223d` |
-| R8 | `src/WizardRestore.ps1` `Get-WsmWizardTargetDecisionRecord` | 時鐘倒退會選到舊收據；RetryOfReceiptHash 沒有寫進收據 | 在鎖內配置單調遞增的 Sequence，先比 Sequence 再比 CreatedUtc，舊收據排前；RetryOfReceiptHash 與 Sequence 納入收據雜湊（17.124） | `Test-RestoreReceiptCompat`（R8）、`Test-RetryFailedItems` | （B-COMMIT） |
-| R12 | `src/WizardRestore.ps1` 重試候選、`src/WizardRuntime.ps1`、`console.js` | 回復後可能回報 RestoreInProgress，文案誤導 | 優先判定 RolledBack，統一文案「已回復，請重新選擇還原」（17.124） | `Test-RestoreReceiptCompat`（R12）、`Test-RollbackThenRestore`、`Test-RetryFailedItemsBrowser.js` | （B-COMMIT） |
-| R20 | `src/WizardRestore.ps1`、`src/AssistiveRestore.ps1`、`src/JournalRecovery.ps1`、`src/WizardBackupProjection.ps1` | 舊 state 缺少 Status 時 strict 模式崩潰；終態時 Status 停在 Running；進度卡因缺欄位而消失 | 統一以 `Get-WsmAssistiveRestoreAttemptStatus` 讀取並加 AST 守門；終態與重播都同步寫入 Status；進度欄位加守門（17.124） | `Test-RestoreReceiptCompat`（R20）、`Test-JournalReplayCoverage`、`Test-Cv2NonCReservationLifecycle` | （B-COMMIT） |
-| R23 | `src/WizardRuntime.ps1`、`src/WizardHtmlRuntime.ps1`、`console.js`、`console.css` | 還原選取器只顯示檔數與位元組，無法展開看檔案明細 | 每項列出前 100 個安全文字化路徑，附總數與「另有 N 個」；索引加快取；使用原生 details（17.124） | `Test-RestoreReceiptCompat`（R23）、`Test-RestoreSelectionBrowser.js` | （B-COMMIT） |
-| A3-長度 | `src/WizardBackupProjection.ps1` `ConvertTo-WsmProgressText` | A3 截斷後總長 262，超過上限 256（`Test-WizardProgress` 從 083223d 起失敗） | 預留截斷標記的長度後再截斷，總長維持 256（17.124） | `Test-WizardProgress`、`Test-SensitiveNameConvergence` | （B-COMMIT） |
+| R8 | `src/WizardRestore.ps1` `Get-WsmWizardTargetDecisionRecord` | 時鐘倒退會選到舊收據；RetryOfReceiptHash 沒有寫進收據 | 在鎖內配置單調遞增的 Sequence，先比 Sequence 再比 CreatedUtc，舊收據排前；RetryOfReceiptHash 與 Sequence 納入收據雜湊（17.124） | `Test-RestoreReceiptCompat`（R8）、`Test-RetryFailedItems` | `ddd8580` |
+| R12 | `src/WizardRestore.ps1` 重試候選、`src/WizardRuntime.ps1`、`console.js` | 回復後可能回報 RestoreInProgress，文案誤導 | 優先判定 RolledBack，統一文案「已回復，請重新選擇還原」（17.124） | `Test-RestoreReceiptCompat`（R12）、`Test-RollbackThenRestore`、`Test-RetryFailedItemsBrowser.js` | `ddd8580` |
+| R20 | `src/WizardRestore.ps1`、`src/AssistiveRestore.ps1`、`src/JournalRecovery.ps1`、`src/WizardBackupProjection.ps1` | 舊 state 缺少 Status 時 strict 模式崩潰；終態時 Status 停在 Running；進度卡因缺欄位而消失 | 統一以 `Get-WsmAssistiveRestoreAttemptStatus` 讀取並加 AST 守門；終態與重播都同步寫入 Status；進度欄位加守門（17.124） | `Test-RestoreReceiptCompat`（R20）、`Test-JournalReplayCoverage`、`Test-Cv2NonCReservationLifecycle` | `ddd8580` |
+| R23 | `src/WizardRuntime.ps1`、`src/WizardHtmlRuntime.ps1`、`console.js`、`console.css` | 還原選取器只顯示檔數與位元組，無法展開看檔案明細 | 每項列出前 100 個安全文字化路徑，附總數與「另有 N 個」；索引加快取；使用原生 details（17.124） | `Test-RestoreReceiptCompat`（R23）、`Test-RestoreSelectionBrowser.js` | `ddd8580` |
+| A3-長度 | `src/WizardBackupProjection.ps1` `ConvertTo-WsmProgressText` | A3 截斷後總長 262，超過上限 256（`Test-WizardProgress` 從 083223d 起失敗） | 預留截斷標記的長度後再截斷，總長維持 256（17.124） | `Test-WizardProgress`、`Test-SensitiveNameConvergence` | `ddd8580` |
+| R16 | `Start-ServerMigration.ps1`、`src/OperationRequests.ps1`、`src/MigrationWizard.ps1`、DeveloperProbe 入口 | Operation 的輸入錯誤回 1，其他 Action 回 4；Menu 的結果被丟掉，最後一律 exit 0；RESUME 遇輸入結束回 3；DeveloperProbe 帶相對路徑回 1 | 前置檢查改丟契約錯誤；Menu 離開時回傳最差狀態碼；RESUME 改回 WaitingForInput 並附 ParentOperationId；入口先取絕對路徑（17.125） | `Test-CliExitCodes`（56 項，以真實 CLI 子行程執行） | （C-COMMIT） |
+| R17 | `src/Core.ps1` `Get-WsmGuardedCredential`、7 個 Get-Credential 呼叫點 | 只有 4 處有 stdin 重導防線，其餘會彈出真實憑證視窗；覆寫值可能取消防線 | 全部改用單一守門函式，並以 AST 靜態守門擋直接呼叫；覆寫值只能加嚴（17.125） | `Test-GuardedCredential`（AST 守門＋計數替身，呼叫次數 0） | （C-COMMIT） |
 
 ### 第六輪終檢
 
@@ -3130,3 +3176,4 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | S3 | `src/HtmlConsole.ps1` 服務迴圈 accept 與首位元組讀取 | 單執行緒同步讀取首位元組，每條閒置的預連線佔住迴圈約 2 秒；開 4 條時，其他請求要等約 8 秒 | accept 後改放入有界待讀佇列，只把已有位元組的連線交給原本的單執行緒流程，閒置滿 2 秒的連線回 400 後關閉；未改成多執行緒（17.112） | `Test-ConsoleIdlePreconnect.js`（4 條閒置加 4 個併發請求都在 1500 ms 內、閒置連線約 2.1 秒關閉、分段送出的慢客戶端仍成功） | 1f129b7 |
 | S6 | `src/DeveloperProbe.ps1` | 裸 UNC 路徑沒有遮蔽；Name 與 Value 分欄時值會外洩；Account、Domain 不在黑名單 | 路徑判斷改用 lookbehind；同列的值一起遮蔽；黑名單補上 account、domain；名稱判定改用共用函式（17.123） | `Test-SensitiveNameConvergence`（Probe 區段） | `083223d` |
 | S11 | `src/AssistiveReviewForms.ps1`、`src/WizardDetails.ps1`、`src/Core.ps1` | 兩套 regex 漏掉 Passwords、Tokens、private_key 等；物件分支誤丟 Description、Transcript | 全部改用單一的 `Test-WsmSensitiveName`；主代理另補：比對前移除 Unicode 格式字元，token 在名稱任何位置都算（排除 tokeniz*）（17.123） | `Test-SensitiveNameConvergence`（名稱表、分支一致性、Cf 字元、靜態守門） | `083223d` |
+| S14 | `src/HtmlConsole.ps1` `Get-WsmHtmlSafeError`、body 與請求檢查 | 壞掉的 body 回 operation_failed；內部例外訊息含 "parameter" 時被誤判為輸入錯誤 | 請求形狀錯誤與 body 解析改丟契約錯誤；分類器依型別判斷（可穿透 worker 包裝）；只保留 12 條鎖定的 token 比對（17.125） | `Test-HtmlErrorClassification`（160 項，含真實主控台） | （C-COMMIT） |

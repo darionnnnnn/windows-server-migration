@@ -289,8 +289,8 @@ try {
             $declined=Invoke-WsmWizardTargetRestoreResumeFlow $root $pairsDirectory $c1.Package @()
             Check ($declined.Status -ceq 'NotResumed' -and $declined.ParentOperationId -ceq $c1.Parent -and $declined.NoTargetWrites -and $script:cliPrompts -eq 1 -and $script:writes -eq 0 -and -not (StateOf $c1).RestoreAttempt.PSObject.Properties['Continuations']) 'A CLI answer other than RESUME resumed or changed the parent.'
             Set-Item Function:\Read-WsmWizardValue -Value {param([string]$Label,[switch]$Optional)throw (New-Object IO.EndOfStreamException('Console input ended.'))}
-            $noInput=Invoke-WsmWizardTargetRestoreResumeFlow $root $pairsDirectory $c1.Package @()
-            Check ($noInput.Status -ceq 'InputUnavailable' -and $script:writes -eq 0) 'Unavailable CLI input did not return a recognizable non-success result.'
+            $noInput=$null;try{Invoke-WsmWizardTargetRestoreResumeFlow $root $pairsDirectory $c1.Package @()|Out-Null}catch{$noInput=$_.Exception}
+            Check ($noInput -is [IO.EndOfStreamException] -and $noInput.Data.Contains('WsmWaitingForInput') -and [string]$noInput.Data['ParentOperationId'] -ceq $c1.Parent -and $script:writes -eq 0) 'Unavailable CLI input did not stop as WaitingForInput naming the parent (R16: exit 2, not InputUnavailable/3).'
             Set-Item Function:\Read-WsmWizardValue -Value {param([string]$Label,[switch]$Optional)throw 'Required value is blank.'}
             Check ((Invoke-WsmWizardTargetRestoreResumeFlow $root $pairsDirectory $c1.Package @()).Status -ceq 'NotResumed') 'A blank CLI answer was not treated as no action.'
             Set-Item Function:\Read-WsmWizardValue -Value {param([string]$Label,[switch]$Optional)'RESUME'}

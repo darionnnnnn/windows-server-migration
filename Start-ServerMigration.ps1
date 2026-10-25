@@ -24,6 +24,11 @@ if($Action -ceq 'Html'){
 }
 if (-not $Workspace) { $Workspace=Join-Path $PSScriptRoot 'migration-workspace' }
 $migrationModule=Import-Module (Join-Path $PSScriptRoot 'src\WindowsServerMigration.psd1') -Force -DisableNameChecking -PassThru
+# R16: -Action Menu leaves with the worst status of the typed operations it ran (the module remembers them); other actions keep their own code.
+function Get-MenuExitCode([int]$Baseline) {
+    if($Action -cne 'Menu'){return $Baseline}
+    & $migrationModule {param($baseline) Get-WsmMenuWorstStatusCode $baseline} $Baseline
+}
 function Read-MenuValue([string]$Label) {
     $value=Read-Host ($Label+'（0 取消；literal:0 表示文字 0）')
     if($null -eq $value){throw (New-Object IO.EndOfStreamException('Console input ended.'))}
@@ -81,6 +86,8 @@ try {
         exit 0
     }
     if($Action -ceq 'DeveloperProbe'){
+        # R16: a relative -Workspace is resolved against the current directory here; the probe itself requires an absolute local path.
+        try{if(-not [IO.Path]::IsPathRooted($Workspace)){$Workspace=Join-Path (Get-Location).ProviderPath $Workspace};$Workspace=[IO.Path]::GetFullPath($Workspace)}catch{throw (New-Object IO.InvalidDataException('-Workspace is not a valid local path.'))}
         $probeRole=$Role
         if(-not $PSBoundParameters.ContainsKey('Role')){$profile=& $migrationModule {param($root) Read-WsmOutputProfile $root} $Workspace;$probeRole=if($profile){[string]$profile.Role}else{'Manager'}}
         $result=Export-WsmDeveloperProbe -Workspace $Workspace -Role $probeRole
@@ -127,6 +134,7 @@ try {
     }
     # 16.4-1：重新導向的標準輸入可以餵答案給選單；-NonInteractive 連 Read-Host 都不能用，選單必填的選項永遠缺少，所以回「等待輸入」(exit 2) 而不是一般失敗。
     if ([Environment]::GetCommandLineArgs() -contains '-NonInteractive') { $blocked=New-Object IO.EndOfStreamException('非互動環境請指定 -Action；Menu 需要互動主控台或重新導向的標準輸入（不可加 -NonInteractive）。');$blocked.Data['WsmWaitingForInput']=$true;$blocked.Data['WsmMissingFields']='Menu 選項';throw $blocked }
+    try {
     while ($true) {
         Write-Host "`nWindows Server Migration 0.3 — 盤點／審核／隔離 pilot 遷移"
         Write-Host '1 本機來源盤點  2 建立管理工作區  3 匯入盤點  4 審核／排除  5 分類 HTML'
@@ -137,7 +145,7 @@ try {
         if ($null -eq $menuChoice) { throw (New-Object IO.EndOfStreamException('Console input ended.')) }
         try {
             switch ($menuChoice) {
-                '0' { exit 0 }
+                '0' { exit (Get-MenuExitCode 0) }
                 '1' { $output=Read-MenuValue '來源固定 WorkRoot（先指定專用目錄；內含盤點、報告及交付材料）';$mode=Read-MenuValue '交付方式 Zip／Directory';$outputArgs=@{WorkRoot=$output;Role='Source';Mode=$mode};if($mode -ceq 'Zip'){$mib=0;if(-not [int]::TryParse((Read-MenuValue '每卷上限 MiB（128–1024；建議512）'),[ref]$mib)){throw '每卷大小必須是整數 MiB。'};$outputArgs.VolumeBytes=[long]$mib*1048576};Initialize-WsmOutputWorkspace @outputArgs | Format-List;$deep=(Read-MenuValue '包含 COM+／角色物件／服務與排程 ACL 的深層盤點？ YES／NO') -ceq 'YES';Export-WsmEnrolledInventory -WorkRoot $output -DeepDiscovery:$deep | Format-List }
                 '2' { Initialize-WsmWorkspace $Workspace | Format-List }
                 '3' { $file=Read-MenuValue 'inventory JSON 路徑'; $hash=Read-MenuValue '經可信管道取得的 SHA256'; $target=Read-MenuValue '新主機暫用名稱（新配對必填）'; Import-WsmInventory $Workspace $file $hash $target | Select-Object PairId,InventoryRevision,DecisionRevision | Format-List }
@@ -166,6 +174,15 @@ try {
                 default { Write-Host '無效選項。' }
             }
         } catch [OperationCanceledException] { Write-Host $_.Exception.Message } catch [IO.EndOfStreamException] { throw } catch { Write-Host ('操作失敗：'+$_.Exception.Message) -ForegroundColor Red;Get-WsmFailureDetails $_ | Format-List Category,NativeCode,Hint }
+    }
+    } catch {
+        # R16: leaving the menu by the end of the input (or a cancel) must not hide a worse status recorded before it; the codes of the other exceptions are decided by the catch below.
+        $menuException=$_.Exception
+        $menuBaseline=if($menuException -is [IO.EndOfStreamException] -and $menuException.Data.Contains('WsmWaitingForInput')){2}elseif($menuException -is [IO.EndOfStreamException] -or $menuException -is [OperationCanceledException]){3}else{-1}
+        if($menuBaseline -lt 0){throw}
+        $menuCode=Get-MenuExitCode $menuBaseline
+        if($menuCode -eq $menuBaseline){throw}
+        [Console]::Error.WriteLine($menuException.Message);exit $menuCode
     }
 } catch {
     [Console]::Error.WriteLine($_.Exception.Message)

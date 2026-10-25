@@ -191,10 +191,12 @@ try {
             Reset-Fixture
             $s=New-DefScenario @(@{Name='CliSvc';Spec=(New-DefServiceSpec 'CliSvc' 'CliSvcSecret' 'CONTOSO\svc-cli')},@{Name='CliTask';Spec=(New-DefTaskSpec 'CliTask' 'CliTaskSecret' 'CONTOSO\batch')})
             $cliWaiting=Invoke-DefScenario $s @{}
-            $originalReadValue=(Get-Command Read-WsmWizardValue -CommandType Function).ScriptBlock;$originalInvokeTarget=(Get-Command Invoke-WsmWizardTargetRestore -CommandType Function).ScriptBlock
+            $originalRedirected=(Get-Command Test-WsmConsoleInputRedirected -CommandType Function).ScriptBlock;$originalReadValue=(Get-Command Read-WsmWizardValue -CommandType Function).ScriptBlock;$originalInvokeTarget=(Get-Command Invoke-WsmWizardTargetRestore -CommandType Function).ScriptBlock
             try{
                 $script:cliPrompts=@();$script:cliCredentialMessages=@();$script:cliInvocations=@()
                 Set-Item Function:\Read-WsmWizardValue -Value {param([string]$Label,[switch]$Optional)$script:cliPrompts+=@($Label);if($script:cliPrompts.Count -eq 2){'DEFER'}else{''}}
+                # R17: this harness runs with a redirected stdin, so the guard would (rightly) refuse before reaching the Get-Credential double; fake an interactive console for this segment only.
+                Set-Item Function:\Test-WsmConsoleInputRedirected -Value {$false}
                 Set-Item Function:\Get-Credential -Value {param([string]$Message,[string]$UserName)$script:cliCredentialMessages+=@($Message);New-DefPassword $UserName 'CLI-PASSWORD'}
                 Set-Item Function:\Invoke-WsmWizardTargetRestore -Value {param($Workspace,$PairId,$PreviewHash,$CancellationToken,$Secrets,$GeneralHostEvidence,$OperationId,$ChallengeContext)$script:cliInvocations+=@(,@($Secrets.Keys|Sort-Object));if($script:cliInvocations.Count -eq 1){[pscustomobject]@{Status='WaitingForInput';ParentOperationId=$OperationId;PreviewHash=$PreviewHash;RequiredSecretRefs=@('CliSvcSecret');CredentialRequirements=@([pscustomobject]@{SecretRef='CliSvcSecret';Kinds=@('Service');ItemIds=@('x');DisplayNames=@('CliSvc');ApprovedAccount='CONTOSO\svc-cli';Deferred=$false;LastFailure='CredentialRejected';Attempts=1});CredentialNotice=''}}else{[pscustomobject]@{Stage='Partial';CredentialNotice=''}}}
                 $cliFinal=Resolve-WsmWizardServiceChallenge -WaitingResult $cliWaiting -WorkRoot $root -StateDirectory $root -PairId $s.Pair -OperationId $s.Op -CancellationToken $s.Token -GeneralHostEvidence @() -ChallengeContext $s.Context
@@ -205,7 +207,7 @@ try {
                 Check ($cliTaskReq.Deferred -eq $true -and $cliTaskReq.DeferReason -ceq 'CredentialDeferred' -and @($cliState.AssistiveServiceChallenge.Requirements|Where-Object {$_.SecretRef -ceq 'CliSvcSecret' -and $_.PSObject.Properties['Deferred'] -and $_.Deferred}).Count -eq 0) 'CLI DEFER was not recorded durably for exactly the deferred group.'
                 Check (@($script:cliCredentialMessages).Count -eq 2) 'The CLI asked for a credential for the deferred group.'
             }finally{
-                Set-Item Function:\Read-WsmWizardValue -Value $originalReadValue;Set-Item Function:\Invoke-WsmWizardTargetRestore -Value $originalInvokeTarget
+                Set-Item Function:\Test-WsmConsoleInputRedirected -Value $originalRedirected;Set-Item Function:\Read-WsmWizardValue -Value $originalReadValue;Set-Item Function:\Invoke-WsmWizardTargetRestore -Value $originalInvokeTarget
                 if(Test-Path Function:\Get-Credential){Remove-Item Function:\Get-Credential -ErrorAction SilentlyContinue}
             }
 

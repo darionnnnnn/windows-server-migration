@@ -157,7 +157,7 @@ function Read-WsmWizardRestorePackage([string]$StateDirectory,[ValidateSet('Sour
     [pscustomobject]@{Path=$path;Hash=$hash;Package=$package;CancellationToken=$token;OperationId=$parentOperationId}
 }
 function Read-WsmWizardSecrets($Package) {
-    $refs=@($Package.Plan.Items | Where-Object {$_.Decision -eq 'Include' -and $_.MigrationSpec.PSObject.Properties['SecretRef'] -and $_.MigrationSpec.SecretRef} | ForEach-Object {$_.MigrationSpec.SecretRef} | Select-Object -Unique);$secrets=@{};foreach($ref in $refs){$credential=Get-Credential -Message ('Required SecretRef '+$ref+'; only stored in memory');if(-not $credential){throw (New-Object OperationCanceledException('Credential entry cancelled.'))};$secrets[$ref]=$credential};return ,$secrets
+    $refs=@($Package.Plan.Items | Where-Object {$_.Decision -eq 'Include' -and $_.MigrationSpec.PSObject.Properties['SecretRef'] -and $_.MigrationSpec.SecretRef} | ForEach-Object {$_.MigrationSpec.SecretRef} | Select-Object -Unique);$secrets=@{};foreach($ref in $refs){$credential=Get-WsmGuardedCredential -Message ('Required SecretRef '+$ref+'; only stored in memory');if(-not $credential){throw (New-Object OperationCanceledException('Credential entry cancelled.'))};$secrets[$ref]=$credential};return ,$secrets
 }
 function Read-WsmWizardServiceChallengeInput([string[]]$SecretRefs,[object[]]$Requirements=@()) {
     # One prompt per SecretRef group. DEFER postpones the whole group (its items end Deferred and are handled in a later restore); anything else asks for
@@ -173,9 +173,8 @@ function Read-WsmWizardServiceChallengeInput([string[]]$SecretRefs,[object[]]$Re
         Write-Host ('帳密需求：'+$summary)
         $answer=Read-WsmWizardValue '輸入 DEFER 延後這一整組帳密（相關項目本次不還原，之後在新的還原中再處理）；直接按 Enter 則輸入帳密' -Optional
         if($answer -ceq 'DEFER'){$deferred+=@($ref);continue}
-        # Never read an account and password from redirected console input (a pipe or file); report WaitingForInput instead.
-        if([Console]::IsInputRedirected -and @(Get-Command Get-Credential -CommandType Cmdlet -ErrorAction SilentlyContinue).Count -and (Get-Command Get-Credential).CommandType -eq 'Cmdlet'){throw (New-Object IO.EndOfStreamException('Credentials are not read from redirected console input; run the restore in an interactive console or use the HTML credential dialog.'))}
-        if($userName){$credential=Get-Credential -Message $message -UserName $userName}else{$credential=Get-Credential -Message $message}
+        # Never read an account and password from redirected console input (a pipe or a file): Get-WsmGuardedCredential stops with WaitingForInput before it asks.
+        if($userName){$credential=Get-WsmGuardedCredential -Message $message -UserName $userName}else{$credential=Get-WsmGuardedCredential -Message $message}
         if(-not $credential){throw (New-Object OperationCanceledException('Credential entry cancelled; no target write was started.'))}
         $secrets[$ref]=$credential
     }
@@ -229,7 +228,11 @@ function Invoke-WsmWizardTargetRestoreResumeFlow([string]$WorkRoot,[string]$Stat
     $notResumed=[pscustomobject][ordered]@{Status='NotResumed';PairId=$pairId;ParentOperationId=$parentId;PendingCount=[int]$open.PendingCount;NoTargetWrites=$true;ProductionVerified=$false}
     try{$answer=Read-WsmWizardValue ('輸入 RESUME 續作父作業 '+$parentId+'；其他值不動作')}
     catch [OperationCanceledException]{return $notResumed}
-    catch{if([string]$_.Exception.Message -notmatch 'Required value is blank'){$notResumed.Status='InputUnavailable'};return $notResumed}
+    catch{
+        # R16: the end of the input is not a decision. The parent stays open and resumable, so this is WaitingForInput (CLI exit 2) and names the parent.
+        if($_.Exception -is [IO.EndOfStreamException]){$waiting=New-Object IO.EndOfStreamException('Console input ended while the interrupted TargetRestore parent '+$parentId+' was waiting for RESUME; nothing was resumed (WaitingForInput).');$waiting.Data['WsmWaitingForInput']=$true;$waiting.Data['ParentOperationId']=$parentId;throw $waiting}
+        if([string]$_.Exception.Message -notmatch 'Required value is blank'){$notResumed.Status='InputUnavailable'};return $notResumed
+    }
     if($answer -cne 'RESUME'){return $notResumed}
     $continuationId=[Guid]::NewGuid().ToString('D')
     $context=Get-WsmWizardServiceChallengeContext $Package $parentId
@@ -295,7 +298,7 @@ function Show-WsmMigrationWizard {
             '5' {$itemId=Read-WsmWizardValue 'ItemId（全機門檻留空）' -Optional;$check=Read-WsmWizardValue 'Check（BusinessStaged／BusinessFinal／ManualRestore／DNS／Kerberos／ExternalConnectivity／Monitoring／BackupRestore／LongCycleJobs／SecurityAgent／License／UserAcceptance／Observation／RollbackReconcile／RetirementRetention；退役另含各項 Handoff 與 RollbackCutoffAndDeletionOwner）';$owner=Read-WsmWizardValue '負責人';$description=Read-WsmWizardValue '驗收方法／預期／實際／證據參考';$externalPath=Read-WsmWizardValue 'ExternalReadinessEvidence JSON（文字確認無法通過門檻）';$externalHash=Read-WsmWizardValue '獨立可信外部證據 SHA256';$passed=(Read-WsmWizardValue '實際通過？ YES／NO') -ceq 'YES';Set-WsmValidationEvidence $p.Path $p.Hash $state $itemId $check $owner $description $passed -ExternalEvidencePath $externalPath -ExternalEvidenceHash $externalHash | Format-List}
             '6' {Invoke-WsmValidation $p.Path $p.Hash $state (Read-WsmWizardValue 'Staged／Final') -GeneralHostEvidence $generalEvidence | Format-List}
             '7' {$dependency=Read-WsmWizardValue '跨主機 provider 證據索引（無必要相依留空）' -Optional;$groupIndex=Read-WsmWizardValue '跨主機一致性群組索引（無群組留空）' -Optional;$groupHash='';if($groupIndex){$groupHash=Read-WsmWizardValue '群組索引可信 SHA256'};$dependencyHash='';if($dependency){$dependencyHash=Read-WsmWizardValue 'provider 索引可信 SHA256'};$externalReferences=@(Read-WsmWizardExternalReadinessReferences);New-WsmCutoverPlan $p.Path $p.Hash $state (Read-WsmWizardValue '已審核 network JSON') (Read-WsmWizardValue 'network 可信 SHA256') (Read-WsmWizardValue '切換預覽輸出路徑') -DependencyEvidencePath $dependency -DependencyEvidenceHash $dependencyHash -GroupEvidenceIndexPath $groupIndex -GroupEvidenceIndexHash $groupHash -GeneralHostEvidence $generalEvidence -ExternalEvidenceReferences $externalReferences | Format-List}
-            '8' {if((Read-WsmWizardValue '改名需要網域認證？ YES／NO') -ceq 'YES'){$credential=Get-Credential -Message 'DomainRename：核准的網域改名認證，只保留在記憶體';if(-not $credential){throw (New-Object OperationCanceledException('Credential entry cancelled.'))};$secrets.DomainRename=$credential};Invoke-WsmCutover $p.Path $p.Hash $state (Read-WsmWizardValue 'CutoverPlan JSON') (Read-WsmWizardValue '可信切換計畫 SHA256') (Read-WsmWizardValue ('輸入 CUTOVER '+$p.Package.Manifest.PairId)) -Secrets $secrets -GeneralHostEvidence $generalEvidence | Format-List}
+            '8' {if((Read-WsmWizardValue '改名需要網域認證？ YES／NO') -ceq 'YES'){$credential=Get-WsmGuardedCredential -Message 'DomainRename：核准的網域改名認證，只保留在記憶體';if(-not $credential){throw (New-Object OperationCanceledException('Credential entry cancelled.'))};$secrets.DomainRename=$credential};Invoke-WsmCutover $p.Path $p.Hash $state (Read-WsmWizardValue 'CutoverPlan JSON') (Read-WsmWizardValue '可信切換計畫 SHA256') (Read-WsmWizardValue ('輸入 CUTOVER '+$p.Package.Manifest.PairId)) -Secrets $secrets -GeneralHostEvidence $generalEvidence | Format-List}
             '9' {Get-WsmAcceptanceGates $p.Path $p.Hash $state -GeneralHostEvidence $generalEvidence | Format-List}
             '10' {$preview=Get-WsmRollbackPreview $p.Path $p.Hash $state;$preview | Format-List;$preview.Rows | Format-Table;Invoke-WsmRollback $p.Path $p.Hash $state $preview.PreviewHash (Read-WsmWizardValue ('確認具體回復項目，輸入 ROLLBACK '+$p.Package.Manifest.PairId)) | Format-List}
             '11' {Repair-WsmOperation $p.Path $p.Hash $state | Format-List}

@@ -5,6 +5,20 @@ function Get-WsmExecutionActor {
     finally{$identity.Dispose()}
 }
 function New-WsmContractError([string]$Message) { New-Object IO.InvalidDataException($Message) }
+# R17: the only place that may call Get-Credential. A credential dialog must never be reached from a redirected console (a pipe or a file):
+# the stop happens before Get-Credential is called and reads as WaitingForInput (CLI exit 2) with the secret-input marker the typed text console uses.
+function Test-WsmConsoleInputRedirected { [Console]::IsInputRedirected }
+function Get-WsmGuardedCredential {
+    [CmdletBinding()]param([Parameter(Mandatory)][string]$Message,[string]$UserName,[Nullable[bool]]$InputRedirected=$null)
+    # 主代理審查：覆寫值只能加嚴，不能取消實際偵測（stdin 已重導時絕不呼叫真實 Get-Credential）。
+    $redirected=([bool]$InputRedirected) -or [bool](Test-WsmConsoleInputRedirected)
+    if($redirected){
+        $waiting=New-Object IO.EndOfStreamException('Credentials are not read from redirected console input; run the restore in an interactive console or use the HTML credential dialog.')
+        $waiting.Data['WsmSecretInput']=$true;$waiting.Data['WsmWaitingForInput']=$true
+        throw $waiting
+    }
+    if($UserName){Get-Credential -Message $Message -UserName $UserName}else{Get-Credential -Message $Message}
+}
 $script:WsmJsonDateKindSupported=(Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')
 function ConvertFrom-WsmJson([string]$Text) {
     if ($script:WsmJsonDateKindSupported) { ConvertFrom-Json -InputObject $Text -DateKind String }

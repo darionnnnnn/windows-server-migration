@@ -28,7 +28,7 @@ function Remove-TestRoot([string]$Path,[string]$Prefix){
 # Mirrors what the console route does with a request body: bind Workspace/PairId, convert through ConvertTo-WsmHtmlArguments, then run the mapped command.
 function Get-ActionArguments([string]$Action,$Body){& $module {param($a,$b) $map=Get-WsmHtmlActionMap;$command=Get-Command $map[$a] -CommandType Function;foreach($binding in @('Workspace','PairId')){if($command.Parameters.ContainsKey($binding) -and -not $b.PSObject.Properties[$binding]){throw ('test body is missing '+$binding)}};ConvertTo-WsmHtmlArguments $command $b} $Action $Body}
 function Invoke-MappedAction([string]$Action,$Body){$arguments=Get-ActionArguments $Action $Body;& $module {param($a,$splat) $map=Get-WsmHtmlActionMap;& (Get-Command $map[$a] -CommandType Function) @splat} $Action $arguments}
-function Get-SafeErrorCode([string]$Message){& $module {param($m) (Get-WsmHtmlSafeError $m).code} $Message}
+function Get-SafeErrorCode([string]$Message,[string]$Type=''){& $module {param($m,$t) (Get-WsmHtmlSafeError $m $t).code} $Message $Type}
 
 $expected=[ordered]@{
     SourceCandidateList=@{Function='Get-WsmHtmlSourceCandidateList';Role='Source';Kind='view'}
@@ -80,7 +80,7 @@ foreach($name in $expected.Keys){
     if($row.Role -ceq 'Manager'){Reject {& $gate $name 'Manager' '' $route} ($name+' requires a selected Manager pair') 'requires a selected Manager pair'}
 }
 & $gate 'Inventory' 'Source' '' '/api/operations'
-Check ((Get-SafeErrorCode 'Unsupported operation role: this action requires the Source role.') -ceq 'invalid_request') 'role and route refusals classify as invalid_request'
+Check ((Get-SafeErrorCode 'Unsupported operation role: this action requires the Source role.' 'System.IO.InvalidDataException') -ceq 'invalid_request') 'role and route refusals (contract errors) classify as invalid_request by type'
 
 # ---------------------------------------------------------------------------------------------------------------- 3. argument conversion
 $goodHash='a'*64
