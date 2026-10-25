@@ -78,6 +78,62 @@ try {
     $spec=[pscustomobject]@{Adapter='FileScope';SourcePath='D:\FixtureData';TargetPath='E:\FixtureTarget';ContentSelection='WholeScope';ExcludedRelativePaths=@()}
     Reject {& $module {param($scope,$inventoryValue) Assert-WsmFileScopeInstalledRoots -Spec $scope -SourceInventory $inventoryValue} $spec $sourceProjection} 'Portable disposition bypassed the existing package-root protection.'
 
+    # R14: re-importing an inventory whose software facts drifted must keep the prior decision as Stale
+    # (prefilled for the owner, but never a valid decision for the plan) and leave unchanged decisions alone.
+    $r14Id=('sw-'+('a'*32));$r14Unchanged=('sw-'+('d'*32))
+    $r14Review=Get-WsmAssistiveSoftwareDispositionReview -Workspace $workspace -PairId $catalog.PairId
+    $null=Submit-WsmAssistiveSoftwareDispositionReview -Workspace $workspace -PairId $catalog.PairId -ExpectedRevision $r14Review.DecisionRevision -ExpectedPreviewHash $r14Review.PreviewHash -Ack -Decisions @([pscustomobject]@{SoftwareId=$r14Id;Disposition='Reinstall';Owner='r14 owner';Reason='r14 install media required';Evidence='change:r14-original'})
+    $r14Before=Get-WsmAssistiveSoftwareDispositionReview -Workspace $workspace -PairId $catalog.PairId
+    Check (@($r14Before.Rows | Where-Object {$_.SoftwareId -ceq $r14Id -and $_.DecisionState -ceq 'Reviewed' -and $_.Disposition -ceq 'Reinstall'}).Count -eq 1) 'R14 fixture did not start from a Reviewed decision.'
+    $r14Rows=@($rows | ForEach-Object {$_ | ConvertTo-Json -Depth 10 | ConvertFrom-Json});$r14Rows[0].Version='2.0.0'
+    $r14Inventory=New-WsmInventory $source 2 @($consumer,$unselected)
+    $r14Source=[pscustomobject][ordered]@{HostId=$hostId;Fingerprint=$source.Fingerprint;Name=$source.Name;InventoryRevision=2;InventoryProjectionHash=(& $module {param($value) Get-WsmSoftwareInventoryProjectionHash $value} $r14Inventory)}
+    $r14Software=[pscustomobject][ordered]@{SchemaVersion=1;ToolVersion='0.4.0';Kind='SoftwareCatalog';Source=$r14Source;CaptureContext=$capture;Entries=$r14Rows;Coverage=$coverage;PreparationRequirements=@(foreach($row in $r14Rows){[pscustomobject][ordered]@{PreparationId=('prep-'+$row.SoftwareId.Substring(3));SoftwareId=$row.SoftwareId;Status='NeedsOwnerReview';RequiredPhase='PreparationReady';EvidenceStatus=$row.CaptureStatus;ConsumerItemIds=@($row.ItemIds);Owner='';Reason='Fixture discovery evidence'}});CatalogProjectionHash=''}
+    $r14Software.CatalogProjectionHash=& $module {param($value) Get-WsmSoftwareCatalogProjectionHash $value} $r14Software
+    $r14Inventory | Add-Member NoteProperty SoftwareCatalog $r14Software
+    $r14Path=Join-Path $root 'source-inventory-r14.json';& $module {param($path,$value) Write-WsmJson $path $value} $r14Path $r14Inventory | Out-Null
+    $r14Hash=(Get-FileHash -LiteralPath $r14Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $null=Import-WsmInventory -Workspace $workspace -Path $r14Path -ExpectedHash $r14Hash -TargetName 'fixture-target'
+    $r14After=Get-WsmAssistiveSoftwareDispositionReview -Workspace $workspace -PairId $catalog.PairId
+    $r14Row=@($r14After.Rows | Where-Object SoftwareId -CEQ $r14Id)
+    Check ($r14Row.Count -eq 1 -and $r14Row[0].DecisionState -ceq 'Stale') 'R14: a software decision whose facts drifted was not surfaced as Stale after re-import.'
+    Check ($r14Row[0].Disposition -ceq 'Reinstall' -and $r14Row[0].Owner -ceq 'r14 owner' -and $r14Row[0].Reason -ceq 'r14 install media required' -and $r14Row[0].Evidence -ceq 'change:r14-original') 'R14: the Stale row did not prefill the previous disposition, owner, reason and evidence.'
+    $r14General=(Get-WsmCatalog $workspace $catalog.PairId).GeneralHost
+    Check (@($r14General.SoftwareDecisions | Where-Object SoftwareId -CEQ $r14Id).Count -eq 0) 'R14: a Stale decision stayed in the valid SoftwareDecisions set that plan consumers read.'
+    $r14Issues=@(Get-WsmGeneralHostIssues (Get-WsmCatalog $workspace $catalog.PairId) ReviewComplete | Where-Object Issue -Like ('*Software requires an allowed current owner disposition: '+$r14Id+'*'))
+    Check ($r14Issues.Count -eq 1) 'R14: a Stale decision was treated as a valid current decision by the review gate.'
+    $r14Same=@($r14After.Rows | Where-Object SoftwareId -CEQ $r14Unchanged)
+    Check ($r14Same.Count -eq 1 -and $r14Same[0].DecisionState -ceq 'Reviewed' -and $r14Same[0].Disposition -ceq 'Portable' -and @($r14General.SoftwareDecisions | Where-Object SoftwareId -CEQ $r14Unchanged).Count -eq 1) 'R14: an unchanged-hash decision changed behavior on re-import.'
+    Check (@($r14General.StaleSoftwareDecisions).Count -eq 1 -and $r14General.StaleSoftwareDecisions[0].SoftwareId -ceq $r14Id) 'R14: the kept-Stale list must hold exactly the drifted decision and not copies of unchanged ones.'
+    # A further re-import with the same drifted facts must keep the decision Stale until the owner reconfirms it.
+    $r14Inventory3=New-WsmInventory $source 3 @($consumer,$unselected)
+    $r14Source3=[pscustomobject][ordered]@{HostId=$hostId;Fingerprint=$source.Fingerprint;Name=$source.Name;InventoryRevision=3;InventoryProjectionHash=(& $module {param($value) Get-WsmSoftwareInventoryProjectionHash $value} $r14Inventory3)}
+    $r14Software3=$r14Software | ConvertTo-Json -Depth 20 | ConvertFrom-Json;$r14Software3.Source=$r14Source3
+    $r14Software3.CatalogProjectionHash=& $module {param($value) Get-WsmSoftwareCatalogProjectionHash $value} $r14Software3
+    $r14Inventory3 | Add-Member NoteProperty SoftwareCatalog $r14Software3
+    $r14Path3=Join-Path $root 'source-inventory-r14-3.json';& $module {param($path,$value) Write-WsmJson $path $value} $r14Path3 $r14Inventory3 | Out-Null
+    $null=Import-WsmInventory -Workspace $workspace -Path $r14Path3 -ExpectedHash ((Get-FileHash -LiteralPath $r14Path3 -Algorithm SHA256).Hash.ToLowerInvariant()) -TargetName 'fixture-target'
+    $r14After=Get-WsmAssistiveSoftwareDispositionReview -Workspace $workspace -PairId $catalog.PairId
+    Check (@($r14After.Rows | Where-Object {$_.SoftwareId -ceq $r14Id -and $_.DecisionState -ceq 'Stale' -and $_.Owner -ceq 'r14 owner'}).Count -eq 1) 'R14: a second re-import lost the kept Stale decision before the owner reconfirmed it.'
+    $r14Confirm=Submit-WsmAssistiveSoftwareDispositionReview -Workspace $workspace -PairId $catalog.PairId -ExpectedRevision $r14After.DecisionRevision -ExpectedPreviewHash $r14After.PreviewHash -Ack -Decisions @([pscustomobject]@{SoftwareId=$r14Id;Disposition='Reinstall';Owner='r14 owner';Reason='r14 reconfirmed after drift';Evidence='change:r14-reconfirmed'})
+    $r14Confirmed=@($r14Confirm.ReopenedReview.Rows | Where-Object SoftwareId -CEQ $r14Id)
+    Check ($r14Confirmed[0].DecisionState -ceq 'Reviewed' -and $r14Confirmed[0].Reason -ceq 'r14 reconfirmed after drift' -and @((Get-WsmCatalog $workspace $catalog.PairId).GeneralHost.SoftwareDecisions | Where-Object SoftwareId -CEQ $r14Id).Count -eq 1) 'R14: explicit owner reconfirmation did not turn the Stale row back into a Reviewed current decision.'
+    # R14 (main agent): one split shared by re-import and by a new software catalog (Set-WsmGeneralHostSoftwareCatalog dropped drifted decisions the same way).
+    $splitEntry={param($id) $clone=$rows[0] | ConvertTo-Json -Depth 10 | ConvertFrom-Json;$clone.SoftwareId=$id;$clone};$splitCatalog=[pscustomobject]@{Entries=@((& $splitEntry 'sw-keep'),(& $splitEntry 'sw-drift'),(& $splitEntry 'sw-dup'),(& $splitEntry 'sw-dup'))}
+    $splitResult=& $module {param($cat)
+        $keepHash=Get-WsmGeneralHostSoftwareFactsHash @($cat.Entries)[0]
+        $prior=@([pscustomobject]@{SoftwareId='sw-keep';SoftwareHash=$keepHash;Owner='k'},[pscustomobject]@{SoftwareId='sw-drift';SoftwareHash=('0'*64);Owner='d'},[pscustomobject]@{SoftwareId='sw-gone';SoftwareHash=('1'*64);Owner='g'},[pscustomobject]@{SoftwareId='sw-dup';SoftwareHash=('2'*64);Owner='u'})
+        $priorStale=@([pscustomobject]@{SoftwareId='sw-keep';SoftwareHash=('3'*64);Owner='old';StaleUtc='2026-01-01T00:00:00Z';StaleInventoryHash=('4'*64)},[pscustomobject]@{SoftwareId='sw-drift';SoftwareHash=('5'*64);Owner='older';StaleUtc='2026-01-01T00:00:00Z';StaleInventoryHash=('4'*64)})
+        Split-WsmSoftwareDecisionsForCatalog $prior $priorStale $cat ('A'*64)
+    } $splitCatalog
+    Check (@($splitResult.Valid).Count -eq 1 -and @($splitResult.Valid)[0].SoftwareId -ceq 'sw-keep') 'R14 split: only the decision whose facts still match stays valid.'
+    $staleIds=@($splitResult.Stale | ForEach-Object {[string]$_.SoftwareId})
+    Check ($staleIds.Count -eq 1 -and $staleIds[0] -ceq 'sw-drift') ('R14 split: exactly the drifted decision becomes Stale (not the valid one, not a vanished or ambiguous id); got '+($staleIds -join ','))
+    Check (@($splitResult.Stale)[0].Owner -ceq 'd' -and @($splitResult.Stale)[0].StaleInventoryHash -ceq ('a'*64) -and [string]@($splitResult.Stale)[0].StaleUtc) 'R14 split: the newest drifted decision is kept with the new source hash, before an older Stale copy.'
+    foreach($entryFunction in @('Import-WsmInventory','Set-WsmGeneralHostSoftwareCatalog')){
+        $definition=[string](& $module {param($name) (Get-Command $name).Definition} $entryFunction)
+        Check ($definition -match 'Split-WsmSoftwareDecisionsForCatalog' -and $definition -notmatch 'SoftwareDecisions \| Where-Object') ($entryFunction+' must use the shared software-decision split instead of its own drift filter.')
+    }
     Write-Output ('PASS Test-SoftwareDispositionReview: '+$script:passed+' formal review, CAS, batch preservation, dependency-gate and root-protection checks.')
 } finally {
     $resolvedTemp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')+'\'

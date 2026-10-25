@@ -112,6 +112,10 @@ try{
         $imported=Import-WsmDeliveryReceipt -Workspace $manager -Path $targetReceipt.Path -ExpectedHash $receiptHash
         $tampered=$receipt|ConvertTo-Json -Depth 20|ConvertFrom-Json;$tampered.TargetFingerprint='9'*64;$tamperedPath=Join-Path $FlowRoot 'tampered-target-receipt.json';Write-WsmJson $tamperedPath $tampered;$tamperedHash=(Get-FileHash -LiteralPath $tamperedPath -Algorithm SHA256).Hash.ToLowerInvariant();$wrongTargetRejected=$false;try{Import-WsmDeliveryReceipt -Workspace $manager -Path $tamperedPath -ExpectedHash $tamperedHash|Out-Null}catch{$wrongTargetRejected=$true}
         Assert-DeliveryFlow $wrongTargetRejected 'Manager accepted a receipt bound to a different target fingerprint.'
+        $cv2Catalog=Get-WsmCatalog $manager $pair;$cv2Catalog.Approval|Add-Member NoteProperty AssistiveContractVersion 2 -Force;Write-WsmJson (Get-WsmCatalogPath $manager $pair) $cv2Catalog
+        $cv2Message='';try{Import-WsmDeliveryReceipt -Workspace $manager -Path $targetReceipt.Path -ExpectedHash $receiptHash|Out-Null}catch{$cv2Message=[string]$_.Exception.Message}
+        Assert-DeliveryFlow ($cv2Message -match 'CV2') ('Manager must refuse delivery receipts for a CV2 plan with a CV2-specific message; got: '+$cv2Message)
+        $cv2Catalog.Approval.AssistiveContractVersion=0;Write-WsmJson (Get-WsmCatalogPath $manager $pair) $cv2Catalog
         $summary=Get-WsmDeliveryReceiptSummary (Get-WsmCatalog $manager $pair)
         Assert-DeliveryFlow ($imported.Status -ceq 'ImportedVerified' -and $summary.Status -ceq 'ImportedVerified' -and $summary.Generation -eq 1 -and -not $summary.ReadinessProof -and -not $summary.ProductionVerified) 'Manager importer failed to retain the exact report-only receipt projection.'
         # Empty approved package indexes keep this transport test independent of

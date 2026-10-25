@@ -2930,6 +2930,37 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - ConsoleAssetTransport：exit 3。
 - **後續**：`Test-NativeWizardBulkHandler.js` 的 UI 資產清單已過期；`Test-G3NonCFailureFreeze.ps1` 依賴被 .gitignore 的 `work\r7\`。兩者都記為 R26-C1b。
 
+### 17.126 批 D：Manager 與來源資料（R13、R14、R15、S15、S16）
+
+- 規格：`work/r7/specs/D-manager-source.md`。由 Sonnet 5.5 subagent 實作；主代理審查後，把 R14 補到另一個入口並收斂成單一判定。
+- **R13**：
+  - Manager 進度對 CV2 計畫改顯示 NotApplicable，文案為「CV2 的交付以備份結果頁為準」，不再出現「未識別交付狀態」。修改處為 `HtmlConsole.ps1` 的 case 與 `console.js` 的 statusName。
+  - CV2 計畫匯入交付收據時直接拒絕（`Import-WsmDeliveryReceipt`）。理由是 `Get-WsmDeliveryReceiptSummary` 對 CV2 一律短路，就算存下也永遠不會顯示。
+- **R14**：重新匯入盤點或換軟體目錄時，事實雜湊已漂移的軟體決策不再刪除：
+  - 改存到 `GeneralHost.StaleSoftwareDecisions`，並附 `StaleUtc` 與 `StaleInventoryHash`。
+  - Review 把這些列標成 Stale，並預填原本的處置、負責人、原因與證據。
+  - Stale 決策不在有效集合 `SoftwareDecisions` 內，所有計畫端的讀取者都看不到。
+  - 負責人重新確認後，才轉為 Reviewed。
+  - **主代理收斂**：subagent 只改了 `Import-WsmInventory`，並指出 `Set-WsmGeneralHostSoftwareCatalog` 也會刪掉漂移的決策，但不在白名單內。主代理抽出 `Split-WsmSoftwareDecisionsForCatalog`（放在 Core），讓兩個入口共用同一個判定。補了 5 項檢查：函式本身的有效、Stale、去重、消失四種情況，以及靜態確認兩個入口都改呼叫它。實作中也修了 strict 模式下單筆結果被解開、讀不到 `.Count` 的問題。
+- **R15**（推論，已重現）：
+  - 位元組相同的候選確認材料重複匯入，或對應審閱重送相同內容時，改回傳 `NoChange`，不動決策、不遞增 revision、不清除核准。
+  - console 把 NoChange 視為成功，顯示「內容與先前相同，未變更任何決策或核准」。
+  - 內容不同時仍照舊回到 Pending（反例已測）。
+- **S15**（推論）：
+  - 只重現了「hash 不確定」：ProofHash 的內容包含每次新產生的 CreatedUtc。
+  - 「重送時失敗」沒有重現，因為前面的 `CanCreateTransferPlan` 會先擋下，走不到比對那一步。
+  - 下游（Source 匯入、Target 傳輸、Manager 匯入結果）沒有任何地方讀這份收據，帳號對應已在 transfer plan 的 `Entries.AccountMap` 內驗證過。因此選擇把 CreatedUtc 移出 hash（欄位仍保留在檔案中），寫入與驗證兩端採用同一規則。
+- **S16**：傳輸計畫選單的標籤改用既有的 `Get-WsmWizardHandoffLocalTime`，與證明選項的格式一致。解析失敗時顯示「時間未核驗」。
+- **既有斷言**：沒有修改，全部是新增。
+- **突變**：
+  - subagent 做了 16 個，15 個轉紅。存活的 S16 fallback 分支走不到，屬於等價突變。
+  - 主代理另做 2 個，都轉紅：
+    - 換目錄入口改回原本的內嵌過濾。
+    - 共用函式拿掉「已有有效決策就丟棄 Stale 副本」的去重。
+- **驗證**：
+  - subagent 已跑：DeliveryReceipts、SoftwareDispositionReview、SourceCandidateConfirmation 51、SourceCandidateMapping 22、WizardNonCOperations、WizardNonCAccountObservation、HtmlConsole 178、C2D2HtmlActions 185、C2D2Browser、AssistiveUi 49、ScriptEncoding 346；呼叫端與呼叫端的呼叫端：OfflineFullSet 67、ProductionFlagProjection 48、GeneralHostGates、EnvironmentConfirmation、WizardNonCTargetHandoff、PathResolutionDisplay、AssistiveReports、G2、G4、F1AcceptanceBrowser。
+  - 主代理收斂後重跑：SoftwareDispositionReview 31、OracleIntegration（唯一呼叫換目錄入口的測試）、GeneralHostGates、EnvironmentConfirmation、ProductionFlagProjection、OfflineFullSet、DeliveryReceipts、SourceCandidateConfirmation、SourceCandidateMapping、WizardNonCOperations、HtmlConsole、G2、ScriptEncoding。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -3164,8 +3195,11 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R20 | `src/WizardRestore.ps1`、`src/AssistiveRestore.ps1`、`src/JournalRecovery.ps1`、`src/WizardBackupProjection.ps1` | 舊 state 缺少 Status 時 strict 模式崩潰；終態時 Status 停在 Running；進度卡因缺欄位而消失 | 統一以 `Get-WsmAssistiveRestoreAttemptStatus` 讀取並加 AST 守門；終態與重播都同步寫入 Status；進度欄位加守門（17.124） | `Test-RestoreReceiptCompat`（R20）、`Test-JournalReplayCoverage`、`Test-Cv2NonCReservationLifecycle` | `ddd8580` |
 | R23 | `src/WizardRuntime.ps1`、`src/WizardHtmlRuntime.ps1`、`console.js`、`console.css` | 還原選取器只顯示檔數與位元組，無法展開看檔案明細 | 每項列出前 100 個安全文字化路徑，附總數與「另有 N 個」；索引加快取；使用原生 details（17.124） | `Test-RestoreReceiptCompat`（R23）、`Test-RestoreSelectionBrowser.js` | `ddd8580` |
 | A3-長度 | `src/WizardBackupProjection.ps1` `ConvertTo-WsmProgressText` | A3 截斷後總長 262，超過上限 256（`Test-WizardProgress` 從 083223d 起失敗） | 預留截斷標記的長度後再截斷，總長維持 256（17.124） | `Test-WizardProgress`、`Test-SensitiveNameConvergence` | `ddd8580` |
-| R16 | `Start-ServerMigration.ps1`、`src/OperationRequests.ps1`、`src/MigrationWizard.ps1`、DeveloperProbe 入口 | Operation 的輸入錯誤回 1，其他 Action 回 4；Menu 的結果被丟掉，最後一律 exit 0；RESUME 遇輸入結束回 3；DeveloperProbe 帶相對路徑回 1 | 前置檢查改丟契約錯誤；Menu 離開時回傳最差狀態碼；RESUME 改回 WaitingForInput 並附 ParentOperationId；入口先取絕對路徑（17.125） | `Test-CliExitCodes`（56 項，以真實 CLI 子行程執行） | （C-COMMIT） |
-| R17 | `src/Core.ps1` `Get-WsmGuardedCredential`、7 個 Get-Credential 呼叫點 | 只有 4 處有 stdin 重導防線，其餘會彈出真實憑證視窗；覆寫值可能取消防線 | 全部改用單一守門函式，並以 AST 靜態守門擋直接呼叫；覆寫值只能加嚴（17.125） | `Test-GuardedCredential`（AST 守門＋計數替身，呼叫次數 0） | （C-COMMIT） |
+| R16 | `Start-ServerMigration.ps1`、`src/OperationRequests.ps1`、`src/MigrationWizard.ps1`、DeveloperProbe 入口 | Operation 的輸入錯誤回 1，其他 Action 回 4；Menu 的結果被丟掉，最後一律 exit 0；RESUME 遇輸入結束回 3；DeveloperProbe 帶相對路徑回 1 | 前置檢查改丟契約錯誤；Menu 離開時回傳最差狀態碼；RESUME 改回 WaitingForInput 並附 ParentOperationId；入口先取絕對路徑（17.125） | `Test-CliExitCodes`（56 項，以真實 CLI 子行程執行） | `a8fd539` |
+| R17 | `src/Core.ps1` `Get-WsmGuardedCredential`、7 個 Get-Credential 呼叫點 | 只有 4 處有 stdin 重導防線，其餘會彈出真實憑證視窗；覆寫值可能取消防線 | 全部改用單一守門函式，並以 AST 靜態守門擋直接呼叫；覆寫值只能加嚴（17.125） | `Test-GuardedCredential`（AST 守門＋計數替身，呼叫次數 0） | `a8fd539` |
+| R13 | `src/HtmlConsole.ps1`、`console.js` statusName、`src/DeliveryReceipts.ps1` 匯入 | CV2 進度顯示「未識別交付狀態」，匯入的 CV2 收據永遠不顯示 | 補 NotApplicable 與文案；CV2 計畫匯入收據改為拒絕（17.126） | `Test-HtmlConsole`（CV2 進度）、`Test-DeliveryReceipts`（CV2 拒絕） | （D-COMMIT） |
+| R14 | `src/Core.ps1` `Import-WsmInventory`、`src/GeneralHostContracts.ps1` `Set-WsmGeneralHostSoftwareCatalog`、`src/SoftwareDispositionReview.ps1` | 重新匯入或換目錄時刪掉漂移的軟體決策，Stale 永遠不出現，處置、負責人、原因全失 | 共用 `Split-WsmSoftwareDecisionsForCatalog`，漂移決策移到 Stale（不進有效集合）並預填，重新確認後才生效（17.126） | `Test-SoftwareDispositionReview`（R14 重新匯入、二次匯入、重新確認、split 單元測試、兩個入口的靜態檢查） | （D-COMMIT） |
+| R15 | `src/SourceCandidateConfirmation.ps1`、`src/SourceCandidateMapping.ps1`、`console.js` | 內容相同重送時，Include 被打回 Pending、核准被清除、revision 遞增 | 內容相同回傳 NoChange；console 視 NoChange 為成功（17.126） | `Test-SourceCandidateConfirmation`、`Test-SourceCandidateMapping`（NoChange 與內容不同的反例） | （D-COMMIT） |
 
 ### 第六輪終檢
 
@@ -3176,4 +3210,6 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | S3 | `src/HtmlConsole.ps1` 服務迴圈 accept 與首位元組讀取 | 單執行緒同步讀取首位元組，每條閒置的預連線佔住迴圈約 2 秒；開 4 條時，其他請求要等約 8 秒 | accept 後改放入有界待讀佇列，只把已有位元組的連線交給原本的單執行緒流程，閒置滿 2 秒的連線回 400 後關閉；未改成多執行緒（17.112） | `Test-ConsoleIdlePreconnect.js`（4 條閒置加 4 個併發請求都在 1500 ms 內、閒置連線約 2.1 秒關閉、分段送出的慢客戶端仍成功） | 1f129b7 |
 | S6 | `src/DeveloperProbe.ps1` | 裸 UNC 路徑沒有遮蔽；Name 與 Value 分欄時值會外洩；Account、Domain 不在黑名單 | 路徑判斷改用 lookbehind；同列的值一起遮蔽；黑名單補上 account、domain；名稱判定改用共用函式（17.123） | `Test-SensitiveNameConvergence`（Probe 區段） | `083223d` |
 | S11 | `src/AssistiveReviewForms.ps1`、`src/WizardDetails.ps1`、`src/Core.ps1` | 兩套 regex 漏掉 Passwords、Tokens、private_key 等；物件分支誤丟 Description、Transcript | 全部改用單一的 `Test-WsmSensitiveName`；主代理另補：比對前移除 Unicode 格式字元，token 在名稱任何位置都算（排除 tokeniz*）（17.123） | `Test-SensitiveNameConvergence`（名稱表、分支一致性、Cf 字元、靜態守門） | `083223d` |
-| S14 | `src/HtmlConsole.ps1` `Get-WsmHtmlSafeError`、body 與請求檢查 | 壞掉的 body 回 operation_failed；內部例外訊息含 "parameter" 時被誤判為輸入錯誤 | 請求形狀錯誤與 body 解析改丟契約錯誤；分類器依型別判斷（可穿透 worker 包裝）；只保留 12 條鎖定的 token 比對（17.125） | `Test-HtmlErrorClassification`（160 項，含真實主控台） | （C-COMMIT） |
+| S14 | `src/HtmlConsole.ps1` `Get-WsmHtmlSafeError`、body 與請求檢查 | 壞掉的 body 回 operation_failed；內部例外訊息含 "parameter" 時被誤判為輸入錯誤 | 請求形狀錯誤與 body 解析改丟契約錯誤；分類器依型別判斷（可穿透 worker 包裝）；只保留 12 條鎖定的 token 比對（17.125） | `Test-HtmlErrorClassification`（160 項，含真實主控台） | `a8fd539` |
+| S15 | `src/WizardNonCOperations.ps1` 帳號對應審閱收據 | 收據只寫不讀，ProofHash 含 CreatedUtc 而不確定 | CreatedUtc 移出 hash，寫入與驗證兩端用同一規則（下游沒有讀取端，17.126） | `Test-WizardNonCOperations` | （D-COMMIT） |
+| S16 | `src/WizardNonCOperations.ps1` 傳輸計畫選單標籤 | 標籤顯示 UTC ISO 原字串 | 沿用 `Get-WsmWizardHandoffLocalTime`（17.126） | `Test-WizardNonCOperations` | （D-COMMIT） |

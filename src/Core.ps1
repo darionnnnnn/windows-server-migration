@@ -213,6 +213,23 @@ function New-WsmInventory {
     Assert-WsmInventory $result
     $result
 }
+# R14（批 D；主代理收斂）：軟體目錄換新時，先前的決策分成「仍有效」與「Stale」。只在 SoftwareId 於新目錄唯一存在時才留；
+# 事實雜湊相符者仍有效，不符者移入 Stale（附 StaleUtc／StaleInventoryHash，只供預填，不進有效集合，需負責人重新確認）。
+# 同一 SoftwareId 已有有效決策時丟棄 Stale 副本；軟體從目錄消失時兩者都不留。重新匯入盤點與換軟體目錄共用這一份。
+function Split-WsmSoftwareDecisionsForCatalog($PriorDecisions,$PriorStale,$SoftwareCatalog,[string]$SourceHash) {
+    $valid=New-Object 'System.Collections.Generic.List[object]';$stale=New-Object 'System.Collections.Generic.List[object]';$seen=@{}
+    $entryFor={param($id) @($SoftwareCatalog.Entries | Where-Object SoftwareId -CEQ $id)}
+    foreach($decision in @($PriorDecisions)){$entry=@(& $entryFor ([string]$decision.SoftwareId));if($entry.Count -eq 1 -and $decision.SoftwareHash -ceq (Get-WsmGeneralHostSoftwareFactsHash $entry[0])){$valid.Add($decision)}}
+    $validIds=@{};foreach($decision in $valid){$validIds[[string]$decision.SoftwareId]=$true}
+    foreach($candidate in (@($PriorDecisions)+@($PriorStale))){
+        $id=[string]$candidate.SoftwareId;if($validIds.ContainsKey($id) -or $seen.ContainsKey($id) -or @(& $entryFor $id).Count -ne 1){continue}
+        $seen[$id]=$true;$copy=[ordered]@{};foreach($property in $candidate.PSObject.Properties){$copy[$property.Name]=$property.Value}
+        if(-not $copy.Contains('StaleUtc')){$copy['StaleUtc']=Get-WsmUtc;$copy['StaleInventoryHash']=([string]$SourceHash).ToLowerInvariant()}
+        $stale.Add([pscustomobject]$copy)
+    }
+    [pscustomobject]@{Valid=@($valid.ToArray());Stale=@($stale.ToArray())}
+}
+
 function Import-WsmInventory {
     [CmdletBinding()] param([Parameter(Mandatory)][string]$Workspace, [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][string]$ExpectedHash, [string]$TargetName,
@@ -319,7 +336,8 @@ function Import-WsmInventory {
             if(-not $catalog.PSObject.Properties['Assistive']){$catalog.SchemaVersion=2};$priorSoftwareDecisions=@($old.GeneralHost.SoftwareDecisions);$general=$old.GeneralHost;$validIds=@{};foreach($item in @($items.ToArray())){$validIds[$item.ItemId]=$true}
             $orphaned=New-Object System.Collections.Generic.List[object]
             foreach($requirement in @($general.Requirements)){$orphaned.Add($requirement)}
-            $general.Requirements=@();$general.OrphanedRequirements=@($general.OrphanedRequirements)+@($orphaned.ToArray());$general.SoftwareCatalog=$null;$general.SoftwareCatalogHash='';$general.SoftwareDecisions=@();if($inventory.PSObject.Properties['SoftwareCatalog']){$general.SoftwareCatalog=$inventory.SoftwareCatalog;$general.SoftwareCatalogHash=Get-WsmHashText ($inventory.SoftwareCatalog | ConvertTo-Json -Depth 30 -Compress);$general.SoftwareDecisions=@($priorSoftwareDecisions | Where-Object {$decision=$_;$entry=@($inventory.SoftwareCatalog.Entries | Where-Object SoftwareId -CEQ $decision.SoftwareId);$entry.Count -eq 1 -and $decision.SoftwareHash -ceq (Get-WsmGeneralHostSoftwareFactsHash $entry[0])})};$general.EvidenceReceipts=@();$general.UpdatedUtc=Get-WsmUtc;$catalog | Add-Member NoteProperty GeneralHost $general
+            $general.Requirements=@();$general.OrphanedRequirements=@($general.OrphanedRequirements)+@($orphaned.ToArray());$general.SoftwareCatalog=$null;$general.SoftwareCatalogHash='';$general.SoftwareDecisions=@();if($inventory.PSObject.Properties['SoftwareCatalog']){$general.SoftwareCatalog=$inventory.SoftwareCatalog;$general.SoftwareCatalogHash=Get-WsmHashText ($inventory.SoftwareCatalog | ConvertTo-Json -Depth 30 -Compress);$priorStale=@();if($general.PSObject.Properties['StaleSoftwareDecisions']){$priorStale=@($general.StaleSoftwareDecisions)};$split=Split-WsmSoftwareDecisionsForCatalog @($priorSoftwareDecisions) $priorStale $inventory.SoftwareCatalog $ExpectedHash;$general.SoftwareDecisions=@($split.Valid);$general | Add-Member NoteProperty StaleSoftwareDecisions @($split.Stale) -Force
+            };$general.EvidenceReceipts=@();$general.UpdatedUtc=Get-WsmUtc;$catalog | Add-Member NoteProperty GeneralHost $general
         }
         if($catalog.SchemaVersion -eq 3){Assert-WsmAssistiveContract $catalog Catalog | Out-Null}
         $catalog | Add-Member NoteProperty EvidenceUtc $inventory.CreatedUtc

@@ -8,9 +8,11 @@ function Get-WsmAssistiveSoftwareDispositionReview {
     if(-not $general.SoftwareCatalog){throw 'A validated source SoftwareCatalog is required for software disposition review.'}
     $entries=@($general.SoftwareCatalog.Entries)
     $decisionIndex=@{};foreach($decision in @($general.SoftwareDecisions)){$decisionIndex[[string]$decision.SoftwareId]=$decision}
+    # R14: decisions kept as Stale after a drifted re-import are prefill only; a current decision always wins.
+    $staleIndex=@{};if($general.PSObject.Properties['StaleSoftwareDecisions']){foreach($staleDecision in @($general.StaleSoftwareDecisions)){$staleIndex[[string]$staleDecision.SoftwareId]=$staleDecision}}
     $itemIndex=@{};foreach($item in @($catalog.Items)){$itemIndex[[string]$item.ItemId]=$item}
     $rows=@(foreach($entry in $entries){
-        $decision=$null;if($decisionIndex.ContainsKey([string]$entry.SoftwareId)){$decision=$decisionIndex[[string]$entry.SoftwareId]}
+        $decision=$null;$decisionKeptStale=$false;if($decisionIndex.ContainsKey([string]$entry.SoftwareId)){$decision=$decisionIndex[[string]$entry.SoftwareId]}elseif($staleIndex.ContainsKey([string]$entry.SoftwareId)){$decision=$staleIndex[[string]$entry.SoftwareId];$decisionKeptStale=$true}
         $consumers=@(foreach($id in @($entry.ItemIds)){if($itemIndex.ContainsKey([string]$id)){[pscustomobject][ordered]@{ItemId=[string]$id;Name=[string]$itemIndex[[string]$id].Name;Decision=[string]$itemIndex[[string]$id].Decision}}})
         $special=[bool](Test-WsmGeneralHostSpecialSoftware $entry)
         [pscustomobject][ordered]@{
@@ -29,7 +31,7 @@ function Get-WsmAssistiveSoftwareDispositionReview {
             ConsumerItems=$consumers
             SpecialProduct=$special
             AllowedDispositions=$(if($special){@('External','NotNeeded')}else{@('Reinstall','Portable','KeepCompatible','External','NotNeeded','Unknown')})
-            DecisionState=$(if(-not $decision){'Unreviewed'}elseif([string]$decision.SoftwareHash -ceq (Get-WsmGeneralHostSoftwareFactsHash $entry)){'Reviewed'}else{'Stale'})
+            DecisionState=$(if(-not $decision){'Unreviewed'}elseif($decisionKeptStale){'Stale'}elseif([string]$decision.SoftwareHash -ceq (Get-WsmGeneralHostSoftwareFactsHash $entry)){'Reviewed'}else{'Stale'})
             DecisionSoftwareHash=$(if($decision){[string]$decision.SoftwareHash}else{''})
             Disposition=$(if($decision){[string]$decision.Disposition}else{''})
             Owner=$(if($decision){[string]$decision.Owner}else{''})

@@ -297,7 +297,7 @@
   function refreshActiveData() { const view = String(location.hash || '#wizard').slice(1) || 'wizard'; if (view === 'wizard') return refreshWizard(); if (view === 'operations') return loadView('actions', true); if (view === 'jobs') return refreshJobs(); if (view === 'help' || view === 'docs') return Promise.resolve(); return loadView(view, true); }
   function pill(text, status) { const n = el('span', `tag ${statusClass(status)}`, text || status || '未知'); return n; }
   function statusClass(s) { const classes = { failed:'danger', blocked:'danger', blockedconflict:'danger', conflict:'danger', error:'danger', denied:'danger', invalid:'danger', pending:'warn', deferred:'warn', deferredsoftware:'warn', waitforinstall:'warn', waitingforinput:'warn', cancelrequested:'warn', running:'warn', queued:'warn', unknown:'', notobserved:'', notmeasured:'', unobserved:'', external:'warn', review:'warn', reviewrequired:'warn', ready:'success', succeeded:'success', saved:'success', completed:'success', cancelled:'', approved:'success', passed:'success', verified:'success', restoreNow:'', sameobservedidentity:'warn', differentidentityrequiresreview:'warn', accountscopereviewrequired:'warn', notcompared:'', targetunknown:'', targetmissing:'warn', versionunknown:'', chosenversionobserved:'success', differentfromchosenversion:'warn', versionevidencemismatch:'warn', stalechosenversion:'danger', sourceevidenceincomplete:'warn', targetevidenceincomplete:'warn', ambiguous:'warn', targetonly:'', coverageincomplete:'warn' }; return Object.prototype.hasOwnProperty.call(classes, String(s || '').toLowerCase()) ? classes[String(s || '').toLowerCase()] : ''; }
-  function statusName(value) { const names = { Selected: '已選取', NotSelected: '未選取', Approved: '已核准', Pending: '待核准', Ready: '可執行', Deferred: '待處理', DeferredSoftware: '等待軟體', Blocked: '受阻擋', BlockedConflict: '目的衝突', External: '外部處理', Failed: '失敗', Unknown: '未知', Success:'已完成掃描', NotObserved:'未觀測', NotTested:'未測試', NotMeasured:'未測量', Partial:'部分完成', Observed:'已觀測', Recorded:'已記錄（不代表核准或完成）', AdoptedExisting:'沿用既有檔',ReviewRequired:'需要審閱', Accepted:'已接受（依提供證據）', Sealed:'已封存（效力仍須核對）', ImportedVerified:'匯入收據已驗證', Imported:'已匯入（尚未核准）', Exported:'已匯出交接材料', NoApproval:'尚無核准', NoReceipt:'尚無交付收據', Stale:'已過期／需要複核', OldApproval:'沿用舊核准／需要複核', Queued:'已排入佇列', WaitingForInput:'等待安全憑證輸入', Running: '執行中', CancelRequested: '已要求取消（尚未確認停止）', Cancelled: '已停止', Interrupted:'工作程序中斷（需查證後恢復）', Completed:'已結束', Succeeded: '已完成', Saved:'已保存', RestoreNow: '直接還原', WaitForInstall: '等待補裝', SameObservedIdentity: '觀測身分相同（仍需產品驗證）', DifferentIdentityRequiresReview: '帳戶／SID 不同，需負責人審閱', AccountScopeReviewRequired: '帳戶範圍待審閱', NotCompared: '未比較', TargetUnknown: '目標觀測未知', TargetMissing: '目標盤點確認缺少此軟體', VersionUnknown: '軟體版本未知', ChosenVersionObserved: '已觀測到選用版本', DifferentFromChosenVersion: '目標版本與選用版本不同', VersionEvidenceMismatch: '來源與目標版本證據類型不同', StaleChosenVersion: '來源資料已變更，選用版本過期', SourceEvidenceIncomplete: '來源軟體證據不完整', TargetEvidenceIncomplete: '目標證據不完整', Ambiguous: '配對不唯一', TargetOnly: '僅目標端觀測', CoverageIncomplete: '目標涵蓋不完整' }; return names[value] || value || '未知'; }
+  function statusName(value) { const names = { Selected: '已選取', NotSelected: '未選取', Approved: '已核准', Pending: '待核准', Ready: '可執行', Deferred: '待處理', DeferredSoftware: '等待軟體', Blocked: '受阻擋', BlockedConflict: '目的衝突', External: '外部處理', Failed: '失敗', Unknown: '未知', Success:'已完成掃描', NotObserved:'未觀測', NotTested:'未測試', NotMeasured:'未測量', Partial:'部分完成', Observed:'已觀測', Recorded:'已記錄（不代表核准或完成）', AdoptedExisting:'沿用既有檔',ReviewRequired:'需要審閱', Accepted:'已接受（依提供證據）', Sealed:'已封存（效力仍須核對）', ImportedVerified:'匯入收據已驗證', Imported:'已匯入（尚未核准）', Exported:'已匯出交接材料', NoApproval:'尚無核准', NoReceipt:'尚無交付收據', NotApplicable:'不適用', UnsupportedOfflineFullSet:'CV2 的交付以備份結果頁為準', Stale:'已過期／需要複核', OldApproval:'沿用舊核准／需要複核', Queued:'已排入佇列', WaitingForInput:'等待安全憑證輸入', Running: '執行中', CancelRequested: '已要求取消（尚未確認停止）', Cancelled: '已停止', Interrupted:'工作程序中斷（需查證後恢復）', Completed:'已結束', Succeeded: '已完成', Saved:'已保存', RestoreNow: '直接還原', WaitForInstall: '等待補裝', SameObservedIdentity: '觀測身分相同（仍需產品驗證）', DifferentIdentityRequiresReview: '帳戶／SID 不同，需負責人審閱', AccountScopeReviewRequired: '帳戶範圍待審閱', NotCompared: '未比較', TargetUnknown: '目標觀測未知', TargetMissing: '目標盤點確認缺少此軟體', VersionUnknown: '軟體版本未知', ChosenVersionObserved: '已觀測到選用版本', DifferentFromChosenVersion: '目標版本與選用版本不同', VersionEvidenceMismatch: '來源與目標版本證據類型不同', StaleChosenVersion: '來源資料已變更，選用版本過期', SourceEvidenceIncomplete: '來源軟體證據不完整', TargetEvidenceIncomplete: '目標證據不完整', Ambiguous: '配對不唯一', TargetOnly: '僅目標端觀測', CoverageIncomplete: '目標涵蓋不完整' }; return names[value] || value || '未知'; }
   function wizardKindName(value) { const names={Runtime:'軟體與設定',runtime:'軟體與設定',Software:'軟體與設定',software:'軟體與設定',Web:'網站與服務',web:'網站與服務',Website:'網站',website:'網站',ScheduledTask:'排程工作',scheduledtask:'排程工作',Service:'Windows 服務',service:'Windows 服務',File:'檔案',file:'檔案',Registry:'登錄設定',registry:'登錄設定',Share:'共用資料夾',share:'共用資料夾'};return names[value]||names[String(value||'').toLowerCase()]||value||'搬移項目'; }
   // N9c2 / R7-07: 每個路徑旁顯示原字串、解析結果、解析依據與（未解析時的）原因與人工處置下一步。只用 textContent，路徑視為資料。
   function appendPathResolution(host, resolution) {
@@ -2566,9 +2566,9 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
   function b5JobOutput(job) { const outputs = Array.isArray(job && job.outputs) ? job.outputs : []; return outputs.find(row => row && typeof row === 'object') || null; }
   // 成功只看「作業終態 + 輸出的 Status」：匯出為 Confirmed、匯入為 ImportedReviewRequired、對應為 SubmittedReviewRequired、處置為 Applied。
   // 這些狀態對 CLI 退出碼而言是「需後續審閱」，因此作業狀態可能是 ReviewRequired，不代表失敗。
-  function b5Outcome(job, okOutputStatus) {
+  function b5Outcome(job, okOutputStatus, noChangeOutputStatus) {
     const status = String(job && job.status || ''), output = b5JobOutput(job), outputStatus = String(output && output.Status || '');
-    if (['Succeeded','Completed','ReviewRequired'].includes(status) && outputStatus === okOutputStatus) return { ok:true, output };
+    if (['Succeeded','Completed','ReviewRequired'].includes(status) && (outputStatus === okOutputStatus || (noChangeOutputStatus && outputStatus === noChangeOutputStatus))) return { ok:true, output };
     const error = job && job.error && typeof job.error === 'object' ? job.error : {}, code = String(error.code || '');
     const text = code ? apiError(error, 0, '作業未完成').message : `作業${statusName(status) || status}，沒有取得可核對的結果。`;
     return { ok:false, stale:b5StaleCodes.has(code), message:text, code, output };
@@ -2688,7 +2688,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     const pairId = b5Context().pairId, found = new Map();
     state.jobs.forEach(job => {
       if (!job || job.action !== 'SourceCandidateConfirmImport' || String(job.pairId || '') !== pairId || !['Succeeded','ReviewRequired','Completed'].includes(String(job.status))) return;
-      const out = b5JobOutput(job); if (!out || out.Status !== 'ImportedReviewRequired' || !b5HashPattern.test(String(out.ItemId || ''))) return;
+      const out = b5JobOutput(job); if (!out || (out.Status !== 'ImportedReviewRequired' && out.Status !== 'NoChange') || !b5HashPattern.test(String(out.ItemId || ''))) return;
       found.set(out.ItemId, { itemId:out.ItemId, memberCount:out.MemberCount, when:String(job.CompletedUtc || job.completedUtc || job.StartedUtc || '') });
     });
     return [...found.values()].sort((a, b) => b.when.localeCompare(a.when));
@@ -2724,15 +2724,15 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       try {
         const v = imp.values, session = state.session;
         const job = await b5Write('SourceCandidateConfirmImport', { Path:v.Path.trim(), ExpectedHash:v.ExpectedHash.trim().toLowerCase(), TargetPath:v.TargetPath.trim(), Owner:v.Owner.trim(), Evidence:v.Evidence.trim(), ExpectedRevision:Number(session.decisionRevision) });
-        const outcome = b5Outcome(job, 'ImportedReviewRequired');
-        if (outcome.ok) { imp.result = outcome.output; b5.review.itemId = String(outcome.output.ItemId || ''); b5.review.data = null; b5.mapping.data = null; b5.mapping.open = false; announce('已匯入候選確認材料；項目待審閱，尚未核准。'); }
+        const outcome = b5Outcome(job, 'ImportedReviewRequired', 'NoChange');
+        if (outcome.ok) { imp.result = outcome.output; b5.review.itemId = String(outcome.output.ItemId || ''); b5.review.data = null; b5.mapping.data = null; b5.mapping.open = false; announce(outcome.output.Status === 'NoChange' ? '確認材料與先前匯入的內容完全相同，未變更任何決策或核准。' : '已匯入候選確認材料；項目待審閱，尚未核准。'); }
         else { imp.error = outcome.message; if (outcome.stale) imp.error += ' 請確認材料與目前管理端版本，必要時重新讀取後再填寫；不會自動重送。'; }
       } catch (error) { if (error.message !== 'session expired') imp.error = b5FriendlyError(error, '匯入未完成。'); }
       finally { imp.busy = false; b5Repaint('d2'); if (imp.result) b5LoadReview(true); else b5FinishFocus('d2', '.b5-step-import .b5-status'); }
     }, 'import-submit');
     if (imp.busy) submit.setAttribute('aria-disabled', 'true'); box.appendChild(submit);
     if (imp.error) box.appendChild(b5Status('error', `錯誤：${imp.error}`));
-    if (imp.result) box.appendChild(b5Status('ok', `完成：已匯入，項目 ${b5Short(imp.result.ItemId)}，成員 ${safeText(imp.result.MemberCount)} 個。項目仍待你審閱，尚未核准。`));
+    if (imp.result) box.appendChild(b5Status('ok', imp.result.Status === 'NoChange' ? `完成：確認材料與先前匯入的內容完全相同（項目 ${b5Short(imp.result.ItemId)}），沒有變更任何決策或核准。` : `完成：已匯入，項目 ${b5Short(imp.result.ItemId)}，成員 ${safeText(imp.result.MemberCount)} 個。項目仍待你審閱，尚未核准。`));
   }
   async function b5LoadReview(force) {
     const rv = b5.review; if (!rv.itemId || rv.loading) return;
@@ -2833,8 +2833,9 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     try {
       const decisions = (data.References || []).map(row => { const decision = mp.choices.get(row.ReferenceId); return { ReferenceId:row.ReferenceId, Decision:decision, FileScopeItemId:decision === 'Include' ? String(row.SuggestedFileScopeItemId) : '', DependencyType:decision === 'Include' ? (mp.deps.get(row.ReferenceId) || 'None') : 'None' }; });
       const job = await b5Write('SourceCandidateMappingSubmit', { CandidateItemId:String(data.CandidateItemId), ExpectedInventoryHash:String(data.InventoryHash), ExpectedConfirmationHash:String(data.ConfirmationHash), ExpectedRevision:Number(data.DecisionRevision), Decisions:decisions });
-      const outcome = b5Outcome(job, 'SubmittedReviewRequired');
-      if (outcome.ok) { mp.result = `完成：已記錄 ${safeText(outcome.output.MappingCount)} 筆對應。相依項目已回到待審閱，需重新審閱並重新核准。`; announce('已送出工作負載對應審閱；相依項目需重新審閱並重新核准。'); }
+      const outcome = b5Outcome(job, 'SubmittedReviewRequired', 'NoChange');
+      if (outcome.ok && outcome.output.Status === 'NoChange') { mp.result = '完成：送出的對應與目前已記錄的完全相同，未變更任何決策或核准。'; announce('工作負載對應與先前相同，未變更任何決策或核准。'); }
+      else if (outcome.ok) { mp.result = `完成：已記錄 ${safeText(outcome.output.MappingCount)} 筆對應。相依項目已回到待審閱，需重新審閱並重新核准。`; announce('已送出工作負載對應審閱；相依項目需重新審閱並重新核准。'); }
       else { mp.submitError = outcome.message; if (outcome.stale) { mp.stale = true; mp.submitError = '資料已過期（盤點、確認雜湊或版本已變更）。請按「重新讀取」確認最新內容後再決定是否送出；不會自動重送。'; } }
     } catch (error) { if (error.message !== 'session expired') { mp.submitError = b5FriendlyError(error, '送出未完成。'); if (b5IsStale(error)) { mp.stale = true; mp.submitError = '資料已過期。請按「重新讀取」確認最新內容後再決定是否送出；不會自動重送。'; } } }
     finally { mp.busy = false; b5Repaint('d2'); if (mp.result) b5LoadMapping(false); else b5FinishFocus('d2', '.b5-step-mapping .b5-status'); }

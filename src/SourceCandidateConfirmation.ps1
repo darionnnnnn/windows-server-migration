@@ -309,6 +309,8 @@ function Import-WsmSourceCandidateConfirmation {
             $current.Assistive.Selections.Items=@($current.Assistive.Selections.Items)+@([pscustomobject][ordered]@{ItemId=[string]$item.ItemId;SourceRevision=[int]$current.InventoryRevision;Selected=$true;Reason='New source candidate requires separate Manager selection and approval.';UpdatedUtc=(Get-WsmUtc)})
             $current.Assistive.Selections.Revision++;$createdNew=$true
         }
+        # R15: byte-identical material with the same owner, evidence and resulting spec changes nothing; keep the reviewed decision and the approval.
+        if(-not $createdNew){$sameSpec=$null;if($item.PSObject.Properties['MigrationSpec']){$sameSpec=$item.MigrationSpec};$sameMaterial=@($current.Assistive.MaterialReferences|Where-Object {[string]$_.Reference -ceq $confirmationRef -and [string]$_.SHA256 -ieq $ExpectedHash.ToLowerInvariant()});if($sameSpec -and $item.Present -and [string]$item.Status -ceq 'Success' -and [string]$item.Owner -ceq $Owner -and [string]$item.Evidence -ceq $confirmationRef -and $sameMaterial.Count -eq 1 -and (Get-WsmHashText ($sameSpec|ConvertTo-Json -Depth 30 -Compress)) -ceq (Get-WsmHashText ($spec|ConvertTo-Json -Depth 30 -Compress))){return $current}}
         $oldDecision=[string]$item.Decision;$oldSpec=$null;if($item.PSObject.Properties['MigrationSpec']){$oldSpec=$item.MigrationSpec};$item.Status='Success';$item.Present=$true;$item.Owner=$Owner;$item.Evidence=$confirmationRef
         $item.Settings=[pscustomobject]@{EvidenceReference=$confirmationRef};$item.SettingsHash=Get-WsmHashText ($item.Settings|ConvertTo-Json -Depth 20 -Compress)
         if(-not $createdNew -and $oldDecision -ceq 'Include'){$item.Decision='Pending';$item.Reason='Source candidate evidence changed; review the updated exact member set.';$item.ReviewedBy='';$item.ReviewedUtc=''}
@@ -321,5 +323,5 @@ function Import-WsmSourceCandidateConfirmation {
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $current;$current
     }
     $item=@($updated.Items|Where-Object {[string]$_.NaturalKey -ceq $itemNaturalKey})[0]
-    [pscustomobject][ordered]@{Status='ImportedReviewRequired';PairId=$PairId;ItemId=[string]$item.ItemId;ConfirmationId=[string]$confirmation.ConfirmationId;MaterialReference=$confirmationRef;Decision=[string]$item.Decision;DecisionRevision=[int]$updated.DecisionRevision;SelectionRevision=[int]$updated.Assistive.Selections.Revision;MemberCount=@($confirmation.Selection.Members).Count;ContentSelection='ExactMembers';AuthoritativeApproval=$false}
+    [pscustomobject][ordered]@{Status=$(if([int]$updated.DecisionRevision -eq $ExpectedRevision){'NoChange'}else{'ImportedReviewRequired'});PairId=$PairId;ItemId=[string]$item.ItemId;ConfirmationId=[string]$confirmation.ConfirmationId;MaterialReference=$confirmationRef;Decision=[string]$item.Decision;DecisionRevision=[int]$updated.DecisionRevision;SelectionRevision=[int]$updated.Assistive.Selections.Revision;MemberCount=@($confirmation.Selection.Members).Count;ContentSelection='ExactMembers';AuthoritativeApproval=$false}
 }

@@ -62,6 +62,18 @@ try{
     $specPath=Join-Path $root 'task-spec.json';& $module {param($p,$v) Write-WsmJson $p $v} $specPath $typedSpec
     $null=Set-WsmMigrationSpec -Workspace $managerWorkspace -PairId $catalog.PairId -ItemId $task.ItemId -Path $specPath -ExpectedHash ((Get-FileHash -LiteralPath $specPath -Algorithm SHA256).Hash) -ExpectedRevision $catalog.DecisionRevision;$catalog=Get-WsmCatalog $managerWorkspace $catalog.PairId
     $catalog=Set-WsmDecision -Workspace $managerWorkspace -PairId $catalog.PairId -ItemId @($task.ItemId) -Decision Include -ExpectedRevision $catalog.DecisionRevision
+    # R15: resubmitting the identical per-reference dispositions must not reset the consumer to Pending or bump the revision; different dispositions still do.
+    $r15Before=Get-WsmCatalog $managerWorkspace $catalog.PairId;$r15ConsumerBefore=@($r15Before.Items|Where-Object ItemId -CEQ $task.ItemId)[0]
+    Check ($r15ConsumerBefore.Decision -ceq 'Include') 'R15 fixture: the consumer task must be an included item before the identical resubmission.'
+    $r15Same=Submit-WsmSourceCandidateWorkloadMappingReview -Workspace $managerWorkspace -PairId $catalog.PairId -CandidateItemId $imported.ItemId -ExpectedInventoryHash $inventoryHash -ExpectedConfirmationHash $confirmed.ConfirmationHash -Decisions $decisions -ExpectedRevision $r15Before.DecisionRevision
+    $r15After=Get-WsmCatalog $managerWorkspace $catalog.PairId;$r15ConsumerAfter=@($r15After.Items|Where-Object ItemId -CEQ $task.ItemId)[0]
+    Check ($r15Same.Status -ceq 'NoChange' -and $r15Same.DecisionRevision -eq $r15Before.DecisionRevision -and $r15After.DecisionRevision -eq $r15Before.DecisionRevision -and $r15ConsumerAfter.Decision -ceq 'Include' -and $r15ConsumerAfter.ReviewedBy -ceq $r15ConsumerBefore.ReviewedBy) 'R15: identical workload mapping resubmission reset the consumer to Pending or bumped the revision instead of returning NoChange.'
+    $r15Different=@(foreach($row in $decisions){if($row.Decision -ceq 'Manual'){[pscustomobject]@{ReferenceId=$row.ReferenceId;Decision='Exclude';FileScopeItemId='';DependencyType='None'}}else{$row}})
+    $r15Changed=Submit-WsmSourceCandidateWorkloadMappingReview -Workspace $managerWorkspace -PairId $catalog.PairId -CandidateItemId $imported.ItemId -ExpectedInventoryHash $inventoryHash -ExpectedConfirmationHash $confirmed.ConfirmationHash -Decisions $r15Different -ExpectedRevision $r15After.DecisionRevision
+    $r15ChangedCatalog=Get-WsmCatalog $managerWorkspace $catalog.PairId
+    Check ($r15Changed.Status -ceq 'SubmittedReviewRequired' -and $r15Changed.DecisionRevision -gt $r15After.DecisionRevision -and @($r15ChangedCatalog.Items|Where-Object {$_.ItemId -ceq $task.ItemId -and $_.Decision -ceq 'Pending'}).Count -eq 1) 'R15 counter-example: changed dispositions must still reset the consumer to Pending.'
+    $null=Submit-WsmSourceCandidateWorkloadMappingReview -Workspace $managerWorkspace -PairId $catalog.PairId -CandidateItemId $imported.ItemId -ExpectedInventoryHash $inventoryHash -ExpectedConfirmationHash $confirmed.ConfirmationHash -Decisions $decisions -ExpectedRevision $r15ChangedCatalog.DecisionRevision
+    $catalog=Get-WsmCatalog $managerWorkspace $catalog.PairId;$catalog=Set-WsmDecision -Workspace $managerWorkspace -PairId $catalog.PairId -ItemId @($task.ItemId) -Decision Include -ExpectedRevision $catalog.DecisionRevision
     $target=[pscustomobject][ordered]@{SchemaVersion=1;ToolVersion='0.4.0';Kind='TargetIdentity';HostId=[Guid]::NewGuid().ToString('D');Fingerprint=('c'*64);Name='mapping-target'}
     $targetPath=Join-Path $root 'target-identity.json';& $module {param($p,$v) Write-WsmJson $p $v} $targetPath $target
     $planPath=Join-Path $root 'sealed-plan.json'
