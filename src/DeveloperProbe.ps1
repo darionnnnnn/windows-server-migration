@@ -12,13 +12,16 @@ function ConvertTo-WsmDeveloperProbeSafeText {
     $safe=$Value
     # Replace recognizable secret material before path and hostname anonymization.
     $safe=[regex]::Replace($safe,'(?i)\b(Bearer|Basic)\s+[A-Za-z0-9+/=_\-.]+','$1 [REDACTED]')
-    $secretNames='password|passwd|pwd|token|secret|api[_-]?key|client[_-]?secret|private[_-]?key|wallet|credential|authorization'
+    # S11：祕密名稱的樣式只在 Core.ps1 的 Get-WsmSensitiveAssignmentNameRegex（單一來源）。
+    $secretNames=Get-WsmSensitiveAssignmentNameRegex
     $safe=[regex]::Replace($safe,'(?i)(["'']?(?:'+$secretNames+')["'']?\s*[=:]\s*)(?:"[^"]*"|''[^'']*''|[^\s,;<>]+)','$1[REDACTED]')
+    # S6：名稱與值分在兩個欄位的字串形式（{Name='DB_PASSWORD';Value='...'}）。名稱是否祕密交給 Test-WsmSensitiveName 判定。
+    $safe=[regex]::Replace($safe,'(?i)(\b(?:name|key|setting|variable|property)["'']?\s*[=:]\s*["'']?)([A-Za-z0-9_.\-]+)(["'']?\s*[;,]\s*["'']?(?:value|data)["'']?\s*[=:]\s*)(?:"[^"]*"|''[^'']*''|[^\s,;<>}]+)',{param($m)if(Test-WsmSensitiveName $m.Groups[2].Value){$m.Groups[1].Value+$m.Groups[2].Value+$m.Groups[3].Value+'[REDACTED]'}else{$m.Value}})
     $safe=[regex]::Replace($safe,'(?is)(<(?:'+$secretNames+')[^>]*>).*?(</(?:'+$secretNames+')\s*>)','$1[REDACTED]$2')
     $safe=[regex]::Replace($safe,'(?is)-----BEGIN [^-]*(PRIVATE KEY|CERTIFICATE)[^-]*-----.*?-----END [^-]*(PRIVATE KEY|CERTIFICATE)[^-]*-----','[REDACTED-KEY-MATERIAL]')
     $safe=[regex]::Replace($safe,'(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b','[REDACTED-IDENTIFIER]')
     $safe=[regex]::Replace($safe,'(?i)"((?:[A-Z]:\\|\\\\)[^"]+)"',{param($m)'['+(Get-WsmDeveloperProbeSafeAlias $m.Groups[1].Value 'path' $Salt)+']'})
-    $safe=[regex]::Replace($safe,'(?i)\b(?:[A-Z]:\\|\\\\)[^\r\n,;"''<>|]+',{param($m)$path=$m.Value.TrimEnd('.',')',']','}');'['+(Get-WsmDeveloperProbeSafeAlias $path 'path' $Salt)+']'})
+    $safe=[regex]::Replace($safe,'(?i)(?<![A-Za-z0-9\\])(?:[A-Z]:\\|\\\\)[^\r\n,;"''<>|]+',{param($m)$path=$m.Value.TrimEnd('.',')',']','}');'['+(Get-WsmDeveloperProbeSafeAlias $path 'path' $Salt)+']'})
     $safe=[regex]::Replace($safe,'(?i)(\b(?:host|computer|machine|server)(?:name)?\s*[=:]\s*)([^\s,;]+)',{param($m)$m.Groups[1].Value+'['+(Get-WsmDeveloperProbeSafeAlias $m.Groups[2].Value 'host' $Salt)+']'})
     if($safe.Length -gt 512){$safe=$safe.Substring(0,512)+'…[TRUNCATED]'}
     $safe
@@ -71,6 +74,22 @@ function ConvertTo-WsmDeveloperProbeRedactedShape($Value) {
     [pscustomobject]@{Redacted=$true;OriginalType=$Value.GetType().Name;PropertyCount=@($Value.PSObject.Properties).Count;Properties=$shape}
 }
 
+function Test-WsmDeveloperProbeNameValueSecret($InputObject) {
+    # S6：同一列裡「名稱欄」的值是祕密名稱（Test-WsmSensitiveName）時，同一列的「值欄」必須一起遮蔽。
+    $nameFields=@('name','key','setting','settingname','variable','variablename','property','propertyname','parameter','parametername','attribute','attributename','field','fieldname','entry')
+    $pairs=$(if($InputObject -is [System.Collections.IDictionary]){foreach($key in $InputObject.Keys){[pscustomobject]@{Name=[string]$key;Value=$InputObject[$key]}}}else{foreach($property in $InputObject.PSObject.Properties){[pscustomobject]@{Name=[string]$property.Name;Value=$property.Value}}})
+    foreach($pair in @($pairs)){if($nameFields -contains $pair.Name.ToLowerInvariant() -and $pair.Value -is [string] -and (Test-WsmSensitiveName $pair.Value)){return $true}}
+    $false
+}
+
+function Test-WsmDeveloperProbeRedactedFieldName([string]$OriginalName,[bool]$PairSecret) {
+    # 祕密名稱走共用判定；其餘（身分、帳號、網域、訊息等）是 probe 自己的非祕密黑名單。
+    if(Test-WsmSensitiveName $OriginalName){return $true}
+    if($OriginalName -match '(?i)arguments?|commandline|rawvalue|xml|script|user(name)?|account|domain|subject|filename|headers?|thumbprint|sid|error(?!type|summary|id)|message|evidence'){return $true}
+    if($PairSecret -and @('value','data','content','currentvalue','newvalue','oldvalue','previousvalue','defaultvalue','settingvalue','propertyvalue','variablevalue','before','after','beforevalue','aftervalue','text') -contains $OriginalName.ToLowerInvariant()){return $true}
+    $false
+}
+
 function ConvertTo-WsmDeveloperProbeSafeObject {
     param([AllowNull()]$InputObject,[int]$Depth=0,[string]$Salt='')
     if($null -eq $InputObject){return $null}
@@ -78,8 +97,8 @@ function ConvertTo-WsmDeveloperProbeSafeObject {
     if($InputObject -is [string]){return (ConvertTo-WsmDeveloperProbeSafeText $InputObject $Salt)}
     if($InputObject -is [ValueType]){return $InputObject}
     if($InputObject -is [System.Collections.IDictionary]){
-        $result=[ordered]@{}
-        foreach($key in $InputObject.Keys){$originalName=[string]$key;$value=$InputObject[$key];$name=ConvertTo-WsmDeveloperProbeSafeText $originalName $Salt;if($originalName -match '(?i)(?:[a-z0-9]{4,}[_-]){2,}[a-z0-9]{3,}'){$name='field-'+(Get-WsmDeveloperProbeSafeAlias $originalName 'field' $Salt)};$baseName=$name;$suffix=2;while($result.Contains($name)){$name=$baseName+'_'+$suffix;$suffix++};if($originalName -match '(?i)password|passwd|secret|token|private.?key|wallet|credential|arguments?|commandline|rawvalue|xml|script|connectionstring|authorization|user(name)?|accountname|subject|filename|headers?|thumbprint|sid|error(?!type|summary|id)|message|evidence'){ $result[$name]=ConvertTo-WsmDeveloperProbeRedactedShape $value }elseif($originalName -ceq 'ToolFingerprint' -and $value -is [string] -and $value -match '^[a-fA-F0-9]{64}$'){$result[$name]=$value.ToLowerInvariant()}elseif($originalName -match '(?i)fingerprint|machine.?guid|host.?id|machine.?id|path|directory|folder|host(name)?|computer(name)?|machine(name)?'){if($value -is [string]){$kind=if($originalName -match '(?i)fingerprint|machine.?guid|host.?id|machine.?id|host|computer|machine'){'host'}else{'path'};$result[$name]= '['+(Get-WsmDeveloperProbeSafeAlias ([string]$value) $kind $Salt)+']'}else{$result[$name]=ConvertTo-WsmDeveloperProbeSafeObject $value ($Depth+1) $Salt}}else{$result[$name]=ConvertTo-WsmDeveloperProbeSafeObject $value ($Depth+1) $Salt}}
+        $result=[ordered]@{};$pairSecret=Test-WsmDeveloperProbeNameValueSecret $InputObject
+        foreach($key in $InputObject.Keys){$originalName=[string]$key;$value=$InputObject[$key];$name=ConvertTo-WsmDeveloperProbeSafeText $originalName $Salt;if($originalName -match '(?i)(?:[a-z0-9]{4,}[_-]){2,}[a-z0-9]{3,}'){$name='field-'+(Get-WsmDeveloperProbeSafeAlias $originalName 'field' $Salt)};$baseName=$name;$suffix=2;while($result.Contains($name)){$name=$baseName+'_'+$suffix;$suffix++};if(Test-WsmDeveloperProbeRedactedFieldName $originalName $pairSecret){ $result[$name]=ConvertTo-WsmDeveloperProbeRedactedShape $value }elseif($originalName -ceq 'ToolFingerprint' -and $value -is [string] -and $value -match '^[a-fA-F0-9]{64}$'){$result[$name]=$value.ToLowerInvariant()}elseif($originalName -match '(?i)fingerprint|machine.?guid|host.?id|machine.?id|path|directory|folder|host(name)?|computer(name)?|machine(name)?'){if($value -is [string]){$kind=if($originalName -match '(?i)fingerprint|machine.?guid|host.?id|machine.?id|host|computer|machine'){'host'}else{'path'};$result[$name]= '['+(Get-WsmDeveloperProbeSafeAlias ([string]$value) $kind $Salt)+']'}else{$result[$name]=ConvertTo-WsmDeveloperProbeSafeObject $value ($Depth+1) $Salt}}else{$result[$name]=ConvertTo-WsmDeveloperProbeSafeObject $value ($Depth+1) $Salt}}
         return [pscustomobject]$result
     }
     if($InputObject -is [System.Collections.IEnumerable]){
@@ -88,8 +107,8 @@ function ConvertTo-WsmDeveloperProbeSafeObject {
         return ,@($values.ToArray())
     }
     if($InputObject.PSObject -and $InputObject.PSObject.Properties){
-        $result=[ordered]@{}
-        foreach($property in $InputObject.PSObject.Properties){$originalName=[string]$property.Name;$value=$property.Value;$name=ConvertTo-WsmDeveloperProbeSafeText $originalName $Salt;if($originalName -match '(?i)(?:[a-z0-9]{4,}[_-]){2,}[a-z0-9]{3,}'){$name='field-'+(Get-WsmDeveloperProbeSafeAlias $originalName 'field' $Salt)};$baseName=$name;$suffix=2;while($result.Contains($name)){$name=$baseName+'_'+$suffix;$suffix++};if($originalName -match '(?i)password|passwd|secret|token|private.?key|wallet|credential|arguments?|commandline|rawvalue|xml|script|connectionstring|authorization|user(name)?|accountname|subject|filename|headers?|thumbprint|sid|error(?!type|summary|id)|message|evidence'){ $result[$name]=ConvertTo-WsmDeveloperProbeRedactedShape $value }elseif($originalName -ceq 'ToolFingerprint' -and $value -is [string] -and $value -match '^[a-fA-F0-9]{64}$'){$result[$name]=$value.ToLowerInvariant()}elseif($originalName -match '(?i)fingerprint|machine.?guid|host.?id|machine.?id|path|directory|folder|host(name)?|computer(name)?|machine(name)?'){if($value -is [string]){$kind=if($originalName -match '(?i)fingerprint|machine.?guid|host.?id|machine.?id|host|computer|machine'){'host'}else{'path'};$result[$name]= '['+(Get-WsmDeveloperProbeSafeAlias ([string]$value) $kind $Salt)+']'}else{$result[$name]=ConvertTo-WsmDeveloperProbeSafeObject $value ($Depth+1) $Salt}}else{$result[$name]=ConvertTo-WsmDeveloperProbeSafeObject $value ($Depth+1) $Salt}}
+        $result=[ordered]@{};$pairSecret=Test-WsmDeveloperProbeNameValueSecret $InputObject
+        foreach($property in $InputObject.PSObject.Properties){$originalName=[string]$property.Name;$value=$property.Value;$name=ConvertTo-WsmDeveloperProbeSafeText $originalName $Salt;if($originalName -match '(?i)(?:[a-z0-9]{4,}[_-]){2,}[a-z0-9]{3,}'){$name='field-'+(Get-WsmDeveloperProbeSafeAlias $originalName 'field' $Salt)};$baseName=$name;$suffix=2;while($result.Contains($name)){$name=$baseName+'_'+$suffix;$suffix++};if(Test-WsmDeveloperProbeRedactedFieldName $originalName $pairSecret){ $result[$name]=ConvertTo-WsmDeveloperProbeRedactedShape $value }elseif($originalName -ceq 'ToolFingerprint' -and $value -is [string] -and $value -match '^[a-fA-F0-9]{64}$'){$result[$name]=$value.ToLowerInvariant()}elseif($originalName -match '(?i)fingerprint|machine.?guid|host.?id|machine.?id|path|directory|folder|host(name)?|computer(name)?|machine(name)?'){if($value -is [string]){$kind=if($originalName -match '(?i)fingerprint|machine.?guid|host.?id|machine.?id|host|computer|machine'){'host'}else{'path'};$result[$name]= '['+(Get-WsmDeveloperProbeSafeAlias ([string]$value) $kind $Salt)+']'}else{$result[$name]=ConvertTo-WsmDeveloperProbeSafeObject $value ($Depth+1) $Salt}}else{$result[$name]=ConvertTo-WsmDeveloperProbeSafeObject $value ($Depth+1) $Salt}}
         return [pscustomobject]$result
     }
     ConvertTo-WsmDeveloperProbeSafeText ([string]$InputObject) $Salt

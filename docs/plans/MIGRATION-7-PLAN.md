@@ -2795,6 +2795,48 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - AccessDenied 只驗證了單一使用者 ReadData deny 的情境。
   - R19 的對照表守門留給批次 E。
 
+### 17.123 A3：安全化與遮蔽收斂（R18、S6、S11；同一個判定只寫一份）
+
+- 規格：`work/r7/specs/A3-sanitization.md`，共通規則見 `RS-common.md`。由 Sonnet 5.5 subagent 實作。主代理審查後修正兩個安全缺口，並補做突變與回歸測試。
+- **單一來源**（`src/Core.ps1`）：
+  - 函式：
+    - `Test-WsmSensitiveName`：以「詞」為單位，正規化 camelCase、底線、連字號、大小寫、尾端數字與複數；長詞用子字串比對，`pwd` 只認整詞或後綴。
+    - `Get-WsmSensitiveAssignmentNameRegex`、`Test-WsmSensitiveAssignmentText`、`Protect-WsmSensitiveAssignmentText`：處理 `name=value` 這類內嵌指派。
+    - `Test-WsmSensitivePointerText`：處理 IIS 欄位指標。
+  - **主代理修正一**：先移除 Unicode 格式字元（Cf：零寬空白／連接符、RTL 覆寫、BOM 等）再判定。subagent 的版本中，`pass​word=x` 的值不會被遮蔽；現在連值一起遮住。
+    - 文字中若含 Cf 字元且藏有祕密指派，遮蔽優先：輸出改用移除 Cf 後的文字，該處的不可見字元標記不再保留。
+    - 沒有祕密指派的文字，Cf 字元照舊保留，交給 R18 轉成可見標記。
+  - **主代理修正二**：`token` 出現在名稱任何位置都算祕密（`tokenvalue`、`TokenSecret`、`mytokenstore`），只排除 `tokeniz*`（`tokenizer`、`tokenize`、`tokenization`）。subagent 原本把 `tokenvalue` 列為已知漏判；遮蔽寧可保守。
+- **R18**（`src/WizardBackupProjection.ps1` `ConvertTo-WsmProgressText`）：
+  - 原本自己另寫一套規則：只剔除 `\x00-\x1f\x7f`，所以 U+202E、零寬字元、U+0085、U+2028／2029 會原樣輸出；超過 256 字元時靜默截斷；而且內含第三份祕密 regex。
+  - 改為走 `ConvertTo-WsmBackupSafePathText`，再交給 `ConvertTo-WsmPathDisplayText`：
+    - 不可見字元一律轉成可見的 `\uXXXX`。
+    - 截斷時標示「…（已截斷）」。
+    - 同一段文字處理兩次結果不變，標記不會疊加。producer 與 projection 會各處理一次，所以這點必要。
+  - 行為變更：換行與 tab 原本變成空白，現在顯示為可見的 `\u000A`、`\u0009`。
+- **S6**（`src/DeveloperProbe.ps1`）：
+  - 裸 UNC 路徑：原本以 `\b` 開頭的路徑 regex 對 `\\server\share` 無效，改用 lookbehind。
+  - Name／Value 分在兩欄時（物件、字典、字串形式皆是），若 Name 是祕密名稱，同一列的 Value 一併遮蔽。
+  - 非祕密黑名單補上 account、domain。
+  - 名稱判斷改呼叫共用函式。
+- **S11**（`src/AssistiveReviewForms.ps1`；另改 `src/WizardDetails.ps1`）：
+  - 純量、字典、物件三個分支與 IIS 指標都改用共用判定。
+  - 補遮 Passwords、Tokens、private_key、passwd、pwd、clientsecret、authtoken 等。
+  - Description、Transcript、tokenizer 不再被誤丟。
+- **測試**：
+  - 新增 `tests/Test-SensitiveNameConvergence.ps1`，共 326 項。其中 13 項是主代理補的：Cf 字元夾在名稱、內嵌指派、顯示文字、IIS 指標中的情況，`token` 規則的正反例，以及「沒有祕密時保留 Cf 字元」。
+  - 這支測試另含以 AST 掃描 src 的靜態守門：祕密名稱 regex 只能出現在共用函式內。
+  - 沒有修改任何既有斷言。
+- **突變**：
+  - subagent 的 12 個全部轉紅：複數、兩詞合併、token 子字串、截斷標記、不可見字元、裸 UNC、Name／Value 配對、黑名單、物件分支、另寫 regex、內嵌祕密、純量分支。
+  - 主代理的 2 個也轉紅：
+    - 還原成 subagent 版的 Core → `tokenvalue` 未被辨識。
+    - 遮蔽前不移除 Cf → 值外洩。
+- **名稱判定的邊界（已知保守誤判）**：Secretary、PwdLastSet、PasswordPolicy、TokenCount、CommandLine 都會被遮蔽。對遮蔽工具來說，誤遮可以接受。
+- **限制與後續**：
+  - 靜態守門只涵蓋這次白名單內的檔案。白名單外有 15 個 src 檔仍各自寫祕密名稱 regex，另有 6 個檔只是含有這些字樣；它們都列在守門的例外清單中，並有「清單過期」檢查。收斂工作排入 R26（`_pending-additions.md` R26-A3a），`WizardHtmlRuntime.ps1:27` 優先處理。
+- **驗證**（主代理在修正後重跑所有呼叫被改函式的測試）：見 commit 訊息。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -3019,10 +3061,11 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R7 | `Invoke-WsmWizardIndependentCopy` catch、`ConvertTo-WsmWizardBackupResult`、`Get-WsmWizardIndependentCopyProjection` | 第二次副本失敗或取消會抹掉先前的 Verified；媒體被刪後仍顯示「已驗證」 | 保留收據，另存 `IndependentCopyLastAttempt`（Failed／Cancelled）；媒體缺失或在收據自己的媒體上驗證失敗時，改為「收據完整；媒體需重新驗證」並附「重新驗證」按鈕（17.120） | `Test-IndependentCopyHardening`（R7、same-media、A8）、`Test-WizardBackup` Case c、`Test-BackupWorkbenchBrowser` I 區塊 | `0c8f6ad` |
 | A1-容量 | `Invoke-WsmWizardIndependentCopy` | 獨立副本沒有容量預檢 | 寫入前比較可用空間：不足時以 `InsufficientSpace` 拒絕且零寫入；查詢失敗時警告並記為 Unknown（17.120） | `Test-IndependentCopyHardening`（容量段） | `0c8f6ad` |
 | C1 | `.github/workflows/contracts.yml`、`tests/Test-ObservationWorkflow.ps1`、`tests/Test-AssistiveWorkloadIntegration.ps1` | contracts 自 dev 74418af 起每次失敗：步驟一失敗就遮住後面的合約；Durable activation 第 3 支替身過期（01ca319），後面 25 支從未在 CI 執行；round-three 的 NonC 結果列 fixture 過期（第六輪 6204dc0） | 合約步驟加 `!cancelled()`；替身補 `-IncludeSoftwareCatalog`；fixture 結果列補 `AccountMap`／`RequireSacl`；四個 workflow 在 19b2b91 全綠，payload-boundary 改在本機驗證（17.121） | contracts（全部 job）、`Test-LargePayload`（本機） | `3ed1708`、`0e8b827`、`19b2b91` |
-| R4b | `src/WizardRuntime.ps1` `Get-WsmWizardRuntimeSource`、`src/ui/console.js` 備份卡 | availability 為 ReviewRequired 時，備份卡顯示「帳戶範圍待審閱」；表單是否可用由前端另判一份規則（實測表單本身可用） | 後端新增 `startForm`、`backupReview`，前端只讀欄位；ReviewRequired 時顯示審閱原因；真正前置條件未滿足仍擋（17.122） | `Test-BackupAttemptsA2`（R4b）、`Test-WizardRuntimeUi.js` R4b 情境 | （A2-COMMIT） |
-| R9 | `src/WizardBackupProjection.ps1` 結果視圖 | 已有交付後，第二次備份失敗、取消或未完成時，結果頁沒有提示 | 新增 `newerAttempt`，由 `Get-WsmWizardCurrentBackupAttempt` 判定，與結果並列顯示（17.122） | `Test-BackupAttemptsA2`（R9）、`Test-BackupWorkbenchBrowser.js` A2 區塊 | （A2-COMMIT） |
-| R10 | `src/WizardBackup.ps1` attempt 讀取、投影讀取端 | 一個壞檔或舊 ToolVersion 檔，就讓整個 pair 的 StartBackup 丟例外；讀取端靜默略過 | 共用 `Get-WsmWizardBackupAttemptScan` 判定，略過並回報檔名清單；reparse 紀錄仍拒絕（17.122） | `Test-BackupAttemptsA2`（R10-1～5） | （A2-COMMIT） |
-| R11 | `src/Payload.ps1`、`src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1` | 擷取失敗沒有穩定原因碼，使用者不知道原因與下一步 | 改丟型別化的 PathTooLong；PathTooLong／Locked／Missing／AccessDenied 只依例外型別與 HResult 判斷；附下一步，以及「相對深度＋檔名」位置（17.122） | `Test-BackupAttemptsA2`（R11，以真實檔案系統建立情境） | （A2-COMMIT） |
+| R4b | `src/WizardRuntime.ps1` `Get-WsmWizardRuntimeSource`、`src/ui/console.js` 備份卡 | availability 為 ReviewRequired 時，備份卡顯示「帳戶範圍待審閱」；表單是否可用由前端另判一份規則（實測表單本身可用） | 後端新增 `startForm`、`backupReview`，前端只讀欄位；ReviewRequired 時顯示審閱原因；真正前置條件未滿足仍擋（17.122） | `Test-BackupAttemptsA2`（R4b）、`Test-WizardRuntimeUi.js` R4b 情境 | `2f0d7cc` |
+| R9 | `src/WizardBackupProjection.ps1` 結果視圖 | 已有交付後，第二次備份失敗、取消或未完成時，結果頁沒有提示 | 新增 `newerAttempt`，由 `Get-WsmWizardCurrentBackupAttempt` 判定，與結果並列顯示（17.122） | `Test-BackupAttemptsA2`（R9）、`Test-BackupWorkbenchBrowser.js` A2 區塊 | `2f0d7cc` |
+| R10 | `src/WizardBackup.ps1` attempt 讀取、投影讀取端 | 一個壞檔或舊 ToolVersion 檔，就讓整個 pair 的 StartBackup 丟例外；讀取端靜默略過 | 共用 `Get-WsmWizardBackupAttemptScan` 判定，略過並回報檔名清單；reparse 紀錄仍拒絕（17.122） | `Test-BackupAttemptsA2`（R10-1～5） | `2f0d7cc` |
+| R11 | `src/Payload.ps1`、`src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1` | 擷取失敗沒有穩定原因碼，使用者不知道原因與下一步 | 改丟型別化的 PathTooLong；PathTooLong／Locked／Missing／AccessDenied 只依例外型別與 HResult 判斷；附下一步，以及「相對深度＋檔名」位置（17.122） | `Test-BackupAttemptsA2`（R11，以真實檔案系統建立情境） | `2f0d7cc` |
+| R18 | `src/WizardBackupProjection.ps1` `ConvertTo-WsmProgressText` | RTL 覆寫、零寬字元、U+0085、U+2028、U+2029 原樣輸出；超過 256 字元靜默截斷；另有第三套祕密 regex | 改用唯一的路徑安全化規則：不可見字元轉為可見，截斷時標示「…（已截斷）」，重複處理結果不變；祕密判定改用 Core 的共用函式（17.123） | `Test-SensitiveNameConvergence`（進度文字區段） | （A3-COMMIT） |
 
 ### 第六輪終檢
 
@@ -3031,3 +3074,5 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | S1 | `src/OperationRequests.ps1` Get-WsmTextWizardJobs | 文字端狀態白名單少了 WaitingForInput 與 Queued。HTML 寫入一筆等待輸入的還原作業後，CLI 讀取歷史就丟例外，RESUME、TAKEOVER 都無法進入 | 狀態白名單抽成單一來源 `Get-WsmJobStatusValues`，文字端共用；console.js 狀態表由測試守門對齊；Recover 遇到 WaitingForInput 時保留原狀（17.111） | `Test-JobRecordCompatibility`（HTML 寫入的每一種 status 文字端都能讀回） | d128977 |
 | S2 | `src/OperationRequests.ps1` Recover、`src/HtmlConsole.ps1` 匯入、`src/WizardFlow.ps1` | 舊紀錄缺少 CompletedUtc／outputs 時，在 strict mode 下中斷整個復原；HTML 匯入時的例外被吞掉；Interrupted 的時間文字端與 HTML 端不一致 | 所有讀取點改走 `ConvertTo-WsmNormalizedJobRecord`（只補缺少的欄位）；Interrupted 的 CompletedUtc 統一為 null（17.111） | `Test-JobRecordCompatibility`（71 項，strict）、`Test-WizardTextRuntime` | d128977 |
 | S3 | `src/HtmlConsole.ps1` 服務迴圈 accept 與首位元組讀取 | 單執行緒同步讀取首位元組，每條閒置的預連線佔住迴圈約 2 秒；開 4 條時，其他請求要等約 8 秒 | accept 後改放入有界待讀佇列，只把已有位元組的連線交給原本的單執行緒流程，閒置滿 2 秒的連線回 400 後關閉；未改成多執行緒（17.112） | `Test-ConsoleIdlePreconnect.js`（4 條閒置加 4 個併發請求都在 1500 ms 內、閒置連線約 2.1 秒關閉、分段送出的慢客戶端仍成功） | 1f129b7 |
+| S6 | `src/DeveloperProbe.ps1` | 裸 UNC 路徑沒有遮蔽；Name 與 Value 分欄時值會外洩；Account、Domain 不在黑名單 | 路徑判斷改用 lookbehind；同列的值一起遮蔽；黑名單補上 account、domain；名稱判定改用共用函式（17.123） | `Test-SensitiveNameConvergence`（Probe 區段） | （A3-COMMIT） |
+| S11 | `src/AssistiveReviewForms.ps1`、`src/WizardDetails.ps1`、`src/Core.ps1` | 兩套 regex 漏掉 Passwords、Tokens、private_key 等；物件分支誤丟 Description、Transcript | 全部改用單一的 `Test-WsmSensitiveName`；主代理另補：比對前移除 Unicode 格式字元，token 在名稱任何位置都算（排除 tokeniz*）（17.123） | `Test-SensitiveNameConvergence`（名稱表、分支一致性、Cf 字元、靜態守門） | （A3-COMMIT） |

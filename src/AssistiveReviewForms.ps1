@@ -11,14 +11,13 @@
 }
 
 function ConvertTo-WsmAssistiveSafeValue($Value,[string]$Name='') {
-    $sensitiveBoundary='(?i)(?:^|[^A-Za-z0-9])(?:secret|password|credential|token|privatekey|sddl|xml|arguments|script|command)(?:$|[^A-Za-z0-9])'
-    $sensitiveCamel='(?:^|[a-z0-9])(?:Secret|Password|Credential|Token|PrivateKey|Sddl|Xml|Arguments|Script|Command)(?:$|[^A-Za-z0-9]|[A-Z])'
-    if($Name -imatch $sensitiveBoundary -or $Name -cmatch $sensitiveCamel){return '[review required; value withheld]'}
-    if($Value -is [string] -and $Value -match '(?i)(password|passwd|secret|token|credential|api[_-]?key)\s*[:=]\s*[^\s;]+'){return '[sensitive text withheld]'}
+    # S11：名稱判定只在 Test-WsmSensitiveName（Core.ps1）；純量／字典／物件三個分支共用，不在此另寫 regex。
+    if(Test-WsmSensitiveName $Name){return '[review required; value withheld]'}
+    if($Value -is [string] -and (Test-WsmSensitiveAssignmentText $Value)){return '[sensitive text withheld]'}
     if($null -eq $Value -or $Value -is [string] -or $Value -is [bool] -or $Value -is [int] -or $Value -is [long] -or $Value -is [double]){return $Value}
     if($Value -is [System.Collections.IDictionary]){$out=[ordered]@{};foreach($key in $Value.Keys){$out[[string]$key]=ConvertTo-WsmAssistiveSafeValue $Value[$key] ([string]$key)};return [pscustomobject]$out}
     if($Value -is [array]){return ,@($Value | ForEach-Object {ConvertTo-WsmAssistiveSafeValue $_ $Name})}
-    if($Value.PSObject){$out=[ordered]@{};foreach($property in $Value.PSObject.Properties){if($property.MemberType -match 'NoteProperty|Property'){if($property.Name -notmatch '(?i)(secret|password|credential|token|privatekey|sddl|xml|arguments|script|command)'){$out[$property.Name]=ConvertTo-WsmAssistiveSafeValue $property.Value $property.Name}}};return [pscustomobject]$out}
+    if($Value.PSObject){$out=[ordered]@{};foreach($property in $Value.PSObject.Properties){if($property.MemberType -match 'NoteProperty|Property'){if(-not (Test-WsmSensitiveName ([string]$property.Name))){$out[$property.Name]=ConvertTo-WsmAssistiveSafeValue $property.Value $property.Name}}};return [pscustomobject]$out}
     '[opaque value withheld]'
 }
 
@@ -178,7 +177,7 @@ function Set-WsmAssistiveIisConfigReview($Spec,$Fields) {
         foreach($name in @('AttributeName','BeforeValue','AfterValue')){if($change.$name -isnot [string]){throw ('Typed IIS config '+$name+' must be a string.')}}
         $pointerElement=((([string]$change.FieldPointer -replace '/@[^/]+$','') -split '/')[-1] -replace '\[@.*$','')
         if($change.Operation -ceq 'SetAttribute' -and (([string]$change.FieldPointer -split '/@')[-1] -cne [string]$change.AttributeName -or [string]$change.ElementName -cne $pointerElement)){throw 'SetAttribute row pointer, element, and attribute names must agree exactly.'}
-        if($change.FieldPointer -match '(?i)(password|secret|token|credential|private[ _-]?key)\s*[=:\[]'){throw 'Secret-like IIS field pointers cannot be reviewed through this form.'}
+        if(Test-WsmSensitivePointerText ([string]$change.FieldPointer)){throw 'Secret-like IIS field pointers cannot be reviewed through this form.'}
     }
     $activationRows=@($changes | Where-Object {$_.FieldPointer -ceq $pointer})
     if($activationRows.Count -gt 1){throw 'IIS activation pointer must have exactly one normal Desired.Changes row.'}

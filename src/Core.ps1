@@ -313,3 +313,63 @@ function Import-WsmInventory {
         $catalog
     }
 }
+
+# A3（R18／S6／S11）：祕密「名稱」與「內嵌指派文字」的判定只在這一處。
+# 其他檔案（WizardBackupProjection／WizardDetails／DeveloperProbe／AssistiveReviewForms）一律呼叫這裡，
+# 不得另寫含 password／secret／token 等字樣的 regex（tests/Test-SensitiveNameConvergence.ps1 靜態守門）。
+# 名稱判定以「詞」為單位：先把 camelCase／底線／連字號／點／空白切成詞，轉小寫、去尾端數字、處理複數，
+# 再比對詞、相鄰兩詞合併（private+key、api+key、connection+string）與長詞子字串。
+# pwd 太短，只認整個詞或當後綴（dbpwd）；token 在任何位置都算（tokenvalue、dbtoken），只排除 tokeniz*。所以 tokenizer、description、transcript 不會誤判。
+function Test-WsmSensitiveName {
+    [CmdletBinding()]
+    param([AllowNull()][AllowEmptyString()][string]$Name)
+    if([string]::IsNullOrWhiteSpace($Name)){return $false}
+    # 主代理（A3 審查）：先移除 Unicode 格式字元（Cf：零寬空白／連接符、RTL 覆寫、BOM 等），否則 pass\u200Bword 這類名稱能繞過判定。
+    $Name=[regex]::Replace($Name,'\p{Cf}','')
+    $spaced=[regex]::Replace($Name,'(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])',' ')
+    $tokens=@(([regex]::Split($spaced.ToLowerInvariant(),'[^a-z0-9]+')) | ForEach-Object {$_ -replace '\d+$',''} | Where-Object {$_})
+    if(-not $tokens.Count){return $false}
+    $wholeWords=@('password','passwd','pwd','passphrase','secret','token','credential','privatekey','apikey','connectionstring','authtoken','clientsecret','accesstoken','refreshtoken','secretkey','accesskey','sharedaccesskey','wallet','authorization','sddl','xml','argument','script','command')
+    $substringWords=@('password','passwd','passphrase','credential','privatekey','apikey','connectionstring','clientsecret','secret','authtoken','accesstoken','refreshtoken')
+    $suffixWords=@('pwd')
+    $candidates=New-Object 'System.Collections.Generic.List[string]'
+    foreach($token in $tokens){$candidates.Add($token)}
+    for($index=0;$index -lt $tokens.Count-1;$index++){$candidates.Add($tokens[$index]+$tokens[$index+1])}
+    foreach($candidate in $candidates){
+        $forms=@($candidate);if($candidate.Length -gt 3 -and $candidate.EndsWith('s') -and -not $candidate.EndsWith('ss')){$forms+=$candidate.Substring(0,$candidate.Length-1)}
+        foreach($form in $forms){
+            if($wholeWords -contains $form){return $true}
+            foreach($word in $substringWords){if($form.Contains($word)){return $true}}
+            foreach($word in $suffixWords){if($form.Length -gt $word.Length -and $form.EndsWith($word)){return $true}}
+            # token 在名稱任何位置都算祕密（tokenvalue、dbtoken、tokensecret）；只排除 tokeniz*（tokenizer、tokenize、tokenization）。
+            if($form.Contains('token') -and -not $form.Contains('tokeniz')){return $true}
+        }
+    }
+    $false
+}
+
+# 內嵌指派（name=value／name: value）的「名稱」部分；只回傳 regex 片段，由呼叫端組進自己的樣式。
+function Get-WsmSensitiveAssignmentNameRegex {
+    '(?:pass(?:word|wd|phrase)|pwd|secret|token|credential|api[-_]?key|client[-_]?secret|private[-_]?key|connection[-_]?string|wallet|authorization)s?'
+}
+
+function Test-WsmSensitiveAssignmentText([AllowNull()][string]$Text) {
+    if([string]::IsNullOrEmpty($Text)){return $false}
+    $Text=[regex]::Replace($Text,'\p{Cf}','')
+    [regex]::IsMatch($Text,'(?i)'+(Get-WsmSensitiveAssignmentNameRegex)+'\s*[:=]\s*[^\s;]+')
+}
+
+function Protect-WsmSensitiveAssignmentText([AllowNull()][string]$Text) {
+    if([string]::IsNullOrEmpty($Text)){return $Text}
+    # 名稱夾格式字元（pass\u200Bword=x）時，以移除格式字元後的文字判定並遮蔽：遮住值優先於保留不可見字元的可見化標記。
+    $stripped=[regex]::Replace($Text,'\p{Cf}','')
+    if($stripped -cne $Text -and [regex]::IsMatch($stripped,'(?i)'+(Get-WsmSensitiveAssignmentNameRegex)+'\s*[:=]')){$Text=$stripped}
+    [regex]::Replace($Text,'(?i)('+(Get-WsmSensitiveAssignmentNameRegex)+')\s*[:=]\s*[^\s;,]+','$1=[redacted]')
+}
+
+# IIS 欄位指標（例如 /appSettings/add[@key='Password']、password=）：名稱後面接 = : [ 就視為祕密欄位。
+function Test-WsmSensitivePointerText([AllowNull()][string]$Text) {
+    if([string]::IsNullOrEmpty($Text)){return $false}
+    $Text=[regex]::Replace($Text,'\p{Cf}','')
+    [regex]::IsMatch($Text,'(?i)'+(Get-WsmSensitiveAssignmentNameRegex)+'\s*[=:\[]')
+}

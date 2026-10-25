@@ -85,12 +85,17 @@
     $null
 }
 
+# R18：進度文字與路徑顯示共用同一套安全化（ConvertTo-WsmBackupSafePathText → ConvertTo-WsmPathDisplayText）：
+# 控制／雙向覆寫／零寬／U+0085／U+2028／U+2029 一律改成可見跳脫碼，內嵌祕密指派遮蔽；
+# 超過 256 字元時在結尾明示「…（已截斷）」，不靜默截掉。對已處理過的字串再處理一次結果不變（標記不會疊加）。
 function ConvertTo-WsmProgressText([object]$Value) {
     if($null -eq $Value){return ''}
-    $text=[string]$Value -replace '[\x00-\x1f\x7f]+',' '
-    $text=[regex]::Replace($text,'(?i)(password|passwd|pwd|token|secret|credential|api[-_]?key)\s*[:=]\s*[^\s;,]+','$1=[redacted]')
-    $text=$text.Trim()
-    if($text.Length -gt 256){$text=$text.Substring(0,256)}
+    $marker='…（已截斷）'
+    $raw=([string]$Value).Trim();$hadMarker=$raw.EndsWith($marker)
+    if($hadMarker){$raw=$raw.Substring(0,$raw.Length-$marker.Length)}
+    $safe=ConvertTo-WsmBackupSafePathText $raw 256
+    $text=([string]$safe.text).Trim()
+    if($safe.truncated -or $hadMarker){$text+=$marker}
     $text
 }
 

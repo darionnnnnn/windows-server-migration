@@ -3,7 +3,7 @@ function ConvertTo-WsmPathDisplayText($Value,[int]$MaximumLength=2048) {
     # 路徑是資料，不是標記：控制字元／雙向覆寫字元改成可見的 \uXXXX，內嵌機密指派遮蔽，長度設上限。
     if($null -eq $Value){return ''}
     $text=[string]$Value
-    $text=[regex]::Replace($text,'(?i)(password|passwd|pwd|secret|token|credential|api[-_]?key)\s*[:=]\s*[^\s;,]+','$1=[redacted]')
+    $text=Protect-WsmSensitiveAssignmentText $text
     $builder=New-Object System.Text.StringBuilder
     foreach($char in $text.ToCharArray()){
         $category=[Globalization.CharUnicodeInfo]::GetUnicodeCategory($char)
@@ -41,8 +41,7 @@ function New-WsmPathResolutionView {
     foreach($name in @($Variables)){if($null -ne $name -and ([string]$name) -and -not $names.Contains([string]$name)){$names.Add([string]$name)}}
     if(-not $names.Count -and $Original){foreach($m in [regex]::Matches($Original,'%([^%\\/:*?"<>|\r\n]+)%')){$n=$m.Groups[1].Value;if(-not $names.Contains($n)){$names.Add($n)}}}
     $excludedNames=@();if($null -ne $Context -and $Context.PSObject.Properties['ExcludedEnvironmentNames']){$excludedNames=@($Context.ExcludedEnvironmentNames|ForEach-Object {[string]$_})}
-    $secretName='(?i)(password|passwd|pwd|secret|token|credential|api[_-]?key|connectionstring|private)'
-    $variableRows=@(foreach($name in $names){[pscustomobject][ordered]@{name=(ConvertTo-WsmPathDisplayText $name 256);excluded=[bool](($excludedNames -contains $name) -or ($name -match $secretName))}})
+    $variableRows=@(foreach($name in $names){[pscustomobject][ordered]@{name=(ConvertTo-WsmPathDisplayText $name 256);excluded=[bool](($excludedNames -contains $name) -or ((Test-WsmSensitiveName $name) -or $name -match '(?i)private'))}})
     $known=@('Machine','ProfileDerived','Literal','Unresolved')
     $effectiveBasis=if($Basis -cin $known){$Basis}else{'Unresolved'}
     $unresolved=($effectiveBasis -ceq 'Unresolved' -or [string]::IsNullOrWhiteSpace($Resolved))
