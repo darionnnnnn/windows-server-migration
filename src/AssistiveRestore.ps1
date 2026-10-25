@@ -1701,7 +1701,12 @@ function Invoke-WsmAssistiveFileScopeRestore($Item,$Package,$Paths,$State,[hasht
                 Assert-WsmAssistiveTargetScopeTopology -Path $backup -Spec $spec -TargetRoot $target -Artifact $entry -Kind Backup -Destination $dest -TrustedExistingHash $previousHash
                 if($Workspace -and (Get-Command Register-WsmAssistiveMaterialReference -ErrorAction SilentlyContinue)){$material=Register-WsmAssistiveMaterialReference -Workspace $Workspace -PairId $Package.Manifest.PairId -Generation ([int]$Package.Manifest.Generation) -Path $backup -SHA256 $previousHash -Kind 'AssistiveOwnedFilePriorBackup' -ConsumerRefs @([string]$Item.ItemId);$backupMaterialId=[string]$material.MaterialId;$pending | Add-Member NoteProperty BackupMaterialId $backupMaterialId -Force;Add-WsmJournal $Paths $State 'AssistiveFileBackupRetained' $Item.ItemId ([pscustomobject]@{Backup=$backup;SHA256=$previousHash;MaterialId=$backupMaterialId;Generation=$Package.Manifest.Generation})}
                 try{[IO.File]::Move($staging,$dest)}catch{if([IO.File]::Exists($backup) -and -not [IO.File]::Exists($dest)){[IO.File]::Move($backup,$dest)};throw}
-            }else{[IO.File]::Move($staging,$dest)}
+            }else{
+                # Q6a2：沒有擁有紀錄的寫入，在 Move 之前先把「staging 已驗證完整」的證據寫進 journal（沿用 AssistiveFilePrepared，replay 以整筆 pending 取代，證據欄位 PreMoveStagingHash 隨之保留）。
+                # Repair 只有同時看到「intent 存在、這筆 Move 前紀錄存在且綁定封存雜湊、staging 已被消耗」才把相同內容的目標檔記為工具擁有；少任何一項一律記為沿用既有檔（見 Test-WsmAssistiveFileIntentWriteEvidence）。
+                $pending | Add-Member NoteProperty PreMoveStagingHash $expectedHash -Force;Add-WsmJournal $Paths $State 'AssistiveFilePrepared' $Item.ItemId $pending
+                [IO.File]::Move($staging,$dest)
+            }
             Assert-WsmAssistiveTargetScopeTopology -Path $dest -Spec $spec -TargetRoot $target -Artifact $entry -Kind File -Destination $dest
             if((Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash -ine $expectedHash){throw 'Target file readback hash differs after replacement.'}
             $actualMetadata=Assert-WsmAssistiveMetadataReadback $dest $entry.Metadata $SidMap $aclPolicy

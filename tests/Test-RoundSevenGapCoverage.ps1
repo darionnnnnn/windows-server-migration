@@ -6,11 +6,10 @@
 #   E  15.3-5  產品碼靜態守門：不得使用 DPAPI／ProtectedData／不帶 -Key 的 SecureString 序列化／CMS 加密
 #   F          離線報告防偽：結果集雜湊與 attempt 不符、屬於另一個 pair／attempt，一律拒絕或標為不可信
 #   G          探索遇到不可讀子樹：列為涵蓋缺口並附原因，不整體失敗、不默默略過（真實 deny ACL，finally 移除）
-#   I  17.103  pending AssistiveFileReplace intent 復原遇到同內容外部檔：分類依證據、不得刪除非工具寫入的檔案
-# 參數 -Section 可只跑部分區段；-StrictEvidenceClassification 會把區段 I 的「依證據分類」缺陷斷言升級成硬性失敗
-# （預設只印 KNOWN-DEFECT 行並把目前的安全不變量釘住，因為該缺陷需要改產品碼，見回報）。
+#   I  17.103／17.118  pending AssistiveFileReplace intent 復原遇到同內容外部檔：只有正向證據才記為工具擁有，其餘一律記為沿用既有檔（回復時不刪除）
+# 參數 -Section 可只跑部分區段。區段 I 的「依證據分類」斷言（Q6a2 修正後）一律是硬性斷言，沒有開關。
 [CmdletBinding()]
-param([ValidateSet('A','B','C','E','F','G','I')][string[]]$Section=@('E','A','B','F','G','I','C'),[switch]$StrictEvidenceClassification)
+param([ValidateSet('A','B','C','E','F','G','I')][string[]]$Section=@('E','A','B','F','G','I','C'))
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $module=Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Force -PassThru -DisableNameChecking -WarningAction SilentlyContinue
@@ -22,7 +21,7 @@ if([IO.File]::Exists($work) -or [IO.Directory]::Exists($work) -or [IO.Directory]
 [void][IO.Directory]::CreateDirectory($root)
 try {
     & $module {
-        param($Root,$Work,$SrcRoot,$Sections,$Strict)
+        param($Root,$Work,$SrcRoot,$Sections)
         $script:checks=0
         function Want([string]$Name){$Sections -contains $Name}
         function Check($Condition,[string]$Message){if(-not [bool]$Condition){throw ('FAIL: '+$Message)};$script:checks++}
@@ -347,8 +346,9 @@ try {
                 function Assert-WsmMigrationHost($Identity,$Fingerprint){ }
                 function Get-WsmMachineIdentity {[pscustomobject]@{Fingerprint=('c'*64)}}
                 $sealed=[Text.Encoding]::UTF8.GetBytes('sealed backup bytes of the pending-intent item')
-                function NewCase([string]$Name,[string]$TargetState,[bool]$StagingPresent){
-                    # TargetState：Absent／ExternalSame（位元組與 metadata 都等於封存內容，但不是工具寫的）／ExternalDifferent
+                function NewCase([string]$Name,[string]$TargetState,[bool]$StagingPresent,[string]$PreMove=''){
+                    # TargetState：Absent／ExternalSame（位元組與 metadata 都等於封存內容；有沒有證據由 PreMove 決定）／ExternalDifferent
+                    # PreMove：''＝沒有 Move 前證據（舊 journal 或寫入器還沒走到 Move 前）；Bound＝寫入器的 Move 前紀錄、綁定封存雜湊；Wrong＝綁了別的雜湊；Malformed＝不是雜湊
                     $case=Join-Path $iRoot $Name;$scope=Join-Path $case 'scope';[void][IO.Directory]::CreateDirectory($scope)
                     $itemId=(Get-WsmHashText ('i-'+$Name));$target=Join-Path $scope 'file.ini';$staging=$target+'.wsm-'+[Guid]::NewGuid().ToString('N')+'.tmp'
                     $sample=Join-Path $case 'sample.bin';[IO.File]::WriteAllBytes($sample,$sealed);$meta=Get-WsmFileMetadata $sample 'DaclOwner';$expected=Sha $sample
@@ -362,8 +362,10 @@ try {
                     $package=[pscustomobject]@{SHA256=$manifestHash;PlanHash=$planHash;Root=$case;Plan=[pscustomobject]@{SchemaVersion=3;Items=@($item)};Manifest=[pscustomobject]@{PairId=$casePair;BatchId=[Guid]::NewGuid().ToString('D');PlanHash=$planHash;Generation=1;DecisionRevision=1;Target=[pscustomobject]@{Fingerprint=('c'*64)}}}
                     $operation=[pscustomobject]@{ItemId=$itemId;Phase='AssistiveFileReplace';ManifestHash=$manifestHash;Generation=[long]1;RelativePath='file.ini';Target=$target;Staging=$staging;Backup='';PreviousHash='';PreviousMetadataHash='';PreviousMetadata=$null;ExpectedHash=$expected;ExpectedMetadata=$meta;WasOwned=$false;PriorOwner=$null}
                     $script:iPackage=$package
+                    $journalAction='AssistiveFileIntent'
+                    if($PreMove){$journalAction='AssistiveFilePrepared';$operation|Add-Member NoteProperty PreMoveStagingHash $(switch($PreMove){'Bound'{$expected}'Wrong'{('0'*64)}default{'not-a-hash'}}) -Force}
                     $paths=Get-WsmOperationPaths $stateDirectory $casePair;$state=Get-WsmOperationState $paths $package
-                    $state.PendingOperations=@($operation);Add-WsmJournal $paths $state 'AssistiveFileIntent' $itemId $operation
+                    $state.PendingOperations=@($operation);Add-WsmJournal $paths $state $journalAction $itemId $operation
                     [pscustomobject]@{Name=$Name;Package=$package;ItemId=$itemId;Target=$target;Staging=$staging;Paths=$paths;Pair=$casePair;Expected=$expected;ForeignHash=(Sha $target)}
                 }
                 function RepairCase($Case){$script:iPackage=$Case.Package;Repair-WsmOperation -ManifestPath 'fixture' -ExpectedHash $manifestHash -StateDirectory $stateDirectory -Confirm:$false}
@@ -386,30 +388,90 @@ try {
                 $r4=RecordOf $c4
                 Check ($r4.Pending -eq 1 -and (Sha $c4.Target) -ceq $c4.ForeignHash -and [IO.File]::Exists($c4.Staging)) 'I4: the refused recovery must keep the intent, the external file and the staging file untouched.'
 
-                # I2／I3：目標已有一份與封存內容相同（位元組與 metadata 都相同）、但不是工具寫入的外部檔。
-                #   I2 沒有 staging（intent 後工具什麼都還沒寫）；I3 staging 仍在（工具的 Move 沒有完成，目標是之後才出現的外部檔）。
-                foreach($variant in @(@('i2-external-same-no-staging',$false),@('i3-external-same-staging-left',$true))){
-                    $label=$variant[0].Substring(0,2).ToUpperInvariant()
-                    $c=NewCase $variant[0] 'ExternalSame' ([bool]$variant[1])
-                    [void](RepairCase $c);$r=RecordOf $c;$o=OwnedRow $r
-                    # 目前成立、也必須一直成立的安全不變量：intent 被清掉、外部檔位元組沒被改寫或刪除、有一筆擁有紀錄。
-                    Check ($r.Pending -eq 0 -and (Sha $c.Target) -ceq $c.Expected -and $null -ne $o) ($label+': Repair must clear the intent, keep the external bytes and record one ownership row.')
-                    $adopted=($null -ne $o -and (Test-WsmAssistiveOwnedFileAdopted $o))
-                    # 回復：非工具寫入的檔案不得被移走或刪除。
+                function RollbackOf($Case){
                     $preview=Get-WsmRollbackPreview 'fixture' $manifestHash $stateDirectory
-                    $beforeTarget=Sha $c.Target
-                    [void](Invoke-WsmRollback -ManifestPath 'fixture' -ExpectedHash $manifestHash -StateDirectory $stateDirectory -PreviewHash $preview.PreviewHash -Acknowledgement ('ROLLBACK '+$c.Pair) -Confirm:$false)
-                    $survived=([IO.File]::Exists($c.Target) -and (Sha $c.Target) -ceq $beforeTarget)
-                    if($adopted){Note ('I: '+$label+' is classified AdoptedExisting by evidence (as required); survived rollback: '+$survived)}
-                    else{Note ('KNOWN-DEFECT '+$label+': external same-content file recorded as tool-owned after intent recovery ('+$(if([bool]$variant[1]){'staging still present: the tool never moved it'}else{'no staging evidence at all'})+'); the file '+$(if($survived){'survived'}else{'was displaced by'})+' rollback.')}
-                    if($Strict){
-                        Check $adopted ($label+': after intent recovery an external same-content file must be classified AdoptedExisting.')
-                        Check $survived ($label+': rollback must not displace or delete a file the tool did not write.')
-                    }elseif($adopted){
-                        Check $survived ($label+': an adopted file must survive rollback.')
-                    }
+                    $beforeTarget=Sha $Case.Target
+                    [void](Invoke-WsmRollback -ManifestPath 'fixture' -ExpectedHash $manifestHash -StateDirectory $stateDirectory -PreviewHash $preview.PreviewHash -Acknowledgement ('ROLLBACK '+$Case.Pair) -Confirm:$false)
+                    [pscustomobject]@{Survived=([IO.File]::Exists($Case.Target) -and (Sha $Case.Target) -ceq $beforeTarget);Retained=@(Get-ChildItem -LiteralPath (Split-Path $Case.Target) -Force|Where-Object Name -Like '.wsm-assistive-rollback-*').Count}
                 }
-                Note ('I: intent recovery classification checked for staging-proven write, different external content and two same-content external cases (strict mode: '+$Strict+').')
+                # Q6a2：沒有正向證據（intent＋Move 前紀錄＋staging 已消耗）時，一律記為 AdoptedExisting，回復時外部檔不得被移走或刪除。
+                #   I2：沒有 staging、也沒有 Move 前紀錄（舊 journal，或工具還沒走到 Move 前）；I3：staging 還在（工具的 Move 沒有完成，目標是之後才出現的外部檔）。
+                #   I6：有 Move 前紀錄，但 staging 還在（Move 沒完成）；I7：Move 前紀錄綁的雜湊不是封存雜湊；I8：Move 前紀錄不是雜湊。三者都不構成證據。
+                foreach($variant in @(@('i2-external-same-no-staging',$false,''),@('i3-external-same-staging-left',$true,''),@('i6-premove-record-but-staging-left',$true,'Bound'),@('i7-premove-record-wrong-hash',$false,'Wrong'),@('i8-premove-record-malformed',$false,'Malformed'))){
+                    $label=$variant[0].Substring(0,2).ToUpperInvariant()
+                    $c=NewCase $variant[0] 'ExternalSame' ([bool]$variant[1]) ([string]$variant[2])
+                    [void](RepairCase $c);$r=RecordOf $c;$o=OwnedRow $r
+                    Check ($r.Pending -eq 0 -and (Sha $c.Target) -ceq $c.Expected -and $null -ne $o) ($label+': Repair must clear the intent, keep the external bytes and record one ownership row.')
+                    Check (Test-WsmAssistiveOwnedFileAdopted $o) ($label+': without positive write evidence an external same-content file must be classified AdoptedExisting.')
+                    Check ([IO.File]::Exists($c.Staging) -eq [bool]$variant[1]) ($label+': Repair must keep (not consume or delete) a leftover staging file.')
+                    $rb=RollbackOf $c
+                    Check ($rb.Survived -and $rb.Retained -eq 0) ($label+': rollback must not displace or delete a file the tool did not write.')
+                }
+                # I5：正向證據齊全（intent 存在、Move 前紀錄綁定封存雜湊、staging 已被消耗、目標內容與 metadata 都等於封存值）-> 記為工具擁有，回復時被移走保留。
+                $c5=NewCase 'i5-positive-evidence-complete' 'ExternalSame' $false 'Bound'
+                [void](RepairCase $c5);$r5=RecordOf $c5;$o5=OwnedRow $r5
+                Check ($r5.Pending -eq 0 -and $null -ne $o5 -and -not $o5.PSObject.Properties['Ownership'] -and -not (Test-WsmAssistiveOwnedFileAdopted $o5)) 'I5: complete positive evidence (intent, pre-move record, staging consumed) must be recovered as a tool-written file.'
+                Check ((Sha $c5.Target) -ceq $c5.Expected) 'I5: Repair must not rewrite the already placed file.'
+                $rb5=RollbackOf $c5
+                Check (-not $rb5.Survived -and $rb5.Retained -eq 1 -and -not [IO.File]::Exists($c5.Target)) 'I5: rollback of a tool-written file must displace it into a retained file.'
+                # I5b：同一份證據，但目標的 metadata 與封存不同 -> 仍拒絕（metadata 不同的行為不變），不論有沒有證據。
+                $c5b=NewCase 'i5b-evidence-metadata-differs' 'ExternalSame' $false 'Bound'
+                [IO.File]::SetAttributes($c5b.Target,([IO.File]::GetAttributes($c5b.Target) -bor [IO.FileAttributes]::ReadOnly))
+                try{Reject {RepairCase $c5b} 'I5b: Repair must refuse a same-content target whose metadata differs from the sealed metadata.'}finally{[IO.File]::SetAttributes($c5b.Target,([IO.File]::GetAttributes($c5b.Target) -band (-bnot [IO.FileAttributes]::ReadOnly)))}
+                Check ((Sha $c5b.Target) -ceq $c5b.Expected -and (RecordOf $c5b).Pending -eq 1) 'I5b: the refused recovery must keep the intent and the file.'
+
+                # I9／I10：真實寫入器（Invoke-WsmAssistiveFileScopeRestore）寫的證據。
+                #   I9：Move 前的 journal 紀錄（AssistiveFilePrepared）在 Move 之前寫入（寫入當下目標還不存在），綁定封存雜湊，順序是 Intent -> Prepared -> Completed。
+                #   I10：寫入器在 Move 完成後立刻當機（以注入失敗模擬，state 停在最後一筆 journal）-> 由 Repair 復原時憑 Move 前紀錄＋staging 已被消耗，記為工具擁有。
+                $script:iEntries=@();$script:iCrashAfterMove=$false;$script:iPreparedSawTarget=$null
+                function Read-WsmArtifactLines($Path,$Hash,$CancellationToken){$script:iEntries}
+                function Restore-WsmPayloadBytes($Entry,$PackageRoot,$Destination,$CancellationToken){[IO.File]::WriteAllBytes($Destination,$sealed)}
+                $script:iOrigJournal=(Get-Command Add-WsmJournal -CommandType Function).ScriptBlock
+                function Add-WsmJournal($Paths,$State,[string]$Action,[string]$ItemId,$Detail){if($Action -ceq 'AssistiveFilePrepared'){$script:iPreparedSawTarget=[IO.File]::Exists([string]$Detail.Target)};& $script:iOrigJournal $Paths $State $Action $ItemId $Detail}
+                $script:iOrigTopology=(Get-Command Assert-WsmAssistiveTargetScopeTopology -CommandType Function).ScriptBlock
+                function Assert-WsmAssistiveTargetScopeTopology {if($script:iCrashAfterMove -and ($args -contains 'File')){throw 'Q6a2 injected crash right after the Move'};& $script:iOrigTopology @args}
+                function NewWriterCase([string]$Name){
+                    $case=Join-Path $iRoot $Name;$scope=Join-Path $case 'scope';$media=Join-Path $case 'media';[void][IO.Directory]::CreateDirectory($scope);[void][IO.Directory]::CreateDirectory($media)
+                    $itemId=(Get-WsmHashText ('w-'+$Name));$target=Join-Path $scope 'file.ini'
+                    $sample=Join-Path $case 'sample.bin';[IO.File]::WriteAllBytes($sample,$sealed);$meta=Get-WsmFileMetadata $sample 'DaclOwner';$expected=Sha $sample
+                    $spec=[pscustomobject]@{Adapter='FileScope';TargetPath=$scope;Metadata='DaclOwner';AclControlPolicy='Exact';TransferChannel='C';ContentSelection='WholeScope'}
+                    $item=[pscustomobject]@{ItemId=$itemId;Name=$Name;Kind='K';Decision='Include';Dependencies=@();MigrationSpec=$spec}
+                    $casePair=[Guid]::NewGuid().ToString('D')
+                    $manifest=[pscustomobject]@{PairId=$casePair;BatchId=[Guid]::NewGuid().ToString('D');PlanHash=$planHash;Generation=1;DecisionRevision=1;ArtifactsHash=('e'*64);Target=[pscustomobject]@{Fingerprint=('c'*64)}}
+                    $package=[pscustomobject]@{SHA256=$manifestHash;PlanHash=$planHash;Root=$media;Plan=[pscustomobject]@{SchemaVersion=3;Items=@($item)};Manifest=$manifest}
+                    $writerPackage=[pscustomobject]@{SHA256=$manifestHash;Root=$media;Manifest=$manifest}
+                    $script:iPackage=$package
+                    $paths=Get-WsmOperationPaths $stateDirectory $casePair;$state=Get-WsmOperationState $paths $package
+                    $entry=[pscustomobject]@{ItemId=$itemId;RelativePath='file.ini';Directory=$false;Metadata=$meta;Data=[pscustomobject]@{Hash=$expected}}
+                    [pscustomobject]@{Name=$Name;Package=$package;WriterPackage=$writerPackage;Item=$item;ItemId=$itemId;Target=$target;Staging='';Paths=$paths;State=$state;Pair=$casePair;Expected=$expected;Entry=$entry}
+                }
+                try{
+                    $w9=NewWriterCase 'i9-writer-journals-evidence-before-move';$script:iEntries=@($w9.Entry)
+                    $res9=Invoke-WsmAssistiveFileScopeRestore $w9.Item $w9.WriterPackage $w9.Paths $w9.State @{} $null
+                    Check ([string]$res9.Status -ceq 'Succeeded' -and (Sha $w9.Target) -ceq $w9.Expected) 'I9: the real writer did not place the file.'
+                    $events9=@(Read-WsmJournalEvents $w9.Paths|ForEach-Object {$_.Row});$actions9=@($events9|ForEach-Object {[string]$_.Action})
+                    $prepared9=@($events9|Where-Object {[string]$_.Action -ceq 'AssistiveFilePrepared'})
+                    Check ($prepared9.Count -eq 1) 'I9: the writer must journal exactly one pre-move record (AssistiveFilePrepared) for a file it creates.'
+                    Check ($script:iPreparedSawTarget -eq $false) 'I9: the pre-move record must be written BEFORE the Move (the target did not exist yet when it was appended).'
+                    Check ([string]$prepared9[0].Detail.PreMoveStagingHash -ceq $w9.Expected) 'I9: the pre-move record must bind the sealed (verified staging) hash.'
+                    Check ($actions9.IndexOf('AssistiveFileIntent') -ge 0 -and $actions9.IndexOf('AssistiveFileIntent') -lt $actions9.IndexOf('AssistiveFilePrepared') -and $actions9.IndexOf('AssistiveFilePrepared') -lt $actions9.IndexOf('AssistiveFileCompleted')) ('I9: the journal order must be intent, pre-move record, completed (got '+($actions9-join ',')+').')
+                    Check (-not @($res9.OwnedFiles)[0].PSObject.Properties['Ownership']) 'I9: a file the writer created must be tool-owned (no Ownership field).'
+
+                    $w10=NewWriterCase 'i10-crash-after-move-recovers-as-tool-owned';$script:iEntries=@($w10.Entry)
+                    $script:iCrashAfterMove=$true
+                    try{$res10=Invoke-WsmAssistiveFileScopeRestore $w10.Item $w10.WriterPackage $w10.Paths $w10.State @{} $null}finally{$script:iCrashAfterMove=$false}
+                    Check ([string]@($res10.FileResults)[0].Status -ceq 'Failed' -and (Sha $w10.Target) -ceq $w10.Expected) 'I10: the crash injection did not stop the writer right after the Move.'
+                    $durable10=Read-WsmJson $w10.Paths.State;$pending10=@($durable10.PendingOperations)
+                    Check ($pending10.Count -eq 1 -and $pending10[0].PSObject.Properties['PreMoveStagingHash'] -and [string]$pending10[0].PreMoveStagingHash -ceq $w10.Expected) 'I10: the durable state after the crash must still hold the intent together with its pre-move record.'
+                    Check (@(Get-ChildItem -LiteralPath (Split-Path $w10.Target) -Force|Where-Object Name -Like '*.tmp').Count -eq 0) 'I10: the Move consumed the staging file.'
+                    [void](RepairCase $w10);$r10=RecordOf $w10;$o10=OwnedRow $r10
+                    Check ($r10.Pending -eq 0 -and $null -ne $o10 -and -not $o10.PSObject.Properties['Ownership'] -and -not (Test-WsmAssistiveOwnedFileAdopted $o10)) 'I10: intent + pre-move record + consumed staging must be recovered as tool-written.'
+                    $rb10=RollbackOf $w10
+                    Check (-not $rb10.Survived -and $rb10.Retained -eq 1) 'I10: rollback of the recovered tool-written file must displace it into a retained file.'
+                }finally{
+                    $script:iCrashAfterMove=$false
+                }
+                Note 'I: intent recovery classifies by positive evidence (tool-written only with intent + pre-move record + consumed staging); everything else is AdoptedExisting and survives rollback.'
             }
         }
 
@@ -510,7 +572,7 @@ try {
         }
 
         Write-Host ('PASS: Q6a round-seven gap coverage ('+$script:checks+' checks; sections '+(@($Sections)-join ',')+').')
-    } $root $work $srcRoot @($Section) ([bool]$StrictEvidenceClassification)
+    } $root $work $srcRoot @($Section)
 } finally {
     # 殘留的拒絕 ACL 會擋刪除：先移除登錄的規則，再掃整棵樹的拒絕規則，最後才刪除。
     foreach($full in @($root,$work)){

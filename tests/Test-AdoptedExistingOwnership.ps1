@@ -60,7 +60,7 @@ try {
             'Cutover.ps1:Get-WsmAssistiveStageFileResultRows'='stage file rows: Applied with the adopted note as Reason'
             'DeltaWorkflow.ps1:Assert-WsmAssistiveDeltaBaseOwnership'='property presence only'
             'JournalRecovery.ps1:Restore-WsmJournalCheckpoint'='replays Record verbatim; Ownership survives'
-            'Recovery.ps1:Complete-WsmAssistiveOperationRepair'='intent recovery: rows are tool-owned (the intent is the proof); no Ownership written'
+            'Recovery.ps1:Complete-WsmAssistiveOperationRepair'='Q6a2: intent recovery: rows are tool-owned only with positive evidence (Repair moved the staging itself, or intent + pre-move record + consumed staging); otherwise the row is built by New-WsmAssistiveAdoptedFileRecord (AdoptedExisting)'
             'Recovery.ps1:Complete-WsmAssistiveFileScopeOwnershipRepair'='R3: adopts same-content files through the shared record builder New-WsmAssistiveAdoptedFileRecord (it no longer sets Ownership itself)'
             'Recovery.ps1:Get-WsmRollbackPreview'='adopted rows are never blocked, only reported'
             'Recovery.ps1:Remove-WsmAssistiveRolledBackOwnership'='R2: rollback releases the rolled-back per-file ownership; rows outside the rollback vector (AdoptedExisting) are kept verbatim'

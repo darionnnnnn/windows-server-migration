@@ -63,6 +63,16 @@ function Repair-WsmOperation {
         [pscustomobject]@{Repaired=$repaired;Remaining=$s.PendingOperations.Count;OwnershipReconcile=@($ownershipReconcile);State=$s}
     }
 }
+function Test-WsmAssistiveFileIntentWriteEvidence($Operation,[string]$ExpectedHash,[bool]$StagingConsumed) {
+    # Q6a2：沒有 owner 的 AssistiveFileReplace intent 復原時，「目標檔內容等於封存值」本身不是工具寫入的證據（也可能是外部事先放好、或事後才出現的同內容檔）。
+    # 只有下列三者同時成立才算正向證據：(1) intent 存在（呼叫端已確認是同一筆 pending）；(2) 寫入器在 Move 之前記錄了 PreMoveStagingHash（AssistiveFilePrepared 的欄位），且綁定封存雜湊；(3) staging 已被消耗（Move 已完成，staging 不在了）。
+    # 舊 journal／舊 state 沒有 PreMoveStagingHash：回傳 false，呼叫端保守地記為 AdoptedExisting（失去擁有權，但絕不會移走外部檔）。
+    # 殘留風險（當機時間窗）：工具 Move 完成後、AssistiveFileCompleted 寫入前當機，且同一時間窗內外部又把 staging 清掉並放入同內容檔，這種組合無法與工具寫入區分；實務上 Move 對已存在的目標會丟例外而保留 staging，所以不會被誤判成證據。
+    if($null -eq $Operation -or -not $Operation.PSObject.Properties['PreMoveStagingHash']){return $false}
+    if(-not $StagingConsumed){return $false}
+    $recorded=[string]$Operation.PreMoveStagingHash
+    ($recorded -match '^[a-fA-F0-9]{64}$') -and ($recorded -ieq $ExpectedHash)
+}
 function Complete-WsmAssistiveOperationRepair($Item,$Operation,$Package,$Paths,$State,[hashtable]$SidMap=@{}) {
     $spec=$Item.MigrationSpec
     if($Operation.Phase -eq 'AssistiveAdapterCreating'){
@@ -109,6 +119,7 @@ function Complete-WsmAssistiveOperationRepair($Item,$Operation,$Package,$Paths,$
     $expected=[string]$Operation.ExpectedHash;$previous=[string]$Operation.PreviousHash
     if($expected -notmatch '^[a-fA-F0-9]{64}$' -or ($Operation.WasOwned -and ($previous -notmatch '^[a-fA-F0-9]{64}$' -or -not $Operation.PriorOwner -or -not $Operation.PriorOwner.PSObject.Properties['MetadataHash'])) -or -not $Operation.PSObject.Properties['ExpectedMetadata']){throw 'Assistive file recovery hashes or metadata intent are incomplete.'}
     $aclPolicy='Exact';if($spec.PSObject.Properties['AclControlPolicy']){$aclPolicy=[string]$spec.AclControlPolicy}
+    $repairMoved=$false
     if($targetHash -ne $expected){
         if($targetHash -and $targetHash -ne $previous){throw 'Assistive target file drifted from both prior and desired hashes; preserve all transaction material.'}
         if($targetHash -ceq $previous -and -not $backupHash -and -not $stageHash){
@@ -128,14 +139,21 @@ function Complete-WsmAssistiveOperationRepair($Item,$Operation,$Package,$Paths,$
         }
         if($Operation.WasOwned -and $backupHash -ne $previous){throw 'Assistive retained backup differs from exact prior-owned bytes.'}
         if($Operation.WasOwned){$priorMetadata=Get-WsmFileMetadata $backup $Operation.ExpectedMetadata.MetadataMode;if((Get-WsmAssistiveMetadataHash $priorMetadata) -ine [string]$Operation.PriorOwner.MetadataHash){throw 'Assistive retained backup metadata differs from the prior ownership baseline.'}}
-        [IO.File]::Move($staging,$target);$targetHash=& $hashAt $target
+        [IO.File]::Move($staging,$target);$targetHash=& $hashAt $target;$repairMoved=$true
     }
     if($targetHash -ne $expected){throw 'Assistive file recovery readback differs from the approved artifact hash.'}
     $actualMetadata=Assert-WsmAssistiveMetadataReadback $target $Operation.ExpectedMetadata $SidMap $aclPolicy
     if($Operation.WasOwned -and $backupHash -ne $previous){throw 'Assistive file recovery lacks the verified prior backup required for rollback.'}
     if($Operation.WasOwned){$priorMetadata=Get-WsmFileMetadata $backup $Operation.ExpectedMetadata.MetadataMode;if((Get-WsmAssistiveMetadataHash $priorMetadata) -ine [string]$Operation.PriorOwner.MetadataHash){throw 'Assistive retained backup metadata differs from the prior ownership baseline.'}}
     $prior=@($State.Items | Where-Object ItemId -CEQ $Item.ItemId);$record=$null;if($prior.Count -eq 1){$record=$prior[0]}else{$record=[pscustomobject]@{ItemId=$Item.ItemId;Status='Partial';CreatedByTool=$true;OwnedFiles=@();OwnedDirectories=@();AppliedManifestHash='';AppliedGeneration=0;Target=$root;Error='Recovered one per-file transaction; full scope remains to be reconciled.'}}
-    $backupMaterialId='';if($Operation.PSObject.Properties['BackupMaterialId']){$backupMaterialId=[string]$Operation.BackupMaterialId};$files=@($record.OwnedFiles | Where-Object RelativePath -CNE ([string]$Operation.RelativePath));$files+=,[pscustomobject]@{RelativePath=[string]$Operation.RelativePath;TargetPath=$target;SHA256=$expected;MetadataHash=(Get-WsmAssistiveMetadataHash $actualMetadata);Backup=$backup;BackupHash=$previous;BackupMetadata=$(if($Operation.PSObject.Properties['PreviousMetadata']){$Operation.PreviousMetadata}else{$null});BackupMetadataHash=$(if($Operation.PSObject.Properties['PreviousMetadataHash']){[string]$Operation.PreviousMetadataHash}else{''});BackupMaterialId=$backupMaterialId;Generation=[long]$Package.Manifest.Generation};$record.OwnedFiles=$files;$record.Status='Partial';$record.CreatedByTool=$true;$record.AppliedManifestHash='';$record.Error='Recovered exact per-file transaction; full scope remains to be reconciled.';$State.Items=@($State.Items | Where-Object ItemId -CNE $Item.ItemId)+@($record)
+    $backupMaterialId='';if($Operation.PSObject.Properties['BackupMaterialId']){$backupMaterialId=[string]$Operation.BackupMaterialId};$files=@($record.OwnedFiles | Where-Object RelativePath -CNE ([string]$Operation.RelativePath));
+    # Q6a2：沒有 owner 的 intent，只有正向證據（Repair 自己完成了 Move，或 Move 前紀錄＋staging 已消耗，見 Test-WsmAssistiveFileIntentWriteEvidence）才記為工具擁有；
+    # 其餘（沒有證據、staging 還在、舊 journal）一律走 New-WsmAssistiveAdoptedFileRecord 記為 AdoptedExisting：不重寫、回復時不刪除。
+    $adoptWithoutEvidence=$false;if(-not $Operation.WasOwned -and -not $repairMoved -and -not (Test-WsmAssistiveFileIntentWriteEvidence $Operation $expected (-not $stageHash))){$adoptWithoutEvidence=$true}
+    $newRow=$null
+    if($adoptWithoutEvidence){$newRow=New-WsmAssistiveAdoptedFileRecord ([string]$Operation.RelativePath) $target $expected $actualMetadata ([long]$Package.Manifest.Generation)}
+    else{$newRow=[pscustomobject]@{RelativePath=[string]$Operation.RelativePath;TargetPath=$target;SHA256=$expected;MetadataHash=(Get-WsmAssistiveMetadataHash $actualMetadata);Backup=$backup;BackupHash=$previous;BackupMetadata=$(if($Operation.PSObject.Properties['PreviousMetadata']){$Operation.PreviousMetadata}else{$null});BackupMetadataHash=$(if($Operation.PSObject.Properties['PreviousMetadataHash']){[string]$Operation.PreviousMetadataHash}else{''});BackupMaterialId=$backupMaterialId;Generation=[long]$Package.Manifest.Generation}}
+    $files+=,$newRow;$record.OwnedFiles=$files;$record.Status='Partial';$record.CreatedByTool=$true;$record.AppliedManifestHash='';$record.Error=$(if($adoptWithoutEvidence){'Recovered a per-file intent without proof that the tool wrote the file; the existing same-content file is adopted (never removed by rollback); full scope remains to be reconciled.'}else{'Recovered exact per-file transaction; full scope remains to be reconciled.'});$State.Items=@($State.Items | Where-Object ItemId -CNE $Item.ItemId)+@($record)
     $State.PendingOperations=@($State.PendingOperations | Where-Object ItemId -CNE $Item.ItemId);Add-WsmJournal $Paths $State 'AssistiveFileRecovered' $Item.ItemId ([pscustomobject]@{Record=$record;RelativePath=$Operation.RelativePath;Target=$target;SHA256=$expected;Backup=$backup;BackupHash=$previous});$record
 }
 

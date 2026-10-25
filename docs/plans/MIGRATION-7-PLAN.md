@@ -2530,6 +2530,43 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - (e) 是字面比對，抓不到用字串拼接規避的寫法。
   - (g) 有缺口時終局狀態仍是 Succeeded。
 
+### 17.118 Q6a2：intent 復原要有正向證據才記為工具擁有（修正 17.117 (i) 缺陷）
+
+- 規格：`work/r7/specs/Q6a2-intent-evidence.md`。Sonnet 5.5 effort high subagent 實作；主代理審查、另做一個突變並獨立重跑。
+- **缺陷**：沒有 owner 的 `AssistiveFileReplace` intent，若目標位置已有一個內容與 metadata 都相同的外部檔，Repair 會直接把它記為工具擁有。之後回復時，這個外部檔就會被移走。
+- **修法**：
+  - **寫入器**：非 owner 路徑在 Move 之前，先寫一筆 `AssistiveFilePrepared`，帶入 `PreMoveStagingHash`，並綁定封存雜湊。這是沿用既有的 action；replay 時以整筆 pending 取代，所以不必新增 action。
+  - **Repair**：唯一判定是 `Test-WsmAssistiveFileIntentWriteEvidence`。以下三個條件同時成立，才記為工具擁有：
+    1. intent 存在。
+    2. 有 Move 前的紀錄，且綁定封存雜湊。
+    3. staging 已被消耗。
+
+    Repair 自己完成 Move 的情況，也算工具擁有。
+  - **其餘情況**一律記為 AdoptedExisting，回復時不刪除。包括：沒有證據、staging 還在、雜湊不符、舊 journal 或舊 state（沒有 `PreMoveStagingHash`）。
+  - **不變的部分**：目標不存在且 staging 完整（I1）、內容不同時拒絕（I4）、metadata 不同時拒絕、有 owner 的路徑。
+- **當機時間窗**：
+  - Move 完成之後、Completed 寫入之前當機：已有證據，記為工具擁有。
+  - Prepared 與 Move 之間當機，且目標已經是同內容的外部檔：保守地記為沿用，會失去擁有權，但不會移走外部檔。
+- **測試**：
+  - `Test-RoundSevenGapCoverage` 從 122 項增為 156 項。移除 `-StrictEvidenceClassification` 開關與 KNOWN-DEFECT 輸出，斷言改為預設常開。新增情境：
+    - I5：證據完整。
+    - I5b：metadata 不同。
+    - I6：staging 還在。
+    - I7：雜湊不符。
+    - I8：非雜湊值。
+    - I9：真實寫入器的 journal 順序與綁定。
+    - I10：真實寫入器在 Move 後當機。
+  - `Test-JournalReplayCoverage` 從 431 項增為 437 項。
+- **突變**（皆轉紅）：
+  - subagent 做了 7 個：Repair 不看證據、寫入器不寫證據、有證據仍記為沿用、證據寫在 Move 之後、不檢查 staging、不比對雜湊、replay 時丟掉證據。
+  - 主代理做了 1 個：寫入器的證據雜湊改為空字串，失敗訊息為「I9: the pre-move record must bind the sealed (verified staging) hash」。
+- **驗證**（主代理重跑）：
+  - RoundSevenGapCoverage 156、AssistiveRecoveryBoundaries 6、PendingIntentRecovery 31、FileScopeIncompleteOwnership 164、AdoptedExistingOwnership 122、DirectoryScopeExistingFiles 90、RollbackThenRestore 94、AssistiveRestore 178、AssistiveRollback 16、RollbackRecovery、RecoveryContracts、JournalReplayCoverage 437、TargetRestoreContinuation 133、WizardRestore 132、AdoptedFileAclPropagation 22、PostRestoreRecheck 109、ScriptEncoding、G4 30。
+  - subagent 另外跑了 MigrationPipeline，以及所有呼叫端測試。
+- **限制**：
+  - 若 Move 完成後、Completed 寫入前當機，而同一段時間內外部清掉 staging 並放入同內容的檔案，這種情況無法與工具寫入區分。
+  - 主旅程的真實當機劇本 `Test-OfflineRestoreJourney` 沒有重跑；收尾前由使用者重跑主旅程時一併涵蓋。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -2748,6 +2785,7 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R4 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1`、`src/ui/console.js` | 含人工、外部或不支援項目的備份（stage 為 ReviewRequired，但交付已驗證）被當成未交付：結果頁顯示「尚無已交付備份」、獨立副本停用、進度卡顯示「部分失敗」 | 抽出共用的「已交付」判定（以交付證據為準，排除非 C 待處理），取代 5 處寫死的 `'Delivered'`；ReviewRequired 改為附註「含 N 項需人工或外部處理」與「完成（含待人工處理）」（17.110） | `Test-BackupCurrencyAndReview`（R4 區段）、G3、BackupWorkbenchBrowser／BackupProgressBrowser 新增區段 | b808884 |
 | R5 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1` | 「目前這一代」有兩套判定，對舊 attempt 做獨立副本後結果頁翻回舊世代；「可續作」有兩份判定，其中一份沒有排除已交接的 attempt | 共用 helper 改依 StartedUtc／世代／AttemptId 排序，不用 UpdatedUtc；「可續作」改為單一判定並排除已交接（17.110） | `Test-BackupCurrencyAndReview`（R5 區段與 13 個可續作情境） | b808884 |
 | R26-B6 | `src/AssistiveRestore.ps1` 容量加總、`src/WizardRuntime.ps1` 原因文字 | 同一磁碟的容量加總也算進已還原的項目，已還原完成後，其他項目仍被誤判為容量不足 | 已還原項目改用 `Get-WsmAssistiveRestoredItemIdSet` 判定，不計入加總、也不標記；改為逐項判定（單項超量只擋該項），合計不足時標記同磁碟所有待寫項目，並附合計數字（17.114，與 Q3 同一段） | `Test-TargetCapacityStaging`（B6 三個情境，先在原版重現誤判再修正） | 539408f |
+| Q6a-i | `src/Recovery.ps1` Complete-WsmAssistiveOperationRepair、`src/AssistiveRestore.ps1` 寫入器 | 沒有 owner 的 intent 遇到同內容外部檔時，Repair 記為工具擁有，回復時會移走外部檔 | 寫入器在 Move 前記錄綁定封存雜湊的 Prepared 證據；Repair 必須同時具備「intent、Move 前紀錄、staging 已消耗」才記為工具擁有，否則一律記為 AdoptedExisting（17.118） | `Test-RoundSevenGapCoverage` I 區段（I1～I10，含真實寫入器在 Move 後當機）、`Test-JournalReplayCoverage` | （Q6A2-COMMIT） |
 
 ### 第六輪終檢
 

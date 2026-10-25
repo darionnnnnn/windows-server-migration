@@ -195,6 +195,13 @@ try {
       param($c)$s=$c.State;Remove-WsmAssistiveRolledBackOwnership $s 'r3' ([string[]]@(''))
       Add-WsmJournal $c.Paths $s 'AssistiveRollbackOwnershipReleased' 'r3' ([pscustomobject]@{ItemId='r3';ReleasedFiles=[string[]]@('');ReleasedDirectories=[string[]]@()})
     } @('Items','PendingOperations')
+    # Q6a2: the writer journals a pre-move record (AssistiveFilePrepared carrying PreMoveStagingHash) before it moves a staging file onto a target it does not own yet. Replay replaces the pending intent with the whole detail, so the evidence survives a checkpoint rollback;
+    # an old journal (intent only) replays to a pending row without the field, which Repair treats as no evidence (AdoptedExisting, never tool-owned).
+    $premoveIntent=[pscustomobject][ordered]@{ItemId='q1';Phase='AssistiveFileReplace';ManifestHash=$mh;Generation=[long]3;RelativePath='a.ini';Target='D:\data.ini';Staging='D:\data.ini.wsm-0123456789abcdef0123456789abcdef.tmp';Backup='';PreviousHash='';PreviousMetadataHash='';PreviousMetadata=$null;ExpectedHash=('1'*64);ExpectedMetadata=[pscustomobject]@{MetadataMode='DaclOwner'};WasOwned=$false;PriorOwner=$null}
+    Invoke-ReplayScenario 'file-prepared-premove-evidence-nonowner' {param($s,$c)$s.PendingOperations=@($premoveIntent)} {
+      param($c)$s=$c.State;$pending=$s.PendingOperations[0];$pending|Add-Member NoteProperty PreMoveStagingHash ('1'*64) -Force
+      Add-WsmJournal $c.Paths $s 'AssistiveFilePrepared' 'q1' $pending
+    } @('PendingOperations')
     Invoke-ReplayScenario 'noncfile-results-imported' {param($s,$c)} {
       param($c)$s=$c.State;$rows=@([pscustomobject]@{ItemId='n1';Status='Applied';EffectivePath='D:\data';Generation=3})
       $s|Add-Member NoteProperty AssistiveFileResults @($rows) -Force
