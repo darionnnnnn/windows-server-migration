@@ -424,8 +424,29 @@ function Get-WsmWizardTargetItemOptions($Context,$Package,$State,$Decision=$null
     })
 }
 
+# Q4：還原父作業進行中（Running／WaitingForInput／Interrupted，另含尚未結束的 Queued／CancelRequested）時，選取與決策收據不得變更。
+# 以同一個「最新一筆 TargetRestore 母作業」判定（同 Get-WsmWizardRuntimeTargetPendingRestore），再加上 Running 等執行中狀態。
+function Get-WsmWizardTargetRestoreLock([string]$Workspace,[string]$PairId,[object[]]$Jobs) {
+    $latest=Get-WsmWizardRuntimeTargetLatestRestoreJob $Workspace $PairId $Jobs
+    if(-not $latest){return $null}
+    $status=[string](Get-WsmWizardTargetJobField $latest status Status)
+    if($status -cnotin @('Running','Queued','CancelRequested','WaitingForInput','Interrupted')){return $null}
+    [pscustomobject]@{Status=$status;Reason='還原進行中，完成或取消後才能變更選擇。';ParentOperationId=[string](Get-WsmWizardTargetJobField $latest jobId JobId)}
+}
+function Assert-WsmWizardTargetRestoreNotInProgress([string]$Workspace,[string]$PairId,[object[]]$Jobs) {
+    $lock=Get-WsmWizardTargetRestoreLock $Workspace $PairId $Jobs
+    if($lock){throw ('RestoreInProgress: '+$lock.Reason+'（目前還原狀態：'+$lock.Status+'）')}
+}
 function Get-WsmWizardRuntimeTargetPendingRestore([string]$Workspace,[string]$PairId,[object[]]$Jobs) {
     # The newest TargetRestore parent of this pair decides: WaitingForInput / Interrupted are not a finished or startable restore.
+    $latest=Get-WsmWizardRuntimeTargetLatestRestoreJob $Workspace $PairId $Jobs
+    if(-not $latest){return $null}
+    $status=[string](Get-WsmWizardTargetJobField $latest status Status)
+    if($status -ceq 'WaitingForInput'){return [pscustomobject]@{Status='WaitingForInput';Summary='等待帳密輸入：還原尚未完成，請在還原畫面輸入或延後帳密後續作；目前不可重新開始還原。';ParentOperationId=[string](Get-WsmWizardTargetJobField $latest jobId JobId)}}
+    if($status -ceq 'Interrupted'){return [pscustomobject]@{Status='Interrupted';Summary='還原中斷，可檢視恢復預覽後續作。';ParentOperationId=[string](Get-WsmWizardTargetJobField $latest jobId JobId)}}
+    $null
+}
+function Get-WsmWizardRuntimeTargetLatestRestoreJob([string]$Workspace,[string]$PairId,[object[]]$Jobs) {
     $latest=$null;$latestTime=''
     foreach($job in @($Jobs)){
         if(-not $job -or [string](Get-WsmWizardTargetJobField $job action Action) -cne 'TargetRestore' -or [string](Get-WsmWizardTargetJobField $job role Role) -cne 'Target' -or [string](Get-WsmWizardTargetJobField $job pairId PairId) -cne $PairId){continue}
@@ -433,11 +454,7 @@ function Get-WsmWizardRuntimeTargetPendingRestore([string]$Workspace,[string]$Pa
         $time=[string](Get-WsmWizardTargetJobField $job startedUtc StartedUtc);if(-not $time){$time=[string](Get-WsmWizardTargetJobField $job createdUtc CreatedUtc)}
         if($null -eq $latest -or [string]::CompareOrdinal($time,$latestTime) -ge 0){$latest=$job;$latestTime=$time}
     }
-    if(-not $latest){return $null}
-    $status=[string](Get-WsmWizardTargetJobField $latest status Status)
-    if($status -ceq 'WaitingForInput'){return [pscustomobject]@{Status='WaitingForInput';Summary='等待帳密輸入：還原尚未完成，請在還原畫面輸入或延後帳密後續作；目前不可重新開始還原。';ParentOperationId=[string](Get-WsmWizardTargetJobField $latest jobId JobId)}}
-    if($status -ceq 'Interrupted'){return [pscustomobject]@{Status='Interrupted';Summary='還原中斷，可檢視恢復預覽後續作。';ParentOperationId=[string](Get-WsmWizardTargetJobField $latest jobId JobId)}}
-    $null
+    $latest
 }
 # Q1：還原後重新核對的唯讀投影。只讀 state 與最新一筆核對紀錄，不做任何原生查詢、不寫入。
 # 狀態只有三種來源：state.RestoreAttempt（舊的成功結果，原樣不動）、最新一筆綁定這次嘗試的核對紀錄（Get-WsmWizardTargetRecheckView），以及目前最新的 Target 盤點（只用來提示「已還原內容可能已變動」）。
@@ -476,7 +493,7 @@ function Get-WsmWizardRuntimeRecheck([string]$Workspace,[string]$PairId,$Package
 function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,[object[]]$Jobs) {
     $actions=New-Object 'System.Collections.Generic.List[object]'
     $defaults=@{Workspace=[IO.Path]::GetFullPath($Workspace);PairId=$PairId}
-    $result=[ordered]@{status='NeedsApprovedPlan';plan=$null;package=$null;inventory=$null;comparison=$null;softwareCheck=$null;decision=$null;restorePreview=$null;restoreResult=$null;retry=$null;recheck=$null;statusSummary='';itemOptions=@();mechanicalValidation=[pscustomobject]@{available=$false;status='Locked';result=$null};businessAcceptance=[pscustomobject]@{available=$false;status='NotAccepted';gates=$null};activation=[pscustomobject]@{available=$false;status='Locked';acknowledgementRequired=$true};actions=@();noAutoResume=$true;noAutoActivation=$true;issues=@()}
+    $result=[ordered]@{status='NeedsApprovedPlan';plan=$null;package=$null;inventory=$null;comparison=$null;softwareCheck=$null;decision=$null;restorePreview=$null;restoreResult=$null;retry=$null;recheck=$null;restoreLock=[pscustomobject]@{active=$false;status='';reason='';parentOperationId=''};statusSummary='';itemOptions=@();mechanicalValidation=[pscustomobject]@{available=$false;status='Locked';result=$null};businessAcceptance=[pscustomobject]@{available=$false;status='NotAccepted';gates=$null};activation=[pscustomobject]@{available=$false;status='Locked';acknowledgementRequired=$true};actions=@();noAutoResume=$true;noAutoActivation=$true;issues=@()}
     $received=Get-WsmWizardReceivedApprovedPlan $Workspace $PairId $Profile
     if(-not $received){$actions.Add((New-WsmWizardRuntimeAction 'ImportApprovedPlan' $true '先取得與目前 Target 身分綁定的核准計畫及獨立預期 hash。' @{Workspace=$Workspace;Role='Target'} @('Path','ExpectedHash')));$result.actions=@($actions.ToArray());return [pscustomobject]$result}
     if([int]$received.Plan.SchemaVersion -ne 3){$result.status='UseExistingWorkflow';$result.issues=@('此核准計畫使用原核心格式，請由既有流程檢查材料與續作；不將原格式重新解讀為 schema-3 還原授權。');$result.actions=@();return [pscustomobject]$result}
@@ -496,6 +513,9 @@ function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,
     $result.itemOptions=@(Get-WsmWizardTargetItemOptions $context $package $itemState $lastDecision)
     # Q1：還原後重新核對。唯讀投影＋一個明確的「重新核對」動作；在還原結果、比較、決策等後面的提早 return 之前就先算好，匯入新盤點後（狀態會變成要重新比較）也看得到提示。
     $recheckPending=Get-WsmWizardRuntimeTargetPendingRestore $Workspace $PairId $Jobs
+    # Q4：還原進行中（含 Running）時選取區與建立收據／重試按鈕一律停用；說明文字由後端提供。
+    $restoreLock=Get-WsmWizardTargetRestoreLock $Workspace $PairId $Jobs
+    if($restoreLock){$result.restoreLock=[pscustomobject]@{active=$true;status=[string]$restoreLock.Status;reason=[string]$restoreLock.Reason;parentOperationId=[string]$restoreLock.ParentOperationId}}
     $result.recheck=Get-WsmWizardRuntimeRecheck $Workspace $PairId $package $itemState $null $recheckPending
     if($result.recheck.visible){$actions.Add((New-WsmWizardRuntimeAction 'TargetRecheck' ([bool]$result.recheck.available) $(if($result.recheck.available){'唯讀重新核對最近一次還原中成功的項目；只比對、不覆寫、不刪除、不改權限，也不會開始還原。'}else{[string]$result.recheck.reason}) $defaults @()))}
     $recheckByItem=@{};foreach($recheckItem in @($result.recheck.items)){$recheckByItem[[string]$recheckItem.itemId]=$recheckItem}
@@ -513,7 +533,7 @@ function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,
     $actions.Add((New-WsmWizardRuntimeAction 'TargetLocalComparison' $needsComparison $(if($needsComparison){'沒有舊 Manager 時，可在本機產生軟體比較。'}else{'已有符合目前 Target 盤點的比較材料；不需要重新產生。'}) $defaults @()))
     if($needsComparison){$result.status='NeedsComparison';$result.actions=@($actions.ToArray());return [pscustomobject]$result}
     $comparison=$comparisonRecord.Comparison;$result.comparison=$comparisonRecord;$result.softwareCheck=Get-WsmWizardTargetSoftwareCheck $comparisonRecord
-    $actions.Add((New-WsmWizardRuntimeAction 'CreateTargetDecisionReceipt' $true '明確選擇已核准項目與現在還原／待補裝；責任人和理由由操作者提供。' $defaults @('Decision','Owner','Reason','SelectedItemIds')))
+    $actions.Add((New-WsmWizardRuntimeAction 'CreateTargetDecisionReceipt' (-not $restoreLock) $(if($restoreLock){[string]$restoreLock.Reason}else{'明確選擇已核准項目與現在還原／待補裝；責任人和理由由操作者提供。'}) $defaults @('Decision','Owner','Reason','SelectedItemIds')))
     $decisionRecord=Get-WsmWizardTargetDecisionRecord $Workspace $PairId $received.SHA256
     if(-not $decisionRecord -or $decisionRecord.Receipt.TargetSnapshotHash -ine $snapshot.SHA256 -or $decisionRecord.Receipt.ManifestHash -ine $package.ManifestHash -or [long]$decisionRecord.Receipt.Generation -ne [long]$package.Package.Manifest.Generation -or $decisionRecord.Receipt.ComparisonHash -ine (Get-WsmHashText ($comparison|ConvertTo-Json -Depth 100 -Compress))){$result.status='NeedsTargetDecision';$result.actions=@($actions.ToArray());return [pscustomobject]$result}
     $result.decision=$decisionRecord
@@ -535,10 +555,10 @@ function Get-WsmWizardRuntimeTarget([string]$Workspace,[string]$PairId,$Profile,
     $result.retry=[pscustomobject][ordered]@{visible=$false;eligible=$false;reasonCode=$(if($retryCandidates){[string]$retryCandidates.ReasonCode}else{'Unavailable'});reason='';candidateItemIds=@();candidateCount=0}
     if($retryCandidates -and $retryCandidates.Visible -and -not $postActivation -and [string]$result.status -notin @('WaitingForInput','Interrupted','WaitingForInstall')){
         $retryShort=([string]$retryCandidates.SourceReceiptHash).Substring(0,12)
-        $result.retry=[pscustomobject][ordered]@{visible=$true;eligible=[bool]$retryCandidates.Eligible;reasonCode=[string]$retryCandidates.ReasonCode;reason=[string]$retryCandidates.Reason;candidateItemIds=@($retryCandidates.CandidateItemIds);candidateCount=@($retryCandidates.CandidateItemIds).Count;succeededCount=@($retryCandidates.SucceededItemIds).Count;notSucceededCount=@($retryCandidates.NotSucceededItemIds).Count;needsRecheckItemIds=@($retryCandidates.NeedsRecheckItemIds);excluded=@($retryCandidates.Excluded|ForEach-Object {[pscustomobject][ordered]@{itemId=[string]$_.ItemId;name=[string]$_.Name;code=[string]$_.Code;reason=[string]$_.Reason;lastStatus=[string]$_.LastStatus}});sourceAttemptId=[string]$retryCandidates.SourceAttemptId;sourceReceiptHash=[string]$retryCandidates.SourceReceiptHash;sourceReceiptShort=$retryShort;sourceStage=[string]$retryCandidates.SourceStage;defaultOwner=[string]$retryCandidates.SourceOwner;defaultReason=[string]$retryCandidates.SuggestedReason}
+        $result.retry=[pscustomobject][ordered]@{visible=$true;eligible=([bool]$retryCandidates.Eligible -and -not $restoreLock);reasonCode=$(if($restoreLock){'RestoreInProgress'}else{[string]$retryCandidates.ReasonCode});reason=$(if($restoreLock){[string]$restoreLock.Reason}else{[string]$retryCandidates.Reason});candidateItemIds=@($retryCandidates.CandidateItemIds);candidateCount=@($retryCandidates.CandidateItemIds).Count;succeededCount=@($retryCandidates.SucceededItemIds).Count;notSucceededCount=@($retryCandidates.NotSucceededItemIds).Count;needsRecheckItemIds=@($retryCandidates.NeedsRecheckItemIds);excluded=@($retryCandidates.Excluded|ForEach-Object {[pscustomobject][ordered]@{itemId=[string]$_.ItemId;name=[string]$_.Name;code=[string]$_.Code;reason=[string]$_.Reason;lastStatus=[string]$_.LastStatus}});sourceAttemptId=[string]$retryCandidates.SourceAttemptId;sourceReceiptHash=[string]$retryCandidates.SourceReceiptHash;sourceReceiptShort=$retryShort;sourceStage=[string]$retryCandidates.SourceStage;defaultOwner=[string]$retryCandidates.SourceOwner;defaultReason=[string]$retryCandidates.SuggestedReason}
         $retryDefaults=@{Workspace=[IO.Path]::GetFullPath($Workspace);PairId=$PairId;Decision='RestoreNow';SelectedItemIds=[string[]]@($retryCandidates.CandidateItemIds);RetryOfReceiptHash=[string]$retryCandidates.SourceReceiptHash}
-        $retryActionReason=if($retryCandidates.Eligible){'依上次部分完成的結果自動產生只含失敗項目的新選擇紀錄；責任人與理由由操作者確認，建立後不會自動開始還原。'}else{[string]$retryCandidates.Reason}
-        $actions.Add((New-WsmWizardRuntimeAction 'TargetRetryFailedItems' ([bool]$retryCandidates.Eligible) $retryActionReason $retryDefaults @('Owner','Reason')))
+        $retryActionReason=if($restoreLock){[string]$restoreLock.Reason}elseif($retryCandidates.Eligible){'依上次部分完成的結果自動產生只含失敗項目的新選擇紀錄；責任人與理由由操作者確認，建立後不會自動開始還原。'}else{[string]$retryCandidates.Reason}
+        $actions.Add((New-WsmWizardRuntimeAction 'TargetRetryFailedItems' ([bool]$retryCandidates.Eligible -and -not $restoreLock) $retryActionReason $retryDefaults @('Owner','Reason')))
     }
     if(-not $stage -and -not $pendingRestore -and $result.restorePreview -and $decisionRecord.Receipt.Decision -ceq 'RestoreNow' -and ([bool]$result.restorePreview.CanRestoreIndependentItems)){$actions.Add((New-WsmWizardRuntimeAction 'TargetRestore' $true '確認此明確預覽後還原；寫入時會重新核對目前 Target 軟體與全部綁定。' @{Workspace=$Workspace;PairId=$PairId;PreviewHash=[string]$result.restorePreview.PreviewHash} @()))}
     if($postActivation){$result.status='PostCutoverValidationRequired';$result.activation.status='Activated'}

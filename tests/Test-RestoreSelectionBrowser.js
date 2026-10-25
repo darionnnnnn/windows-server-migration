@@ -9,6 +9,9 @@ fs.mkdirSync(screens, { recursive: true });
 const assets = new Map([['/', path.join(root, 'src/ui/index.html')], ['/ui/console.js', path.join(root, 'src/ui/console.js')], ['/ui/console.css', path.join(root, 'src/ui/console.css')], ['/ui/nonc.js', path.join(root, 'src/ui/nonc.js')]]);
 const pairId = 'r6-pair', contextId = 'r6-context', hash = 'a'.repeat(64), hash2 = 'b'.repeat(64), jobs = new Map(), submissions = [];
 let stage = 'NeedsTargetDecision', revision = 2, receiptSelected = null;
+// Q4：還原進行中鎖定（null 或 { status, actionAvailable }）；投影欄位形狀同後端 runtime.restoreLock。
+let restoreLock = null;
+const LOCK_REASON = '還原進行中，完成或取消後才能變更選擇。';
 
 const baseOptions = [
   { value: 'site', label: '訂單網站', adapter: 'IISSite', group: 'Web', typeLabel: '網站', restorable: true, restorableReason: '', restored: false, fileCount: 3, bytes: 1500, countsAvailable: true, dependencies: ['pool'], requiredBy: [] },
@@ -26,8 +29,15 @@ const previewRows = [
 const action = (id, defaults = {}, missing = []) => ({ id, available: true, reason: `Fixture ${id}`, defaults: Object.assign({ Workspace: 'C:\\fixture\\target', PairId: pairId }, defaults), missing });
 function options() { return baseOptions.map(option => Object.assign({}, option, { preselected: receiptSelected ? receiptSelected.includes(option.value) : null })); }
 function runtime() {
-  const target = { status: stage, plan: { hash }, package: { ManifestHash: hash }, inventory: { SHA256: hash2 }, comparison: { Status: 'Imported' }, decision: null, restorePreview: null, restoreResult: null, mechanicalValidation: { available: false, status: 'NotRun' }, businessAcceptance: { available: false, status: 'NotAccepted' }, activation: { available: false, status: 'Locked' }, itemOptions: options() };
+  const target = { status: stage, plan: { hash }, package: { ManifestHash: hash }, inventory: { SHA256: hash2 }, comparison: { Status: 'Imported' }, decision: null, restorePreview: null, restoreResult: null, mechanicalValidation: { available: false, status: 'NotRun' }, businessAcceptance: { available: false, status: 'NotAccepted' }, activation: { available: false, status: 'Locked' }, itemOptions: options(), restoreLock: restoreLock ? { active: true, status: restoreLock.status, reason: LOCK_REASON, parentOperationId: 'parent-1' } : { active: false, status: '', reason: '', parentOperationId: '' } };
   const actions = [action('CreateTargetDecisionReceipt', {}, ['Decision', 'Owner', 'Reason', 'SelectedItemIds'])];
+  if (restoreLock) {
+    actions[0].available = restoreLock.actionAvailable !== false; if (!actions[0].available) actions[0].reason = LOCK_REASON;
+    if (restoreLock.retry) {
+      target.retry = { visible: true, eligible: false, reasonCode: 'RestoreInProgress', reason: LOCK_REASON, candidateItemIds: [], candidateCount: 0, succeededCount: 1, notSucceededCount: 1, excluded: [], sourceReceiptHash: hash, sourceReceiptShort: hash.slice(0, 12), defaultOwner: 'Target operator', defaultReason: 'Q4 retry' };
+      actions.push(Object.assign(action('TargetRetryFailedItems', { Decision: 'RestoreNow', SelectedItemIds: ['data2'], RetryOfReceiptHash: hash }, ['Owner', 'Reason']), { available: restoreLock.actionAvailable !== false, reason: restoreLock.actionAvailable === false ? LOCK_REASON : 'fixture' }));
+    }
+  }
   if (stage === 'ReadyForRestorePreview' || stage === 'ReadyForRestore') { target.decision = { Decision: 'RestoreNow', Receipt: { Owner: 'Target operator', Reason: 'R6 browser', Status: 'Verified' } }; actions.push(action('TargetRestorePreview')); }
   if (stage === 'ReadyForRestore') { target.restorePreview = { Status: 'Previewed', PreviewHash: hash2, CanRestoreIndependentItems: true, Blocked: false, PlannedFileCount: 14, PlannedBytes: 101700, Rows: previewRows }; actions.push(action('TargetRestore', { PreviewHash: hash2 })); }
   return { Kind: 'WizardRuntimeProjection', Role: 'Target', PairId: pairId, viewContext: { revision: revision + 100, decisionRevision: 2, selectionRevision: 1, dataVersion: 1 }, status: stage, actions, runtime: { target } };
@@ -212,6 +222,63 @@ const server = http.createServer((req, res) => {
     assert.equal(await card.locator('[data-preview-reapply]').count(), 1, 'deferred (unselected) rows are not listed as re-restore');
     await page.screenshot({ path: path.join(screens, 'r6-preview-390.png'), fullPage: true });
     await noOverflow(page, 'preview');
+    await page.close();
+
+    // ---------------------------------------------------------------- 10. Q4：還原進行中（Running／WaitingForInput／Interrupted）選取與按鈕鎖定
+    stage = 'NeedsTargetDecision'; receiptSelected = null;
+    const lockCases = [{ status: 'Running', actionAvailable: false, retry: true }, { status: 'WaitingForInput', actionAvailable: false }, { status: 'Interrupted', actionAvailable: false }, { status: 'Running', actionAvailable: true, retry: true }];
+    for (const lockCase of lockCases) {
+      restoreLock = lockCase; const label = `${lockCase.status}/actionAvailable=${lockCase.actionAvailable}`;
+      const submitBefore = submissions.length; const receiptsBefore = receiptCount();
+      page = await openPage(390); card = page.locator('.wizard-runtime-target');
+      const itemBoxes = card.locator('[data-runtime-item]'), boxCount = await itemBoxes.count();
+      assert.equal(boxCount, 6, `all six rows rendered (${label})`);
+      for (let i = 0; i < boxCount; i++) assert.equal(await itemBoxes.nth(i).isDisabled(), true, `item checkbox ${i} is disabled while the restore is in progress (${label})`);
+      const groupBoxes = card.locator('input[aria-label="全選此群組"]'), groupCount = await groupBoxes.count();
+      assert.ok(groupCount >= 3, 'group checkboxes rendered');
+      for (let i = 0; i < groupCount; i++) assert.equal(await groupBoxes.nth(i).isDisabled(), true, `group checkbox ${i} is disabled (${label})`);
+      for (const name of ['全選', '全不選', '選取篩選結果', '取消選取篩選結果']) assert.equal(await card.getByRole('button', { name, exact: true }).isDisabled(), true, `"${name}" is disabled (${label})`);
+      const note = card.locator('[data-restore-lock]');
+      assert.equal(await note.isVisible(), true, `the lock reason is visible (${label})`);
+      assert.equal(await note.innerText(), '⛔ ' + LOCK_REASON, 'the lock reason text comes from the projection');
+      assert.equal(await itemBoxes.first().getAttribute('aria-describedby'), 'wizard-restore-lock-note', 'the checkbox is described by the lock reason');
+      assert.equal(await page.evaluate(() => document.querySelector('[data-restore-lock]').children.length), 0, 'the reason is plain text (textContent), not markup');
+      await fillReceipt(card.locator('fieldset.wizard-runtime-form').filter({ has: page.locator('[data-runtime-field="Decision"]') }));
+      const submitButton = card.getByRole('button', { name: '建立決策收據' });
+      assert.equal(await submitButton.isDisabled(), true, `the create-receipt button is disabled even with owner and reason filled (${label})`);
+      await submitButton.click({ force: true });
+      assert.equal(await page.locator('#restore-selection-confirm-dialog[open]').count(), 0, 'a forced click opens no confirmation');
+      if (lockCase.retry) {
+        const retryButton = page.locator('[data-retry-focus="submit"]');
+        assert.equal(await retryButton.count(), 1, `the retry button is shown (disabled) while the restore runs (${label})`);
+        assert.equal(await retryButton.getAttribute('aria-disabled'), 'true', 'the retry button is aria-disabled');
+        assert.match(await page.locator('#wizard-retry-why').innerText(), /還原進行中，完成或取消後才能變更選擇/, 'the retry button explains why it is disabled');
+        await page.locator('.wizard-retry-failed [data-runtime-field="Owner"]').fill('Target operator'); await page.locator('.wizard-retry-failed [data-runtime-field="Reason"]').fill('Q4 retry');
+        assert.equal(await retryButton.getAttribute('aria-disabled'), 'true', 'filling owner and reason does not enable the retry button');
+        await retryButton.focus(); await page.keyboard.press('Enter'); await page.keyboard.press('Space'); await retryButton.click({ force: true });
+        assert.equal(submissions.filter(x => x.action === 'TargetRetryFailedItems').length, 0, 'the retry was not submitted');
+      }
+      // 鍵盤：停用的勾選框不可聚焦，空白鍵／Enter 也不能改變選取或送出
+      await page.evaluate(() => document.querySelector('[data-runtime-item="site"]').focus());
+      assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.runtimeItem || '' : ''), '', 'a disabled checkbox cannot take keyboard focus');
+      const before = await picked(page);
+      for (let i = 0; i < 40; i++) {
+        await page.keyboard.press('Tab');
+        const info = await page.evaluate(() => { const a = document.activeElement; return { item: a && a.dataset ? a.dataset.runtimeItem || '' : '', label: a ? a.getAttribute('aria-label') || '' : '' }; });
+        assert.equal(info.item, '', 'Tab never lands on an item checkbox'); assert.notEqual(info.label, '全選此群組', 'Tab never lands on a group checkbox');
+        if (await page.evaluate(() => !!(document.activeElement && document.activeElement.closest('.wizard-runtime-items')))) { await page.keyboard.press('Space'); await page.keyboard.press('Enter'); }   // 只在選取區內按，避免觸發頁面導覽
+      }
+      assert.deepEqual(await picked(page), before, `the selection is unchanged after keyboard attempts (${label})`);
+      assert.equal(receiptCount(), receiptsBefore, 'no receipt was sent'); assert.equal(submissions.length, submitBefore, `nothing was submitted at all (${label})`);
+      await page.screenshot({ path: path.join(screens, `q4-lock-${lockCase.status}-390.png`), fullPage: true });
+      await noOverflow(page, `locked picker ${label}`);
+      await page.close();
+    }
+    // 鎖定解除後恢復可操作（同一頁面重開、投影不再帶鎖）
+    restoreLock = null;
+    page = await openPage(390); card = page.locator('.wizard-runtime-target');
+    assert.equal(await card.locator('[data-runtime-item="site"]').isDisabled(), false, 'the checkboxes are usable again after the lock is gone');
+    assert.equal(await card.locator('[data-restore-lock]').isVisible(), false, 'no lock text when nothing is in progress');
     await page.close();
 
     // ---------------------------------------------------------------- 9. 寬螢幕與零錯誤

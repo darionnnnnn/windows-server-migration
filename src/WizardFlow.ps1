@@ -452,6 +452,8 @@ function Set-WsmWizardChoice {
         }
     }
     if($Role -cne 'Manager' -and $Role -cne 'Target'){throw 'Only the manager can change source decisions; the target can only change selections within a sealed approval.'}
+    # Q4（16.2）：Target 在還原母作業進行中不得變更選取；與 Create-WsmWizardTargetDecisionReceipt 共用同一判定，先於任何修訂檢查與寫入。
+    if($Role -ceq 'Target'){Assert-WsmWizardTargetRestoreNotInProgress $Workspace $PairId $Jobs}
     if(-not $Selected -and [string]::IsNullOrWhiteSpace($Reason)){$Reason='使用者選擇不搬移'}
     # Composite counterpart to Set-WsmDecision + Set-WsmAssistiveSelections.
     # Keep their validations and histories in one workspace lock and one catalog write.

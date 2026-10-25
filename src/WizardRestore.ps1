@@ -388,6 +388,8 @@ function Get-WsmWizardTargetRetryCandidates {
 function Create-WsmWizardTargetDecisionReceipt {
     [CmdletBinding()]param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][string]$PairId,[Parameter(Mandatory)][ValidateSet('WaitForInstall','RestoreNow')][string]$Decision,[Parameter(Mandatory)][string]$Owner,[Parameter(Mandatory)][string]$Reason,[Parameter(Mandatory)][string[]]$SelectedItemIds,[string[]]$AcceptedUnpreparedItemIds=@(),[object[]]$Jobs=@(),[string]$RetryOfReceiptHash='')
     $ctx=Assert-WsmWizardTargetRole $Workspace $PairId
+    # Q4：還原父作業進行中（含 P8 重試路徑）一律拒絕，且在任何收據寫入前完成，不留下收據檔。
+    Assert-WsmWizardTargetRestoreNotInProgress $Workspace $PairId $Jobs
     if([string]::IsNullOrWhiteSpace($Owner) -or [string]::IsNullOrWhiteSpace($Reason)){throw 'An explicit responsible owner and reason are required for the Target decision.'}
     $retry=$null
     if($RetryOfReceiptHash){

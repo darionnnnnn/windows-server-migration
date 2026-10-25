@@ -2420,6 +2420,34 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - workspace 磁碟以 `Package.Root` 所在磁碟代表。
   - 沒有測試 ZIP 續跑時的容量；續跑沿用既有的保守全量計算。
 
+### 17.115 Q4：還原母作業進行中，鎖定選取與決策收據（16.2）
+
+- 規格：`work/r7/specs/Q4-lock-selection-during-restore.md`。Sonnet 5.5 effort medium subagent 實作；主代理審 diff、補上白名單外的一個入口、另做突變並獨立重跑。
+- 契約：
+  - 判定依據是同一 pair、同一 workspace 最新的一筆 TargetRestore 母作業。它的狀態若是 Running、Queued、CancelRequested、WaitingForInput 或 Interrupted，就視為還原進行中。判定函式為 `Get-WsmWizardTargetRestoreLock`／`Assert-WsmWizardTargetRestoreNotInProgress`。
+  - 還原進行中時：
+    - `Create-WsmWizardTargetDecisionReceipt` 一律拒絕，包含 P8 的 `RetryOfReceiptHash` 重試路徑。錯誤訊息以 `RestoreInProgress:` 開頭；檢查在寫收據之前，不會留下收據檔。
+    - **主代理補上**：Target 角色的 `Set-WsmWizardChoice`（HTTP 的 `saveChoice`）也會改選取，subagent 回報它在白名單外、沒有鎖。主代理在角色檢查之後、任何修訂檢查之前加上同一判定，並在測試五種狀態下都斷言它被拒。
+  - `SaveSelection`／`SetRestoreChoice`（`Set-WsmHtmlSelection`／`Set-WsmHtmlRestoreChoice`）讀的是 Manager 的 catalog 與比較結果，屬於 Manager 端的選取，不是 Target 還原時的選取，所以不套用這個鎖。
+  - 投影新增 `runtime.restoreLock`。鎖定時，收據與重試動作停用並附上原因；前端的項目勾選框、群組勾選框與四個工具按鈕停用，說明文字以 textContent 呈現，並以 `aria-describedby` 連結。
+  - 較舊的 Running 若已被較新、已完成的作業取代，就不鎖；其他 pair 或 workspace 的作業不影響這裡。續作與 WaitingForInput 的帳密流程不受影響。
+- 測試：
+  - `Test-SelectionLockDuringRestore.ps1`：70 項，含主代理補的 10 項 wizard choice 斷言。
+  - `Test-RestoreSelectionBrowser.js` 情境 10：在四種組合下驗證停用、說明文字、鍵盤無法觸發，零 console 錯誤。
+  - 既有斷言都沒有改。
+- 突變（皆轉紅）：
+  - subagent：後端不檢查、漏掉 WaitingForInput、只檢查 Running、前端不停用。
+  - 主代理：拿掉 `Set-WsmWizardChoice` 的鎖，測試回報「A Target wizard choice was accepted while the restore parent is Running」。
+- 驗證（主代理重跑）：
+  - PowerShell：SelectionLockDuringRestore 70、RetryFailedItems 83、WizardRestore 132、TargetRestoreContinuation 133、WizardRuntime 182、HtmlConsole 175、WizardHtmlRuntimeProjection 214，以及所有呼叫 Set-WsmWizardChoice 的測試（WizardFlow、WizardGrouping、WizardManagerApprovalJourney、WizardPreparationBulk、WizardSourceGrouping、WizardVersionSeparation、UnresolvedPathNoPrefill）、ScriptEncoding。
+  - 前端：AssistiveUi（node --test）。
+  - Edge：RestoreSelectionBrowser、RetryFailedItemsBrowser、WizardRuntimeTargetUi、WizardJourney。
+  - NativeWizardJourney 出現 TimeoutError，但在 HEAD 與 a22d6c0 都同樣失敗，屬於環境類，已排入 Q6b。
+- 限制：
+  - 判定依賴呼叫端傳入的 Jobs 快照，「檢查通過到寫入收據之間」沒有跨程序互斥。HTML 端每次請求都會重新取得 Jobs，所以風險低。
+  - 鍵盤測試只確認焦點不會落在勾選框上。
+- 教訓：Edit 工具會把混用換行的檔案整份正規化成 CRLF；Git Bash 的 sed 輸出會吃掉 CR。改這類檔案要用 Python 以位元組比對。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -2637,7 +2665,7 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R3 | `src/AssistiveRestore.ps1`（逐檔判定、預覽、寫入器、預計寫入量）、`src/Recovery.ps1`（Repair 對帳）、`src/WizardRuntime.ps1`（原因文字） | 目標目錄已有外部檔時，預覽 Ready、選項可還原，但寫入器一律 BlockedConflict，重試候選又列回它，形成無限重試；預計寫入量沒有扣除 | 單一逐檔判定，供預覽、選項、重試、寫入器、Repair 共用：內容相同記為 AdoptedExisting；內容不同則在預覽就判 BlockedConflict 並列出衝突數，重試排除；預計寫入量扣除這兩類檔案（17.109） | `Test-DirectoryScopeExistingFiles`（90 項，含連按重試兩次、AST 守門、寫入器直接呼叫目錄與單檔範圍） | a4d0d57 |
 | R4 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1`、`src/ui/console.js` | 含人工、外部或不支援項目的備份（stage 為 ReviewRequired，但交付已驗證）被當成未交付：結果頁顯示「尚無已交付備份」、獨立副本停用、進度卡顯示「部分失敗」 | 抽出共用的「已交付」判定（以交付證據為準，排除非 C 待處理），取代 5 處寫死的 `'Delivered'`；ReviewRequired 改為附註「含 N 項需人工或外部處理」與「完成（含待人工處理）」（17.110） | `Test-BackupCurrencyAndReview`（R4 區段）、G3、BackupWorkbenchBrowser／BackupProgressBrowser 新增區段 | b808884 |
 | R5 | `src/WizardBackup.ps1`、`src/WizardBackupProjection.ps1` | 「目前這一代」有兩套判定，對舊 attempt 做獨立副本後結果頁翻回舊世代；「可續作」有兩份判定，其中一份沒有排除已交接的 attempt | 共用 helper 改依 StartedUtc／世代／AttemptId 排序，不用 UpdatedUtc；「可續作」改為單一判定並排除已交接（17.110） | `Test-BackupCurrencyAndReview`（R5 區段與 13 個可續作情境） | b808884 |
-| R26-B6 | `src/AssistiveRestore.ps1` 容量加總、`src/WizardRuntime.ps1` 原因文字 | 同一磁碟的容量加總也算進已還原的項目，已還原完成後，其他項目仍被誤判為容量不足 | 已還原項目改用 `Get-WsmAssistiveRestoredItemIdSet` 判定，不計入加總、也不標記；改為逐項判定（單項超量只擋該項），合計不足時標記同磁碟所有待寫項目，並附合計數字（17.114，與 Q3 同一段） | `Test-TargetCapacityStaging`（B6 三個情境，先在原版重現誤判再修正） | （Q3-COMMIT） |
+| R26-B6 | `src/AssistiveRestore.ps1` 容量加總、`src/WizardRuntime.ps1` 原因文字 | 同一磁碟的容量加總也算進已還原的項目，已還原完成後，其他項目仍被誤判為容量不足 | 已還原項目改用 `Get-WsmAssistiveRestoredItemIdSet` 判定，不計入加總、也不標記；改為逐項判定（單項超量只擋該項），合計不足時標記同磁碟所有待寫項目，並附合計數字（17.114，與 Q3 同一段） | `Test-TargetCapacityStaging`（B6 三個情境，先在原版重現誤判再修正） | 539408f |
 
 ### 第六輪終檢
 

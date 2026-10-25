@@ -41,6 +41,8 @@ function ConvertTo-WsmWizardHtmlValue($Value,[int]$Depth=0) {
     $allowed+=@('TargetLocalComparison','Provenance')
     # P8：重試失敗項目的唯讀投影欄位（候選清單、排除原因、來源收據與預填值）。
     $allowed+=@('TargetRetryFailedItems','RetryOfReceiptHash','retry','visible','candidateItemIds','candidateCount','succeededCount','notSucceededCount','excluded','sourceAttemptId','sourceReceiptHash','sourceReceiptShort','sourceStage','defaultOwner','defaultReason','code','lastStatus')
+    # Q4：還原進行中鎖定選取的唯讀投影欄位。
+    $allowed+=@('restoreLock','active','parentOperationId')
     $allowed+=@('group','restorable','restorableReason','restorableCode','restored','statusSummary','adoptedExistingCount','adoptedExistingNote')
     # Q1：還原後重新核對的唯讀投影欄位（recheck 區塊、逐項狀態與原因、「曾成功」歷史、匯入新盤點後的提示）與核對動作的輸出欄位。
     $allowed+=@('TargetRecheck','recheck','recheckStatus','needsRecheckItemIds','checked','checkedUtc','sequence','recordHash','suggested','suggestedText','checkedCount','matchedCount','needsRecheckCount','unverifiableCount','items','itemId','name','adapter','recordStatus','previousStatus','statusText','succeededUtc','historyText','reasons','kind','text','relativePath','detail','reportOnly','stage','status')
