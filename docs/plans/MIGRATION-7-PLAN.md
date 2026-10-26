@@ -3096,6 +3096,51 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - RECOVERY-RUNBOOK 新節用繁中、舊文是英文，留給文件普查處理。
   - 這批改了 guide.html、WizardBackupProjection.ps1、Start-ServerMigration.ps1，帳本階段雜湊因此過期；`Test-DocumentationFacts` 也還沒接進 CI 與帳本。兩者都在 R27 處理。
 
+### 17.131 R26-1：前端與輸出 P3（R26-1a～1f、R26-D14b、R26-S17b）
+
+- 規格：`work/r7/specs/R26-1-frontend-output.md`。由 Sonnet 5.5 subagent 實作；主代理審查，修正一處遮蔽漏洞並補測試。
+- **R26-1a CSV 公式前綴**
+  - PowerShell 端收斂到 `Review.ps1` 的 `Test-WsmCsvFormulaText`、`ConvertTo-WsmCsvSafe`（`-ProtectQuote` 供決策 CSV 往返使用）、`ConvertFrom-WsmCsvSafe`；Reports、EnvironmentConfirmation 與 Review 匯入端改為呼叫這組函式。
+  - JS 端有兩份，無法共用程式碼：console.js 的 `csvCellText` 與離線報告的 `csvCell`。改用 `Test-CsvFormulaConvergence.js` 釘住三邊結果一致（40 個測試值、200 個隨機往返，另有靜態守門）。
+  - 規則：值前補單引號的條件是「前導空白（`\s` 加 U+0085、U+FEFF）後接 `= + - @`」，或「開頭是 Tab／CR／LF」。值中間出現換行不算，否則一般多行說明會被誤加引號。
+- **R26-1b console.js 清理**
+  - 刪掉重複定義的 `acknowledgeWizardCoreWrite`，保留實際生效的那份。
+  - statusClass 的鍵 `restoreNow` 改為 `restorenow`。查表前輸入已轉小寫，舊鍵永遠查不到；回傳值本來就是空字串，所以行為不變。
+  - `Test-FrontendHygiene.js` 守門。
+- **R26-1c HTML 遮蔽**
+  - `ConvertTo-WsmHtmlText` 改為 `ConvertTo-WsmAssistiveReportText` 的薄包裝，離線報告與 Assistive 報告共用同一份遮蔽與 HTML 編碼。
+  - 已被上游換成 `[redacted]` 的值放行，不再整段遮蔽。
+  - **主代理修正**：subagent 寫的 `(?!\s*\[redacted\])` 會放行 `password=[redacted]realSecret`，導致 `realSecret` 外洩。改為：`[redacted]` 後面若緊接著可能延續值的字元，就不放行。這些字元是英數字、`-`、`.`、`/`、`\`、`:`、`@`、`+`、`=`、`%`。第一版只放行後面接空白、`;`、`,` 的情況；但「人工備註」是用全形「；」串接的，結果被誤遮蔽，`Test-SoftwareTabBrowser` 轉紅，所以改成現在的寫法。第一版還漏掉了反斜線，讀位元組時才發現並補上。補了 5 條測試：值直接黏在 `[redacted]` 後、後接 `-`、後接反斜線、後接全形分隔、後接半形分隔。以 subagent 原本的寫法做突變，測試轉紅。
+- **R26-1d BOM**
+  - psd1、psm1、console.js 都補回 BOM。
+  - console.js 實測不受影響：瀏覽器斷言確認腳本照常執行、畫面上不出現 U+FEFF。HtmlConsole 以同一份位元組直送並計算雜湊。
+- **R26-1e**：C2 處置為 Unknown 時，顯示「◐ 已暫記未確認」，不再顯示「✔ 已審閱」。
+- **R26-1f**：入口以 exit 2 結束時，多印一行 `NextStep=`：有父作業就提示 RESUME 或 TAKEOVER；需要帳密就提示改用互動主控台或 HTML 對話框；其餘提示補齊缺少的欄位。新增函式 `Get-WaitingNextStepLine`。
+- **R26-D14b**：console 批次表單對 Stale 列預填前次的處置、負責人、原因與證據。
+  - 預填的值仍須暫存並確認送出才會生效。
+  - 使用者已改過的欄位不會被覆蓋，Stale 標示保留。
+- **R26-S17b**（依盤點工作階段定案）
+  - 列表不篩選，每一列附 `foreignWorkspace` 旗標。比對改用 `Test-WsmHtmlJobInWorkspace`，沿用 F2 的 `Get-WsmPathRelativeToRoot`。
+  - 外來紀錄的所有寫入與開啟路由，一律以 `job_foreign_workspace` 拒絕。報告與附件開啟路由原本會把這個錯誤吃掉，已改為讓它穿透。
+  - UI 顯示「此紀錄來自其他工作區位置（可能是搬移或竄改）」，不出現任何按鈕；進度卡與帳密對話框也會略過這類紀錄。
+  - 行為變更：路徑只差在尾端分隔符或大小寫的紀錄，現在視為同一個工作區。
+- **既有斷言變更**：
+
+| 檔案 | 舊 | 為何與規格衝突 | 新 |
+|---|---|---|---|
+| `tests/Test-HtmlJobContextScope.js` | foreignWorkspace 與 otherPair／otherRole 同一個迴圈，都預期 `operation_unavailable` | S17b 定案：外來紀錄要有可區分的穩定錯誤碼 | otherPair／otherRole 仍預期 `operation_unavailable`；foreignWorkspace 在 9 條路由各自預期 `job_foreign_workspace`；另加尾端分隔符與大小寫兩個同位置案例 |
+| `tests/Test-CredentialDeferral.ps1` | 子行程腳本只抽出入口的 catch 區塊 | 這個 catch 現在會呼叫 `Get-WaitingNextStepLine`，子行程裡找不到這個函式 | 子腳本以 AST 一併帶入該函式，改用 BOM 寫出；斷言沒有改 |
+
+- **突變**：
+  - subagent 做了 30 個，其中 28 個轉紅。2 個存活，都是等價突變：`[string]$null` 本來就是 `''`；`-match` 本來就不分大小寫。
+  - 主代理另做 1 個，轉紅。
+  - 報告與附件開啟路由那兩處讓錯誤穿透的修改沒有做突變，只由 HTTP 斷言涵蓋。
+- **驗證**：
+  - 新測試：CsvFormulaConvergence 239、FrontendHygiene 17、HtmlTextConvergence 41。
+  - 其他：HtmlJobContextScope 33、CliWaitingForInput 19、CredentialDeferral 69、C2D2Browser、AssistiveUi 49、FrontendCodeCoverage、ScriptEncoding 354、DocumentationFacts 224、HtmlConsole 178、C2D2HtmlActions 185、AssistiveReports、CliExitCodes 56、SoftwareTabBrowser、OfflineReportBrowser、BackupWorkbenchBrowser、EnvironmentConfirmation、SensitiveNameConvergence 326，以及約 30 支呼叫端。
+  - 本機 ENVIRONMENT-LIMITED（環境限制，非程式問題）：ConsoleAssetTransport（exit 3）、NativeWizardJourney、NativeWizardManagerJourney（ECONNRESET；剝掉 BOM 後重跑結果相同）。
+- **交接**：`docs/OPERATIONS.md` 補上 `NextStep=` 的說明，交給文件普查處理。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -3341,7 +3386,15 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R24 | `src/WizardBackupProjection.ps1` 的離線報告與結果文件 | 離線報告只到項目層，無法查看逐檔明細（§18.4 契約缺口） | 每項列前 200 個檔案並附總數，整份上限 5000 筆，使用靜態 `<details>`，路徑經安全文字化（17.127） | `Test-OfflineReportFileLists.ps1`、`Test-OfflineReportBrowser.js` | `a1e996c`（PS7 修正 `55c8e51`） |
 | Q2b | `src/Review.ps1` `Set-WsmMapping` | UNC 項目仍可以設定本機路徑 Mapping | 依 `Get-WsmItemUncResponsibility` 拒絕，並附分類與下一步（17.129） | `Test-UncResponsibility`（Q2b 節） | `d718c2b` |
 | Q2c | `src/MigrationWizard.ps1` 草稿的 TransferChannel | UNC 來源被預設成 NonC | 改由 `Get-WsmDraftTransferChannel` 決定：沿用外部共享設為 External，其餘留空並必填（17.129） | `Test-UncResponsibility`（Q2c 節） | `d718c2b` |
-| R25 | OPERATIONS、README、GENERAL-HOST-WORKFLOW、RECOVERY-RUNBOOK、ASSISTIVE-OPERATIONS、guide.html、離線說明檔、選單標題 | 文件停在第五、六輪：進度字樣錯誤；缺少返回碼 2、CV2 備份與獨立副本、C2／D2、帳密、重試、沿用既有檔、信任邊界。離線說明檔缺 Import-Module 與續行符號。版本仍寫 0.3 | 依現行程式重寫並補節；重建 docs/html；修正離線說明檔並補斷言；版本改為 0.4（17.130） | `Test-DocumentationFacts`（224 項）、`Test-OfflineGuide`（67 項）、`Test-EntryPoint` | （R25-COMMIT） |
+| R25 | OPERATIONS、README、GENERAL-HOST-WORKFLOW、RECOVERY-RUNBOOK、ASSISTIVE-OPERATIONS、guide.html、離線說明檔、選單標題 | 文件停在第五、六輪：進度字樣錯誤；缺少返回碼 2、CV2 備份與獨立副本、C2／D2、帳密、重試、沿用既有檔、信任邊界。離線說明檔缺 Import-Module 與續行符號。版本仍寫 0.3 | 依現行程式重寫並補節；重建 docs/html；修正離線說明檔並補斷言；版本改為 0.4（17.130） | `Test-DocumentationFacts`（224 項）、`Test-OfflineGuide`（67 項）、`Test-EntryPoint` | `cad740b` |
+| R26-1a | `src/Review.ps1` 共用函式、`src/Reports.ps1`、`src/EnvironmentConfirmation.ps1`、`console.js`、離線報告 | CSV 公式前綴有四份實作，規則不一致 | PowerShell 收斂為單一函式；JS 兩份以同一組測試值驗證結果一致（17.131） | `Test-CsvFormulaConvergence.js` | （R261-COMMIT） |
+| R26-1b | `console.js` | 函式重複定義；statusClass 的鍵大小寫錯誤，永遠查不到 | 刪除重複定義；鍵改為小寫（17.131） | `Test-FrontendHygiene.js` | （R261-COMMIT） |
+| R26-1c | `src/WizardBackupProjection.ps1` `ConvertTo-WsmHtmlText`、`src/AssistiveReports.ps1` | 離線報告只做 HTML 編碼不遮蔽，與 Assistive 報告規則不同 | 共用同一個遮蔽編碼函式；只有後面接分隔符的 `[redacted]` 才放行（17.131） | `Test-HtmlTextConvergence.ps1` | （R261-COMMIT） |
+| R26-1d | psd1、psm1、console.js | 基準檔原有的 BOM 被剝除 | 補回 BOM（17.131） | `Test-FrontendHygiene.js`、`Test-C2D2Browser.js` | （R261-COMMIT） |
+| R26-1e | `console.js` C2 | 處置為 Unknown 時顯示「已審閱」 | 改為顯示「已暫記未確認」（17.131） | `Test-C2D2Browser.js` | （R261-COMMIT） |
+| R26-1f | `Start-ServerMigration.ps1` | exit 2 時沒有下一步提示 | 多印一行 `NextStep=`（17.131） | `Test-CliWaitingForInput`、`Test-CredentialDeferral` | （R261-COMMIT） |
+| R26-D14b | `console.js` 批次表單 | Stale 列的前值沒有帶入表單 | 預填前值，仍須確認送出才生效（17.131） | `Test-C2D2Browser.js` | （R261-COMMIT） |
+| R26-S17b | `src/HtmlConsole.ps1`、`console.js` | 其他工作區位置的紀錄可以操作；路徑沒有正規化；沒有專屬錯誤碼 | 加標示並隱藏所有動作；寫入類路由以 `job_foreign_workspace` 拒絕（17.131） | `Test-HtmlJobContextScope.js` | （R261-COMMIT） |
 
 ### 第六輪終檢
 

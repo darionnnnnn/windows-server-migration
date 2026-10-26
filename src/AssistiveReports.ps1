@@ -1,7 +1,7 @@
 ﻿function ConvertTo-WsmAssistiveReportText([object]$Value) {
     if($null -eq $Value){return ''}
     $text=[string]$Value
-    if($text -match '(?i)(?:password|passwd|pwd|secret|token|credential|private\s*key)\s*[:=]'){$text='[sensitive value withheld]'}
+    if($text -match '(?i)(?:password|passwd|pwd|secret|token|credential|private\s*key)\s*[:=](?!\s*\[redacted\](?![\w\-./\\:@+=%]))'){$text='[sensitive value withheld]'}
     [Net.WebUtility]::HtmlEncode($text)
 }
 

@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:ToolVersion = '0.4.0'
 $script:Categories = @('System','Web','Tasks','Services','Runtime','Storage','Identity','Certificates','Database','Network','Roles','External')

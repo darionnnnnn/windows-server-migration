@@ -1,4 +1,4 @@
-@{
+﻿@{
     RootModule = 'WindowsServerMigration.psm1'
     ModuleVersion = '0.4.0'
     GUID = 'f9a991e9-4a49-44d4-8633-e15e844ddc3b'

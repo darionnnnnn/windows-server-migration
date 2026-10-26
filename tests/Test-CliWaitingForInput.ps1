@@ -35,6 +35,8 @@ try{
     Check ($general.ExitCode -eq 2) ('General action at end of input must return 2 (waiting), got '+$general.ExitCode+"`n"+$general.Output)
     Check ($general.Output -match 'Status=WaitingForInput' -and $general.Output -match 'MissingFields=ExpectedHash') ('General action must list the missing ExpectedHash field.'+"`n"+$general.Output)
     Check ($general.Output -notmatch 'MissingFields=[^\r\n]*\bPath\b') 'The already typed Path must not be listed as missing.'
+    # R26-1f：exit 2 的輸出要補一行下一步。缺欄位 -> 補齊後重跑。
+    Check ($general.Output -match '(?m)^NextStep=[^\r\n]*補齊[^\r\n]*MissingFields') ('A waiting result must name its next step.'+"`n"+$general.Output)
 
     # 2. general action, nothing typed after the action id: all required fields are listed.
     $none=Invoke-Cli $menu ($prefix+@('3','DeliveryReceiptImport'))
@@ -51,6 +53,7 @@ try{
     Check ($credBlocked.ExitCode -eq 2) ('A missing credential must return 2, got '+$credBlocked.ExitCode+"`n"+$credBlocked.Output)
     Check ($credBlocked.Output -match 'MissingFields=Credential,SourceCredential,TargetCredential') ('The missing credential fields must be listed.'+"`n"+$credBlocked.Output)
     Check ($credBlocked.Output -notmatch 'MissingFields=[^\r\n]*typed-password') 'The credential line must not be consumed as a value.'
+    Check ($credBlocked.Output -match '(?m)^NextStep=[^\r\n]*互動主控台[^\r\n]*HTML') ('A blocked credential must point to the interactive console or the HTML credential dialog.'+"`n"+$credBlocked.Output)
 
     # 5. nothing typed before the end of input may be persisted (the secret field was missing).
     $leaks=@(Get-ChildItem -LiteralPath $root -Recurse -File -Force|Where-Object{[IO.File]::ReadAllText($_.FullName) -match 'N6-SENTINEL-|value-\d+|typed-password-must-not-be-read'})
@@ -63,6 +66,19 @@ try{
     $psi=New-Object Diagnostics.ProcessStartInfo;$psi.FileName=$engine;$psi.UseShellExecute=$false;$psi.RedirectStandardInput=$true;$psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true;$psi.CreateNoWindow=$true;$psi.Arguments=$niArgs -join ' '
     $p=[Diagnostics.Process]::Start($psi);try{$p.StandardInput.Close();$o=$p.StandardOutput.ReadToEndAsync();$e=$p.StandardError.ReadToEndAsync();[void]$p.WaitForExit(120000);$niCode=$p.ExitCode;$niOut=$o.Result+$e.Result}finally{$p.Dispose()}
     Check ($niCode -eq 2 -and $niOut -match 'MissingFields=') ('-NonInteractive Menu must report waiting (2) with its missing field, got '+$niCode+"`n"+$niOut)
+    # R26-1f：RESUME／TAKEOVER 的下一步文字由入口的 Get-WaitingNextStepLine 決定（有 ParentOperationId 的等待 = 續作父作業）。
+    $entryAst=[Management.Automation.Language.Parser]::ParseFile($entry,[ref]$null,[ref]$null)
+    $helper=$entryAst.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Get-WaitingNextStepLine'},$true)
+    Check ($null -ne $helper) 'The entry script must define Get-WaitingNextStepLine.'
+    . ([scriptblock]::Create($helper.Extent.Text))
+    $parentId='11111111-2222-3333-4444-555555555555'
+    $resume=New-Object IO.EndOfStreamException('waiting for RESUME');$resume.Data['WsmWaitingForInput']=$true;$resume.Data['ParentOperationId']=$parentId
+    $resumeLine=[string](Get-WaitingNextStepLine $resume)
+    Check ($resumeLine -match '^NextStep=RESUME ' -and $resumeLine.Contains($parentId) -and $resumeLine -match 'TAKEOVER') ('A waiting parent must name RESUME with the parent id and the TAKEOVER alternative: '+$resumeLine)
+    $fields=New-Object IO.EndOfStreamException('Console input ended');$fields.Data['WsmWaitingForInput']=$true;$fields.Data['WsmMissingFields']='Path,ExpectedHash'
+    $fieldsLine=[string](Get-WaitingNextStepLine $fields)
+    Check ($fieldsLine -match '^NextStep=' -and $fieldsLine -notmatch 'RESUME|TAKEOVER') ('Missing fields must not suggest RESUME or TAKEOVER: '+$fieldsLine)
+    Check ($fieldsLine -notmatch '[\r\n]') 'The next step is one line.'
     Write-Host ('PASS: CLI end-of-input returns 2 with the missing fields for a general action and a credential action; credentials are never read from stdin, nothing typed is persisted ('+$checks+' checks).')
 }finally{
     $full=[IO.Path]::GetFullPath($root);$tmp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath())

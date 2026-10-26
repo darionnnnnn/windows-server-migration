@@ -715,9 +715,9 @@ function Export-WsmBackupItemResults([string]$Path,[object[]]$Rows,$Meta) {
     [pscustomobject]@{Path=[IO.Path]::GetFullPath($Path);SHA256=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant();Counts=[pscustomobject]$counts;InventorySource=[string]$Meta.InventorySource}
 }
 
+# R26-1c（PLAN 17.131）：離線報告與 Assistive 報告共用同一份「遮蔽＋HtmlEncode」（ConvertTo-WsmAssistiveReportText），這裡只是薄包裝。
 function ConvertTo-WsmHtmlText($Value) {
-    if($null -eq $Value){return ''}
-    [Net.WebUtility]::HtmlEncode([string]$Value)
+    ConvertTo-WsmAssistiveReportText $Value
 }
 
 function Export-WsmBackupOfflineReport([string]$ResultsPath,[string]$ExpectedSha256,[string]$OutputPath) {
@@ -1069,7 +1069,7 @@ var doc=document,PAGE=100;
 doc.documentElement.className+=' js';
 function mk(tag,text,cls){var e=doc.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;}
 function cellText(c){return c.hasAttribute('data-text')?c.getAttribute('data-text'):c.textContent;}
-function csvCell(v){var t=v==null?'':String(v);if(/^[=+\-@\t\r]/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"';}
+function csvCell(v){var t=v==null?'':String(v);if(/^[\s\u0085]*[=+\-@]/.test(t)||/^[\t\r\n]/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"';}
 function downloadCsv(name,headers,rows){
  var lines=[headers].concat(rows).map(function(r){return r.map(csvCell).join(',');});
  var blob=new Blob(['﻿'+lines.join('\r\n')+'\r\n'],{type:'text/csv;charset=utf-8'});

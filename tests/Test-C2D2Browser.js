@@ -364,6 +364,79 @@ const server = http.createServer((req, res) => {
     assert.equal(viewCalls.filter(item => item.action === 'SoftwareDispositionReview').length, c2ReadsBefore + 1);
     assert.equal(count('SoftwareDispositionReviewSubmit'), 2, 'reloading does not submit'); assert.equal(await panel.locator('.b5-footer').getByRole('button', { name: '檢視確認摘要並送出' }).isDisabled(), false);
     await page.close();
+    // =========================================================================================== 3b. R26-D14b／R26-1e：Stale 預填、Unknown 處置另列
+    resetState('Manager', 'prepare');
+    c2Rows.push(software('sw-s', '過期審閱軟體', { DecisionState: 'Stale', DecisionSoftwareHash: hex('0'), Disposition: 'Portable', Owner: '前任負責人', Reason: '前次原因', Evidence: 'change:old-1' }));
+    c2Rows.push(software('sw-u', '暫記未確認軟體', { DecisionState: 'Reviewed', Disposition: 'Unknown', Owner: 'o', Reason: 'r', Evidence: 'e' }));
+    page = await openPage(390, 'c2'); panel = page.locator('[data-b5-panel="c2"]');
+    await panel.locator('.b5-table tbody tr').first().waitFor();
+    const rowText = async name => panel.locator('.b5-table tbody tr', { hasText: name }).first().innerText();
+    assert.match(await rowText('暫記未確認軟體'), /已暫記未確認/, 'an Unknown disposition is listed as provisionally recorded');
+    assert.doesNotMatch(await rowText('暫記未確認軟體'), /已審閱/, 'an Unknown disposition is never shown as reviewed');
+    assert.match(await rowText('排程輔助程式'), /✔ 已審閱：外部處理/, 'a real disposition still reads as reviewed');
+    assert.match(await rowText('過期審閱軟體'), /⚠ 證據已變更，需重新審閱/);
+    const staleBox = panel.getByRole('checkbox', { name: '選取 過期審閱軟體' });
+    // 未選 Stale 列：表單空白
+    assert.equal(await panel.locator('#b5-c2-owner').inputValue(), '');
+    await staleBox.check();
+    assert.equal(await panel.locator('#b5-c2-disposition').inputValue(), 'Portable', 'D14b: the previous disposition is prefilled');
+    assert.equal(await panel.locator('#b5-c2-owner').inputValue(), '前任負責人'); assert.equal(await panel.locator('#b5-c2-reason').inputValue(), '前次原因'); assert.equal(await panel.locator('#b5-c2-evidence').inputValue(), 'change:old-1');
+    assert.match(await panel.locator('.b5-batch').innerText(), /已帶入前次的處置與說明/, 'the prefill is announced as a draft to be reviewed');
+    assert.equal(count('SoftwareDispositionReviewSubmit'), 0, 'prefilling submits nothing');
+    assert.equal(await panel.locator('.b5-footer').innerText().then(t => /待送出的處置：0 筆/.test(t)), true, 'prefilling stages nothing');
+    assert.match(await rowText('過期審閱軟體'), /⚠ 證據已變更，需重新審閱/, 'the stale marker stays until the user submits');
+    await noOverflow(page, 'C2 prefill');
+    await page.screenshot({ path: path.join(screens, 'b5-c2-prefill-390.png'), fullPage: true });
+    // 取消選取：自動帶入的值一併清掉；使用者改過的值不被覆蓋
+    await staleBox.uncheck();
+    assert.equal(await panel.locator('#b5-c2-owner').inputValue(), '', 'an untouched prefill is cleared when the stale row is deselected');
+    const reviewedBox = panel.getByRole('checkbox', { name: '選取 排程輔助程式' }); await reviewedBox.check();
+    assert.equal(await panel.locator('#b5-c2-owner').inputValue(), '', 'only Stale rows are prefilled; a Reviewed row leaves the form blank'); await reviewedBox.uncheck();
+    await staleBox.check(); await panel.locator('#b5-c2-reason').fill('我改過的原因');
+    await panel.getByRole('checkbox', { name: '選取 報表小工具' }).check();
+    assert.equal(await panel.locator('#b5-c2-reason').inputValue(), '我改過的原因', 'user input is never overwritten by a later prefill');
+    // 套用仍需使用者操作：暫存後才進待送出，送出另需 Ack
+    await panel.getByRole('checkbox', { name: '選取 報表小工具' }).uncheck();
+    await panel.getByRole('button', { name: '套用到已選項目（暫存）' }).click();
+    assert.match(await panel.locator('.b5-footer').innerText(), /待送出的處置：1 筆/);
+    assert.equal(count('SoftwareDispositionReviewSubmit'), 0, 'staging a prefilled row still submits nothing');
+    await page.close();
+
+    // =========================================================================================== 3c. R26-S17b：其他工作區位置的紀錄只供檢視
+    resetState('Manager', 'prepare');
+    const jobBase = { action: 'SetMigrationSpec', status: 'Running', role: 'Manager', pairId, startedUtc: '2026-10-22T00:00:00Z', outputs: [], canCancel: true, reportArtifacts: [{ Label: '測試報告', SHA256: hex('a'), Kind: 'File' }] };
+    jobs.set('own-job-1', Object.assign({ jobId: 'own-job-1', operationId: 'own-job-1', workspace: 'C:\fixture\manager', foreignWorkspace: false }, jobBase));
+    jobs.set('foreign-job-1', Object.assign({ jobId: 'foreign-job-1', operationId: 'foreign-job-1', workspace: 'D:\moved\workspace', foreignWorkspace: true }, jobBase));
+    page = await openPage(390, 'c2');
+    // R26-1d：console.js 帶 UTF-8 BOM 送出時，瀏覽器照常執行腳本（WsmConsole 存在）、BOM 不會出現在畫面文字或任何文字節點。
+    const bomProbe = await page.evaluate(async () => { const bytes = new Uint8Array(await (await fetch('/ui/console.js')).arrayBuffer()); return { head: Array.from(bytes.slice(0, 3)), running: typeof window.WsmConsole === 'object', screenHasBom: document.documentElement.textContent.includes(String.fromCharCode(0xFEFF)) || document.body.innerText.includes(String.fromCharCode(0xFEFF)) }; });
+    assert.deepEqual(bomProbe.head, [239, 187, 191], 'console.js is served with its UTF-8 BOM'); assert.equal(bomProbe.running, true, 'the BOM does not stop the script'); assert.equal(bomProbe.screenHasBom, false, 'the BOM never reaches the screen');
+    await page.evaluate(() => { location.hash = '#jobs'; });
+    await page.waitForSelector('#job-list .job-card[data-foreign-workspace="true"]');
+    const cards = page.locator('#job-list .job-card'), foreignCard = page.locator('#job-list .job-card[data-foreign-workspace="true"]'), ownCard = cards.filter({ hasText: 'own-job-1' });
+    assert.equal(await cards.count(), 2, 'the listing is not filtered: the foreign record is still shown');
+    assert.match(await foreignCard.innerText(), /此紀錄來自其他工作區位置（可能是搬移或竄改）/, 'S17b: the foreign record is marked');
+    assert.equal(await foreignCard.locator('button').count(), 0, 'S17b: a foreign record offers no executable action (cancel/open/reconnect/resume/takeover)');
+    assert.equal(await ownCard.getByRole('button', { name: '要求取消' }).count(), 1, 'a record of this workspace keeps its cancel action');
+    assert.equal(await ownCard.getByRole('button', { name: /開啟報告/ }).count(), 1, 'a record of this workspace keeps its report action');
+    assert.equal(await foreignCard.getByRole('button', { name: /取消|開啟|重新連線|續作|接手/ }).count(), 0);
+    await noOverflow(page, 'foreign job card 390'); await page.screenshot({ path: path.join(screens, 'r261-foreign-job-390.png'), fullPage: true });
+    await page.setViewportSize({ width: 320, height: 800 }); await noOverflow(page, 'foreign job card 320');
+    // 鍵盤：Tab 走訪整個工作清單，不會停在外來紀錄的任何控制項上
+    await page.evaluate(() => document.querySelector('#job-list').scrollIntoView());
+    const foreignFocusable = await foreignCard.evaluate(card => card.querySelectorAll('button,a[href],input,select,textarea,[tabindex]:not([tabindex="-1"])').length);
+    assert.equal(foreignFocusable, 0, 'the foreign card has nothing to focus');
+    // 進度卡不選外來紀錄（同配對的外來備份工作不能出現進度與取消鈕）；自己的備份工作是對照組，必須顯示。
+    const backupJob = (id, workspace, foreignWorkspace) => ({ jobId: id, operationId: id, action: 'StartBackup', status: 'Running', role: 'Manager', pairId, workspace, foreignWorkspace, canCancel: true, startedUtc: '2026-10-22T00:00:00Z', outputs: [], progress: { percent: 40, backup: { stage: 'Running', percent: 40 } } });
+    const refreshToWizard = async () => { await page.evaluate(async () => { await window.WsmConsole.refreshJobs(); location.hash = '#wizard'; }); await page.waitForTimeout(400); };
+    const progressVisible = () => page.evaluate(() => { const card = document.querySelector('[data-progress-card="wizard"]'); return !!card && !card.hidden; });
+    jobs.set('foreign-backup', backupJob('foreign-backup', 'D:\moved\workspace', true)); await refreshToWizard();
+    assert.equal(await page.evaluate(() => window.WsmConsole.state.jobs.get('foreign-backup').foreignWorkspace), true, 'the console keeps the server-decided flag');
+    assert.equal(await progressVisible(), false, 'S17b: a foreign backup record never drives the progress card');
+    jobs.set('own-backup', backupJob('own-backup', 'C:\fixture\manager', false)); await refreshToWizard();
+    assert.equal(await progressVisible(), true, 'control: a backup record of this workspace does drive the progress card');
+    await page.close();
+
     // 桌面寬度截圖與 empty / loading
     resetState('Manager', 'prepare');
     page = await openPage(1280, 'c2'); await page.locator('[data-b5-panel="c2"] .b5-table tbody tr').first().waitFor();

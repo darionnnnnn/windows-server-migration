@@ -232,7 +232,10 @@ try {
             $entryCatch=@($entryAst.FindAll({param($n)$n -is [Management.Automation.Language.TryStatementAst] -and $n.CatchClauses.Count -eq 1 -and $n.CatchClauses[0].Body.Extent.Text -match 'exit 4'},$true))
             Check ($entryCatch.Count -eq 1) 'Could not locate the entry script top-level catch that maps exceptions to exit codes.'
             $childScript=Join-Path $root 'entry-exit-child.ps1'
-            [IO.File]::WriteAllText($childScript,("param([string]`$Kind)`r`ntry{`r`nif(`$Kind -ceq 'waiting'){`$e=New-Object IO.EndOfStreamException('ended');`$e.Data['WsmWaitingForInput']=`$true;`$e.Data['ParentOperationId']='parent-r3';throw `$e}`r`nelseif(`$Kind -ceq 'eof'){throw (New-Object IO.EndOfStreamException('ended'))}`r`nelse{throw (New-Object OperationCanceledException('cancelled'))}`r`n} catch "+$entryCatch[0].CatchClauses[0].Body.Extent.Text+"`r`n"),(New-Object Text.UTF8Encoding($false)))
+            # R26-1f: the entry catch calls Get-WaitingNextStepLine from the same file, so the child script carries that function (written with a BOM because it contains non-ASCII text).
+            $nextStepFunction=@($entryAst.FindAll({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Get-WaitingNextStepLine'},$true))
+            Check ($nextStepFunction.Count -eq 1) 'Could not locate the entry script waiting next-step helper.'
+            [IO.File]::WriteAllText($childScript,("param([string]`$Kind)`r`n"+$nextStepFunction[0].Extent.Text+"`r`ntry{`r`nif(`$Kind -ceq 'waiting'){`$e=New-Object IO.EndOfStreamException('ended');`$e.Data['WsmWaitingForInput']=`$true;`$e.Data['ParentOperationId']='parent-r3';throw `$e}`r`nelseif(`$Kind -ceq 'eof'){throw (New-Object IO.EndOfStreamException('ended'))}`r`nelse{throw (New-Object OperationCanceledException('cancelled'))}`r`n} catch "+$entryCatch[0].CatchClauses[0].Body.Extent.Text+"`r`n"),(New-Object Text.UTF8Encoding($true)))
             $engine=Join-Path $PSHOME 'powershell.exe';if(-not (Test-Path -LiteralPath $engine)){$engine=Join-Path $PSHOME 'pwsh.exe'}
             $expectedExit=@{waiting=2;eof=3;cancel=3}
             foreach($kind in @('waiting','eof','cancel')){

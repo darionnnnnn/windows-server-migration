@@ -85,11 +85,17 @@ function Set-WsmMapping {
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c
     }
 }
-function ConvertTo-WsmCsvSafe([string]$Value) { if ($Value -match "^[=+@\-\t\r\n']") { return "'"+$Value }; $Value }
+# R26-1a（PLAN 17.131）：CSV 公式前綴全專案唯一的實作。Reports／EnvironmentConfirmation／決策 CSV 都呼叫這裡；
+# JS 兩份（console.js csvCellText、離線報告內嵌 csvCell）無法共用程式碼，tests/Test-CsvFormulaConvergence.js 用同一組測試值釘住三邊一致。
+# 規則：前導空白（\s 加上 JS 與 .NET 各自多出的 U+0085、U+FEFF）之後接 = + - @，或開頭就是 Tab／CR／LF，值前面補單引號。
+function Test-WsmCsvFormulaText([string]$Value) { ($Value -match '^[\s\u0085\ufeff]*[=+\-@]') -or ($Value -match '^[\t\r\n]') }
+# -ProtectQuote：決策 CSV 往返用——本來就以單引號開頭的值也補一個，匯入時才分得出「工具補的」與「使用者本來的」。
+function ConvertTo-WsmCsvSafe([string]$Value,[switch]$ProtectQuote) { if ((Test-WsmCsvFormulaText $Value) -or ($ProtectQuote -and $Value.StartsWith("'"))) { return "'"+$Value }; $Value }
+function ConvertFrom-WsmCsvSafe([string]$Value) { if ($Value.Length -gt 1 -and $Value.StartsWith("'")) { $rest=$Value.Substring(1); if ((Test-WsmCsvFormulaText $rest) -or $rest.StartsWith("'")) { return $rest } }; $Value }
 function Export-WsmDecisions {
     param([string]$Workspace,[string]$PairId,[string]$Path)
     $c=Get-WsmCatalog $Workspace $PairId
-    $c.Items | ForEach-Object { [pscustomobject][ordered]@{ BatchId=$c.BatchId; PairId=$c.PairId; SourceHostId=$c.Source.HostId; ItemId=$_.ItemId; InventoryRevision=$c.InventoryRevision; DecisionRevision=$c.DecisionRevision; Category=$_.Category; Name=(ConvertTo-WsmCsvSafe $_.Name); AllowedDecisions='Include|Exclude|Pending'; Decision=$_.Decision; Reason=(ConvertTo-WsmCsvSafe $_.Reason) } } | Export-Csv -LiteralPath $Path -NoTypeInformation -Encoding UTF8
+    $c.Items | ForEach-Object { [pscustomobject][ordered]@{ BatchId=$c.BatchId; PairId=$c.PairId; SourceHostId=$c.Source.HostId; ItemId=$_.ItemId; InventoryRevision=$c.InventoryRevision; DecisionRevision=$c.DecisionRevision; Category=$_.Category; Name=(ConvertTo-WsmCsvSafe $_.Name -ProtectQuote); AllowedDecisions='Include|Exclude|Pending'; Decision=$_.Decision; Reason=(ConvertTo-WsmCsvSafe $_.Reason -ProtectQuote) } } | Export-Csv -LiteralPath $Path -NoTypeInformation -Encoding UTF8
 }
 function Import-WsmDecisions {
     [CmdletBinding(SupportsShouldProcess)] param([string]$Workspace,[string]$PairId,[string]$Path,[switch]$Preview,[string]$ExpectedHash,[int]$ExpectedRevision=-1)
@@ -107,9 +113,9 @@ function Import-WsmDecisions {
             if (-not $index.ContainsKey($r.ItemId) -or $seen.ContainsKey($r.ItemId)) { throw 'CSV contains unknown or duplicate identity.' }; $seen[$r.ItemId]=$true
             $i=$index[$r.ItemId]
             if ($r.BatchId -cne $c.BatchId -or $r.PairId -cne $c.PairId -or $r.SourceHostId -cne $c.Source.HostId -or $r.AllowedDecisions -cne 'Include|Exclude|Pending') { throw 'CSV identity or allowed values changed.' }
-            if ($r.InventoryRevision -cne [string]$c.InventoryRevision -or $r.DecisionRevision -cne [string]$c.DecisionRevision -or $r.Category -cne $i.Category -or $r.Name -cne (ConvertTo-WsmCsvSafe $i.Name)) { throw 'CSV is stale or read-only fields changed.' }
+            if ($r.InventoryRevision -cne [string]$c.InventoryRevision -or $r.DecisionRevision -cne [string]$c.DecisionRevision -or $r.Category -cne $i.Category -or $r.Name -cne (ConvertTo-WsmCsvSafe $i.Name -ProtectQuote)) { throw 'CSV is stale or read-only fields changed.' }
             if (@('Include','Exclude','Pending') -cnotcontains $r.Decision) { throw 'Invalid CSV decision.' }
-            if ($r.Reason -match "^'[=+@\-\t\r\n']") { $r.Reason=$r.Reason.Substring(1) }
+            $r.Reason=ConvertFrom-WsmCsvSafe $r.Reason
             if ($r.Decision -eq 'Exclude' -and [string]::IsNullOrWhiteSpace($r.Reason)) { throw 'Exclusion requires reason.' }
         }
         Write-Progress -Activity 'Validating CSV (no changes committed)' -Completed

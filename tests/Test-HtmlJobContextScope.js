@@ -4,7 +4,10 @@
 //   * listing and reading are the workspace job HISTORY: every record keeps its workspace/pair/role
 //     provenance so the console UI (Jobs view "workspace history" + per-card provenance) filters it;
 //   * every side-effecting or material-opening route (cancel) is context gated and answers the
-//     generic operation_unavailable error for a record that belongs to another pair/role/workspace.
+//     generic operation_unavailable error for a record that belongs to another pair/role.
+// R26-S17b（PLAN 17.131）：record.workspace 與目前工作區（正規化後）不相等的紀錄仍列出（搬移整個工作區後歷史不能消失），
+//   但列表給它 foreignWorkspace=true，且所有寫入／開啟類路由（cancel、報告與附件 open、帳密、resume）一律以穩定錯誤碼
+//   job_foreign_workspace 拒絕；同一位置的不同寫法（大小寫、尾端分隔符）不算其他工作區。
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -78,11 +81,13 @@ function same(a, b) { return path.resolve(a).toLowerCase() === path.resolve(b).t
     assert.match(pairId, /^[a-f0-9-]{36}$/i, 'the seeded console did not report its pair');
     assert.equal(session.role, 'Manager');
     await stopServer();
-    const ids = { current: crypto.randomUUID(), otherPair: crypto.randomUUID(), otherRole: crypto.randomUUID(), foreignWorkspace: crypto.randomUUID() };
+    const ids = { current: crypto.randomUUID(), otherPair: crypto.randomUUID(), otherRole: crypto.randomUUID(), foreignWorkspace: crypto.randomUUID(), slashSpelling: crypto.randomUUID(), caseSpelling: crypto.randomUUID() };
     writeJob({ jobId: ids.current, role: 'Manager', workspace: root, pairId });
     writeJob({ jobId: ids.otherPair, role: 'Manager', workspace: root, pairId: crypto.randomUUID() });
     writeJob({ jobId: ids.otherRole, role: 'Source', workspace: root, pairId });
     writeJob({ jobId: ids.foreignWorkspace, role: 'Manager', workspace: foreignRoot, pairId });
+    writeJob({ jobId: ids.slashSpelling, role: 'Manager', workspace: root + path.sep, pairId });
+    writeJob({ jobId: ids.caseSpelling, role: 'Manager', workspace: root.toUpperCase(), pairId });
     await start();
     assert.equal(String(session.pairId), pairId);
 
@@ -98,19 +103,43 @@ function same(a, b) { return path.resolve(a).toLowerCase() === path.resolve(b).t
       if (expected) assert.equal(item.role, expected);
     }
     assert.ok(!same(items.get(ids.foreignWorkspace).workspace, root), 'the foreign-workspace record must keep naming its own workspace');
+    // R26-S17b：列表不篩選，但每列都帶伺服器判定的 foreignWorkspace（路徑正規化只在後端一處）。
+    for (const [name, expected] of [['current', false], ['otherPair', false], ['otherRole', false], ['foreignWorkspace', true], ['slashSpelling', false], ['caseSpelling', false]]) {
+      assert.strictEqual(items.get(ids[name]).foreignWorkspace, expected, `foreignWorkspace flag of ${name}`); checks++;
+    }
     assert.notEqual(items.get(ids.otherPair).pairId, pairId); checks++;
     const detail = await get('/api/jobs/' + ids.otherPair);
     assert.equal(detail.status, 200); checks++;
     const record = detail.json(); const detailRecord = record.job || record;
+    assert.strictEqual(detailRecord.foreignWorkspace, false, 'the detail of a same-workspace record is not foreign'); checks++;
+    const foreignDetail = (await (await get('/api/jobs/' + ids.foreignWorkspace)).json()); const foreignDetailRecord = foreignDetail.job || foreignDetail;
+    assert.strictEqual(foreignDetailRecord.foreignWorkspace, true, 'the detail of a foreign-workspace record carries the same flag as the listing'); checks++;
     assert.equal(detailRecord.pairId, items.get(ids.otherPair).pairId, 'GET /api/jobs/{id} must return the same provenance as the listing'); checks++;
 
     // The side-effecting route is context gated: other pair / role / workspace answer operation_unavailable,
     // whereas the current-context (already finished) job is refused for the different reason "not cancellable".
-    for (const name of ['otherPair', 'otherRole', 'foreignWorkspace']) {
+    for (const name of ['otherPair', 'otherRole']) {
       const reply = await post('/api/jobs/' + ids[name] + '/cancel', {});
       assert.ok(reply.status >= 400 && reply.status < 500, `cancel of ${name} returned HTTP ${reply.status}`);
       const body = reply.json();
       assert.equal(body.code || (body.error && body.error.code), 'operation_unavailable', `cancel of ${name} was not context gated: ${reply.text.slice(0, 200)}`); checks++;
+    }
+    // R26-S17b：其他工作區位置的紀錄，每一條寫入／開啟類路由都以同一個穩定錯誤碼拒絕（先於任何其他檢查）。
+    const writeRoutes = [
+      ['POST', '/cancel', {}], ['POST', '/reports/0/open', { SHA256: 'a'.repeat(64) }], ['GET', '/artifacts/0', null], ['POST', '/artifacts/0/open', { SHA256: 'a'.repeat(64) }],
+      ['POST', '/service-credentials', {}], ['POST', '/service-credentials/cancel', {}], ['POST', '/service-credentials/defer', {}],
+      ['GET', '/resume-preview', null], ['POST', '/resume', {}]
+    ];
+    for (const [method, suffix, body] of writeRoutes) {
+      const reply = method === 'GET' ? await get('/api/jobs/' + ids.foreignWorkspace + suffix) : await post('/api/jobs/' + ids.foreignWorkspace + suffix, body);
+      assert.ok(reply.status >= 400 && reply.status < 500, `${method} ${suffix} of a foreign-workspace record returned HTTP ${reply.status}`);
+      const parsed = reply.json();
+      assert.equal(parsed.code || (parsed.error && parsed.error.code), 'job_foreign_workspace', `${method} ${suffix} was not rejected as a foreign workspace record: ${reply.text.slice(0, 200)}`); checks++;
+    }
+    // 同位置的不同寫法不是其他工作區：照常走到可取消性檢查，而不是被當成外來紀錄。
+    for (const name of ['slashSpelling', 'caseSpelling']) {
+      const reply = await post('/api/jobs/' + ids[name] + '/cancel', {}); const parsed = reply.json();
+      assert.equal(parsed.code || (parsed.error && parsed.error.code), 'operation_not_cancellable', `${name} must be treated as this workspace: ${reply.text.slice(0, 200)}`); checks++;
     }
     const own = await post('/api/jobs/' + ids.current + '/cancel', {});
     const ownBody = own.json();

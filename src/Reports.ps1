@@ -59,7 +59,7 @@ function ConvertTo-WsmReportSafeText($Value) {
 }
 function ConvertTo-WsmReportCsvValue($Value) {
     $text=ConvertTo-WsmReportSafeText $Value
-    if($text -match '^\s*[=+@-]' -or $text -match '^[\t\r\n]'){$text="'$text"}
+    $text=ConvertTo-WsmCsvSafe $text
     '"'+$text.Replace('"','""')+'"'
 }
 function Get-WsmReportValue($Object,[string]$Name,$Default='') {

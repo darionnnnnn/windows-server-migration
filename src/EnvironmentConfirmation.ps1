@@ -363,7 +363,7 @@ function Get-WsmEnvironmentConfirmationProjection {
 function ConvertTo-WsmConfirmationCsvField($Value) {
     if($null -eq $Value){$text=''}elseif($Value -is [string]){$text=$Value}else{$text=ConvertTo-Json -InputObject $Value -Depth 12 -Compress}
     $text=ConvertTo-WsmConfirmationSafeText $text 32768
-    if($text -match '^\s*[=+@-]' -or $text -match '^[\t\r\n]'){$text="'$text"}
+    $text=ConvertTo-WsmCsvSafe $text
     '"'+$text.Replace('"','""')+'"'
 }
 

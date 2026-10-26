@@ -99,13 +99,22 @@ function ConvertTo-WsmHtmlC2D2View($Result,[string]$Action,[int]$Revision,[strin
     $view
 }
 
+# R26-S17b（PLAN 17.131）：紀錄的 workspace 與目前工作區是不是同一個位置。沿用 F2 的正規化比較（Get-WsmPathRelativeToRoot：不分大小寫、
+# 忽略尾端分隔符、正規化 / 與 \），不另寫一套；缺欄位或無法正規化一律視為「不是這個工作區」（失敗即拒絕）。
+function Test-WsmHtmlJobInWorkspace($Record,[string]$Workspace) {
+    if(-not $Record -or -not $Record.PSObject.Properties['workspace'] -or -not $Record.workspace){return $false}
+    try{return ((Get-WsmPathRelativeToRoot ([string]$Record.workspace) $Workspace) -ceq '')}catch{return $false}
+}
+
 function Get-WsmHtmlWizardJobs([hashtable]$Jobs,[string]$Workspace) {
-    @($Jobs.Values | ForEach-Object {$_.Record} | Where-Object {$_.workspace -and [IO.Path]::GetFullPath([string]$_.workspace) -ieq [IO.Path]::GetFullPath($Workspace)})
+    @($Jobs.Values | ForEach-Object {$_.Record} | Where-Object {Test-WsmHtmlJobInWorkspace $_ $Workspace})
 }
 
 function Assert-WsmHtmlJobContextAccess($Record,[string]$Workspace,[string]$PairId,[string]$Role) {
     if(-not $Record -or -not $Record.PSObject.Properties['workspace'] -or -not $Record.PSObject.Properties['role'] -or -not $Record.PSObject.Properties['pairId'] -or -not $Record.PSObject.Properties['action']){throw 'JobContextMismatch: job provenance is incomplete.'}
-    if([IO.Path]::GetFullPath([string]$Record.workspace) -ine [IO.Path]::GetFullPath($Workspace) -or [string]$Record.role -cne $Role){throw 'JobContextMismatch: select the original workspace and role before opening materials or cancelling.'}
+    # R26-S17b：其他工作區位置的紀錄只供歷史檢視，所有寫入／開啟類動作以穩定錯誤碼 job_foreign_workspace 拒絕。
+    if(-not (Test-WsmHtmlJobInWorkspace $Record $Workspace)){throw 'JobForeignWorkspace: this record was made in another workspace location (moved or edited); it is history only and cannot be acted on here.'}
+    if([string]$Record.role -cne $Role){throw 'JobContextMismatch: select the original workspace and role before opening materials or cancelling.'}
     $expectedPair=if([string]$Record.action -ceq 'DeveloperProbe'){''}else{$PairId}
     if([string]$Record.pairId -cne $expectedPair){throw 'JobContextMismatch: select the original pair before opening materials or cancelling.'}
 }
@@ -688,6 +697,7 @@ function Get-WsmHtmlSafeError([string]$ExceptionMessage,[string]$ExceptionType='
     if($ExceptionType -ceq 'System.UnauthorizedAccessException' -or $ExceptionMessage -match 'UnauthorizedAccess|access.*denied|administrator privilege') { return (New-WsmHtmlError 'This operation needs permission that is not available to the current Windows user.' 'permission_denied' 'Ask an administrator to review the required permission and run the operation from the authorized account.') }
     if($ExceptionMessage -match 'worker limit|active jobs|Wait for active jobs|still has a running worker') { return (New-WsmHtmlError 'A local operation is still active.' 'active_operation' 'Check the operation history and wait for the active operation to finish.') }
     if($ExceptionMessage -match '^ReportUnavailable') { return (New-WsmHtmlError 'The verified report is unavailable.' 'report_unavailable' 'Refresh operation history and verify the report still exists and matches its recorded hash.') }
+    if($ExceptionMessage -match 'JobForeignWorkspace') { return (New-WsmHtmlError 'This record was made in another workspace location and is shown for history only.' 'job_foreign_workspace' 'Open the original workspace to act on this record; a moved or edited record is never acted on from here.') }
     if($ExceptionMessage -match 'JobContextMismatch|UnknownJob|Unknown report|hash changed|trusted file') { return (New-WsmHtmlError 'The requested operation or report is no longer available.' 'operation_unavailable' 'Refresh operation history and use its current report or recovery guidance.') }
     if($ExceptionType -ceq 'System.IO.InvalidDataException') { return (New-WsmHtmlError 'The request could not be used.' 'invalid_request' 'Review the current page and its fields, then try again.') }
     if($ExceptionMessage -match 'NoSafeCancellationBoundary|already stopped|requires a hash-bound safe cancellation') { return (New-WsmHtmlError 'The operation cannot be cancelled safely in its current state.' 'operation_not_cancellable' 'Inspect the operation history and authoritative journal before recovery.') }
@@ -706,9 +716,10 @@ function Write-WsmHtmlErrorRecord([string]$ErrorRoot,$SafeError,[string]$Route,[
     [IO.File]::AppendAllText($path,(($entry|ConvertTo-Json -Compress)+[Environment]::NewLine),(New-Object Text.UTF8Encoding($false)))
 }
 
-function ConvertTo-WsmHtmlPublicJobRecord($Record) {
+function ConvertTo-WsmHtmlPublicJobRecord($Record,[string]$Workspace='') {
     $public=[ordered]@{}
     foreach($property in $Record.PSObject.Properties){if($property.Name -notin @('idempotencyKey','RequestHash','reportArtifacts','targetRestorePreviewHash','challengePreviewHash')){if($Record.action -ceq 'DeveloperProbe' -and $property.Name -eq 'outputs'){$public.outputs=@(foreach($output in @($property.Value)){$safe=[ordered]@{};foreach($field in @('Status','SHA256','RunId','ArchiveBytes','CollectorCounts','CollectorResults','ProductionQualified','BusinessValidated')){if($output -and $output.PSObject.Properties[$field]){$safe[$field]=$(if($field -in @('ProductionVerified','ProductionQualified')){$false}else{$output.$field})}};[pscustomobject]$safe})}elseif($property.Name -ceq 'outputs'){$public.outputs=@(foreach($stored in @($property.Value)){if($stored -is [psobject] -and ($stored.PSObject.Properties['ProductionVerified'] -or $stored.PSObject.Properties['ProductionQualified'])){$copy=$stored.PSObject.Copy();foreach($flag in @('ProductionVerified','ProductionQualified')){if($copy.PSObject.Properties[$flag]){$copy.$flag=$false}};$copy}else{$stored}})}else{$public[$property.Name]=$property.Value}}}
+    if($Workspace){$public['foreignWorkspace']=(-not (Test-WsmHtmlJobInWorkspace $Record $Workspace))}
     if($Record.PSObject.Properties['reportArtifacts']){$public.artifacts=@(for($i=0;$i -lt @($Record.reportArtifacts).Count;$i++){$item=$Record.reportArtifacts[$i];[pscustomobject]@{index=$i;label=$item.Label;sha256=$item.SHA256;kind=$item.Kind;contentType=$item.ContentType}})}
     [pscustomobject]$public
 }
@@ -1376,14 +1387,14 @@ function Start-WsmHtmlConsole {
                         }
                         }finally{Exit-WsmWorkspaceWorkerGuard $wizardGuard}
                     }
-                    elseif($route -ceq '/api/jobs' -and $request.Method -ceq 'GET'){$response=@{items=@($jobs.Values|ForEach-Object {ConvertTo-WsmHtmlPublicJobRecord $_.Record})}}
+                    elseif($route -ceq '/api/jobs' -and $request.Method -ceq 'GET'){$response=@{items=@($jobs.Values|ForEach-Object {ConvertTo-WsmHtmlPublicJobRecord $_.Record $Workspace})}}
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/reports/([0-9]+)/open$' -and $request.Method -ceq 'POST'){
                         $id=$Matches[1];$index=[int]$Matches[2];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'}
                         try{$record=$jobs[$id].Record;Assert-WsmHtmlJobContextAccess $record $Workspace $PairId $Role;if(-not $record.PSObject.Properties['reportArtifacts'] -or $index -ge @($record.reportArtifacts).Count){throw 'Unavailable'}
                             $open=ConvertFrom-WsmHtmlBody $request.Body;Assert-WsmFields $open @('SHA256') @('SHA256');$artifact=$record.reportArtifacts[$index]
                             if($open.SHA256 -ine $artifact.SHA256){throw 'Unavailable'};Assert-WsmNoReparse $artifact.Path;Assert-WsmTrustedFile $artifact.Path $artifact.SHA256
                             Start-Process -FilePath $artifact.Path | Out-Null;$response=@{status='Opened';SHA256=$artifact.SHA256}
-                        }catch{throw 'ReportUnavailable'}
+                        }catch{if([string]$_.Exception.Message -match '^JobForeignWorkspace'){throw};throw 'ReportUnavailable'}
                     }
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/artifacts/([0-9]+)$' -and $request.Method -ceq 'GET'){
                         $id=$Matches[1];$index=[int]$Matches[2];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};$record=$jobs[$id].Record;Assert-WsmHtmlJobContextAccess $record $Workspace $PairId $Role;if($record.action -cne 'DeveloperProbe' -or -not $record.PSObject.Properties['reportArtifacts'] -or $index -ge @($record.reportArtifacts).Count){throw 'ReportUnavailable'};$artifact=$record.reportArtifacts[$index];if($artifact.Kind -eq 'Folder' -or -not [IO.File]::Exists($artifact.Path)){throw 'ReportUnavailable'};Assert-WsmNoReparse $artifact.Path;Assert-WsmTrustedFile $artifact.Path $artifact.SHA256;$bytes=[IO.File]::ReadAllBytes($artifact.Path);$type=[string]$artifact.ContentType
@@ -1392,7 +1403,7 @@ function Start-WsmHtmlConsole {
                         $id=$Matches[1];$index=[int]$Matches[2];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};try{$record=$jobs[$id].Record;Assert-WsmHtmlJobContextAccess $record $Workspace $PairId $Role;if($record.action -cne 'DeveloperProbe' -or -not $record.PSObject.Properties['reportArtifacts'] -or $index -ge @($record.reportArtifacts).Count){throw 'Unavailable'};$artifact=$record.reportArtifacts[$index];$open=ConvertFrom-WsmHtmlBody $request.Body;Assert-WsmFields $open @('SHA256') @('SHA256');if([string]$open.SHA256 -cne [string]$artifact.SHA256){throw 'Unavailable'}
                             if($artifact.Kind -eq 'Folder'){$probeRoot=[IO.Path]::GetFullPath((Join-Path $Workspace 'developer-probes')).TrimEnd('\')+'\';$folder=[IO.Path]::GetFullPath($artifact.Path);if(-not $folder.StartsWith($probeRoot,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.Directory]::Exists($folder)){throw 'Unavailable'};Assert-WsmNoReparse $folder;Start-Process -FilePath $folder | Out-Null}
                             else{Assert-WsmNoReparse $artifact.Path;Assert-WsmTrustedFile $artifact.Path $artifact.SHA256;Start-Process -FilePath $artifact.Path | Out-Null};$response=@{status='Opened';kind=$artifact.Kind;SHA256=$artifact.SHA256}
-                        }catch{throw 'ReportUnavailable'}
+                        }catch{if([string]$_.Exception.Message -match '^JobForeignWorkspace'){throw};throw 'ReportUnavailable'}
                     }
                     elseif($route -match '^/api/jobs/([a-fA-F0-9-]{36})/service-credentials/cancel$' -and $request.Method -ceq 'POST'){
                         $id=$Matches[1];if(-not $jobs.ContainsKey($id)){throw 'UnknownJob'};$job=$jobs[$id];Assert-WsmHtmlJobContextAccess $job.Record $Workspace $PairId $Role
@@ -1434,7 +1445,7 @@ function Start-WsmHtmlConsole {
                             if($job.Record.action -ceq 'DeveloperProbe' -and $job.CancellationToken){Request-WsmDeveloperProbeCancellation -CancellationToken $job.CancellationToken | Out-Null;$job.Record.Status='CancelRequested'}
                             elseif($job.CancellationToken){Request-WsmCancellation -Token $job.CancellationToken -Owner ([Environment]::UserName) -Evidence 'User requested cancellation from local HTML console' | Out-Null;$job.Record.Status='CancelRequested'}else{throw 'NoSafeCancellationBoundary'}
                         }
-                        $response=ConvertTo-WsmHtmlPublicJobRecord $job.Record
+                        $response=ConvertTo-WsmHtmlPublicJobRecord $job.Record $Workspace
                         }
                     }
                     elseif($route -ceq '/api/spec-review' -and $request.Method -ceq 'GET'){

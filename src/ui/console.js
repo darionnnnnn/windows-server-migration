@@ -1,4 +1,4 @@
-/* Offline, dependency-free console. All user and server values enter the DOM as text. */
+﻿/* Offline, dependency-free console. All user and server values enter the DOM as text. */
 (function () {
   'use strict';
   const state = { token: null, session: null, context: null, sessionReconnectRequired:false, sessionDraftStale:false, sessionDraftStaleInfo:null, views: {}, viewRequests: new Map(), viewEpoch: 0, currentView: null, pageScroll: new Map(), reviewRequest: 0, actions: [], inventory: [], selected: new Set(), selectionReasons: new Map(), selectionDirty: false, selectionGeneration: 0, invalidSelectionIds: new Set(), inventoryPage: 0, inventoryPageSize: 50, inventoryTotal: 0, softwareChoices: new Map(), softwareChoiceReasons: new Map(), softwareGeneration: new Map(), softwareDirty: new Set(), jobs: new Map(), jobResultFilter: null, jobPollError: '', activeAction: null, preview: null, drafts: new Map(), draftGeneration: 0, pendingOperation: null, busy: false, jobPoll: null, globalJobPoll: null, canSaveSelection: true, assistiveEnabled: true, wizard: null, wizardAdvancing: false, wizardRenderSignature:'', wizardDirty:false, wizardStale:false, wizardPendingProjection:null, wizardOwnWriteAck:null, wizardActionDraftAcks:new Map(), wizardAcknowledgedInputKeys:new Set(), wizardContextWriteInFlight:false, wizardRefreshPromise:null, wizardDefaults: new Map(), wizardInputs: new Map(), wizardChoice: null, wizardAutoPending: false, wizardAutoResult: null, wizardAutoAttempt:'', wizardInventoryJobId:'', wizardInventoryBindAttempt:'', wizardPlanImportJobId:'', wizardPlanImportFollowing:false, wizardSourceHandoffExportJobId:'', wizardSourceHandoffImportJobId:'', wizardSourceHandoffImportFollowing:false, wizardPreparationReviewJobId:'', wizardPreparationSaveJobId:'', wizardPreparationJobCompletingId:'', wizardPreparationDraftKey:'', wizardPreparationItemId:'', wizardPreparationNotice:null, wizardPreparationDirty:false, wizardBulkPreparationPreviewJobId:'', wizardBulkPreparationSaveJobId:'', wizardBulkPreparationPreview:null, wizardBulkPreparationInputs:new Map(), wizardBulkPreparationDirty:false, wizardTargetHandoffExportJobId:'', wizardTargetHandoffPreviewJobId:'', wizardTargetHandoffPreview:null, wizardTargetHandoffCommitJobId:'', wizardRuntimeProjection:null, wizardRuntimeIdentity:'', wizardRuntimeLoading:'', wizardRuntimeInputs:new Map(), wizardRuntimeJobId:'', wizardRuntimeContextKey:'', wizardNonCProjection:null, wizardNonCIdentity:'', wizardNonCLoading:'', wizardNonCError:'', wizardFileInspectJobs:new Map(), developerProbeJobId: null, developerProbeUncertain: false };
@@ -148,9 +148,11 @@
   }
   function backupProgressOf(job) { return job && job.progress && job.progress.backup && typeof job.progress.backup === 'object' ? job.progress.backup : null; }
   const progressActive = status => ['Queued', 'Running', 'CancelRequested'].includes(String(status || ''));
+  // R26-S17b：伺服器以正規化路徑比對後標出 foreignWorkspace=true 的紀錄（搬移或竄改而來）只供檢視歷史，任何畫面都不給它可執行動作。
+  function isForeignWorkspaceJob(job) { return !!job && job.foreignWorkspace === true; }
   function pickProgressJob() {
     const pair = String(state.session && (state.session.pairId || state.session.waveId) || '');
-    const rows = [...state.jobs.values()].filter(job => (job.action || job.Action) === 'StartBackup' && backupProgressOf(job) && (!pair || String(job.pairId || '') === pair));
+    const rows = [...state.jobs.values()].filter(job => !isForeignWorkspaceJob(job) && (job.action || job.Action) === 'StartBackup' && backupProgressOf(job) && (!pair || String(job.pairId || '') === pair));
     rows.sort((a, b) => (progressActive(b.status) - progressActive(a.status)) || String(b.startedUtc || b.createdUtc || '').localeCompare(String(a.startedUtc || a.createdUtc || '')));
     return rows[0] || null;
   }
@@ -296,7 +298,7 @@
   }
   function refreshActiveData() { const view = String(location.hash || '#wizard').slice(1).split('?')[0] || 'wizard'; if (view === 'wizard') return refreshWizard(); if (view === 'operations') return loadView('actions', true); if (view === 'jobs') return refreshJobs(); if (view === 'help' || view === 'docs') return Promise.resolve(); return loadView(view, true); }
   function pill(text, status) { const n = el('span', `tag ${statusClass(status)}`, text || status || '未知'); return n; }
-  function statusClass(s) { const classes = { failed:'danger', blocked:'danger', blockedconflict:'danger', conflict:'danger', error:'danger', denied:'danger', invalid:'danger', pending:'warn', deferred:'warn', deferredsoftware:'warn', waitforinstall:'warn', waitingforinput:'warn', cancelrequested:'warn', running:'warn', queued:'warn', unknown:'', notobserved:'', notmeasured:'', unobserved:'', external:'warn', review:'warn', reviewrequired:'warn', ready:'success', succeeded:'success', saved:'success', completed:'success', cancelled:'', approved:'success', passed:'success', verified:'success', restoreNow:'', sameobservedidentity:'warn', differentidentityrequiresreview:'warn', accountscopereviewrequired:'warn', notcompared:'', targetunknown:'', targetmissing:'warn', versionunknown:'', chosenversionobserved:'success', differentfromchosenversion:'warn', versionevidencemismatch:'warn', stalechosenversion:'danger', sourceevidenceincomplete:'warn', targetevidenceincomplete:'warn', ambiguous:'warn', targetonly:'', coverageincomplete:'warn' }; return Object.prototype.hasOwnProperty.call(classes, String(s || '').toLowerCase()) ? classes[String(s || '').toLowerCase()] : ''; }
+  function statusClass(s) { const classes = { failed:'danger', blocked:'danger', blockedconflict:'danger', conflict:'danger', error:'danger', denied:'danger', invalid:'danger', pending:'warn', deferred:'warn', deferredsoftware:'warn', waitforinstall:'warn', waitingforinput:'warn', cancelrequested:'warn', running:'warn', queued:'warn', unknown:'', notobserved:'', notmeasured:'', unobserved:'', external:'warn', review:'warn', reviewrequired:'warn', ready:'success', succeeded:'success', saved:'success', completed:'success', cancelled:'', approved:'success', passed:'success', verified:'success', restorenow:'', sameobservedidentity:'warn', differentidentityrequiresreview:'warn', accountscopereviewrequired:'warn', notcompared:'', targetunknown:'', targetmissing:'warn', versionunknown:'', chosenversionobserved:'success', differentfromchosenversion:'warn', versionevidencemismatch:'warn', stalechosenversion:'danger', sourceevidenceincomplete:'warn', targetevidenceincomplete:'warn', ambiguous:'warn', targetonly:'', coverageincomplete:'warn' }; return Object.prototype.hasOwnProperty.call(classes, String(s || '').toLowerCase()) ? classes[String(s || '').toLowerCase()] : ''; }
   function statusName(value) { const names = { Selected: '已選取', NotSelected: '未選取', Approved: '已核准', Pending: '待核准', Ready: '可執行', Deferred: '待處理', DeferredSoftware: '等待軟體', Blocked: '受阻擋', BlockedConflict: '目的衝突', External: '外部處理', Failed: '失敗', NeedsReconciliation: '需先對帳', BlockedByUnknownDependency: '相依項目狀態未知，已暫停', CredentialRejected: '帳密被拒絕', ManualEvidenceRequired: '需補人工證據', RebootRequired: '已套用，待重新開機', Unknown: '未知', Success:'已完成掃描', NotObserved:'未觀測', NotTested:'未測試', NotMeasured:'未測量', Partial:'部分完成', Observed:'已觀測', Recorded:'已記錄（不代表核准或完成）', AdoptedExisting:'沿用既有檔',ReviewRequired:'需要審閱', Accepted:'已接受（依提供證據）', Sealed:'已封存（效力仍須核對）', ImportedVerified:'匯入收據已驗證', Imported:'已匯入（尚未核准）', Exported:'已匯出交接材料', NoApproval:'尚無核准', NoReceipt:'尚無交付收據', NotApplicable:'不適用', UnsupportedOfflineFullSet:'CV2 的交付以備份結果頁為準', Stale:'已過期／需要複核', OldApproval:'沿用舊核准／需要複核', Queued:'已排入佇列', WaitingForInput:'等待安全憑證輸入', Running: '執行中', CancelRequested: '已要求取消（尚未確認停止）', Cancelled: '已停止', Interrupted:'工作程序中斷（需查證後恢復）', Completed:'已結束', Succeeded: '已完成', Saved:'已保存', RestoreNow: '直接還原', WaitForInstall: '等待補裝', SameObservedIdentity: '觀測身分相同（仍需產品驗證）', DifferentIdentityRequiresReview: '帳戶／SID 不同，需負責人審閱', AccountScopeReviewRequired: '帳戶範圍待審閱', NotCompared: '未比較', TargetUnknown: '目標觀測未知', TargetMissing: '目標盤點確認缺少此軟體', VersionUnknown: '軟體版本未知', ChosenVersionObserved: '已觀測到選用版本', DifferentFromChosenVersion: '目標版本與選用版本不同', VersionEvidenceMismatch: '來源與目標版本證據類型不同', StaleChosenVersion: '來源資料已變更，選用版本過期', SourceEvidenceIncomplete: '來源軟體證據不完整', TargetEvidenceIncomplete: '目標證據不完整', Ambiguous: '配對不唯一', TargetOnly: '僅目標端觀測', CoverageIncomplete: '目標涵蓋不完整' }; return names[value] || value || '未知'; }
   function wizardKindName(value) { const names={Runtime:'軟體與設定',runtime:'軟體與設定',Software:'軟體與設定',software:'軟體與設定',Web:'網站與服務',web:'網站與服務',Website:'網站',website:'網站',ScheduledTask:'排程工作',scheduledtask:'排程工作',Service:'Windows 服務',service:'Windows 服務',File:'檔案',file:'檔案',Registry:'登錄設定',registry:'登錄設定',Share:'共用資料夾',share:'共用資料夾'};return names[value]||names[String(value||'').toLowerCase()]||value||'搬移項目'; }
   // N9c2 / R7-07: 每個路徑旁顯示原字串、解析結果、解析依據與（未解析時的）原因與人工處置下一步。只用 textContent，路徑視為資料。
@@ -400,7 +402,6 @@
     } catch(error){state.token=null;state.sessionReconnectRequired=true;fail(`工作階段重新連線未完成：${error.message}`);return false;}
   }
   async function refreshSession(refreshView, explicit) { if(state.sessionReconnectRequired)return explicit?reconnectSession():false;captureDraft(); invalidatePreview(); const previous = state.session, oldPair = previous && previous.pairId, discardedPairDrafts = hasUnsavedDrafts(); try { const { response, body: session } = await timedJsonFetch('/api/session', { headers: { Accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store' }, 15000, 'read-timeout'); if (!response.ok) throw apiError(session, response.status, '工作階段重新整理失敗'); const changed = viewIdentity(session) !== viewIdentity(previous), contextChanged = previous && (previous.contextId !== session.contextId || previous.role !== session.role), pairChanged=previous&&(previous.pairId||previous.waveId)!==(session.pairId||session.waveId), activeReview=state.jobs.get(String(state.wizardPreparationReviewJobId||'')), freshReview=activeReview&&(activeReview.action||activeReview.Action)==='GetPreparationReview'&&['Succeeded','Completed','Saved'].includes(activeReview.status||activeReview.Status)&&!contextChanged&&!pairChanged&&String(activeReview.revision||'')===String(session.revision||''); if(changed&&!state.wizardPreparationSaveJobId&&!freshReview)clearWizardPreparationReview();if(contextChanged||pairChanged)clearWizardBulkPreparation();if(previous&&(previous.role!==session.role||pairChanged))discardWizardPreparationDrafts(); if(changed){state.wizardRuntimeIdentity='';state.wizardRuntimeProjection=null;}state.session = session; state.token = session.token; invalidateViews(); if (contextChanged) clearActiveActionView(); if (previous && previous.role !== session.role) state.drafts.clear(); if (changed && oldPair !== session.pairId) { state.drafts.clear(); state.selected.clear(); state.selectionReasons.clear(); state.selectionDirty = false; state.softwareChoices.clear(); state.softwareChoiceReasons.clear(); state.softwareDirty.clear(); } renderSession(session); await refreshContext(); if (refreshView) await refreshActiveData(); if (discardedPairDrafts && changed && oldPair !== session.pairId) announce(`另一個視窗已切換配對（${safeText(oldPair)} → ${safeText(session.pairId)}）。舊配對的未保存草稿與選取已清除；舊預覽已失效。`); return !changed; } catch (e) { if(e.status===401||e.code==='invalid_token')requireSessionReconnect();else fail(e.message); return false; } }
-  async function acknowledgeWizardCoreWrite() { const before=state.session&&{contextId:state.session.contextId,role:state.session.role,pairId:state.session.pairId||''};if(!before)throw new Error('工作階段已失效，請重新連線後核對保存狀態。');await refreshSession(false);const after=state.session;if(!after||after.contextId!==before.contextId||after.role!==before.role||(after.pairId||'')!==before.pairId){const error=new Error('保存期間工作階段用途或搬移工作已變更；已停止精靈前進，請檢查目前上下文。');error.status=409;throw error;} }
   function wizardSessionCoreVector(session){const s=session||{};return {decisionRevision:s.decisionRevision,selectionRevision:s.selectionRevision,sourceSelectionRevision:s.sourceSelectionRevision,dataVersion:s.dataVersion};}
   function wizardProjectionCoreVector(projection){const p=projection||{},c=p.context||{},hasCatalog=c.catalogRevision!=null||c.decisionRevision!=null,noCatalogPair=!hasCatalog&&!!p.pairId&&p.catalogAvailable===false,role=p.workspaceRole||p.role;return {decisionRevision:hasCatalog?(c.catalogRevision??c.decisionRevision):noCatalogPair?p.revision:null,selectionRevision:hasCatalog?c.selectionRevision:noCatalogPair?p.revision:null,sourceSelectionRevision:c.sourceSelectionRevision,dataVersion:c.dataVersion,inventoryRevision:c.inventoryRevision??(p.inventory&&p.inventory.revision),role};}
   function wizardCoreVectorsEqual(a,b){if(!a||!b)return false;return ['decisionRevision','selectionRevision','sourceSelectionRevision','dataVersion'].every(key=>String(a[key]==null?'':a[key])===String(b[key]==null?'':b[key]));}
@@ -1822,7 +1823,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
   function maybeAutoOpenCredentialDialog() {
     if (credUi.ctx || (credUi.dialog && credUi.dialog.open)) return;
     for (const [id, job] of state.jobs) {
-      if (String(job.action || '') !== 'TargetRestore' || String(job.status || '') !== 'WaitingForInput' || credUi.autoOpened.has(id) || !isOwnedCredentialJob(id) || !credentialRequirementsOf(job).length) continue;
+      if (isForeignWorkspaceJob(job) || String(job.action || '') !== 'TargetRestore' || String(job.status || '') !== 'WaitingForInput' || credUi.autoOpened.has(id) || !isOwnedCredentialJob(id) || !credentialRequirementsOf(job).length) continue;
       credUi.autoOpened.add(id); try { showCredentialDialog(id, null); } catch (_) {} return;
     }
   }
@@ -1847,9 +1848,10 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
   }
   function jobTitleNode(title, id) { const heading = el('h2', '', title); heading.tabIndex = -1; heading.dataset.jobTitle = String(id); return heading; }
   function formatBytes(value) { const n = Number(value); if (value == null || value === '' || !Number.isFinite(n) || n < 0) return '—'; const units = ['B', 'KiB', 'MiB', 'GiB']; let v = n, i = 0; while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; } return i === 0 ? `${v} B` : `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`; }
+  // R26-1a：規則與 PowerShell ConvertTo-WsmCsvSafe、離線報告 csvCell 相同（tests/Test-CsvFormulaConvergence.js 以同一組測試值釘住）。
+  function csvCellText(value) { let text = value == null ? '' : String(value); if (/^[\s\u0085]*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text)) text = "'" + text; return '"' + text.replace(/"/g, '""') + '"'; }
   function downloadCsv(filename, headers, rows) {
-    const cell = value => { let text = value == null ? '' : String(value); if (/^[=+\-@\t\r]/.test(text)) text = "'" + text; return '"' + text.replace(/"/g, '""') + '"'; };
-    const lines = [headers, ...rows].map(row => row.map(cell).join(','));
+    const lines = [headers, ...rows].map(row => row.map(csvCellText).join(','));
     const blob = new Blob(['\ufeff' + lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob), link = document.createElement('a');
     link.href = url; link.download = filename; link.hidden = true; document.body.appendChild(link); link.click(); link.remove();
@@ -2432,12 +2434,15 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     const backupActions=new Set(['ExportPackage','PackageZip','EnrolledDelivery','CoreExport','TestPackage','StartBackup','Backup','IndependentCopy']),restoreActions=new Set(['RestorePreview','Restore','ValidateRestore','RestoreValidation']),currentPair=String(state.session&&(state.session.pairId||state.session.waveId)||''),jobs = [...state.jobs.values()].filter(job => (!state.jobResultFilter&&(state.showAllJobs||String(job.pairId||'')===currentPair||(job.action||job.Action)==='DeveloperProbe'))||(state.jobResultFilter&&String(job.pairId||'')===currentPair&&state.jobResultFilter==='backup'&&backupActions.has(job.action||job.Action))||(state.jobResultFilter&&String(job.pairId||'')===currentPair&&state.jobResultFilter==='restore'&&restoreActions.has(job.action||job.Action)));
     if (!jobs.length) { box.appendChild(el('div', 'empty-card', state.jobResultFilter==='backup'?'目前搬移工作沒有可顯示的備份結果；盤點或環境探測不會列在此處。':state.jobResultFilter==='restore'?'目前搬移工作沒有可顯示的還原結果；盤點或環境探測不會列在此處。':state.showAllJobs ? '目前沒有工作區歷史。' : '目前配對沒有進行中的工作。')); restoreFocus(); return; }
     jobs.forEach(job => {
-      const card = el('article', 'job-card'), main = el('div'), acts = el('div', 'job-actions'), id = job.jobId || job.id || job.operationId, title = actionLabel(job.action, job.label || '本機作業'), status = statusName(job.status);
+      const card = el('article', 'job-card'), main = el('div'), acts = el('div', 'job-actions'), id = job.jobId || job.id || job.operationId, title = actionLabel(job.action, job.label || '本機作業'), status = statusName(job.status), foreign = isForeignWorkspaceJob(job);
+      if (foreign) card.dataset.foreignWorkspace = 'true';
       const provenance = job.pairId ? `${job.role || '角色未知'} · 配對 ${job.pairId}` : '配對／角色歸屬未知';
       const actor = job.actor || job.Actor || {}, actorPrincipal = actor.WindowsPrincipal || actor.windowsPrincipal, actorHost = actor.ExecutionHost || actor.executionHost, actorObserved = actor.ObservedUtc || actor.observedUtc, actorSid = actor.WindowsSID || actor.windowsSid;
       const actorMeta = el('div', 'job-meta job-actor', `本機程序執行身分：${safeText(actorPrincipal || '未知')} · 執行主機：${safeText(actorHost || '未知')} · 觀測時間：${formatEvidenceTime(actorObserved)}${actorSid ? ` · Windows SID：${safeText(actorSid)}` : ''} · 未驗證瀏覽器操作者；不代表負責人簽核。`);
       main.append(jobTitleNode(title, id), el('div', 'job-meta', `工作識別碼：${id} · ${status}`), el('div', 'job-meta', `來源：工作區 ${safeText(job.workspace)} · ${provenance} · session ${safeText(job.sessionId)} · context ${safeText(job.contextId)} · 起始 revision ${safeText(job.startedRevision)}`), el('div', 'job-meta', `開始時間：${formatEvidenceTime(job.startedUtc || job.createdUtc)} · ${['WaitingForInput', 'Interrupted'].includes(String(job.status || '')) ? '狀態：等待中（尚未結束）' : ['Queued', 'Running', 'CancelRequested'].includes(String(job.status || '')) ? '狀態：進行中（尚未結束）' : `結束時間：${formatEvidenceTime(job.completedUtc || job.endedUtc)}`}`), el('div', 'job-meta', job.message || job.nextStep || (job.status === 'Interrupted' ? '工作程序已中斷；先核對 journal、鎖與材料引用，再選擇既有恢復操作。' : '狀態會在安全檢查點更新。'))); if (job.error) { main.append(el('div', 'job-error', `錯誤：${safeText(job.error.message || job.error.code || '工作失敗')}`)); if (job.error.nextStep) main.append(el('div', 'job-meta job-error-next', `建議下一步：${safeText(job.error.nextStep)}`)); if (job.error.code || job.error.correlationId) main.append(el('div', 'job-meta', `安全錯誤代碼：${safeText(job.error.code)} · 關聯識別碼：${safeText(job.error.correlationId)}`)); }
-      main.appendChild(actorMeta);renderServiceCredentialChallenge(job,id,main);
+      main.appendChild(actorMeta);
+      if (foreign) { const note = el('div', 'job-error job-foreign-note', '此紀錄來自其他工作區位置（可能是搬移或竄改）'); note.setAttribute('role', 'note'); main.append(note, el('div', 'job-meta', '只供檢視歷史：這裡不提供取消、開啟報告、續作或接手等動作；要處理請回到原本的工作區位置。')); }
+      else renderServiceCredentialChallenge(job,id,main);
       if (job.progress && job.progress.percent != null) { const bar = el('div', 'job-progress'), fill = document.createElement('progress'); fill.max = 100; fill.value = Math.max(0, Math.min(100, Number(job.progress.percent))); fill.textContent = `進度 ${job.progress.percent}%`; bar.appendChild(fill); bar.setAttribute('aria-label', `進度 ${job.progress.percent}%`); main.appendChild(bar); }
       if (job.progress && (job.progress.activity || job.progress.statusDescription)) { main.appendChild(el('p', 'job-progress-detail', String(job.progress.activity || '') + (job.progress.statusDescription ? (job.progress.activity ? ' · ' : '') + job.progress.statusDescription : ''))); }
       if (job.progress && job.progress.currentOperation) { main.appendChild(el('p', 'item-sub job-progress-file', '目前檔案：' + job.progress.currentOperation)); }
@@ -2449,15 +2454,15 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
           list.append(el('dt', '', jobOutputFieldLabel(key)), el('dd', '', jobOutputFieldValue(key,value)));
         });
         main.appendChild(list); appendProjectedRows(main, output);
-        if (output.Kind === 'AssistiveWindowsSettingsPreviewOutput' && Array.isArray(output.Rows)) {
+        if (!foreign && output.Kind === 'AssistiveWindowsSettingsPreviewOutput' && Array.isArray(output.Rows)) {
           const usePreview = el('button', 'secondary-button', '使用此預覽準備設定審閱'); usePreview.type = 'button'; usePreview.dataset.focusKey = `prefill-settings:${id}:${output.ExpectedRevision || ''}`; usePreview.addEventListener('click', () => prefillWindowsSettingsReview(output, job)); acts.appendChild(usePreview);
         }
-        if (output.Kind === 'AssistiveRequirementReview' && Array.isArray(output.Rows)) { const useReview = el('button', 'secondary-button', '使用此預覽準備需求審閱'); useReview.type = 'button'; useReview.dataset.focusKey = `prefill-requirement:${id}:${output.ExpectedRevision || ''}`; useReview.addEventListener('click', () => prefillRequirementDecisionReview(output, job)); acts.appendChild(useReview); }
+        if (!foreign && output.Kind === 'AssistiveRequirementReview' && Array.isArray(output.Rows)) { const useReview = el('button', 'secondary-button', '使用此預覽準備需求審閱'); useReview.type = 'button'; useReview.dataset.focusKey = `prefill-requirement:${id}:${output.ExpectedRevision || ''}`; useReview.addEventListener('click', () => prefillRequirementDecisionReview(output, job)); acts.appendChild(useReview); }
       });
-      (job.reportArtifacts || []).forEach((artifact, index) => { const label = artifact.Label || artifact.label || '驗證過的報告'; const open = el('button', 'secondary-button', `開啟報告：${label}`); open.type = 'button'; open.dataset.focusKey = `report:${id}:${index}`; open.disabled = !id || !artifact.SHA256; open.addEventListener('click', () => openJobReport(id, index, artifact.SHA256)); acts.appendChild(open); });
-      renderDeveloperProbeJob(job,id,main,acts);
-      const reconnect = el('button', 'secondary-button', '重新連線'); reconnect.type = 'button'; reconnect.dataset.focusKey = `reconnect:${id}`; reconnect.addEventListener('click', () => reconnectJob(id)); acts.appendChild(reconnect);
-      if (job.canCancel === true && ['Queued', 'Running', 'CancelRequested'].includes(job.status)) { const cancelling = job.status === 'CancelRequested' || progressUi.cancelling.has(id), cancel = el('button', 'secondary-button', cancelling ? '取消已送出' : '要求取消'); cancel.type = 'button'; cancel.dataset.focusKey = `cancel:${id}`; cancel.disabled = cancelling; cancel.addEventListener('click', () => { if (!cancel.disabled) openCancelConfirm(id, cancel); }); acts.appendChild(cancel); }
+      (foreign ? [] : job.reportArtifacts || []).forEach((artifact, index) => { const label = artifact.Label || artifact.label || '驗證過的報告'; const open = el('button', 'secondary-button', `開啟報告：${label}`); open.type = 'button'; open.dataset.focusKey = `report:${id}:${index}`; open.disabled = !id || !artifact.SHA256; open.addEventListener('click', () => openJobReport(id, index, artifact.SHA256)); acts.appendChild(open); });
+      if (!foreign) renderDeveloperProbeJob(job,id,main,acts);
+      if (!foreign) { const reconnect = el('button', 'secondary-button', '重新連線'); reconnect.type = 'button'; reconnect.dataset.focusKey = `reconnect:${id}`; reconnect.addEventListener('click', () => reconnectJob(id)); acts.appendChild(reconnect); }
+      if (!foreign && job.canCancel === true && ['Queued', 'Running', 'CancelRequested'].includes(job.status)) { const cancelling = job.status === 'CancelRequested' || progressUi.cancelling.has(id), cancel = el('button', 'secondary-button', cancelling ? '取消已送出' : '要求取消'); cancel.type = 'button'; cancel.dataset.focusKey = `cancel:${id}`; cancel.disabled = cancelling; cancel.addEventListener('click', () => { if (!cancel.disabled) openCancelConfirm(id, cancel); }); acts.appendChild(cancel); }
       card.append(main, acts); box.appendChild(card);
     }); restoreFocus();
   }
@@ -2500,7 +2505,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     imp: { values:{ Path:'', ExpectedHash:'', TargetPath:'', Owner:'', Evidence:'' }, busy:false, result:null, error:'' },
     review: { itemId:'', data:null, loading:false, error:'', stale:false },
     mapping: { data:null, loading:false, error:'', stale:false, choices:new Map(), deps:new Map(), busy:false, result:null, submitError:'', open:false },
-    c2: { data:null, loading:false, error:'', stale:false, attempted:'', selected:new Set(), nameFilter:'', stateFilter:'all', pending:new Map(), form:{ disposition:'', owner:'', reason:'', evidence:'' }, busy:false, result:null, submitError:'' }
+    c2: { data:null, loading:false, error:'', stale:false, attempted:'', selected:new Set(), nameFilter:'', stateFilter:'all', pending:new Map(), form:{ disposition:'', owner:'', reason:'', evidence:'' }, prefill:null, busy:false, result:null, submitError:'' }
   };
   const b5StaleCodes = new Set(['stale_context','stale_revision','stale-view','context-changed']);
   const b5Dispositions = { Reinstall:'重新安裝', Portable:'可攜（免安裝）', KeepCompatible:'保留相容版本', External:'外部處理（工具不處理）', NotNeeded:'不需要搬移', Unknown:'尚未確認（Unknown）' };
@@ -2863,7 +2868,8 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     finally { c2.loading = false; b5Repaint('c2'); b5FinishFocus('c2', '.b5-footer .b5-ok, .b5-footer .b5-error, .b5-footer .b5-warn'); }
   }
   function b5C2Rows() { return (b5.c2.data && b5.c2.data.Rows) || []; }
-  function b5C2StateText(row) { return row.DecisionState === 'Reviewed' ? `✔ 已審閱：${b5Dispositions[row.Disposition] || row.Disposition}` : row.DecisionState === 'Stale' ? '⚠ 證據已變更，需重新審閱' : '○ 尚未審閱'; }
+  // R26-1e：處置「尚未確認（Unknown）」只是暫記，不能顯示成「✔ 已審閱」。
+  function b5C2StateText(row) { return row.DecisionState === 'Reviewed' && row.Disposition === 'Unknown' ? '◐ 已暫記未確認：尚待人工確認，之後仍要改選實際處置' : row.DecisionState === 'Reviewed' ? `✔ 已審閱：${b5Dispositions[row.Disposition] || row.Disposition}` : row.DecisionState === 'Stale' ? '⚠ 證據已變更，需重新審閱' : '○ 尚未審閱'; }
   function b5C2Filtered() {
     const c2 = b5.c2, text = c2.nameFilter.trim().toLowerCase();
     return b5C2Rows().filter(row => (!text || `${row.Name} ${row.Publisher} ${row.Version}`.toLowerCase().includes(text)) && (c2.stateFilter === 'all' || (c2.stateFilter === 'undecided' ? row.DecisionState !== 'Reviewed' : row.DecisionState === 'Reviewed')));
@@ -2893,13 +2899,26 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
     table.append(thead, body); wrap.appendChild(table); container.appendChild(wrap);
     if (filtered.length > shown.length) container.appendChild(b5Status('info', `注意：只顯示前 ${shown.length} 筆；請用上方篩選縮小範圍。`));
   }
+  // R26-D14b：選到 Stale 列時，把前次的處置、負責人、原因、證據帶進批次表單當草稿；仍要按「套用到已選項目（暫存）」再「確認送出」才生效。
+  // 使用者已改過的欄位不會被覆蓋；取消選取而表單仍是原樣帶入的值時，一併清掉。
+  const B5_C2_FIELDS = ['disposition', 'owner', 'reason', 'evidence'];
+  function b5C2PrefillUntouched() { const c2 = b5.c2, pre = c2.prefill; return pre ? B5_C2_FIELDS.every(key => c2.form[key] === pre.values[key]) : B5_C2_FIELDS.every(key => !c2.form[key]); }
+  function b5C2ApplyPrefill() {
+    const c2 = b5.c2, form = c2.form; if (!b5C2PrefillUntouched()) return;
+    const stale = b5C2Rows().find(row => c2.selected.has(row.SoftwareId) && row.DecisionState === 'Stale' && row.Disposition);
+    if (!stale) { if (c2.prefill) { B5_C2_FIELDS.forEach(key => { form[key] = ''; }); c2.prefill = null; } return; }
+    const values = { disposition:String(stale.Disposition || ''), owner:String(stale.Owner || ''), reason:String(stale.Reason || ''), evidence:String(stale.Evidence || '') };
+    Object.assign(form, values); c2.prefill = { softwareId:stale.SoftwareId, name:String(stale.Name || ''), values };
+  }
   function b5RenderC2Batch() {
     const c2 = b5.c2, box = document.querySelector('[data-b5-c2-batch]'); if (!box) return;
+    b5C2ApplyPrefill();
     box.replaceChildren();
     const selectedRows = b5C2Rows().filter(row => c2.selected.has(row.SoftwareId)), special = selectedRows.filter(row => row.SpecialProduct), allowed = b5C2AllowedForSelection();
     if (!allowed.includes(c2.form.disposition)) c2.form.disposition = '';
     box.appendChild(b5Heading('批次套用處置'));
     box.appendChild(el('p', 'b5-summary', `已選 ${selectedRows.length} 筆軟體。`));
+    if (c2.prefill && b5C2PrefillUntouched()) box.appendChild(b5Status('info', `已帶入前次的處置與說明（來自「${c2.prefill.name}」，其證據已變更）：請核對、必要時修改，再按「套用到已選項目（暫存）」；這裡不會自動送出，原本的「⚠ 證據已變更，需重新審閱」標示會保留到送出後。`, 'b5-prefill-note'));
     if (special.length) box.appendChild(b5Status('warn', `限制：已選項目含 ${special.length} 個套裝本體（特殊產品），這類產品只能選「外部處理」或「不需要搬移」；工具不會重裝或搬移套裝本體。`, 'b5-special-note'));
     const options = [{ value:'', label:selectedRows.length ? '請選擇處置…' : '先選取軟體' }].concat(allowed.map(name => ({ value:name, label:b5Dispositions[name] })));
     const select = b5Select('b5-c2-disposition', '處置', options, c2.form.disposition, value => { c2.form.disposition = value; }, '只列出所有已選項目都允許的處置。'); select.select.disabled = !selectedRows.length; box.appendChild(select.wrap);
@@ -2913,7 +2932,7 @@ function preparationReviewOutput(job){const outputs=job&&(job.outputs||job.Outpu
       const firstKey = ['disposition', 'owner', 'reason', 'evidence'].find(key => errors[key]);
       if (firstKey) { (firstKey === 'disposition' ? select.select : fields[firstKey].input).focus(); return; }
       selectedRows.forEach(row => c2.pending.set(row.SoftwareId, { disposition:c2.form.disposition, owner:c2.form.owner.trim(), reason:c2.form.reason.trim(), evidence:c2.form.evidence.trim() }));
-      c2.selected.clear(); c2.result = null; c2.submitError = ''; announce(`已暫存 ${selectedRows.length} 筆處置；尚未送出。`); b5Repaint('c2');
+      c2.prefill = null; c2.selected.clear(); c2.result = null; c2.submitError = ''; announce(`已暫存 ${selectedRows.length} 筆處置；尚未送出。`); b5Repaint('c2');
     }, 'c2-apply');
     box.appendChild(apply);
   }

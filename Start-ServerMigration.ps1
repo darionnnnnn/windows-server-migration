@@ -29,6 +29,17 @@ function Get-MenuExitCode([int]$Baseline) {
     if($Action -cne 'Menu'){return $Baseline}
     & $migrationModule {param($baseline) Get-WsmMenuWorstStatusCode $baseline} $Baseline
 }
+# R26-1f：以 exit 2（等待輸入）結束時補一行下一步，依情境區分：續作父作業 = RESUME（挑戰屬於較早的工作階段時改 TAKEOVER）、
+# 帳密不從重新導向的輸入讀取 = 改在互動主控台或 HTML 帳密對話框、其餘 = 補齊缺少的欄位後重跑。只有一行，不含任何已輸入的值。
+function Get-WaitingNextStepLine([Exception]$Exception) {
+    if($Exception.Data.Contains('ParentOperationId') -and [string]$Exception.Data['ParentOperationId']){
+        return ('NextStep=RESUME 重新執行還原流程，在提示時輸入 RESUME 續作父作業 '+[string]$Exception.Data['ParentOperationId']+'；若提示改為 TAKEOVER（等待帳密的挑戰屬於較早的視窗或工作階段），輸入 TAKEOVER 由目前視窗接手。不輸入就不會續作。')
+    }
+    if([string]$Exception.Message -match 'Credential/secret input|Credentials are not read'){
+        return 'NextStep=帳密不會從重新導向的標準輸入讀取：請改在互動主控台執行，或用 HTML 主控台的帳密對話框輸入；已建立的還原父作業之後以 RESUME 續作（原視窗已關閉時用 TAKEOVER）。'
+    }
+    'NextStep=補齊 MissingFields 列出的欄位後重新執行同一個指令（文字選單可由標準輸入逐行提供，帳密除外）。'
+}
 function Read-MenuValue([string]$Label) {
     $value=Read-Host ($Label+'（0 取消；literal:0 表示文字 0）')
     if($null -eq $value){throw (New-Object IO.EndOfStreamException('Console input ended.'))}
@@ -187,7 +198,7 @@ try {
 } catch {
     [Console]::Error.WriteLine($_.Exception.Message)
     if ($_.Exception -is [IO.InvalidDataException] -or $_.Exception -is [Management.Automation.ParameterBindingException]) { exit 4 }
-    if ($_.Exception -is [IO.EndOfStreamException] -and $_.Exception.Data.Contains('WsmWaitingForInput')) { $waitingLine='Status=WaitingForInput';if($_.Exception.Data.Contains('ParentOperationId')){$waitingLine+=' ParentOperationId='+[string]$_.Exception.Data['ParentOperationId']};if($_.Exception.Data.Contains('WsmMissingFields')){$waitingLine+=' MissingFields='+[string]$_.Exception.Data['WsmMissingFields']};Write-Host $waitingLine; exit 2 }
+    if ($_.Exception -is [IO.EndOfStreamException] -and $_.Exception.Data.Contains('WsmWaitingForInput')) { $waitingLine='Status=WaitingForInput';if($_.Exception.Data.Contains('ParentOperationId')){$waitingLine+=' ParentOperationId='+[string]$_.Exception.Data['ParentOperationId']};if($_.Exception.Data.Contains('WsmMissingFields')){$waitingLine+=' MissingFields='+[string]$_.Exception.Data['WsmMissingFields']};Write-Host $waitingLine; Write-Host (Get-WaitingNextStepLine $_.Exception); exit 2 }
     if ($_.Exception -is [IO.EndOfStreamException] -or $_.Exception -is [OperationCanceledException]) { exit 3 }
     exit 1
 }
