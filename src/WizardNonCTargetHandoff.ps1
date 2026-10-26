@@ -6,11 +6,6 @@ function Get-WsmWizardNonCTargetHandoffHash([string]$Path) {
     (Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
 }
 
-function Assert-WsmWizardNonCTargetHandoffWithin([string]$Path,[string]$Root) {
-    $full=[IO.Path]::GetFullPath($Path).TrimEnd('\');$base=[IO.Path]::GetFullPath($Root).TrimEnd('\')
-    return ($full -ieq $base -or $full.StartsWith($base+'\',[StringComparison]::OrdinalIgnoreCase))
-}
-
 function Assert-WsmWizardNonCTargetHandoffDirectory([string]$Path) {
     $full=[IO.Path]::GetFullPath($Path)
     if(-not [IO.Directory]::Exists($full)){throw 'NonC Target handoff directory does not exist.'}
@@ -34,8 +29,8 @@ function Get-WsmWizardNonCTargetHandoffStage([string]$Directory,[string]$Expecte
         if($kind -notin @('AssistiveNonCTransferPlan','AssistiveNonCTransferResult') -or $byKind.ContainsKey($kind)){throw 'NonC Target handoff requires one exact transfer plan and one exact transfer result.'}
         if($relative -notin @('materials/transfer-plan.json','materials/transfer-result.json') -or $relative -match '\.\.|\\'){throw 'NonC Target handoff material path is not one of the fixed safe names.'}
         Assert-WsmAssistiveHash ([string]$row.SHA256) 'Handoff material hash';$byKind[$kind]=$row
-        $path=[IO.Path]::GetFullPath((Join-Path $root ($relative.Replace('/','\'))));$prefix=$root.TrimEnd('\')+'\'
-        if(-not $path.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'NonC Target handoff material path escaped its directory.'}
+        $path=[IO.Path]::GetFullPath((Join-Path $root ($relative.Replace('/','\'))))
+        if(-not (Test-WsmPathWithinRoot $path $root -ExcludeRoot)){throw 'NonC Target handoff material path escaped its directory.'}
         Assert-WsmNoReparse $path;if(-not [IO.File]::Exists($path) -or (Get-WsmWizardNonCTargetHandoffHash $path) -ine [string]$row.SHA256){throw 'NonC Target handoff material is missing or changed.'}
         $actualPaths[$relative]=$true;$staged[$kind]=[pscustomobject]@{Path=$path;SHA256=([string]$row.SHA256).ToLowerInvariant()}
     }
@@ -54,8 +49,8 @@ function Get-WsmWizardNonCTargetActiveReceipt([string]$Workspace,[string]$PairId
     Assert-WsmNoReparse $root;Assert-WsmNoReparse $path
     $pointerHash=Get-WsmWizardNonCTargetHandoffHash $path;$pointer=Read-WsmTrustedJson $path $pointerHash
     if($pointer.SchemaVersion -ne 1 -or $pointer.Kind -cne 'WizardNonCTargetActiveReceipt' -or $pointer.PairId -cne $PairId -or $pointer.ReceiptHash -notmatch '^[a-fA-F0-9]{64}$' -or $pointer.PreviewId -notmatch '^[a-fA-F0-9]{64}$'){throw 'Current Target NonC active receipt pointer is malformed; preserve it for inspection.'}
-    $receiptPath=[IO.Path]::GetFullPath([string]$pointer.ReceiptPath);$receiptRoot=[IO.Path]::GetFullPath($root).TrimEnd('\')+'\'
-    if(-not $receiptPath.StartsWith($receiptRoot,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($receiptPath) -notlike 'receipt-*.json'){throw 'Current Target NonC active receipt pointer escapes its protected receipt directory.'}
+    $receiptPath=[IO.Path]::GetFullPath([string]$pointer.ReceiptPath)
+    if(-not (Test-WsmPathWithinRoot $receiptPath $root -ExcludeRoot) -or [IO.Path]::GetFileName($receiptPath) -notlike 'receipt-*.json'){throw 'Current Target NonC active receipt pointer escapes its protected receipt directory.'}
     Assert-WsmNoReparse $receiptPath;Assert-WsmTrustedFile $receiptPath ([string]$pointer.ReceiptHash)
     $receipt=Read-WsmTrustedJson $receiptPath ([string]$pointer.ReceiptHash)
     if($receipt.Kind -cne 'WizardNonCTargetHandoffReceipt' -or $receipt.SchemaVersion -ne 1 -or $receipt.PairId -cne $PairId -or $receipt.PreviewId -cne $pointer.PreviewId){throw 'Current Target NonC active receipt does not match its protected pointer.'}
@@ -64,8 +59,8 @@ function Get-WsmWizardNonCTargetActiveReceipt([string]$Workspace,[string]$PairId
 
 function Set-WsmWizardNonCTargetActiveReceipt([string]$Workspace,[string]$PairId,[string]$ExpectedPointerHash,[string]$ReceiptPath,[string]$ReceiptHash,[string]$PreviewId,[string]$TargetSnapshotHash) {
     $root=Join-Path (Get-WsmWizardTargetMaterialRoot $Workspace $PairId) 'nonc-handoffs';Assert-WsmNoReparse $root
-    $fullReceipt=[IO.Path]::GetFullPath($ReceiptPath);$fullRoot=[IO.Path]::GetFullPath($root).TrimEnd('\')+'\'
-    if(-not $fullReceipt.StartsWith($fullRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'Target NonC receipt is outside the protected handoff directory.'}
+    $fullReceipt=[IO.Path]::GetFullPath($ReceiptPath)
+    if(-not (Test-WsmPathWithinRoot $fullReceipt $root -ExcludeRoot)){throw 'Target NonC receipt is outside the protected handoff directory.'}
     Assert-WsmNoReparse $fullReceipt;Assert-WsmTrustedFile $fullReceipt $ReceiptHash
     $path=Join-Path $root 'active-receipt.json'
     $current=Get-WsmWizardNonCTargetActiveReceipt $Workspace $PairId
@@ -92,15 +87,15 @@ function Export-WsmWizardNonCTargetHandoff {
     if(-not $preparation.Current.ManifestHash -or -not $preparation.Current.Generation -or $preparation.Current.PlanHash -ine $approved.SHA256){throw 'A unique current verified final package generation is required before Target handoff.'}
     $choices=@($preparation.TransferChoices|Where-Object {$_.sha256 -ieq $TransferPlanHash -and [string]$_.generation -ceq [string]$preparation.Current.Generation})
     if($choices.Count -ne 1){throw 'The selected NonC transfer plan is not the unique current Manager-verified choice.'}
-    $transferPath=[IO.Path]::GetFullPath([string]$choices[0].path);$transferRoot=[IO.Path]::GetFullPath((Join-Path (Join-Path (Join-Path $Workspace 'workspace-control') 'wizard-materials') ('nonc-'+$PairId))).TrimEnd('\')+'\'
-    if(-not $transferPath.StartsWith($transferRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'Verified transfer plan is outside the Manager-owned NonC material directory.'}
+    $transferPath=[IO.Path]::GetFullPath([string]$choices[0].path);$transferRoot=[IO.Path]::GetFullPath((Join-Path (Join-Path (Join-Path $Workspace 'workspace-control') 'wizard-materials') ('nonc-'+$PairId)))
+    if(-not (Test-WsmPathWithinRoot $transferPath $transferRoot -ExcludeRoot)){throw 'Verified transfer plan is outside the Manager-owned NonC material directory.'}
     Assert-WsmNoReparse $transferPath;Assert-WsmTrustedFile $transferPath $TransferPlanHash;$transfer=Assert-WsmAssistiveNonCPlan $null $transferPath $TransferPlanHash
     if($transfer.PairId -cne $PairId -or $transfer.Channel -cne 'NonC' -or $transfer.SealedPlanHash -ine $approved.SHA256 -or $transfer.ManifestHash -ine $preparation.Current.ManifestHash -or [long]$transfer.Generation -ne [long]$preparation.Current.Generation -or [int]$transfer.SelectionRevision -ne [int]$preparation.Current.SelectionRevision){throw 'Current transfer plan differs from the exact approved plan, package generation, selection or NonC channel.'}
     $resultSummary=Get-WsmWizardNonCResultSummary $Workspace $PairId $approved $preparation $catalog
     $results=@($resultSummary.NonCResults|Where-Object {$_.TransferPlanHash -ieq $TransferPlanHash -and $_.TransferId -ceq $transfer.TransferId -and [string]$resultSummary.Generation -ceq [string]$preparation.Current.Generation})
     if(-not $resultSummary.hasDurableRecord -or -not $resultSummary.current -or $results.Count -ne 1 -or @($resultSummary.NonCResults).Count -ne 1){throw 'A unique current Manager-verified result for this exact transfer plan is required.'}
-    $result=$results[0];$resultPath=[IO.Path]::GetFullPath([string]$result.ResultPath);$resultRoot=[IO.Path]::GetFullPath((Join-Path $Workspace 'assistive\results')).TrimEnd('\')+'\'
-    if(-not $resultPath.StartsWith($resultRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'Verified transfer result is outside the Manager-owned result directory.'}
+    $result=$results[0];$resultPath=[IO.Path]::GetFullPath([string]$result.ResultPath);$resultRoot=[IO.Path]::GetFullPath((Join-Path $Workspace 'assistive\results'))
+    if(-not (Test-WsmPathWithinRoot $resultPath $resultRoot -ExcludeRoot)){throw 'Verified transfer result is outside the Manager-owned result directory.'}
     Assert-WsmNoReparse $resultPath;Assert-WsmTrustedFile $resultPath ([string]$result.ResultHash)
     $target=$catalog.Assistive.TargetCurrent;if(-not $target -or $target.HostId -cne $approved.Plan.Target.HostId -or $target.Fingerprint -ine $approved.Plan.Target.Fingerprint){throw 'Current Target observation is not bound to the approved Target host.'}
     $parent=[IO.Path]::GetFullPath([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Destination)));if(-not [IO.Directory]::Exists($parent)){throw 'Choose an existing destination directory for the portable Target handoff.'};Assert-WsmNoReparse $parent

@@ -78,6 +78,8 @@ function Set-WsmMapping {
         if ($c.DecisionRevision -ne $ExpectedRevision) { throw 'Review changed.' }
         $rows=@($c.Items | Where-Object ItemId -CEQ $ItemId); if ($rows.Count -ne 1) { throw 'Unknown ItemId.' }
         $field='Mapping'; if ($Type -eq 'Account') { $field='AccountMapping' }; if ($Type -eq 'Endpoint') { $field='EndpointMapping' }
+        # Q2b（PLAN 17.129）：UNC 來源的項目依 Get-WsmItemUncResponsibility 的判定，不接受本機路徑 Mapping（清除空值、帳號／端點 Mapping 不受影響）。
+        if ($Type -eq 'Path' -and $Mapping) { $unc=Get-WsmItemUncResponsibility $rows[0]; if ($unc) { throw (New-WsmContractError ('UNC source items cannot take a local path mapping ('+$unc.Label+'). '+$unc.NextStep)) } }
         $rows[0].$field=$Mapping; $c.DecisionRevision++; $c.Approval=$null;if($c.SchemaVersion -eq 3){Clear-WsmAssistiveComparison $c}
         $c.History=@($c.History)+@([pscustomobject]@{ Actor=(Get-WsmExecutionActor); Revision=$c.DecisionRevision; Action='Mapping'; ItemId=$ItemId; Type=$Type; Mapping=$Mapping; Utc=(Get-WsmUtc) })
         Write-WsmJson (Get-WsmCatalogPath $Workspace $PairId) $c

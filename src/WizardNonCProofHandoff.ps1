@@ -17,11 +17,6 @@ function Assert-WsmWizardNonCProofHandoffText([string]$Value,[string]$Name,[int]
     if([string]::IsNullOrWhiteSpace($Value) -or $Value.Length -gt $Maximum -or $Value -match '[\x00-\x1f]'){throw ($Name+' must be a concise, explicit value.')}
 }
 
-function Test-WsmWizardNonCProofHandoffWithin([string]$Path,[string]$Root) {
-    $full=[IO.Path]::GetFullPath($Path).TrimEnd('\');$base=[IO.Path]::GetFullPath($Root).TrimEnd('\')
-    return ($full -ieq $base -or $full.StartsWith($base+'\',[StringComparison]::OrdinalIgnoreCase))
-}
-
 function Get-WsmWizardNonCProofHandoffShares([string]$ShareName,[string]$LocalPath,[object[]]$AdditionalShares=@()) {
     $entries=New-Object 'System.Collections.Generic.List[object]'
     $entries.Add([pscustomobject]@{ShareName=$ShareName;LocalPath=$LocalPath})
@@ -43,13 +38,13 @@ function Get-WsmWizardNonCProofHandoffShares([string]$ShareName,[string]$LocalPa
         $result.Add([pscustomobject][ordered]@{Name=$name;LocalPath=$path})
     }
     for($i=0;$i -lt $result.Count;$i++){for($j=$i+1;$j -lt $result.Count;$j++){
-        if((Test-WsmWizardNonCProofHandoffWithin $result[$i].LocalPath $result[$j].LocalPath) -or (Test-WsmWizardNonCProofHandoffWithin $result[$j].LocalPath $result[$i].LocalPath)){throw 'Nested or overlapping share roots are ambiguous; choose non-nested explicit shares.'}
+        if((Test-WsmPathWithinRoot $result[$i].LocalPath $result[$j].LocalPath) -or (Test-WsmPathWithinRoot $result[$j].LocalPath $result[$i].LocalPath)){throw 'Nested or overlapping share roots are ambiguous; choose non-nested explicit shares.'}
     }}
     @($result.ToArray())
 }
 
 function Get-WsmWizardNonCProofHandoffShareForPath([string]$Path,[object[]]$Shares) {
-    $full=[IO.Path]::GetFullPath($Path);$matches=@($Shares|Where-Object {Test-WsmWizardNonCProofHandoffWithin $full ([string]$_.LocalPath)})
+    $full=[IO.Path]::GetFullPath($Path);$matches=@($Shares|Where-Object {Test-WsmPathWithinRoot $full ([string]$_.LocalPath)})
     if($matches.Count -ne 1){throw 'Every reviewed path must be covered by exactly one explicitly declared share.'}
     $matches[0]
 }
@@ -66,7 +61,7 @@ function Assert-WsmWizardNonCEmbeddedPeerProof($Proof,[string]$ExpectedHostId,[s
 
 function ConvertTo-WsmWizardNonCTargetUncRoot([string]$LocalRoot,[string]$LocalSharePath,[string]$ShareName,[string]$PeerName) {
     $local=[IO.Path]::GetFullPath($LocalRoot).TrimEnd('\');$share=[IO.Path]::GetFullPath($LocalSharePath).TrimEnd('\')
-    if(-not (Test-WsmWizardNonCProofHandoffWithin $local $share)){throw 'Every target root must be inside the explicitly selected existing share root.'}
+    if(-not (Test-WsmPathWithinRoot $local $share)){throw 'Every target root must be inside the explicitly selected existing share root.'}
     $relative=$local.Substring($share.Length).TrimStart('\')
     if($relative -match '(^|\\)\.{1,2}(?:\\|$)'){throw 'Target root contains traversal segments.'}
     $unc='\\'+$PeerName+'\'+$ShareName
@@ -198,7 +193,7 @@ function Get-WsmWizardNonCProofHandoffStage {
         $path=[IO.Path]::GetFullPath([string]$share.LocalPath);$pathKey=$path.TrimEnd('\').ToLowerInvariant();if($sharePaths.ContainsKey($pathKey)){throw 'Proof handoff declares duplicate share paths.'};$sharePaths[$pathKey]=$true
         $normalizedShares.Add([pscustomobject][ordered]@{Name=[string]$share.Name;LocalPath=$path})
     }
-    for($i=0;$i -lt $normalizedShares.Count;$i++){for($j=$i+1;$j -lt $normalizedShares.Count;$j++){if((Test-WsmWizardNonCProofHandoffWithin $normalizedShares[$i].LocalPath $normalizedShares[$j].LocalPath) -or (Test-WsmWizardNonCProofHandoffWithin $normalizedShares[$j].LocalPath $normalizedShares[$i].LocalPath)){throw 'Proof handoff declares nested or overlapping share roots.'}}}
+    for($i=0;$i -lt $normalizedShares.Count;$i++){for($j=$i+1;$j -lt $normalizedShares.Count;$j++){if((Test-WsmPathWithinRoot $normalizedShares[$i].LocalPath $normalizedShares[$j].LocalPath) -or (Test-WsmPathWithinRoot $normalizedShares[$j].LocalPath $normalizedShares[$i].LocalPath)){throw 'Proof handoff declares nested or overlapping share roots.'}}}
     if($manifest.Share.Name -cne $normalizedShares[0].Name -or [IO.Path]::GetFullPath([string]$manifest.Share.LocalPath) -ine $normalizedShares[0].LocalPath){throw 'Legacy primary Share must match the first explicit Shares row.'}
     $materialKinds=@($manifest.Materials|ForEach-Object {[string]$_.Kind})
     if($manifest.Role -ceq 'Source'){
@@ -210,8 +205,8 @@ function Get-WsmWizardNonCProofHandoffStage {
         Assert-WsmAssistiveHash ([string]$row.SHA256) 'Proof material hash';$relative=[string]$row.RelativePath
         if($relative -notmatch '^materials/[a-z0-9][a-z0-9-]{0,63}\.json$' -or $relative -match '\.\.|\\'){throw 'Proof material path must be a fixed safe relative file path.'}
         if($listed.ContainsKey($relative)){throw 'Proof handoff contains duplicate material paths.'};$listed[$relative]=$true
-        $path=[IO.Path]::GetFullPath((Join-Path $root ($relative.Replace('/','\'))));$prefix=$root.TrimEnd('\')+'\'
-        if(-not $path.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'Proof material path escaped its portable handoff directory.'}
+        $path=[IO.Path]::GetFullPath((Join-Path $root ($relative.Replace('/','\'))))
+        if(-not (Test-WsmPathWithinRoot $path $root -ExcludeRoot)){throw 'Proof material path escaped its portable handoff directory.'}
         Assert-WsmNoReparse $path;if(-not [IO.File]::Exists($path) -or (Get-WsmWizardNonCProofHandoffHash $path) -ine [string]$row.SHA256){throw 'Proof material is missing or differs from its manifest bytes.'}
         $stagedRow=[ordered]@{Kind=[string]$row.Kind;Path=$path;SHA256=([string]$row.SHA256).ToLowerInvariant()};if($row.PSObject.Properties['ShareName']){$stagedRow.ShareName=[string]$row.ShareName};$staged.Add([pscustomobject]$stagedRow)
     }
@@ -246,7 +241,7 @@ function Get-WsmWizardNonCProofHandoffPreview {
         if($manifest.Profile.HostId -cne $approved.Plan.Source.HostId -or $manifest.Profile.Fingerprint -ine $approved.Plan.Source.Fingerprint){throw 'Source proof handoff host identity differs from the current approved Source.'}
         $sourcePeerByShare=@{}
         foreach($share in $stage.Shares){$proofRow=@($stage.Materials|Where-Object {$_.Kind -ceq 'SourcePeerShareProof' -and $_.ShareName -ceq $share.Name});if($proofRow.Count -ne 1){throw 'Each declared Source share requires exactly one matching peer proof.'};$sourceProof=Read-WsmAssistivePeerShareProof $proofRow[0].Path $proofRow[0].SHA256 ([string]$approved.Plan.Source.Fingerprint);if($sourceProof.PeerHostId -cne $approved.Plan.Source.HostId -or $sourceProof.ShareName -cne $share.Name -or [IO.Path]::GetFullPath($sourceProof.SharePath) -ine $share.LocalPath){throw 'Source share proof differs from its enrolled host or explicitly reported share.'};$sourcePeerByShare[$share.Name.ToLowerInvariant()]=$sourceProof}
-        foreach($item in $nonCItems){$sourcePath=[string]$item.MigrationSpec.SourcePath;$matches=New-Object 'System.Collections.Generic.List[object]';foreach($share in $stage.Shares){$proof=$sourcePeerByShare[$share.Name.ToLowerInvariant()];$uncRoot='\\'+[string]$proof.PeerName+'\'+[string]$share.Name;if((Test-WsmWizardNonCProofHandoffWithin $sourcePath ([string]$share.LocalPath)) -or (Test-WsmWizardNonCProofHandoffWithin $sourcePath $uncRoot)){$matches.Add($share)}};if($matches.Count -ne 1){throw 'Every included NonC SourcePath must be covered by exactly one explicitly reviewed Source share.'}}
+        foreach($item in $nonCItems){$sourcePath=[string]$item.MigrationSpec.SourcePath;$matches=New-Object 'System.Collections.Generic.List[object]';foreach($share in $stage.Shares){$proof=$sourcePeerByShare[$share.Name.ToLowerInvariant()];$uncRoot='\\'+[string]$proof.PeerName+'\'+[string]$share.Name;if((Test-WsmPathWithinRoot $sourcePath ([string]$share.LocalPath)) -or (Test-WsmPathWithinRoot $sourcePath $uncRoot)){$matches.Add($share)}};if($matches.Count -ne 1){throw 'Every included NonC SourcePath must be covered by exactly one explicitly reviewed Source share.'}}
     }else{
         if($manifest.Profile.HostId -cne $approved.Plan.Target.HostId -or $manifest.Profile.Fingerprint -ine $approved.Plan.Target.Fingerprint){throw 'Target proof handoff host identity differs from the current approved Target.'}
         $proofRow=@($stage.Materials|Where-Object Kind -CEQ 'TargetPhysicalProof');$targetProof=Read-WsmTrustedJson $proofRow[0].Path $proofRow[0].SHA256
@@ -263,7 +258,7 @@ function Get-WsmWizardNonCProofHandoffPreview {
         if((@($expectedUnc.ToArray()|Sort-Object -Unique) -join '|') -cne (@($coveredRoots|Sort-Object -Unique) -join '|')){throw 'Target UNC roots do not map exactly to the explicitly reviewed Target local roots.'}
         $localState=[IO.Path]::GetFullPath([string]$manifest.LocalTargetStateDirectory);$stateShare=Get-WsmWizardNonCProofHandoffShareForPath $localState $stage.Shares;if($manifest.TargetStateShareName -cne $stateShare.Name){throw 'Target StateDirectory share mapping differs from the unique declared share containing that state.'};$statePeer=@($targetPeers|Where-Object {$_.ShareName -ceq $stateShare.Name})[0];$expectedState=ConvertTo-WsmWizardNonCTargetUncRoot $localState $stateShare.LocalPath $stateShare.Name ([string]$statePeer.PeerName)
         if($expectedState -ine $coveredState){throw 'Target StateDirectory UNC does not map to the explicitly reviewed local StateDirectory.'}
-        foreach($item in $nonCItems){$targetPath=[IO.Path]::GetFullPath([string]$item.MigrationSpec.TargetPath);$matches=@($localRoots|Where-Object {Test-WsmWizardNonCProofHandoffWithin $targetPath $_});if($matches.Count -ne 1){throw 'Every included NonC TargetPath must be covered by exactly one explicitly reviewed Target root.'}}
+        foreach($item in $nonCItems){$targetPath=[IO.Path]::GetFullPath([string]$item.MigrationSpec.TargetPath);$matches=@($localRoots|Where-Object {Test-WsmPathWithinRoot $targetPath $_});if($matches.Count -ne 1){throw 'Every included NonC TargetPath must be covered by exactly one explicitly reviewed Target root.'}}
         $expectedIds=@(foreach($root in $coveredRoots){Get-WsmAssistiveEndpointIdentity $root $targetPeers ([string]$targetProof.ProviderId)});$expectedIds=@($expectedIds|Sort-Object -Unique)
         if(($expectedIds -join '|') -cne (@($targetProof.PhysicalIdentities|Sort-Object -Unique) -join '|')){throw 'Target physical proof identities do not cover exactly the declared data roots.'}
         if(-not $coveredState){throw 'Target proof manifest root projection is incomplete.'}

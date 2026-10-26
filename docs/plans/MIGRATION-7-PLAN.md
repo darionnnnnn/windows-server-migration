@@ -3036,6 +3036,38 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
     - WorkspaceWorkerIsolation：本機沒有 pwsh。
     - NativeProbeRoles：在 HEAD 上同樣失敗。
 
+### 17.129 批 F2：「路徑在根底下」收斂（S12）與 Q2 的 UNC 後續（Q2b、Q2c）
+
+- 規格：`work/r7/specs/F2-path-within.md`。Sonnet 5.5 subagent 實作；主代理審查，另做一個突變。
+- **共用函式**（`src/PhysicalPaths.ps1`）：
+  - `Get-WsmPathRelativeToRoot` 與 `Test-WsmPathWithinRoot` 都有兩種模式：
+    - Win32 模式：先 GetFullPath，不分大小寫，比對時要求落在分隔符邊界。
+    - 原生模式（`-Native`）：只做字面比較，路徑含 `.` 或 `..` 段時一律拒絕。
+  - `-ExcludeRoot` 決定「等於根本身」算不算在內。`Test-WsmPathOverlap` 的簽名不變，內部改走同一個實作。
+- **收斂範圍**：AssistiveNonC（含 `Assert-WsmAssistivePathUnder`、`ConvertTo-WsmAssistivePeerPath`）、WizardNonCProofHandoff、WizardNonCTargetHandoff、WizardNonCAccountObservation、RemoteStorageContracts、AdvancedReview，以及 A1 的 `Test-WsmIndependentCopyInsideWorkspace`（前半段 Win32、後半段實體路徑，分別對應兩種模式）。
+- **刪除的函式**：`Test-WsmAssistivePathWithin`、`Test-WsmWizardNonCProofHandoffWithin`、`Assert-WsmWizardNonCTargetHandoffWithin`（沒有任何呼叫端）、`Get-WsmWizardNonCPathUnderPhysicalRoot`（只有測試在呼叫）、`Get-WsmWizardNonCPhysicalPathUnderRoot`。
+- **語意核對**：每個呼叫端原本「等於根本身算不算在內」、用 Win32 還是原生路徑，都逐一保留。只有三處朝「失敗即拒絕」收緊：
+  1. 原生路徑含 `.` 或 `..` 段時拒絕。
+  2. AssistiveNonC 的目的根比對加上 GetFullPath。
+  3. 根為空字串或 `\` 時一律回 false。
+  既有測試沒有因此轉紅。
+- **既有缺陷（未修，已記為 R26-F2a）**：`AssistiveNonC.ps1` 約 :354 寫成 `A -or B`，但在命令模式下 `-or B` 被當成多餘參數吃掉，所以反向包含從來沒有被評估。補上反向包含會改變來源根的路由，因此另案定案。
+- **靜態守門**（`tests/Test-PathWithinRoot.ps1`）：
+  - 白名單內保留 6 處：共用實作 1 處、相對路徑熱迴圈 4 處、顯示用途 1 處。
+  - 白名單外的 38 個檔案、約 140 處，鎖定在例外清單中。清單的筆數只能減少，增加就失敗；逐檔收斂的工作見 R26-F2b。
+- **Q2b**：`Set-WsmMapping` 對 UNC 來源的項目，依 `Get-WsmItemUncResponsibility` 拒絕設定本機路徑 Mapping，並在訊息中附上分類與下一步。清除 Mapping，以及 Account／Endpoint 類型的 Mapping 不受影響。
+- **Q2c**：草稿的通道改由 `Get-WsmDraftTransferChannel` 依 `Get-WsmUncResponsibility` 決定，不再直接預設 NonC：
+  - 「沿用外部共享」設為 External，代表不自動複製。External 的 FileScope 在核准階段仍會被 `MigrationContracts` 擋下，不會被當成已處理。
+  - 其他判定留空，改為必填。
+  - 本機來源維持 C 或 NonC。
+- **既有斷言變更**：只有 `Test-WizardNonCAccountObservation`。原本斷言兩個要刪除的函式，改為斷言共用的 `Get-WsmPathRelativeToRoot`（Win32 與 `-Native`），期望值不變。
+- **測試**：新增 `Test-PathWithinRoot`（320 項，含兄弟前綴、磁碟根、UNC 根、大小寫、尾端分隔符、`/`、`..`、每個呼叫端）。`Test-UncResponsibility` 新增 Q2b、Q2c 兩節。
+- **突變**：
+  - subagent 做了 22 個，全部被抓到。M8 第一次改錯位置，修正後被抓到。
+  - 主代理拿掉 `WizardNonCTargetHandoff` 第 33 行的 `-ExcludeRoot`，測試仍通過。這是等價突變：前一行已把 relative 限定為兩個固定檔名，路徑不可能等於根本身，那個參數在這裡只是縱深防禦。
+- **驗證**：62 支 PowerShell 測試全綠（呼叫端與呼叫端的呼叫端），包括 PathWithinRoot 320、UncResponsibility、PhysicalPaths、AssistiveNonC 34、RemoteStorageContracts、RemoteStorageApproval（以 `-File` 執行）、AdvancedReview 32、IndependentCopyHardening、WizardNonC 系列、MigrationPipeline、AssistiveRestore 178、RestorableSet 199、EnvironmentConfirmation、ScriptEncoding 352。這批沒有改前端，所以沒有跑瀏覽器測試。
+- **未做**：share 根唯一性在 8.3 別名下的問題（S 清單 P3），併入 R26-F2c。
+
 ### 17.43 Test-TextConsole 既有失敗修正
 
 - 主代理親自除錯。`Invoke-WsmTypedTextOperation` 自 9d4a27c 起只在 workspace 已有 `fleet.json` 時才呼叫 `Get-WsmFleet` 列出配對（讀取時不建立 fleet，屬刻意行為）；測試的 fixture workspace 沒有這個檔，`Get-WsmFleet` 替身從未被呼叫，配對提示消失，後面的答案整體錯位，於是動作識別碼讀到 `1` 而丟出 `Unknown operation for this installed module.`。以 6a6b15b、d1472fe、354ca5c 副本重現同樣失敗，確認早於 a4193aa、不是產品回歸。
@@ -3279,6 +3311,8 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R21 | `console.js` 的 `refreshActiveData`、完成事件分支 | 停在 `#jobs?filter=backup&…` 時，備份完成後三個分頁不自動更新 | 先切掉 query 再取 view 名稱；備份或獨立副本完成時重讀明細（17.127） | `Test-BackupWorkbenchBrowser.js`（R21 區段） | `a1e996c`（PS7 修正 `55c8e51`） |
 | R22 | `src/WizardBackupProjection.ps1` 的 `Get-WsmWizardBackupItemFiles` | 10 萬列時每翻一頁約 48 秒，期間 listener 執行緒被卡住 | 以內容雜湊為鍵的有界快取，每次重算並核對雜湊；首次解析改用 JavaScriptSerializer（17.127） | `Test-BackupItemFileIndexCache.ps1`、`Test-BackupWorkbenchView.ps1` | `a1e996c`（PS7 修正 `55c8e51`） |
 | R24 | `src/WizardBackupProjection.ps1` 的離線報告與結果文件 | 離線報告只到項目層，無法查看逐檔明細（§18.4 契約缺口） | 每項列前 200 個檔案並附總數，整份上限 5000 筆，使用靜態 `<details>`，路徑經安全文字化（17.127） | `Test-OfflineReportFileLists.ps1`、`Test-OfflineReportBrowser.js` | `a1e996c`（PS7 修正 `55c8e51`） |
+| Q2b | `src/Review.ps1` `Set-WsmMapping` | UNC 項目仍可以設定本機路徑 Mapping | 依 `Get-WsmItemUncResponsibility` 拒絕，並附分類與下一步（17.129） | `Test-UncResponsibility`（Q2b 節） | （F2-COMMIT） |
+| Q2c | `src/MigrationWizard.ps1` 草稿的 TransferChannel | UNC 來源被預設成 NonC | 改由 `Get-WsmDraftTransferChannel` 決定：沿用外部共享設為 External，其餘留空並必填（17.129） | `Test-UncResponsibility`（Q2c 節） | （F2-COMMIT） |
 
 ### 第六輪終檢
 
@@ -3292,11 +3326,12 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | S14 | `src/HtmlConsole.ps1` `Get-WsmHtmlSafeError`、body 與請求檢查 | 壞掉的 body 回 operation_failed；內部例外訊息含 "parameter" 時被誤判為輸入錯誤 | 請求形狀錯誤與 body 解析改丟契約錯誤；分類器依型別判斷（可穿透 worker 包裝）；只保留 12 條鎖定的 token 比對（17.125） | `Test-HtmlErrorClassification`（160 項，含真實主控台） | `a8fd539` |
 | S15 | `src/WizardNonCOperations.ps1` 帳號對應審閱收據 | 收據只寫不讀，ProofHash 含 CreatedUtc 而不確定 | CreatedUtc 移出 hash，寫入與驗證兩端用同一規則（下游沒有讀取端，17.126） | `Test-WizardNonCOperations` | `507baf5` |
 | S16 | `src/WizardNonCOperations.ps1` 傳輸計畫選單標籤 | 標籤顯示 UTC ISO 原字串 | 沿用 `Get-WsmWizardHandoffLocalTime`（17.126） | `Test-WizardNonCOperations` | `507baf5` |
-| S4 | `src/WizardNonCProofHandoff.ps1`、`src/WizardNonCTargetHandoff.ps1` 交接列舉 | 隱藏檔、隱藏子目錄與 reparse point 逃過「無多餘檔案」與「無 reparse」檢查 | 列舉加上 `-Force`（17.128） | `Test-WizardNonCProofHandoff`、`Test-WizardNonCTargetHandoff`（隱藏檔、隱藏子目錄、junction） | （F1-COMMIT） |
-| S5 | `src/ToolRelease.ps1` manifest 路徑檢查 | 單一反斜線、冒號（ADS）、保留裝置名都能通過檢查 | 改用 `IndexOf([char]92)` 判斷反斜線，並阻擋冒號與保留裝置名（每一段路徑都檢查）（17.128） | `Test-ToolReleaseArchivePaths`（15 項，含資料夾段） | （F1-COMMIT） |
-| S7 | `src/DeveloperProbe.ps1` | 取消或失敗後，`protected-raw` 與取消標記永不清理 | 取消或失敗時刪除這次的 raw；啟動時清理 14 天前的 raw 與 1 天前的標記（17.128） | `Test-DeveloperProbeResidue` | （F1-COMMIT） |
-| S8 | `src/WizardPreparation.ps1` 空值判斷 | `$false` 與 `0` 被當成空值 | 改用 `Test-WsmWizardPreparationBlankValue`（17.128） | `Test-WizardPreparationFieldRules` | （F1-COMMIT） |
-| S9 | `src/WizardPreparation.ps1`、`src/WizardPreparationBulk.ps1` | 選項以外的草稿值讓欄位變成自由文字框且非必填；批次預覽的判定與表單不一致 | 共用 `Get-WsmWizardPreparationChoiceIssue`：有 options 即為 choice，兩欄必填，錯誤帶欄位位置（17.128） | `Test-WizardPreparationFieldRules`、`Test-WizardPreparationAdapters` | （F1-COMMIT） |
-| S10 | `src/WizardPreparation.ps1` 唯讀名單 | IIS 的 Operation、ElementName、AttributeName、ValuesWithheld 可在表單中編輯 | 加入唯讀名單（17.128） | `Test-WizardPreparationFieldRules`、`Test-WizardPreparationAdapters` | （F1-COMMIT） |
-| S13 | `src/WizardRestore.ps1`（已刪除）、`src/WizardRuntime.ps1` | 正式程式從未呼叫的舊函式與實際投影各寫一份綁定判定；實際投影處理復原結果時，在 StrictMode 下丟出例外 | 刪除舊函式，測試改為斷言實際投影；復原結果改用安全讀取，並以 durable attempt 綁定判定（17.128） | `Test-WizardRestore` | （F1-COMMIT） |
-| S17 | `src/HtmlConsole.ps1` `/api/jobs` | 推論：列表與讀取沒有依 context 篩選 | 已重現。依設計，列表為工作區歷史，cancel 有閘門，因此不修改；邊角情況記為 R26-S17b（17.128） | `Test-HtmlJobContextScope.js` | （F1-COMMIT） |
+| S4 | `src/WizardNonCProofHandoff.ps1`、`src/WizardNonCTargetHandoff.ps1` 交接列舉 | 隱藏檔、隱藏子目錄與 reparse point 逃過「無多餘檔案」與「無 reparse」檢查 | 列舉加上 `-Force`（17.128） | `Test-WizardNonCProofHandoff`、`Test-WizardNonCTargetHandoff`（隱藏檔、隱藏子目錄、junction） | `8930536` |
+| S5 | `src/ToolRelease.ps1` manifest 路徑檢查 | 單一反斜線、冒號（ADS）、保留裝置名都能通過檢查 | 改用 `IndexOf([char]92)` 判斷反斜線，並阻擋冒號與保留裝置名（每一段路徑都檢查）（17.128） | `Test-ToolReleaseArchivePaths`（15 項，含資料夾段） | `8930536` |
+| S7 | `src/DeveloperProbe.ps1` | 取消或失敗後，`protected-raw` 與取消標記永不清理 | 取消或失敗時刪除這次的 raw；啟動時清理 14 天前的 raw 與 1 天前的標記（17.128） | `Test-DeveloperProbeResidue` | `8930536` |
+| S8 | `src/WizardPreparation.ps1` 空值判斷 | `$false` 與 `0` 被當成空值 | 改用 `Test-WsmWizardPreparationBlankValue`（17.128） | `Test-WizardPreparationFieldRules` | `8930536` |
+| S9 | `src/WizardPreparation.ps1`、`src/WizardPreparationBulk.ps1` | 選項以外的草稿值讓欄位變成自由文字框且非必填；批次預覽的判定與表單不一致 | 共用 `Get-WsmWizardPreparationChoiceIssue`：有 options 即為 choice，兩欄必填，錯誤帶欄位位置（17.128） | `Test-WizardPreparationFieldRules`、`Test-WizardPreparationAdapters` | `8930536` |
+| S10 | `src/WizardPreparation.ps1` 唯讀名單 | IIS 的 Operation、ElementName、AttributeName、ValuesWithheld 可在表單中編輯 | 加入唯讀名單（17.128） | `Test-WizardPreparationFieldRules`、`Test-WizardPreparationAdapters` | `8930536` |
+| S13 | `src/WizardRestore.ps1`（已刪除）、`src/WizardRuntime.ps1` | 正式程式從未呼叫的舊函式與實際投影各寫一份綁定判定；實際投影處理復原結果時，在 StrictMode 下丟出例外 | 刪除舊函式，測試改為斷言實際投影；復原結果改用安全讀取，並以 durable attempt 綁定判定（17.128） | `Test-WizardRestore` | `8930536` |
+| S17 | `src/HtmlConsole.ps1` `/api/jobs` | 推論：列表與讀取沒有依 context 篩選 | 已重現。依設計，列表為工作區歷史，cancel 有閘門，因此不修改；邊角情況記為 R26-S17b（17.128） | `Test-HtmlJobContextScope.js` | `8930536` |
+| S12 | 「路徑在根底下」有 8 份以上各自獨立的實作（AssistiveNonC、ProofHandoff、TargetHandoff、AccountObservation、PhysicalPaths、RemoteStorageContracts、AdvancedReview、WizardBackup） | 沒有兄弟前綴的測試，突變存活；沒有呼叫端或只剩測試呼叫的舊實作仍然並存 | 收斂成 `Test-WsmPathWithinRoot`／`Get-WsmPathRelativeToRoot`（Win32 與原生兩種模式），刪除舊函式，並加上靜態守門（17.129） | `Test-PathWithinRoot`（320 項） | （F2-COMMIT） |

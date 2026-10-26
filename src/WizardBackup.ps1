@@ -779,12 +779,10 @@ function Get-WsmIndependentCopyPhysicalKey([string]$Path) {
 }
 
 function Test-WsmIndependentCopyInsideWorkspace([string]$LocalPath,[string]$Workspace) {
-    $workspaceFull=[IO.Path]::GetFullPath($Workspace).TrimEnd('\')
-    $candidate=[IO.Path]::GetFullPath($LocalPath).TrimEnd('\')
-    if($candidate -ieq $workspaceFull -or $candidate.StartsWith($workspaceFull+'\',[StringComparison]::OrdinalIgnoreCase)){return $true}
+    # 第一段：Win32 路徑比較（正規化後）；第二段：實體路徑比較（原生模式）。兩段都用共用的 Test-WsmPathWithinRoot（S12）。
+    if(Test-WsmPathWithinRoot $LocalPath $Workspace){return $true}
     try{
-        $left=(Get-WsmIndependentCopyPhysicalKey $LocalPath).TrimEnd('\');$right=(Get-WsmIndependentCopyPhysicalKey $Workspace).TrimEnd('\')
-        return ($left -ieq $right -or $left.StartsWith($right+'\',[StringComparison]::OrdinalIgnoreCase))
+        return (Test-WsmPathWithinRoot (Get-WsmIndependentCopyPhysicalKey $LocalPath) (Get-WsmIndependentCopyPhysicalKey $Workspace) -Native)
     }catch{
         # 安全檢查不可在出錯時放行：實體位置無法確立就拒絕，而不是當成「在工作區外」。
         throw ('Independent copy destination physical location cannot be compared with the source workspace: '+[string]$_.Exception.Message)

@@ -55,7 +55,7 @@ function Get-WsmRemoteStorageScopeBindingHash($RemoteStorage) {
 function Test-WsmRemotePathOverlap([string]$Left,[string]$Right) {
     $a=Get-WsmRemotePathComparison $Left; $b=Get-WsmRemotePathComparison $Right
     if(-not $a -or -not $b){return $true}
-    return ($a -ceq $b -or $a.StartsWith($b+'\',[StringComparison]::OrdinalIgnoreCase) -or $b.StartsWith($a+'\',[StringComparison]::OrdinalIgnoreCase))
+    return (Test-WsmPathOverlap $a $b)
 }
 
 function Assert-WsmRemoteEndpoint($Endpoint,[string]$Side) {
@@ -244,7 +244,7 @@ function Test-WsmRemoteStorageCoversPath($RemoteStorage,[string]$Path) {
             $scope=([string]$alias.RootUnc).TrimEnd('\')
             if($relative){$scope=$scope+'\'+$relative}
             $scope=Get-WsmRemotePathComparison $scope
-            if($target -ceq $scope -or $target.StartsWith($scope+'\',[StringComparison]::Ordinal)){return $true}
+            if(Test-WsmPathWithinRoot $target $scope -Native){return $true}
         }
     }
     return $false

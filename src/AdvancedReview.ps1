@@ -128,6 +128,6 @@ function Get-WsmMappingIssues($Items) {
     $mapped=@($Items | Where-Object { $_.Decision -eq 'Include' -and $_.Mapping })
     for ($a=0;$a -lt $mapped.Count;$a++) { for ($b=$a+1;$b -lt $mapped.Count;$b++) {
         $left=(ConvertTo-WsmCanonicalPath $mapped[$a].Mapping).TrimEnd('\'); $right=(ConvertTo-WsmCanonicalPath $mapped[$b].Mapping).TrimEnd('\')
-        if ($left -ieq $right -or $left.StartsWith($right+'\',[StringComparison]::OrdinalIgnoreCase) -or $right.StartsWith($left+'\',[StringComparison]::OrdinalIgnoreCase)) { [pscustomobject]@{ ItemId=$mapped[$a].ItemId; Gate='ReviewComplete'; Issue=('Overlapping target mapping with '+$mapped[$b].ItemId) } }
+        if (Test-WsmPathOverlap $left $right) { [pscustomobject]@{ ItemId=$mapped[$a].ItemId; Gate='ReviewComplete'; Issue=('Overlapping target mapping with '+$mapped[$b].ItemId) } }
     } }
 }

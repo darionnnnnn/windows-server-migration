@@ -37,24 +37,6 @@ function Get-WsmWizardStableWindowsSidRows([bool]$WindowsObserved) {
     )
 }
 
-function Get-WsmWizardNonCPathUnderPhysicalRoot([string]$Path,[string]$Root) {
-    try{$full=[IO.Path]::GetFullPath($Path).TrimEnd('\');$root=[IO.Path]::GetFullPath($Root).TrimEnd('\')}catch{return $null}
-    if($full.Equals($root,[StringComparison]::OrdinalIgnoreCase)){return ''}
-    if($full.StartsWith(($root+'\'),[StringComparison]::OrdinalIgnoreCase)){return $full.Substring($root.Length).TrimStart('\')}
-    $null
-}
-
-function Get-WsmWizardNonCPhysicalPathUnderRoot([string]$Path,[string]$Root) {
-    # These are native volume paths from sealed collection evidence, not Win32
-    # paths. Compare them lexically and never send them through GetFullPath or
-    # Get-WsmPhysicalPath.
-    $pathValue=$Path.TrimEnd('\');$rootValue=$Root.TrimEnd('\')
-    if(-not $pathValue -or -not $rootValue){return $null}
-    if($pathValue.Equals($rootValue,[StringComparison]::OrdinalIgnoreCase)){return ''}
-    if($pathValue.StartsWith(($rootValue+'\'),[StringComparison]::OrdinalIgnoreCase)){return $pathValue.Substring($rootValue.Length).TrimStart('\')}
-    $null
-}
-
 function Get-WsmWizardNonCSourceProofSet([string]$Workspace,[string]$PairId,$Preparation,$ApprovedPlan,[string]$PrimaryHash,[string[]]$AdditionalHashes=@()) {
     $requested=New-Object 'System.Collections.Generic.List[string]'
     foreach($hash in @($PrimaryHash)+@($AdditionalHashes)){if(-not [string]::IsNullOrWhiteSpace([string]$hash)){$normalized=([string]$hash).Trim().ToLowerInvariant();if(-not $requested.Contains($normalized)){$requested.Add($normalized)}}}
@@ -77,7 +59,7 @@ function Get-WsmWizardNonCSourceProofSet([string]$Workspace,[string]$PairId,$Pre
 
 function Get-WsmWizardNonCSourceProofForCollection($CollectionProof,[object[]]$ProofRows) {
     $matches=New-Object 'System.Collections.Generic.List[object]'
-    foreach($row in $ProofRows){$relative=Get-WsmWizardNonCPhysicalPathUnderRoot ([string]$CollectionProof.PhysicalPath) ([string]$row.Proof.LocalPhysicalRoot);if($null -ne $relative){$matches.Add([pscustomobject]@{Row=$row;RelativePath=[string]$relative})}}
+    foreach($row in $ProofRows){$relative=Get-WsmPathRelativeToRoot ([string]$CollectionProof.PhysicalPath) ([string]$row.Proof.LocalPhysicalRoot) -Native;if($null -ne $relative){$matches.Add([pscustomobject]@{Row=$row;RelativePath=[string]$relative})}}
     if($matches.Count -ne 1){return $null}
     $match=$matches[0];$unc='\\'+[string]$match.Row.Proof.PeerName+'\'+[string]$match.Row.Proof.ShareName
     if($match.RelativePath){$unc+='\'+$match.RelativePath}

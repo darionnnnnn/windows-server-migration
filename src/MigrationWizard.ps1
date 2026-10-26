@@ -57,8 +57,20 @@
     else{$spec | Add-Member NoteProperty Desired $desired;if($adapter -eq 'LocalUser' -or ($adapter -eq 'Certificate' -and $desired.HasPrivateKey) -or ($adapter -eq 'Service' -and $desired.Account -notin @('LocalSystem','NT AUTHORITY\SYSTEM')) -or ($adapter -in @('ScheduledTask','IISPool') -and (Get-WsmAdapterCredentialRequirement ([pscustomobject]@{Adapter=$adapter;Desired=$desired})))){$spec | Add-Member NoteProperty SecretRef ''}}
     if($adapter -eq 'ManualWorkflow' -and $manualProcedure){$spec.Product='IIS configuration coverage';$spec.Procedure=$manualProcedure;$spec.Artifacts=@($artifacts)}
     if($adapter -ceq 'Service'){$account=[string]$desired.Account;if($account -match '^(?i:LocalSystem|SYSTEM|NT AUTHORITY\\SYSTEM|LocalService|NT AUTHORITY\\LocalService|NetworkService|NT AUTHORITY\\NetworkService|S-1-5-(?:18|19|20))$'){if($spec.PSObject.Properties['SecretRef']){$spec.PSObject.Properties.Remove('SecretRef')}}elseif($account.EndsWith('$')){$spec | Add-Member NoteProperty AccountMode 'ReviewRequired';$spec | Add-Member NoteProperty ManagedAccountEvidence ''}else{$spec | Add-Member NoteProperty AccountMode 'UserPassword'};if($s.PSObject.Properties['SecuritySddl']){$desired | Add-Member NoteProperty SecuritySddl $s.SecuritySddl}}
-    if($adapter -ceq 'FileScope' -and $c.PSObject.Properties['Assistive']){if(-not $pathUnresolved){$spec | Add-Member NoteProperty TransferChannel $(if($sourcePath -match '^(?i:c:)\\'){'C'}else{'NonC'})};$spec | Add-Member NoteProperty ContentSelection 'ExactFiles';$spec.BusinessChecks+=@('Review an exact configuration whitelist or explicitly approve WholeScope for business content; installation binaries are not selected by the draft.')}
+    if($adapter -ceq 'FileScope' -and $c.PSObject.Properties['Assistive']){if(-not $pathUnresolved){$draftChannel=Get-WsmDraftTransferChannel $sourcePath $spec;if($draftChannel){$spec | Add-Member NoteProperty TransferChannel $draftChannel}};$spec | Add-Member NoteProperty ContentSelection 'ExactFiles';$spec.BusinessChecks+=@('Review an exact configuration whitelist or explicitly approve WholeScope for business content; installation binaries are not selected by the draft.')}
     $spec
+}
+# Q2c（PLAN 17.129）：草稿的來源通道。UNC 來源依 Get-WsmUncResponsibility 決定：沿用外部共享 → External（不自動複製）；
+# 其他無法自動決定的結果（例如另行遷移）回空字串，草稿不帶 TransferChannel（欄位不存在＝必填，同「來源路徑尚未解析」的處理），絕不預設成 NonC。
+# 本機來源維持原本的 C／NonC 分流。
+function Get-WsmDraftTransferChannel([string]$SourcePath,$Spec=$null) {
+    if(Test-WsmUncPath $SourcePath){
+        $unc=Get-WsmUncResponsibility $SourcePath $Spec
+        if($unc -and [string]$unc.Responsibility -ceq 'ExternalShareReuse'){return 'External'}
+        return ''
+    }
+    if($SourcePath -match '^(?i:c:)\\'){return 'C'}
+    'NonC'
 }
 function New-WsmMigrationSpecTemplate {
     param([string]$Workspace,[string]$PairId,[string]$ItemId,[string]$Path)

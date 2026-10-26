@@ -11,10 +11,11 @@ try {
         param($File,$Root)
         $principals=@{}
         $unresolved=Get-WsmWizardNonCObservedAclPrincipals $File $principals
-        $inRoot=Get-WsmWizardNonCPathUnderPhysicalRoot $File $Root
-        $escaped=Get-WsmWizardNonCPathUnderPhysicalRoot (Join-Path $Root '..\outside.txt') $Root
-        $nativeChild=Get-WsmWizardNonCPhysicalPathUnderRoot '\Device\HarddiskVolume9\business\one' '\Device\HarddiskVolume9\business'
-        $nativeSibling=Get-WsmWizardNonCPhysicalPathUnderRoot '\Device\HarddiskVolume90\business\one' '\Device\HarddiskVolume9\business'
+        # S12：舊的 Get-WsmWizardNonCPathUnderPhysicalRoot 正式程式零呼叫、已刪除；這裡直接斷言共用函式（Win32 模式），原生路徑則走實際呼叫端 Get-WsmWizardNonCSourceProofForCollection。
+        $inRoot=Get-WsmPathRelativeToRoot $File $Root
+        $escaped=Get-WsmPathRelativeToRoot (Join-Path $Root '..\outside.txt') $Root
+        $nativeChild=Get-WsmPathRelativeToRoot '\Device\HarddiskVolume9\business\one' '\Device\HarddiskVolume9\business' -Native
+        $nativeSibling=Get-WsmPathRelativeToRoot '\Device\HarddiskVolume90\business\one' '\Device\HarddiskVolume9\business' -Native
         $proofRows=@([pscustomobject]@{SHA256=('a'*64);Proof=[pscustomobject]@{LocalPhysicalRoot='\Device\HarddiskVolume9\business';PeerName='source-peer';ShareName='ShareOne'}},[pscustomobject]@{SHA256=('b'*64);Proof=[pscustomobject]@{LocalPhysicalRoot='\Device\HarddiskVolume10\business';PeerName='source-peer';ShareName='ShareTwo'}})
         $covered=Get-WsmWizardNonCSourceProofForCollection ([pscustomobject]@{PhysicalPath='\Device\HarddiskVolume10\business\scope-two'}) $proofRows
         $ambiguous=Get-WsmWizardNonCSourceProofForCollection ([pscustomobject]@{PhysicalPath='\Device\HarddiskVolume10\business\scope-two'}) @($proofRows[1],([pscustomobject]@{SHA256=('c'*64);Proof=[pscustomobject]@{LocalPhysicalRoot='\Device\HarddiskVolume10';PeerName='source-peer';ShareName='Overlapping'}}))

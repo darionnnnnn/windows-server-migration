@@ -207,6 +207,47 @@ try {
         & $check ($htmlRow.UncResponsibility.Responsibility -ceq 'SeparateMigration' -and $htmlRow.UncResponsibility.Summary -ceq '另行遷移，需另行核准' -and $htmlRow.UncResponsibility.EvidenceText -ceq '有') 'The HTML runtime projection keeps the nested classification fields.'
         & $check ((ConvertTo-Json $html -Depth 10) -notmatch 'SECRET-MUST-NOT-LEAK') 'The HTML runtime projection still drops unknown fields.'
         Write-Host 'PASS: restore preview rows and HTML projection.'
+
+        # ---- 4. Q2b（PLAN 17.129）：UNC 來源的項目不接受本機 Mapping（Set-WsmMapping 依 Get-WsmItemUncResponsibility 拒絕，並給出下一步）
+        $script:ToolVersion='0.4.0'  # 本節用真實目錄／匯入流程，需要與模組一致的工具版本
+        $q2bWorkspace=Join-Path $Root 'q2b-manager';[void](Initialize-WsmWorkspace $q2bWorkspace)
+        $q2bSource=[pscustomobject]@{HostId=[Guid]::NewGuid().ToString();Fingerprint=('b'*64);Name='old-q2b'}
+        $q2bItems=@((New-WsmItem $q2bSource.HostId Storage PathCandidate 'unc-data' '\\fs1\data\app' @{Path='\\fs1\data\app'}),(New-WsmItem $q2bSource.HostId Storage PathCandidate 'local-data' 'D:\Data\app' @{Path='D:\Data\app'}))
+        $q2bFile=Join-Path $Root 'q2b-inventory.json';[IO.File]::WriteAllText($q2bFile,((New-WsmInventory $q2bSource 1 $q2bItems)|ConvertTo-Json -Depth 40),(New-Object Text.UTF8Encoding($false)))
+        $q2bPair=(Import-WsmInventory $q2bWorkspace $q2bFile (Get-FileHash -LiteralPath $q2bFile -Algorithm SHA256).Hash 'new-q2b').PairId
+        $q2bUncId=$q2bItems[0].ItemId;$q2bLocalId=$q2bItems[1].ItemId
+        $q2bRev={(Get-WsmCatalog $q2bWorkspace $q2bPair).DecisionRevision}
+        $q2bRow={param($Id)@((Get-WsmCatalog $q2bWorkspace $q2bPair).Items|Where-Object ItemId -CEQ $Id)[0]}
+        $before=& $q2bRev
+        $message='';try{Set-WsmMapping $q2bWorkspace $q2bPair $q2bUncId 'E:\Mapped' $before}catch{$message=[string]$_.Exception.Message}
+        & $check ($message -match 'UNC' -and $message -match '沿用外部共享' -and $message -match '不會把它改成本機路徑') ('A UNC item must not accept a local mapping and must say what to do next: ['+$message+']')
+        & $check ((& $q2bRev) -eq $before -and -not (& $q2bRow $q2bUncId).Mapping) 'A rejected UNC mapping must leave the catalog untouched.'
+        Set-WsmMapping $q2bWorkspace $q2bPair $q2bLocalId 'E:\Mapped' (& $q2bRev)
+        & $check ((& $q2bRow $q2bLocalId).Mapping -ceq 'E:\Mapped') 'Control: a local item still accepts a local mapping.'
+        Set-WsmMapping $q2bWorkspace $q2bPair $q2bUncId 'DOMAIN\Svc' (& $q2bRev) -Type Account
+        & $check ((& $q2bRow $q2bUncId).AccountMapping -ceq 'DOMAIN\Svc') 'An account mapping is not a local path mapping and stays allowed for a UNC item.'
+        Set-WsmMapping $q2bWorkspace $q2bPair $q2bUncId '' (& $q2bRev)
+        & $check (-not (& $q2bRow $q2bUncId).Mapping) 'Clearing a mapping on a UNC item stays allowed.'
+        Write-Host 'PASS: Q2b UNC item rejects a local mapping.'
+        $script:ToolVersion='fixture'
+
+        # ---- 5. Q2c（PLAN 17.129）：草稿的 TransferChannel 依 Get-WsmUncResponsibility 決定，不再把 UNC 來源標成 NonC
+        $assistiveCatalog=[pscustomobject]@{Items=@();Assistive=[pscustomobject]@{ContractVersion=0}}
+        $uncAssistive=Get-WsmMigrationSpecDraft (& $candidate '\\fs1\data\app' '\\fs1\data\app' 'Literal' 'D:\Local\Elsewhere') $assistiveCatalog
+        & $check ($uncAssistive.PSObject.Properties['TransferChannel'] -and $uncAssistive.TransferChannel -cne 'NonC' -and $uncAssistive.TransferChannel -ceq 'External') ('A UNC source draft must not default to NonC; an external share reuse is External: ['+[string]$uncAssistive.TransferChannel+']')
+        $uncResolvedAssistive=Get-WsmMigrationSpecDraft (& $candidate '%FILESERVER%\data' '\\fs2\data\app' 'Machine' 'E:\Elsewhere') $assistiveCatalog
+        & $check ($uncResolvedAssistive.TransferChannel -cne 'NonC' -and $uncResolvedAssistive.TransferChannel -ceq 'External') 'A resolved UNC candidate draft must not default to NonC either.'
+        $nonCAssistive=Get-WsmMigrationSpecDraft (& $candidate 'D:\Data\app' 'D:\Data\app' 'Literal' '') $assistiveCatalog
+        & $check ($nonCAssistive.TransferChannel -ceq 'NonC') 'A local non-C source keeps NonC.'
+        $cAssistive=Get-WsmMigrationSpecDraft (& $candidate 'C:\Data\app' 'C:\Data\app' 'Literal' '') $assistiveCatalog
+        & $check ($cAssistive.TransferChannel -ceq 'C') 'A local C source keeps C.'
+        $plainChannel=Get-WsmMigrationSpecDraft (& $candidate '\\fs1\data\app' '\\fs1\data\app' 'Literal' '') $catalog
+        & $check (-not $plainChannel.PSObject.Properties['TransferChannel']) 'A non-Assistive catalog draft still has no TransferChannel.'
+        # 判定函式：另行遷移或其他無法自動決定的結果，不預設任何通道（欄位不存在＝必填），而不是退回 NonC。
+        & $check ((Get-WsmDraftTransferChannel '\\fs1\data\app' $null) -ceq 'External') 'ExternalShareReuse maps to the External channel.'
+        & $check ((Get-WsmDraftTransferChannel $srcInside $goodSpec) -ceq '') 'A SeparateMigration result must leave the channel empty (required), never NonC.'
+        & $check ((Get-WsmDraftTransferChannel 'D:\x' $null) -ceq 'NonC' -and (Get-WsmDraftTransferChannel 'c:\x' $null) -ceq 'C') 'Local sources keep the C/NonC split.'
+        Write-Host 'PASS: Q2c UNC draft channel.'
     } $root
 }
 finally {
