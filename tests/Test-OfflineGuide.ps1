@@ -27,6 +27,16 @@ try{
             foreach($needle in @($manifestHash,$planHash,$deliveryHash,$resultsHash,$reportHash,$fingerprint,'0.4.0','directory-delivery.json','ToolVersion','取得','驗證','信任材料','匯入','不代表媒體目前仍完整','重新驗證','docs\html\OPERATIONS.html')){Check $doc.Contains($needle) ('The guide is missing: '+$needle)}
             Check ($doc -notmatch '(?i)[a-z]:\\' -and $doc -notmatch '(?i)https?://' -and $doc -notmatch '(?i)ftp://') 'The guide must not carry an absolute path or a download/network address.'
         }
+        # R25：驗證步驟要先 Import-Module 才有 Test-WsmToolRelease 可用；角色字樣與畫面一致（「新主機」用途，不是「目標」角色）；
+        # 多行指令以續行符號（行尾反引號）串起來，整段貼進 PowerShell 才不會在第二行斷掉。順序與指令放在同一個步驟裡。
+        foreach($doc in @($html1,$txt1)){
+            Check ($doc.Contains('Import-Module') -and $doc.Contains('WindowsServerMigration.psd1')) 'The verification steps must load the module with Import-Module.'
+            Check ($doc.IndexOf('Import-Module') -ge 0 -and $doc.IndexOf('Import-Module') -lt $doc.IndexOf('Test-WsmToolRelease -Path')) 'Import-Module must come before the Test-WsmToolRelease command.'
+            Check ($doc.Contains('「新主機」用途') -and -not $doc.Contains('「目標」角色')) 'The role wording must match the screen: the new host purpose (新主機), not a target role.'
+        }
+        Check ($txt1 -match '<發行包SHA256> `\r\n\s+-SignaturePath' -and $txt1 -match '<簽章SHA256> `\r\n\s+-TrustPolicyPath') 'Each line of the multi-line Test-WsmToolRelease command in the text fallback must end with a continuation backtick.'
+        Check ([regex]::IsMatch($html1,'發行包SHA256&gt; `\n\s+-SignaturePath') -and [regex]::IsMatch($html1,'簽章SHA256&gt; `\n\s+-TrustPolicyPath')) 'Each line of the multi-line Test-WsmToolRelease command in the HTML must end with a continuation backtick.'
+        Check (([regex]::Matches($html1,'<ol>')).Count -eq 2 -and $html1 -match '(?s)<li>[^<]*Import-Module[^<]*<pre><code>Import-Module ') 'The verification step and its command must live in the same list item.'
         Check ($html1 -match '(?s)^<!doctype html>.*<html lang="zh-Hant">' -and $html1 -match '<h1>' -and ([regex]::Matches($html1,'<h2 id=')).Count -ge 6 -and ([regex]::Matches($html1,'<section aria-labelledby=')).Count -eq ([regex]::Matches($html1,'<h2 id=')).Count) 'The guide HTML must use semantic headings and labelled sections.'
         Check ($html1 -notmatch '(?i)<script|<link |<img |<iframe|onerror=|javascript:' -and $html1 -match "Content-Security-Policy" -and $html1 -match 'system-ui' -and $html1 -match 'Noto Sans TC' -and $html1 -match 'Microsoft JhengHei' -and $html1 -match 'prefers-reduced-motion') 'The guide HTML must be static (no script/link/img), carry the CSP, the required fonts and the reduced-motion rule.'
         Check ($html1 -match 'href="backup-report.html"') 'With a report hash the guide links to the report beside it.'

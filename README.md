@@ -2,9 +2,18 @@
 
 PowerShell 本機盤點、離線集中審核與分階段遷移工具，主要目標 Server 2016 → 2025、約十台主機。各台本機執行，管理端彙整文件與結果，不要求 WinRM。
 
-## 目前狀態（2026-10-15）
+## 目前狀態（2026-10-26）
 
 第六輪已分段提交型別化準備／核准、Directory／ZIP 備份、持久作業與取消、多共享非 C 帳號／證據交接，以及新主機接收、比較、決策、還原與 Staged／Final 驗證。本機雙引擎核心、受控正式 handler 使用旅程與真瀏覽器縮放已有證據；本機原生 Edge→HTTP 仍 NotPassed；獨立 Windows CI 的原生資源／盤點／保存、Source Directory／ZIP、Target 真還原、Manager 審閱核准及三角色 Probe 旅程已通過，整輪尚未通過，不能把橋接、fixture 或發行煙霧測試當作生產資格。逐段狀態與限制見[第六輪計畫](docs/plans/MIGRATION-6-PLAN.md)。
+
+離線完整備份（CV2）已可使用：C 槽與其他磁碟上已核准的資料封進同一份離線備份，新機只靠這份備份與工具就能還原，不必回頭連舊機或舊 Manager；CV2 計畫不使用非 C 直傳。目前的功能包括：
+
+- **備份結果三分頁**：「已備份」「未備份」「安裝軟體」，每頁可搜尋、翻頁、匯出 CSV；交付資料夾另附可離線雙擊查看的 `backup-report.html` 與新機用的離線使用說明。
+- **獨立副本**：把備份複製（或自行複製後驗證）到可移除磁碟或網路位置並逐檔驗證，以收據記錄；舊機本機的固定磁碟與無法判定的媒體會被拒絕。副本失敗不會抹掉先前已驗證的收據，媒體被移除時顯示「收據完整；媒體需重新驗證」。
+- **新機還原**：決策收據預設勾選所有可還原且尚未還原的項目，可調整；資料一律還原到原位置。部分完成時可按「重試失敗項目」；目錄範圍已有同內容的外部檔案時記為「沿用既有檔」，回復時不刪除。
+- **帳密等待與續作**：需要服務、排程或應用程式集區帳密時暫停等待，可延後單一組，中斷後可續作。
+
+限制：可移除磁碟與網路位置的實機複製、非 C 磁碟的實機擷取與還原、企業環境驗收尚未完成。操作細節見[操作契約](docs/OPERATIONS.md)。
 
 一般使用者可從工具首頁按「開始／繼續操作」，選擇這台電腦的用途，再依「下一步」完成目前可用步驟。已驗證材料會帶入路徑、雜湊及版本等值；工具用途不等於權限或核准。另有左側「開發者環境探測」入口，以及不依賴網頁的本機命令列備援；探測只讀本機資訊，建立 ZIP、JSON、HTML，不會上傳。
 
@@ -89,7 +98,10 @@ powershell.exe -NoProfile -File C:\MigrationTools\Start-ServerMigration.ps1 -Act
 ## 非互動入口與測試
 
 ```powershell
-.\Start-ServerMigration.ps1 -Action Inventory -DeepDiscovery -Path D:\MigrationEvidence
+# -Path 是這台舊主機的固定 WorkRoot（專用目錄，內含盤點、報告及交付材料），不是任意輸出位置；先登錄 WorkRoot 再盤點：
+# 第一次使用時，若該目錄尚未登錄，工具會以預設輸出設定（ZIP、每卷 512 MiB）把它登錄為這台主機的 Source。
+# 想先選 Directory 或其他分卷大小，請先用工作台（舊主機用途）或文字選單 1 登錄同一個 WorkRoot；已登錄為其他角色或其他主機的目錄會被拒絕。
+.\Start-ServerMigration.ps1 -Action Inventory -DeepDiscovery -Path D:\MigrationWorkRoot
 .\Start-ServerMigration.ps1 -Action Operation -Path D:\Requests\restore.json -ExpectedHash '<獨立可信SHA256>'
 .\Start-ServerMigration.ps1 -Action ImportCsvPreview -Workspace D:\MigrationWorkspace -PairId '<PairId>' -Path D:\Review\decisions.csv
 # 以預覽輸出的 SourceHash、DecisionRevision 呼叫 ImportCsv
@@ -98,7 +110,7 @@ powershell.exe -NoProfile -File .\tests\Test-MigrationPipeline.ps1
 powershell.exe -NoProfile -File .\tests\Test-RecoveryContracts.ps1
 ```
 
-測試的主機、排程、服务與網路 API 使用 fixture；檔案內容／ACL／ZIP／hash／journal 操作使用測試目錄。沒有實際改名、IP 切換或生產服務操作。模擬成功不能代替真實 Server、IIS、網域與業務驗收。CLI 0 表示該操作完成，不表示整台遷移完成；2 表示阻擋／人工證據或重開機仍待處理，1 失敗，3 安全取消，4 已分類的參數／格式錯誤。
+測試的主機、排程、服务與網路 API 使用 fixture；檔案內容／ACL／ZIP／hash／journal 操作使用測試目錄。沒有實際改名、IP 切換或生產服務操作。模擬成功不能代替真實 Server、IIS、網域與業務驗收。CLI 0 表示該操作完成，不表示整台遷移完成；2 表示等待輸入，或阻擋（人工證據、重開機仍待處理），1 失敗，3 取消或輸入結束，4 已分類的契約／輸入錯誤（參數或格式）。等待輸入時會印出 `Status=WaitingForInput` 一行，詳見操作契約的「CLI 返回碼與等待輸入」。
 
 ## 有效且節省資源的測試
 

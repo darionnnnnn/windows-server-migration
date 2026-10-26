@@ -136,7 +136,7 @@ try {
     if ([Environment]::GetCommandLineArgs() -contains '-NonInteractive') { $blocked=New-Object IO.EndOfStreamException('非互動環境請指定 -Action；Menu 需要互動主控台或重新導向的標準輸入（不可加 -NonInteractive）。');$blocked.Data['WsmWaitingForInput']=$true;$blocked.Data['WsmMissingFields']='Menu 選項';throw $blocked }
     try {
     while ($true) {
-        Write-Host "`nWindows Server Migration 0.3 — 盤點／審核／隔離 pilot 遷移"
+        Write-Host "`nWindows Server Migration 0.4 — 盤點／審核／隔離 pilot 遷移"
         Write-Host '1 本機來源盤點  2 建立管理工作區  3 匯入盤點  4 審核／排除  5 分類 HTML'
         Write-Host '6 匯出 CSV  7 匯入 CSV  8 全批次報告  9 查詢阻擋項目  10 核准審核文件  11 補查證據／負責人'
         Write-Host '12 人工補列  13 路徑／帳號／端點映射  14 應用組合／內建分類  15 配對／波次規劃  16 跨主機相依  17 結果包匯入'

@@ -4,6 +4,11 @@ Import-Module (Join-Path $PSScriptRoot '..\src\WindowsServerMigration.psd1') -Fo
 $root=Join-Path ([IO.Path]::GetTempPath()) ('wsm-cli-'+[Guid]::NewGuid().ToString('N'))
 $workspace=Join-Path $root 'manager'
 $entry=Join-Path $PSScriptRoot '..\Start-ServerMigration.ps1'
+# R25：選單標題與文件範例的版本字串要和程式的 ToolVersion 一致（主次版號），不能停在舊版。
+$toolVersion=[string](& (Get-Module WindowsServerMigration) { $script:ToolVersion })
+$menuVersion=[regex]::Match([IO.File]::ReadAllText($entry),'Windows Server Migration (\d+\.\d+) —').Groups[1].Value
+if(-not $menuVersion -or -not $toolVersion.StartsWith($menuVersion+'.')){throw ('The menu title version ('+$menuVersion+') must match the tool version '+$toolVersion+'.')}
+if([IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\docs\OPERATIONS.md')) -notmatch ('"ToolVersion": "'+[regex]::Escape($toolVersion)+'"')){throw 'The OPERATIONS.md OperationRequest example must carry the current ToolVersion.'}
 $engine=Join-Path $PSHOME 'powershell.exe'
 if (-not (Test-Path -LiteralPath $engine)) { $engine=Join-Path $PSHOME 'pwsh.exe' }
 & $engine -NoProfile -NonInteractive -File $entry -Action Initialize -Workspace $workspace *> (Join-Path ([IO.Path]::GetTempPath()) 'wsm-cli-initialize.log')

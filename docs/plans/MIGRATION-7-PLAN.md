@@ -2938,13 +2938,13 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - CV2 計畫匯入交付收據時直接拒絕（`Import-WsmDeliveryReceipt`）。理由是 `Get-WsmDeliveryReceiptSummary` 對 CV2 一律短路，就算存下也永遠不會顯示。
 - **R14**：重新匯入盤點或換軟體目錄時，事實雜湊已漂移的軟體決策不再刪除：
   - 改存到 `GeneralHost.StaleSoftwareDecisions`，並附 `StaleUtc` 與 `StaleInventoryHash`。
-  - Review 把這些列標成 Stale，並預填原本的處置、負責人、原因與證據。
+  - Review 把這些列標成 Stale，資料列保留原本的處置、負責人、原因與證據（標示「⚠ 證據已變更，需重新審閱」）。console 的批次表單**不會**自動帶入這些前值（17.130 審查更正；UI 預填記為 R26-D14b）。
   - Stale 決策不在有效集合 `SoftwareDecisions` 內，所有計畫端的讀取者都看不到。
   - 負責人重新確認後，才轉為 Reviewed。
   - **主代理收斂**：subagent 只改了 `Import-WsmInventory`，並指出 `Set-WsmGeneralHostSoftwareCatalog` 也會刪掉漂移的決策，但不在白名單內。主代理抽出 `Split-WsmSoftwareDecisionsForCatalog`（放在 Core），讓兩個入口共用同一個判定。補了 5 項檢查：函式本身的有效、Stale、去重、消失四種情況，以及靜態確認兩個入口都改呼叫它。實作中也修了 strict 模式下單筆結果被解開、讀不到 `.Count` 的問題。
 - **R15**（推論，已重現）：
   - 位元組相同的候選確認材料重複匯入，或對應審閱重送相同內容時，改回傳 `NoChange`，不動決策、不遞增 revision、不清除核准。
-  - console 把 NoChange 視為成功，顯示「內容與先前相同，未變更任何決策或核准」。
+  - console 把 NoChange 視為成功。實際字樣：確認材料匯入顯示「完成：確認材料與先前匯入的內容完全相同…」；對應送出顯示「完成：送出的對應與目前已記錄的完全相同，未變更任何決策或核准。」（17.130 審查更正本句原先的概括字樣）
   - 內容不同時仍照舊回到 Pending（反例已測）。
 - **S15**（推論）：
   - 只重現了「hash 不確定」：ProofHash 的內容包含每次新產生的 CreatedUtc。
@@ -3067,6 +3067,34 @@ F4a 是 prerequisite，不得先交付只有 UI 可輸入、後端不能接手�
   - 主代理拿掉 `WizardNonCTargetHandoff` 第 33 行的 `-ExcludeRoot`，測試仍通過。這是等價突變：前一行已把 relative 限定為兩個固定檔名，路徑不可能等於根本身，那個參數在這裡只是縱深防禦。
 - **驗證**：62 支 PowerShell 測試全綠（呼叫端與呼叫端的呼叫端），包括 PathWithinRoot 320、UncResponsibility、PhysicalPaths、AssistiveNonC 34、RemoteStorageContracts、RemoteStorageApproval（以 `-File` 執行）、AdvancedReview 32、IndependentCopyHardening、WizardNonC 系列、MigrationPipeline、AssistiveRestore 178、RestorableSet 199、EnvironmentConfirmation、ScriptEncoding 352。這批沒有改前端，所以沒有跑瀏覽器測試。
 - **未做**：share 根唯一性在 8.3 別名下的問題（S 清單 P3），併入 R26-F2c。
+
+### 17.130 R25 文件：離線完整備份、Manager C2／D2、帳密與返回碼、安全邊界
+
+- 規格：`work/r7/specs/R25-docs.md`。Sonnet 5.5 subagent 撰寫；主代理審查，抽查文件引用的字串（進度卡、NoChange、信任邊界句）確實存在於程式中。文件只寫現況，畫面字樣、返回碼、目錄結構都對照 console.js 與 src。
+- **改動**：
+  - **OPERATIONS.md**：標題改成功能名稱。「離線完整備份」節重寫，涵蓋：
+    - 進度卡「第 n 步／共 3 步」、HTML 取消確認、失敗與較新的嘗試、備份結果三分頁。
+    - 獨立副本：四種媒體類型、人工複製的目錄結構 `<目的>\wsm-offline-<PairId>-<AttemptId>\transport\…`、容量預檢、收據與 LastAttempt、「收據完整；媒體需重新驗證」。
+    - 本機比較、原位置還原、重試失敗項目、沿用既有檔與回復、還原後重新核對。
+
+    另新增四節：Manager 端 D2／C2、CLI 返回碼與等待輸入、帳密等待／DEFER／RESUME／TAKEOVER、本機工作台安全邊界。ToolVersion 範例改為 0.4.0。
+  - **README**：狀態段補上 CV2、三分頁、獨立副本、預設全選、重試、帳密；Inventory 範例說明 `-Path` 是固定的 WorkRoot，要先登錄；補上返回碼句。
+  - **GENERAL-HOST-WORKFLOW**：新增 CV2 節，說明直傳非 C 已由 CV2 取代，舊格式計畫仍走原通道；同時修正原本「非 C 仍走跳板通道」的說法。
+  - **RECOVERY-RUNBOOK**：新增 TargetRestore 的處置步驟，涵蓋等待輸入與中斷、Partial、NeedsReconciliation、RolledBack、重新核對。
+  - **ASSISTIVE-OPERATIONS.html、src/ui/guide.html**：補上 CV2 流程；修掉第五、六輪留下的過期句子，以及一個寫在 HTML 中的 Markdown 連結。
+  - **`Export-WsmBackupOfflineGuide`**：驗證步驟補上 `Import-Module`；角色字樣改為「新主機」用途；多行指令加上續行反引號（原本貼上第二行就會斷）；每個步驟與其指令放在同一個清單項。
+  - **其他**：`Start-ServerMigration.ps1:139` 的選單標題改為 0.4。docs/html 以 `Build-HtmlDocumentation.ps1` 重建，4 頁有變動，source-sha 全部相符。
+- **發現並修正的不符**：文件中的進度字樣、ToolVersion 範例、Inventory 範例語意、過期的輪次句、非 C 通道說明、離線說明檔缺 `Import-Module` 與續行符號。另外，PLAN 17.126 的 NoChange 字樣與「Stale 預填」說法與程式不符，已就地更正；缺少的 UI 預填記為 R26-D14b。
+- **測試**：
+  - 新增 `Test-DocumentationFacts`（224 項）：文件引用的畫面字樣必須能在 src 中找到；另比對三階段進度、副本目錄結構、四種媒體類型、等待輸入的行格式、嚴重度順序、DEFER／RESUME、信任邊界句、README 的 WorkRoot。
+  - `Test-OfflineGuide` 增至 67 項（新增 5 項）。
+  - `Test-EntryPoint` 新增版本一致的斷言。
+- **突變**：離線說明檔 4 個、EntryPoint 2 個、DocumentationFacts 6 個，全部轉紅。其中兩個第一版存活：泛用字樣在文件中出現多處，只改一處抓不到；改用帶上下文的配對後轉紅。
+- **驗證**：HtmlDocumentation 24、Qualification、HtmlConsole 178、ScriptEncoding 353、EntryPoint、OfflineGuide 67、DocumentationFacts 224、SecretSentinelBackupSweep 151、WizardBackup、Reliability 62、IndependentCopyHardening、BackupCurrencyAndReview 109、BackupAttemptsA2 100、G2 34、OfflineReportBrowser、OfflineGuideBrowser、HtmlBrowser。
+- **限制與後續**：
+  - `Test-ConsoleAssetTransport` 在本機為 ENVIRONMENT-LIMITED（exit 3）。
+  - RECOVERY-RUNBOOK 新節用繁中、舊文是英文，留給文件普查處理。
+  - 這批改了 guide.html、WizardBackupProjection.ps1、Start-ServerMigration.ps1，帳本階段雜湊因此過期；`Test-DocumentationFacts` 也還沒接進 CI 與帳本。兩者都在 R27 處理。
 
 ### 17.43 Test-TextConsole 既有失敗修正
 
@@ -3311,8 +3339,9 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | R21 | `console.js` 的 `refreshActiveData`、完成事件分支 | 停在 `#jobs?filter=backup&…` 時，備份完成後三個分頁不自動更新 | 先切掉 query 再取 view 名稱；備份或獨立副本完成時重讀明細（17.127） | `Test-BackupWorkbenchBrowser.js`（R21 區段） | `a1e996c`（PS7 修正 `55c8e51`） |
 | R22 | `src/WizardBackupProjection.ps1` 的 `Get-WsmWizardBackupItemFiles` | 10 萬列時每翻一頁約 48 秒，期間 listener 執行緒被卡住 | 以內容雜湊為鍵的有界快取，每次重算並核對雜湊；首次解析改用 JavaScriptSerializer（17.127） | `Test-BackupItemFileIndexCache.ps1`、`Test-BackupWorkbenchView.ps1` | `a1e996c`（PS7 修正 `55c8e51`） |
 | R24 | `src/WizardBackupProjection.ps1` 的離線報告與結果文件 | 離線報告只到項目層，無法查看逐檔明細（§18.4 契約缺口） | 每項列前 200 個檔案並附總數，整份上限 5000 筆，使用靜態 `<details>`，路徑經安全文字化（17.127） | `Test-OfflineReportFileLists.ps1`、`Test-OfflineReportBrowser.js` | `a1e996c`（PS7 修正 `55c8e51`） |
-| Q2b | `src/Review.ps1` `Set-WsmMapping` | UNC 項目仍可以設定本機路徑 Mapping | 依 `Get-WsmItemUncResponsibility` 拒絕，並附分類與下一步（17.129） | `Test-UncResponsibility`（Q2b 節） | （F2-COMMIT） |
-| Q2c | `src/MigrationWizard.ps1` 草稿的 TransferChannel | UNC 來源被預設成 NonC | 改由 `Get-WsmDraftTransferChannel` 決定：沿用外部共享設為 External，其餘留空並必填（17.129） | `Test-UncResponsibility`（Q2c 節） | （F2-COMMIT） |
+| Q2b | `src/Review.ps1` `Set-WsmMapping` | UNC 項目仍可以設定本機路徑 Mapping | 依 `Get-WsmItemUncResponsibility` 拒絕，並附分類與下一步（17.129） | `Test-UncResponsibility`（Q2b 節） | `d718c2b` |
+| Q2c | `src/MigrationWizard.ps1` 草稿的 TransferChannel | UNC 來源被預設成 NonC | 改由 `Get-WsmDraftTransferChannel` 決定：沿用外部共享設為 External，其餘留空並必填（17.129） | `Test-UncResponsibility`（Q2c 節） | `d718c2b` |
+| R25 | OPERATIONS、README、GENERAL-HOST-WORKFLOW、RECOVERY-RUNBOOK、ASSISTIVE-OPERATIONS、guide.html、離線說明檔、選單標題 | 文件停在第五、六輪：進度字樣錯誤；缺少返回碼 2、CV2 備份與獨立副本、C2／D2、帳密、重試、沿用既有檔、信任邊界。離線說明檔缺 Import-Module 與續行符號。版本仍寫 0.3 | 依現行程式重寫並補節；重建 docs/html；修正離線說明檔並補斷言；版本改為 0.4（17.130） | `Test-DocumentationFacts`（224 項）、`Test-OfflineGuide`（67 項）、`Test-EntryPoint` | （R25-COMMIT） |
 
 ### 第六輪終檢
 
@@ -3334,4 +3363,4 @@ F4a-2（計畫／審閱端讓排程與 pool 可帶帳密需求、盤點移除 po
 | S10 | `src/WizardPreparation.ps1` 唯讀名單 | IIS 的 Operation、ElementName、AttributeName、ValuesWithheld 可在表單中編輯 | 加入唯讀名單（17.128） | `Test-WizardPreparationFieldRules`、`Test-WizardPreparationAdapters` | `8930536` |
 | S13 | `src/WizardRestore.ps1`（已刪除）、`src/WizardRuntime.ps1` | 正式程式從未呼叫的舊函式與實際投影各寫一份綁定判定；實際投影處理復原結果時，在 StrictMode 下丟出例外 | 刪除舊函式，測試改為斷言實際投影；復原結果改用安全讀取，並以 durable attempt 綁定判定（17.128） | `Test-WizardRestore` | `8930536` |
 | S17 | `src/HtmlConsole.ps1` `/api/jobs` | 推論：列表與讀取沒有依 context 篩選 | 已重現。依設計，列表為工作區歷史，cancel 有閘門，因此不修改；邊角情況記為 R26-S17b（17.128） | `Test-HtmlJobContextScope.js` | `8930536` |
-| S12 | 「路徑在根底下」有 8 份以上各自獨立的實作（AssistiveNonC、ProofHandoff、TargetHandoff、AccountObservation、PhysicalPaths、RemoteStorageContracts、AdvancedReview、WizardBackup） | 沒有兄弟前綴的測試，突變存活；沒有呼叫端或只剩測試呼叫的舊實作仍然並存 | 收斂成 `Test-WsmPathWithinRoot`／`Get-WsmPathRelativeToRoot`（Win32 與原生兩種模式），刪除舊函式，並加上靜態守門（17.129） | `Test-PathWithinRoot`（320 項） | （F2-COMMIT） |
+| S12 | 「路徑在根底下」有 8 份以上各自獨立的實作（AssistiveNonC、ProofHandoff、TargetHandoff、AccountObservation、PhysicalPaths、RemoteStorageContracts、AdvancedReview、WizardBackup） | 沒有兄弟前綴的測試，突變存活；沒有呼叫端或只剩測試呼叫的舊實作仍然並存 | 收斂成 `Test-WsmPathWithinRoot`／`Get-WsmPathRelativeToRoot`（Win32 與原生兩種模式），刪除舊函式，並加上靜態守門（17.129） | `Test-PathWithinRoot`（320 項） | `d718c2b` |

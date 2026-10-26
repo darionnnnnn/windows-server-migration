@@ -1222,6 +1222,8 @@ function Export-WsmBackupOfflineGuide([string]$HtmlPath,[string]$TextPath,$Facts
     $addList={param([string]$Tag,[string[]]$Items)[void]$html.Append('<'+$Tag+'>');$n=0;foreach($item in $Items){$n++;[void]$html.Append('<li>'+(& $enc $item)+'</li>');if($Tag -ceq 'ol'){[void]$txt.Append(([string]$n)+'. '+$item+"`n")}else{[void]$txt.Append('- '+$item+"`n")}};[void]$html.Append('</'+$Tag+'>')}
     $addMeta={param([object[]]$Rows)[void]$html.Append('<dl class="meta">');foreach($row in $Rows){$isHash=($row.Length -gt 2 -and $row[2] -ceq 'hash');[void]$html.Append('<dt>'+(& $enc $row[0])+'</dt><dd>'+$(if($isHash -and $row[1] -cne $notRecorded){'<code class="hash">'+(& $enc $row[1])+'</code>'}else{& $enc $row[1]})+'</dd>');[void]$txt.Append($row[0]+'：'+$row[1]+"`n")};[void]$html.Append('</dl>')}
     $addCode={param([string]$Text)[void]$html.Append('<pre><code>'+(& $enc $Text)+'</code></pre>');foreach($line in $Text.Split("`n")){[void]$txt.Append('    '+$line+"`n")}}
+    # 每個步驟可附一段指令（放在同一個 <li> 內、文字備援縮排四格），讓「先做什麼、再做什麼」的順序與指令不會分家。
+    $addSteps={param([object[]]$Steps)[void]$html.Append('<ol>');$n=0;foreach($step in $Steps){$n++;[void]$html.Append('<li>'+(& $enc ([string]$step[0])));[void]$txt.Append(([string]$n)+'. '+[string]$step[0]+"`n");if([string]$step[1]){[void]$html.Append('<pre><code>'+(& $enc ([string]$step[1]))+'</code></pre>');foreach($line in ([string]$step[1]).Split("`n")){[void]$txt.Append('    '+$line+"`n")}};[void]$html.Append('</li>')};[void]$html.Append('</ol>')}
 
     $title='新機離線使用說明'
     [void]$html.Append('<!doctype html>'+"`n"+'<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+"`n"+'<meta http-equiv="Content-Security-Policy" content="default-src ''none''; style-src ''unsafe-inline''">'+"`n"+'<title>'+(& $enc $title)+'</title>'+"`n"+'<style>'+"`n")
@@ -1256,12 +1258,11 @@ function Export-WsmBackupOfflineGuide([string]$HtmlPath,[string]$TextPath,$Facts
     & $endSection
 
     & $addH2 'sec-verify' '三、如何驗證工具'
-    & $addList 'ol' @(
-        '用「不是這份交付」的獨立管道（例如當面、電話或公司的發行系統）取得發行包的 SHA256、簽章檔的 SHA256 與信任政策的 SHA256。',
-        '在 Windows PowerShell 5.1 計算發行包的雜湊，並與取得的值逐字比對：',
-        '若手上已有一份可信的同版本工具，用它驗證新取得的發行包簽章：')
-    & $addCode 'Get-FileHash -Algorithm SHA256 -LiteralPath <發行包.zip>'
-    & $addCode "Test-WsmToolRelease -Path <發行包.zip> -ExpectedHash <發行包SHA256> `n  -SignaturePath <簽章檔> -ExpectedSignatureHash <簽章SHA256> `n  -TrustPolicyPath <信任政策檔> -TrustPolicyHash <信任政策SHA256>"
+    & $addSteps @(
+        ,@('用「不是這份交付」的獨立管道（例如當面、電話或公司的發行系統）取得發行包的 SHA256、簽章檔的 SHA256 與信任政策的 SHA256。','')
+        ,@('在 Windows PowerShell 5.1 計算發行包的雜湊，並與取得的值逐字比對：','Get-FileHash -Algorithm SHA256 -LiteralPath <發行包.zip>')
+        ,@('若手上已有一份可信的同版本工具，先用 Import-Module 載入它的模組（Test-WsmToolRelease 是模組內的命令，沒載入就找不到）：','Import-Module <可信工具資料夾>\src\WindowsServerMigration.psd1')
+        ,@('再用它驗證新取得的發行包簽章：',"Test-WsmToolRelease -Path <發行包.zip> -ExpectedHash <發行包SHA256> ```n  -SignaturePath <簽章檔> -ExpectedSignatureHash <簽章SHA256> ```n  -TrustPolicyPath <信任政策檔> -TrustPolicyHash <信任政策SHA256>"))
     & $addP '不要用這份交付裡算出來的雜湊來當授權依據；雜湊與簽章必須來自獨立可信的管道。'
     & $endSection
 
@@ -1272,7 +1273,7 @@ function Export-WsmBackupOfflineGuide([string]$HtmlPath,[string]$TextPath,$Facts
 
     & $addH2 'sec-import' '五、新機匯入步驟'
     & $addList 'ol' @(
-        '在新機以管理員身分開啟 Windows PowerShell 5.1，啟動上面驗證過的工具（Start-ServerMigration.ps1），選擇「目標」角色，指定專用的固定 WorkRoot。',
+        '在新機以管理員身分開啟 Windows PowerShell 5.1，啟動上面驗證過的工具（Start-ServerMigration.ps1），選擇「新主機」用途，指定專用的固定 WorkRoot。',
         '登記這台新機的身分；身分要和備份核准時指定的目標主機相符。',
         '匯入交付：Directory 選擇交付資料夾與其摘要檔，ZIP 選擇描述檔 transport.json 與同資料夾的所有分卷。',
         '貼上上面「信任材料」中經獨立管道核對過的雜湊；不符就停止，不要繼續。',
